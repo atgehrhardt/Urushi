@@ -8,6 +8,12 @@
 | iOS | remote client | `make ios-sim` (simulator .app, installs, launches and screenshots). Device builds use `aarch64-apple-ios` plus signing. | Yes, in the simulator: connected over the tailnet and rendered the workspace |
 | Android | remote client | `make android` → `build/android/urushi.apk` (NDK and SDK command-line tools, no Gradle) | Yes, in the emulator: connected over the tailnet, opened split terminals, typed into a shell on the Mac |
 
+## Installing on macOS for daily use
+- `make install` builds the release bundle and swaps it into `/Applications/Urushi.app` (override with `INSTALL_DIR`). The swap uses renames, so a running app and daemon are never disturbed.
+- The app starts `urushid` from its own bundle when none is running. The daemon then keeps running when the app quits, so your sessions survive app restarts and upgrades.
+- A new daemon version takes effect only when the daemon next starts (e.g. after a reboot). Restarting the daemon ends its terminal sessions, so Urushi never does it for you.
+- For development, use `make dev`. It runs against `./.dev-home`, so the installed workspace is never touched.
+
 ## Mobile clients
 - iOS and Android can't host agent shells, so they never start a local daemon.
 - **Connecting:**

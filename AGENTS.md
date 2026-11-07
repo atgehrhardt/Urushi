@@ -41,6 +41,17 @@ Crates marked ⏳ are planned but don't exist yet. Create them where listed; don
 | `apps/desktop` | Desktop entry point (`urushi-app` binary); `scripts/bundle-macos.sh` builds `Urushi.app`. |
 | `apps/{ios,android}` | Thin mobile shells (remote-only clients). See [`docs/platforms.md`](docs/platforms.md). |
 
+## Your real workspace is running: never disturb it
+
+Urushi is developed *inside* Urushi. The installed `/Applications/Urushi.app` and its
+daemon (home `~/Library/Application Support/Urushi`) host the terminals you are probably
+running in right now. Killing that daemon kills those sessions, including your own.
+
+- **Never** stop, signal or restart the real daemon. Never `pkill`/`killall` by broad patterns such as `urushid` or `urushi`. If you started a process, kill it by PID or by its full `--home <your temp dir>` command line.
+- **Every** manual run uses an isolated home: `URUSHI_HOME=$(mktemp -d)` for the CLI, or `make dev` (which uses `./.dev-home`). Tests already use temp homes; keep it that way.
+- Never point a dev daemon at port 7420 on the tailnet (the real daemon's default). Pick another `tailnet-port`.
+- Ship to the real install with `make install`. It swaps the bundle in safely and leaves the running daemon alone.
+
 ## Invariants (never break these)
 
 1. **The daemon is the single source of truth.** Clients render state and send intents. Workspace, layout, terminal emulation, key encoding and git all live in the daemon. Never duplicate that logic in a client.
@@ -74,6 +85,8 @@ make check-licenses   # cargo deny check
 make check-targets    # cargo check for iOS + Android targets
 make check-docs       # docs indexed, links resolve, every crate documented
 make app              # build/Urushi.app (macOS)
+make install          # build and install into /Applications (safe while it's running)
+make dev              # debug GUI against an isolated ./.dev-home daemon
 make ios-sim          # iOS simulator build, run and screenshot
 make android          # build/android/urushi.apk (needs the Android SDK and NDK)
 make ci               # everything CI runs; must be green before you finish

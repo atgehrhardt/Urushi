@@ -1,4 +1,4 @@
-.PHONY: app ios-sim android build test fmt fmt-check clippy lint check-licenses check-targets check-docs buf-lint ci
+.PHONY: app install dev ios-sim android build test fmt fmt-check clippy lint check-licenses check-targets check-docs buf-lint ci
 
 CARGO ?= cargo
 BUF ?= buf
@@ -32,6 +32,16 @@ check-targets:
 
 app:
 	./scripts/bundle-macos.sh
+
+# Install into /Applications without touching the running app or daemon.
+install:
+	./scripts/install-macos.sh
+
+# Run the debug GUI against an isolated dev daemon (never your real workspace).
+DEV_HOME ?= $(CURDIR)/.dev-home
+dev:
+	$(CARGO) build -p urushi-desktop -p urushi-daemon -p urushi-cli
+	URUSHI_HOME=$(DEV_HOME) ./target/debug/urushi-app
 
 ios-sim:
 	./scripts/bundle-ios-sim.sh --run

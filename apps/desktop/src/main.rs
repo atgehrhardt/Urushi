@@ -28,6 +28,7 @@ fn main() -> Result<()> {
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_new(&args.log).unwrap_or_else(|_| "warn".into()),
         )
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
         .with_writer(std::io::stderr)
         .init();
     let target = match args.host {

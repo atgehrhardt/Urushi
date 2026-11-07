@@ -9,3 +9,4 @@ xcuserdata/
 /apps/android/.gradle/
 /apps/android/**/build/
 .claude/settings.local.json
+/.dev-home/
