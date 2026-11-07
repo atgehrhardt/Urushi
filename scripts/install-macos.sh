@@ -19,6 +19,8 @@ if [[ -d "$DEST" ]]; then
 fi
 mv "$STAGE" "$DEST"
 rm -rf "$OLD"
+# The staging bundle in build/ must not show up as a second app.
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u build/Urushi.app 2>/dev/null || true
 echo "installed $DEST"
 
 # Report (but never restart) a running daemon, so the user knows which version serves them.

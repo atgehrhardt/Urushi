@@ -9,6 +9,8 @@ TARGET_DIR="target/$PROFILE"
 APP="build/Urushi.app"
 VERSION="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
 rm -rf "$APP"
+# Keep build outputs out of Spotlight/Launchpad (only /Applications/Urushi.app should show).
+mkdir -p build && touch build/.metadata_never_index
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin"
 cp "$TARGET_DIR/urushi-app" "$APP/Contents/MacOS/Urushi"
 cp "$TARGET_DIR/urushid" "$APP/Contents/MacOS/urushid"

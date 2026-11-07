@@ -20,6 +20,8 @@ cargo build --profile "$PROFILE" --target aarch64-linux-android -p urushi-androi
 
 OUT=build/android
 rm -rf "$OUT" && mkdir -p "$OUT/lib/arm64-v8a"
+# Keep build outputs out of Spotlight/Launchpad (only /Applications/Urushi.app should show).
+mkdir -p build && touch build/.metadata_never_index
 PROFILE_DIR="$PROFILE"; [[ "$PROFILE" == "dev" ]] && PROFILE_DIR=debug
 cp "target/aarch64-linux-android/$PROFILE_DIR/liburushi.so" "$OUT/lib/arm64-v8a/"
 "$BIN/llvm-strip" "$OUT/lib/arm64-v8a/liburushi.so"

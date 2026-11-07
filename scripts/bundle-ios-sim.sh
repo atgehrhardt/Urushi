@@ -8,6 +8,8 @@ cargo build --target aarch64-apple-ios-sim -p urushi-ios
 APP="build/ios-sim/Urushi.app"
 VERSION="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
 rm -rf "$APP" && mkdir -p "$APP"
+# Keep build outputs out of Spotlight/Launchpad (only /Applications/Urushi.app should show).
+mkdir -p build && touch build/.metadata_never_index
 cp target/aarch64-apple-ios-sim/debug/urushi-ios "$APP/Urushi"
 cat > "$APP/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
