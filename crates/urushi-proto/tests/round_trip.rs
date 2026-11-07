@@ -1,5 +1,10 @@
 //! Every request, response, event and notification kind survives encode → decode unchanged.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, reason = "test code")]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test code"
+)]
 
 use urushi_proto::codec::{FrameDecoder, encode_frame};
 use urushi_proto::envelope;

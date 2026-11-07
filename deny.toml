@@ -43,6 +43,7 @@ ignore = true   # our own unpublished workspace crates
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+allow-wildcard-paths = true   # internal path deps between our unpublished crates
 
 [sources]
 unknown-registry = "deny"

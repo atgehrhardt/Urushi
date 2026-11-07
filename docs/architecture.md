@@ -31,6 +31,29 @@ The multiplexer is **invisible infrastructure**. It exists so terminal sessions 
    remote            Tailscale provider (status/whois) + tailnet listener
 ```
 
+## Crates and dependency direction
+
+Dependencies point downwards only. Lower layers never know about higher ones.
+
+```
+urushi-app ─► urushi-ui ─► urushi-render          (GUI clients)
+     └──────► urushi-client ─► urushi-proto ─► urushi-core
+urushi-daemon ─► urushi-mux, urushi-proto, urushi-core
+urushi-cli ─► urushi-client
+```
+
+| Crate | Responsibility |
+|---|---|
+| `urushi-core` | Pure domain model and rules. No IO. |
+| `urushi-proto` | Wire schema types, framing, validated conversions to and from core. |
+| `urushi-mux` | PTYs, VT emulation, per-pane session actors, key encoding. |
+| `urushi-daemon` | The `urushid` binary: server, workspace service, git, store, Tailscale. |
+| `urushi-client` | Connecting, the handshake, request/response matching, the state mirror. |
+| `urushi-cli` | The `urushi` binary for scripting and headless verification. |
+| `urushi-ui` | Widget toolkit (Elm-style) → `Scene`. |
+| `urushi-render` | wgpu renderer for a `Scene`. |
+| `urushi-app` | The GUI application (screens, dialogs, settings). |
+
 ## Data model
 
 | Concept | Meaning |

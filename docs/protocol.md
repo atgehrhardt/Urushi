@@ -31,15 +31,16 @@ Envelope {
 ## Handshake
 
 The client sends `Hello { protocol_major, protocol_minor, client_name, client_version }`.
-The daemon replies with `Welcome { protocol_major, protocol_minor, daemon_version, host_id }`, or with an error and closes the connection.
+The daemon replies with `Welcome { protocol_major, protocol_minor, daemon_version, host_name }`, or with an error and closes the connection.
 Within one major version, minor versions are additive. A different major version is rejected.
 
 ## Message groups (v1)
 
-- **Workspace:** `ListWorkspace`, `AddProject`, `RemoveProject`, `CreateThread`, `RenameThread`, `PlanThreadDeletion` → `DeletionPlan{token}`, `DeleteThread{token}`, `CreateTab`, `CloseTab`, `SplitPane`, `ClosePane`, `MoveDivider`, `FocusPane`, `Equalize`. The daemon sends `WorkspaceChanged` events to subscribers.
+- **Workspace:** `ListWorkspace{subscribe}`, `AddProject`, `RemoveProject`, `ListBranches`, `CreateThread`, `RenameThread`, `PlanThreadDeletion` → `DeletionPlan{token}`, `DeleteThread{token}`, `CreateTab`, `CloseTab`, `RenameTab`, `SplitPane`, `ClosePane`, `FocusPane`, `MoveDivider`, `ResizePaneEdge`, `Equalize`. The daemon sends `WorkspaceChanged` events to subscribers.
 - **Terminal:**
-  - `AttachPane{pane, cols, rows}` returns a full `ScreenSnapshot`. After that the daemon streams `ScreenUpdate{seq}` events, and the client must `Ack{seq}` each one before the next is sent.
-  - `DetachPane`, `ResizePane`, `Input{key|text|paste|mouse}`, `Scrollback{range}`.
+  - `AttachPane{pane, cols, rows}` returns a full `ScreenUpdate`. After that the daemon streams `ScreenUpdate{seq}` events, and the client must send the `AckScreen{seq}` notification before the next one is sent.
+  - `DetachPane`, `SetPaneSize`, the `Input{key|text|paste}` and `ScrollPane` notifications, and `ReadScreenText` (plain text, for the CLI and tests).
+  - Events: `PaneExited`, `PaneBell`.
 - **Settings:** `GetSettings`, `UpdateSettings` (global and per project).
 - **Remote:** `TailnetStatus`, `SetTailnetServe`.
 
@@ -51,6 +52,6 @@ Within one major version, minor versions are additive. A different major version
 - colours as `Color{indexed | rgb}`; unset means the theme default. The client's theme resolves the palette.
 - cursor position and shape
 - terminal modes that matter to the client (e.g. mouse reporting)
-- title and working directory
+- the title set by the application, plus scrollback position (`display_offset`, `history_size`)
 
 A full snapshot uses the same shape with every row included.

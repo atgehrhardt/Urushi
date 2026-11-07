@@ -1,5 +1,10 @@
 //! Integration tests against real PTYs and real processes.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, reason = "test code")]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test code"
+)]
 
 use std::time::Duration;
 

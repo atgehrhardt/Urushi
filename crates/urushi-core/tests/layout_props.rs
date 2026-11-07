@@ -1,5 +1,10 @@
 //! Property tests: no sequence of layout operations may break the layout invariants.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, reason = "test code")]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test code"
+)]
 
 use proptest::prelude::*;
 use urushi_core::layout::{MIN_RATIO, Rect};

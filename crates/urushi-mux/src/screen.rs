@@ -125,7 +125,10 @@ pub struct Cursor {
 }
 
 /// Terminal modes that affect how a client sends input.
-#[allow(clippy::struct_excessive_bools, reason = "independent DEC private modes")]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent DEC private modes"
+)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Modes {
     /// DECCKM: arrow keys send `ESC O x`.
