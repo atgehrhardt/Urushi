@@ -2,7 +2,7 @@
 
 | Platform | Role | Build | Verified |
 |---|---|---|---|
-| macOS | daemon + app + CLI | `make app` → `build/Urushi.app` (`Urushi`, `urushid` and `urushi` in `Contents/MacOS`) | Yes: GUI, input, accessibility, dialogs, tailnet serving |
+| macOS | daemon + app + CLI | `make app` → `build/Urushi.app` (`Urushi` and `urushid` in `Contents/MacOS`, the CLI in `Contents/Resources/bin/urushi`) | Yes: GUI, input, accessibility, dialogs, tailnet serving |
 | Linux | daemon + app + CLI | `cargo build --release -p urushi-desktop -p urushi-daemon -p urushi-cli` | Type-checks (`cargo check --target x86_64-unknown-linux-gnu`); CI runs the tests |
 | Windows | daemon + app + CLI | Same as Linux. The local daemon listens on a per-home named pipe. | Type-checks (`--target x86_64-pc-windows-msvc`); CI runs the tests |
 | iOS | remote client | `make ios-sim` (simulator .app, installs, launches and screenshots). Device builds use `aarch64-apple-ios` plus signing. | Yes, in the simulator: connected over the tailnet and rendered the workspace |

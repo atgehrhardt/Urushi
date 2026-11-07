@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds build/Urushi.app: the GUI plus urushid (started on demand, next to the app
-# binary) and the urushi CLI.
+# binary) and the urushi CLI (Contents/Resources/bin; symlink it onto your PATH).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PROFILE="${PROFILE:-release}"
@@ -9,10 +9,11 @@ TARGET_DIR="target/$PROFILE"
 APP="build/Urushi.app"
 VERSION="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin"
 cp "$TARGET_DIR/urushi-app" "$APP/Contents/MacOS/Urushi"
 cp "$TARGET_DIR/urushid" "$APP/Contents/MacOS/urushid"
-cp "$TARGET_DIR/urushi" "$APP/Contents/MacOS/urushi"
+# Not next to "Urushi": macOS filesystems are usually case-insensitive.
+cp "$TARGET_DIR/urushi" "$APP/Contents/Resources/bin/urushi"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
