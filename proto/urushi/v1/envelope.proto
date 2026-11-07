@@ -72,9 +72,9 @@ message Request {
 
 message Response {
   uint64 id = 1;
-  oneof result {
+  oneof outcome {
     Error error = 2;
-    Ok ok = 3;
+    Empty ok = 3;
     Welcome welcome = 4;
     Workspace workspace = 5;
     Project project = 6;
@@ -110,7 +110,7 @@ message Notification {
 }
 
 // An empty successful result.
-message Ok {}
+message Empty {}
 
 message Error {
   ErrorCode code = 1;

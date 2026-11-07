@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **design**. The schema will be added in `proto/urushi/v1/` during milestone M3.
+> Status: **v1.0 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -20,9 +20,10 @@ Each frame is `u32` big-endian length, then a protobuf-encoded `Envelope`. Frame
 ```
 Envelope {
   oneof kind {
-    Request  { id, oneof body }   // client → daemon
-    Response { id, oneof result } // daemon → client, matches a Request id
-    Event    { oneof body }       // daemon → client, unsolicited
+    Request      { id, oneof body }    // client → daemon, always answered
+    Response     { id, oneof outcome } // daemon → client, matches a Request id
+    Event        { oneof body }        // daemon → client, unsolicited
+    Notification { oneof body }        // client → daemon, fire-and-forget (input, acks, scroll)
   }
 }
 ```
@@ -46,8 +47,8 @@ Within one major version, minor versions are additive. A different major version
 
 `ScreenUpdate` carries:
 
-- only the rows that changed, each as styled spans `(text, style_id)`
-- any new entries for the style table
+- only the lines that changed, each as styled spans `(text, Style{fg, bg, flags})`. Trailing default blanks are trimmed. With `STYLE_FLAG_WIDE`, every character in the span is two columns wide.
+- colours as `Color{indexed | rgb}`; unset means the theme default. The client's theme resolves the palette.
 - cursor position and shape
 - terminal modes that matter to the client (e.g. mouse reporting)
 - title and working directory

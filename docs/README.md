@@ -25,3 +25,4 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [_template](features/_template.md)
 - [Split-pane layouts](features/split-pane-layouts.md)
 - [Thread worktrees and safe deletion](features/thread-worktrees.md)
+- [Recoverable terminal sessions](features/recoverable-sessions.md)

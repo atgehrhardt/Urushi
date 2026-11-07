@@ -1,0 +1,28 @@
+[package]
+name = "urushi-proto"
+description = "Urushi wire protocol: generated protobuf types, frame codec, and conversions to urushi-core."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+# Async frame reading/writing over tokio streams.
+io = ["dep:tokio"]
+
+[dependencies]
+prost = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, optional = true, features = ["io-util"] }
+urushi-core = { workspace = true }
+
+[build-dependencies]
+prost-build = { workspace = true }
+protox = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-util", "rt", "macros"] }
+
+[lints]
+workspace = true

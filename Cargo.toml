@@ -12,10 +12,21 @@ publish = false
 # each addition is reviewed against docs/dependencies.md (see the add-dependency skill).
 [workspace.dependencies]
 urushi-core = { path = "crates/urushi-core" }
+urushi-proto = { path = "crates/urushi-proto" }
+urushi-mux = { path = "crates/urushi-mux" }
 
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 uuid = { version = "1.18", default-features = false, features = ["serde", "std"] }
+prost = "0.14"
+tokio = { version = "1.47", default-features = false }
+alacritty_terminal = "0.26"
+portable-pty = "0.9"
+tracing = "0.1"
+
+# build-only
+prost-build = "0.14"
+protox = "0.10"
 
 # dev-only
 proptest = "1.7"

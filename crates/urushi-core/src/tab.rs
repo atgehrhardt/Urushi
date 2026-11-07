@@ -30,6 +30,27 @@ impl Tab {
         }
     }
 
+    /// Rebuilds a tab from its parts (e.g. received over the wire). Fails if `focused` is
+    /// not in `layout`.
+    pub fn from_parts(
+        id: TabId,
+        thread: ThreadId,
+        title: impl Into<String>,
+        layout: Layout,
+        focused: PaneId,
+    ) -> Result<Self, LayoutError> {
+        if !layout.contains(focused) {
+            return Err(LayoutError::PaneNotFound(focused));
+        }
+        Ok(Self {
+            id,
+            thread,
+            title: title.into(),
+            layout,
+            focused,
+        })
+    }
+
     /// This tab's id.
     pub const fn id(&self) -> TabId {
         self.id
@@ -142,16 +163,7 @@ impl TryFrom<TabData> for Tab {
     type Error = LayoutError;
 
     fn try_from(d: TabData) -> Result<Self, Self::Error> {
-        if !d.layout.contains(d.focused) {
-            return Err(LayoutError::PaneNotFound(d.focused));
-        }
-        Ok(Self {
-            id: d.id,
-            thread: d.thread,
-            title: d.title,
-            layout: d.layout,
-            focused: d.focused,
-        })
+        Self::from_parts(d.id, d.thread, d.title, d.layout, d.focused)
     }
 }
 
