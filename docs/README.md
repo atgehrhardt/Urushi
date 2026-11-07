@@ -20,9 +20,11 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0005 – Remote access via the installed Tailscale](adr/0005-tailscale-remote.md)
 - [0006 – All-Rust graphical app (winit + wgpu + in-house toolkit)](adr/0006-all-rust-gpu-gui.md)
 - [0007 – Platform code isolated in `platform/` modules](adr/0007-platform-isolation.md)
+- [0008 – Workspace persisted as one atomically-written JSON document](adr/0008-json-document-store.md)
 
 ## Features
 - [_template](features/_template.md)
 - [Split-pane layouts](features/split-pane-layouts.md)
 - [Thread worktrees and safe deletion](features/thread-worktrees.md)
 - [Recoverable terminal sessions](features/recoverable-sessions.md)
+- [Remote access over Tailscale](features/remote-access.md)

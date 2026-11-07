@@ -5,12 +5,15 @@
 //!   helpers over tokio streams.
 //! - [`convert`]: lossless conversions between wire types and `urushi-core` domain types.
 //! - [`envelope`]: small constructors for building envelopes without boilerplate.
+//! - [`endpoint`]: where daemons listen (local socket or pipe, or tailnet TCP).
 //!
 //! The evolution rules are in `docs/protocol.md` and the `change-protocol` skill.
 
 pub mod codec;
 pub mod convert;
+pub mod endpoint;
 pub mod envelope;
+mod platform;
 
 /// Generated protobuf types for protocol v1.
 #[allow(

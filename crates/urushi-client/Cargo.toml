@@ -1,0 +1,20 @@
+[package]
+name = "urushi-client"
+description = "Client library for urushid: connecting, handshake, typed requests, events, screen and workspace mirrors, daemon launcher."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "net", "io-util", "sync", "time", "macros"] }
+tracing = { workspace = true }
+urushi-core = { workspace = true }
+urushi-proto = { workspace = true, features = ["io"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true

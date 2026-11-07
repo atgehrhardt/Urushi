@@ -27,7 +27,7 @@ The multiplexer is **invisible infrastructure**. It exists so terminal sessions 
    workspace model   Project → Thread → Tab → Layout → Pane
    mux               per-pane Session actor: PTY ⇄ VT emulator → damage → diffs
    git               worktree + branch lifecycle via the `git` CLI
-   store             SQLite: projects, threads, layouts, branch ownership, settings
+   store             JSON document (ADR 0008): projects, threads, layouts, settings
    remote            Tailscale provider (status/whois) + tailnet listener
 ```
 
@@ -97,7 +97,10 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
 - With "Serve on tailnet" enabled, it binds only on its tailnet IPs and re-binds when they change.
 - Every connection is authorized with `whois` against an allowlist. The default allows only the host owner's login, and tagged nodes are denied.
 - WireGuard already encrypts the traffic.
-- Local IPC is authorized by OS user: Unix socket with mode 0600 and a peer user-id check, or a named pipe whose security settings (DACL) admit only the current user.
+- Local IPC is authorized by OS user:
+  - On Unix, the socket is mode 0600 inside a 0700 home, and the peer's user id is checked.
+  - The socket lives at `<home>/urushid.sock`. Homes too long for a socket path use `~/.urushi/sockets/<hash>.sock` instead.
+  - On Windows, a named pipe that rejects remote clients.
 
 ## Platform strategy
 

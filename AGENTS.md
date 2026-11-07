@@ -32,12 +32,12 @@ Crates marked ⏳ are planned but don't exist yet. Create them where listed; don
 | `crates/urushi-core` | Pure domain model: ids, projects, threads, tabs, layout tree, settings, branch-ownership rules. **No IO, no async, compiles on every target.** |
 | `crates/urushi-proto` | Protobuf types (prost + protox) and the length-prefixed frame codec. |
 | `crates/urushi-mux` | `Pty` / `Emulator` traits + adapters, the per-pane Session actor, screen diffs, key encoding. |
-| ⏳ `crates/urushi-daemon` | `urushid`: server, request router, SQLite store, git worktree lifecycle, Tailscale. |
-| ⏳ `crates/urushi-client` | Protocol client, state mirror, transports (Unix socket / named pipe / TCP), daemon launcher. |
+| `crates/urushi-daemon` | `urushid`: server, request router, JSON document store, git worktree lifecycle, Tailscale. |
+| `crates/urushi-client` | Protocol client, state mirror, transports (Unix socket / named pipe / TCP), daemon launcher. |
 | ⏳ `crates/urushi-ui` | In-house widget toolkit (Elm-style). Produces a renderer-agnostic `Scene`. |
 | ⏳ `crates/urushi-render` | wgpu backend: quads, glyph atlas (cosmic-text), terminal-grid pipeline. |
 | ⏳ `crates/urushi-app` | Screens: sidebar, tabs, splits, dialogs, settings. Platform-neutral. |
-| ⏳ `crates/urushi-cli` | `urushi` CLI for scripting and headless verification. |
+| `crates/urushi-cli` | `urushi` CLI for scripting and headless verification. |
 | ⏳ `apps/{desktop,ios,android}` | Thin platform entry points only. |
 
 ## Invariants (never break these)
@@ -73,6 +73,19 @@ make check-licenses   # cargo deny check
 make check-targets    # cargo check for iOS + Android targets
 make check-docs       # docs indexed, links resolve, every crate documented
 make ci               # everything CI runs; must be green before you finish
+```
+
+Run the system without the GUI. The CLI starts the daemon automatically, and `URUSHI_HOME` keeps it isolated from your real workspace:
+
+```sh
+cargo build --workspace
+export URUSHI_HOME=$(mktemp -d)
+./target/debug/urushi settings set default-shell /bin/sh
+./target/debug/urushi project add <repo>
+./target/debug/urushi thread new <project-id> "My thread"
+./target/debug/urushi ls
+./target/debug/urushi send <pane-id> 'echo hi' && ./target/debug/urushi screen <pane-id>
+./target/debug/urushi thread rm <thread-id>     # prints the deletion plan, asks to confirm
 ```
 
 Toolchain: Rust is pinned in `rust-toolchain.toml` (needs rustup; make sure `~/.cargo/bin` comes before Homebrew in `PATH`). Extra tools: `cargo-deny`, `buf`.

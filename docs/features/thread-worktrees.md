@@ -1,7 +1,7 @@
 # Feature: Thread worktrees and safe deletion
 
-- **Status:** In progress (ownership rules done, git + daemon pending)
-- **Owners (crates):** `urushi-core` (`thread`, `ownership`, `naming`), `urushi-daemon` (`git`, deletion)
+- **Status:** Shipped in the daemon and CLI. The GUI warning dialog is pending.
+- **Owners (crates):** `urushi-core` (`thread`, `ownership`, `naming`), `urushi-daemon` (`git/`, `service/threads.rs`, `service/deletion.rs`)
 - **Related ADRs:** [0004](../adr/0004-git-cli-worktrees.md)
 
 ## What it does
@@ -28,7 +28,13 @@ Every thread **always** gets its own git worktree on a new branch `<prefix><slug
 
 ## Tests
 - `crates/urushi-core/src/ownership.rs` (unit tests).
-- Git integration tests in temporary repos with a local bare "remote" (planned in `urushi-daemon`).
+- `crates/urushi-daemon/src/git/cli/tests.rs`: every git operation against temp repos with a bare `origin`.
+- `crates/urushi-daemon/tests/e2e.rs`:
+  - full lifecycle: worktree, env, push, extra branch, dirty file, plan contents, stale token refused, everything deleted except `main` locally and on the remote
+  - remote deletion disabled
+  - failed creation leaves no branches behind
 
 ## Limitations and follow-ups
 - A branch created with `git branch x` and never checked out in the worktree is not detected as owned.
+- `main`, `master`, `develop` and `trunk` are always protected, as are the base branch and remote default branches.
+- If the daemon crashes mid-create or mid-delete, the thread is marked `DeletionFailed` on restart, so the user finishes the job through the normal warned flow.

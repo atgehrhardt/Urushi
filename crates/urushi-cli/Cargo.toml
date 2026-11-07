@@ -1,0 +1,22 @@
+[package]
+name = "urushi-cli"
+description = "urushi: command-line client for scripting Urushi and verifying it without the GUI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "urushi"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+urushi-client = { workspace = true }
+urushi-core = { workspace = true }
+urushi-proto = { workspace = true }
+
+[lints]
+workspace = true

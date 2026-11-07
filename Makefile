@@ -4,7 +4,7 @@ CARGO ?= cargo
 BUF ?= buf
 MOBILE_TARGETS := aarch64-apple-ios aarch64-linux-android
 # Crates that must compile for mobile clients. Grows as client crates are added.
-MOBILE_CRATES := -p urushi-core
+MOBILE_CRATES := -p urushi-core -p urushi-proto -p urushi-client
 
 build:
 	$(CARGO) build --workspace --all-targets

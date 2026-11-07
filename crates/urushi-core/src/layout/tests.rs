@@ -300,3 +300,22 @@ fn serde_round_trip_and_validation() {
     let invalid = r#"{"kind":"split","axis":"row","children":[{"ratio":1.0,"node":{"kind":"pane","id":"00000000-0000-0000-0000-000000000001"}}]}"#;
     assert!(serde_json::from_str::<Layout>(invalid).is_err());
 }
+
+#[test]
+fn resize_between_two_tiny_panes_does_not_panic() {
+    // Regression (found by proptest): both neighbours below MIN_RATIO with float rounding
+    // made the clamp bounds cross.
+    let mut l = Layout::single(p(1));
+    let mut target = p(1);
+    for n in 2..=7 {
+        l.split(target, p(n), Direction::Right).unwrap_or(());
+        target = p(n);
+    }
+    for _ in 0..50 {
+        for id in l.panes() {
+            let _ = l.resize(id, Direction::Right, 0.37);
+            let _ = l.resize(id, Direction::Left, -0.91);
+        }
+        l.check_invariants().unwrap();
+    }
+}

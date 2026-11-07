@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc f35be7cbd5d0e66785b4f0c92afb4d27b549a217c337a7d3531514b4f6106e52 # shrinks to ops = [Split { target: 0, side: Left }, Split { target: 0, side: Left }, Split { target: 15911625454650075099, side: Up }, Split { target: 611179838684804464, side: Left }, MoveDivider { divider: 3426940871625562214, position: 0.7923672789457213 }, Resize { target: 7130600081173245345, side: Right, amount: -0.6134121648740827 }, Close { target: 5533583220349315328 }, Split { target: 11876247785811248032, side: Left }, Close { target: 4912431967951082565 }, Split { target: 3861872399801408604, side: Up }, Resize { target: 3281566531524095422, side: Right, amount: -0.5464572713014475 }, Close { target: 1814204252646669483 }, MoveDivider { divider: 17980579434738177966, position: 0.0 }]

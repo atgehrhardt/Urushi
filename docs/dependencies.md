@@ -22,22 +22,23 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 |---|---|---|---|
 | `serde` | MIT/Apache-2.0 | core | Standard way to serialize data; writing our own derive macros isn't worth it. |
 | `thiserror` | MIT/Apache-2.0 | libraries | Derive macro for error types; zero runtime cost. |
-| `uuid` | MIT/Apache-2.0 | core | Standard UUID type, parsing and formatting. The daemon will enable the `v7` feature to generate ids. |
+| `uuid` | MIT/Apache-2.0 | core, daemon | Standard UUID type. The daemon generates time-ordered v7 ids. |
 | `proptest` *(dev)* | MIT/Apache-2.0 | tests | Property testing with automatic shrinking of failing cases. |
-| `serde_json` *(dev)* | MIT/Apache-2.0 | tests | Checks that serialized layouts load back unchanged. |
+| `tokio` | MIT | daemon, client, mux | Async runtime. Writing our own isn't sensible. |
+| `tracing`, `tracing-subscriber` | MIT | daemon, mux | Structured logging. |
+| `anyhow` | MIT/Apache-2.0 | binaries only | Error context in `main`. |
+| `clap` | MIT/Apache-2.0 | `urushid`, `urushi` | Flag and subcommand parsing with help output. |
+| `prost`, `prost-build` | Apache-2.0 | proto | Protobuf code generation and encoding. |
+| `protox` | MIT/Apache-2.0 | proto (build) | Pure-Rust `.proto` compiler, so builds don't need `protoc`. |
+| `portable-pty` | MIT | mux | PTYs on Unix and Windows ConPTY. Behind the `Pty` trait. |
+| `alacritty_terminal` | Apache-2.0 | mux | VT emulation. Behind the `Emulator` trait (ADR 0001). |
+| `serde_json` | MIT/Apache-2.0 | daemon | Store document (ADR 0008) and the Tailscale CLI's JSON. |
+| `tempfile` *(dev)* | MIT/Apache-2.0 | tests | Temp dirs for git and daemon tests. |
 
 ### Planned (approve when first added)
 
 | Crate | License | Purpose |
 |---|---|---|
-| `tokio` | MIT | Async runtime (daemon, client) |
-| `tracing`, `tracing-subscriber` | MIT | Structured logging |
-| `anyhow` | MIT/Apache-2.0 | Errors in binaries |
-| `clap` | MIT/Apache-2.0 | CLI parsing |
-| `prost`, `protox` | Apache-2.0 / MIT/Apache-2.0 | Protobuf types and a pure-Rust schema compiler |
-| `portable-pty` | MIT | PTYs on Unix and Windows ConPTY |
-| `alacritty_terminal` | Apache-2.0 | VT emulation (behind the `Emulator` trait) |
-| `rusqlite` (bundled) | MIT (SQLite: public domain) | Persistence |
 | `winit` | Apache-2.0 | Windowing and input on all five platforms |
 | `wgpu` | MIT/Apache-2.0 | GPU rendering (Metal/Vulkan/DX12/GLES) |
 | `cosmic-text` | MIT/Apache-2.0 | Text shaping and rasterization (includes swash and fontdb) |
@@ -69,4 +70,8 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | Need | Where | Why |
 |---|---|---|
 | Slugs / branch-name validation | `urushi-core::naming` | ~100 lines, and has to match our git ref rules exactly. |
-| Per-OS data directories | `platform/` (planned) | A few env-var lookups don't need a dependency. |
+| Per-OS data directories and socket paths | `urushi-proto::platform` | A few env-var lookups don't need a dependency. |
+| Workspace persistence | `urushi-daemon::store` | One atomically-written JSON file; SQLite would add a C dependency (ADR 0008). |
+| Git integration | `urushi-daemon::git` | We run the user's `git` binary; libgit2 is GPL with a linking exception (ADR 0004). |
+| Tailscale integration | `urushi-daemon::tailscale` | We read the installed CLI's JSON output; nothing is linked (ADR 0005). |
+| Key encoding (xterm) | `urushi-mux::keys` | A small table that depends on terminal modes. |

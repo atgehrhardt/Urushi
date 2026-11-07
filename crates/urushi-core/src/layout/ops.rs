@@ -212,7 +212,9 @@ fn transfer(
     let total = g + s;
     let lower = MIN_RATIO.min(g);
     let upper = total - MIN_RATIO.min(s);
-    let new_grow = (g + amount).clamp(lower, upper);
+    // Not `clamp`: when both sides are already tiny, rounding can put `upper` a hair
+    // below `lower`, and `f64::clamp` panics on that. Found by the property tests.
+    let new_grow = (g + amount).min(upper).max(lower);
     if let Some(c) = children.get_mut(grow) {
         c.ratio = new_grow;
     }

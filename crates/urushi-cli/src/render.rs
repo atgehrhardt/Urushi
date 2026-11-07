@@ -1,0 +1,169 @@
+//! Human-readable output.
+
+use std::io::Write;
+
+use anyhow::Result;
+use urushi_client::{WorkspaceMirror, v1};
+
+/// The last 8 characters of an id, which is enough to address it in the CLI.
+pub(crate) fn short(id: &str) -> &str {
+    &id[id.len().saturating_sub(8)..]
+}
+
+pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
+    let mut o = std::io::stdout().lock();
+    if mirror.projects().is_empty() {
+        writeln!(
+            o,
+            "no projects yet; add one with `urushi project add <path>`"
+        )?;
+    }
+    for project in mirror.projects() {
+        writeln!(
+            o,
+            "{} {}  {}",
+            short(&project.id),
+            project.name,
+            project.repo_root
+        )?;
+        for thread in mirror.threads_of(&project.id) {
+            let state = match v1::ThreadState::try_from(thread.state) {
+                Ok(v1::ThreadState::Ready) => String::new(),
+                Ok(v1::ThreadState::DeletionFailed) => {
+                    format!("  [deletion failed: {}]", thread.failure_reason)
+                }
+                Ok(other) => format!("  [{}]", other.as_str_name()),
+                Err(_) => "  [?]".into(),
+            };
+            writeln!(
+                o,
+                "  {} {}  ({}){state}",
+                short(&thread.id),
+                thread.title,
+                thread.primary_branch
+            )?;
+            for tab in mirror.tabs_of(&thread.id) {
+                writeln!(o, "    {} {}", short(&tab.id), tab.title)?;
+                if let Some(layout) = tab
+                    .layout
+                    .as_ref()
+                    .and_then(|l| urushi_proto::convert::layout_from_proto(l).ok())
+                {
+                    for pane in layout.panes() {
+                        let pane = pane.to_string();
+                        let marker = if pane == tab.focused_pane_id {
+                            "*"
+                        } else {
+                            " "
+                        };
+                        writeln!(o, "     {marker}{} pane", short(&pane))?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn print_plan(plan: &v1::DeletionPlan) -> Result<()> {
+    let mut o = std::io::stdout().lock();
+    writeln!(o, "Deleting this thread will permanently remove:")?;
+    writeln!(o, "  worktree        {}", plan.worktree_path)?;
+    if plan.modified_files + plan.untracked_files > 0 {
+        writeln!(
+            o,
+            "  uncommitted     {} modified, {} untracked file(s)",
+            plan.modified_files, plan.untracked_files
+        )?;
+    }
+    if plan.unpushed_commits > 0 {
+        writeln!(
+            o,
+            "  unpushed        {} commit(s) that exist nowhere else",
+            plan.unpushed_commits
+        )?;
+    }
+    for branch in &plan.local_branches {
+        writeln!(o, "  local branch    {branch}")?;
+    }
+    for remote in &plan.remote_branches {
+        writeln!(o, "  remote branch   {}/{}", remote.remote, remote.branch)?;
+    }
+    if !plan.delete_remote_branches {
+        writeln!(
+            o,
+            "  (remote branches are kept: delete-remote-branches is off)"
+        )?;
+    }
+    if plan.running_panes > 0 {
+        writeln!(o, "  terminals       {} running", plan.running_panes)?;
+    }
+    for warning in &plan.warnings {
+        writeln!(o, "  warning: {warning}")?;
+    }
+    Ok(())
+}
+
+pub(crate) fn print_settings(s: &v1::Settings) -> Result<()> {
+    let mut o = std::io::stdout().lock();
+    let t = s.tailnet.clone().unwrap_or_default();
+    writeln!(o, "delete-remote-branches  {}", s.delete_remote_branches)?;
+    writeln!(o, "branch-prefix           {}", s.branch_prefix)?;
+    writeln!(
+        o,
+        "default-shell           {}",
+        if s.default_shell.is_empty() {
+            "(login shell)"
+        } else {
+            &s.default_shell
+        }
+    )?;
+    writeln!(
+        o,
+        "worktree-root           {}",
+        if s.worktree_root.is_empty() {
+            "(default)"
+        } else {
+            &s.worktree_root
+        }
+    )?;
+    writeln!(o, "tailnet-serve           {}", t.serve)?;
+    writeln!(o, "tailnet-port            {}", t.port)?;
+    writeln!(
+        o,
+        "allowed-logins          {}",
+        if t.allowed_logins.is_empty() {
+            "(owner only)".into()
+        } else {
+            t.allowed_logins.join(", ")
+        }
+    )?;
+    writeln!(o, "allow-tagged-nodes      {}", t.allow_tagged_nodes)?;
+    Ok(())
+}
+
+pub(crate) fn print_tailnet(s: &v1::TailnetStatus) -> Result<()> {
+    let mut o = std::io::stdout().lock();
+    if !s.installed {
+        writeln!(o, "tailscale: not installed")?;
+    } else if !s.running {
+        writeln!(o, "tailscale: not running ({})", s.error)?;
+    } else {
+        writeln!(
+            o,
+            "tailscale: {} as {} ({})",
+            s.dns_name,
+            s.login,
+            s.addresses.join(", ")
+        )?;
+    }
+    if s.serving {
+        writeln!(o, "serving:   yes, at {}:{}", s.dns_name, s.port)?;
+    } else {
+        writeln!(o, "serving:   no")?;
+    }
+    if s.running && !s.error.is_empty() {
+        writeln!(o, "error:     {}", s.error)?;
+    }
+    Ok(())
+}

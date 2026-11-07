@@ -1,6 +1,6 @@
 # Feature: Recoverable terminal sessions
 
-- **Status:** In progress (mux done; daemon wiring pending)
+- **Status:** Shipped in the daemon, client and CLI. The GUI renderer is pending.
 - **Owners (crates):** `urushi-mux`, `urushi-daemon`, `urushi-client`
 - **Related ADRs:** [0001](../adr/0001-in-house-multiplexer.md), [0002](../adr/0002-daemon-source-of-truth.md)
 
@@ -23,6 +23,11 @@ Every pane is a real process on a PTY, owned by the daemon. Closing the window, 
 - `crates/urushi-mux/src/emulator/alacritty.rs`: spans, wide characters, damage, replies, modes, scrollback.
 - `crates/urushi-mux/src/keys.rs`: the encoding table.
 - `crates/urushi-mux/tests/pty_session.rs`: real processes (output, echo, exit codes, resize, incremental frames, env/cwd).
+- `crates/urushi-daemon/tests/e2e.rs`:
+  - screen survives a client disconnect
+  - no update is sent before an ack
+  - exits close panes
+  - a daemon restart restores layouts and respawns shells in the worktree
 
 ## Limitations and follow-ups
 - Mouse reporting to applications isn't encoded yet. The mode is reported, so clients can tell.
