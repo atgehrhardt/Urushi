@@ -8,6 +8,8 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 | Decisions | [`adr/`](adr/) | *Why* we chose X over Y. Immutable once accepted, superseded rather than edited. |
 | Features | [`features/`](features/) | What each user-visible capability does, how it flows through the crates, its invariants, tests and limitations. |
 | Protocol | [`protocol.md`](protocol.md) | Client/daemon wire format, message groups, versioning. |
+| Platforms | [`platforms.md`](platforms.md) | What runs where, how to build each platform, what has been verified. |
+| UI toolkit | [`ui-toolkit.md`](ui-toolkit.md) | How the GUI is built: Elm loop, nodes, layout, scene, renderer, accessibility. |
 | Dependencies | [`dependencies.md`](dependencies.md) | License policy, the approved crates and tools, and things we wrote ourselves instead. |
 | Code-level | rustdoc (`cargo doc --open`) | Module and API contracts. Every crate's `lib.rs` states its responsibility. |
 
@@ -28,3 +30,4 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [Thread worktrees and safe deletion](features/thread-worktrees.md)
 - [Recoverable terminal sessions](features/recoverable-sessions.md)
 - [Remote access over Tailscale](features/remote-access.md)
+- [The workspace GUI](features/gui-workspace.md)

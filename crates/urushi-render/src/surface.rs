@@ -23,8 +23,15 @@ impl SurfaceRenderer {
         height: u32,
         scale: f32,
     ) -> Result<Self, RenderError> {
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
+        if cfg!(target_os = "android") {
+            // Some Android Vulkan drivers (including the emulator's) crash in
+            // vkSetDebugUtilsObjectNameEXT, so never hand them debug labels.
+            descriptor.flags = (descriptor.flags | wgpu::InstanceFlags::DISCARD_HAL_LABELS)
+                - wgpu::InstanceFlags::DEBUG
+                - wgpu::InstanceFlags::VALIDATION;
+        }
+        let instance = wgpu::Instance::new(descriptor);
         let surface = instance
             .create_surface(window)
             .map_err(|e| RenderError::Surface(e.to_string()))?;

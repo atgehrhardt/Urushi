@@ -1,10 +1,9 @@
-.PHONY: build test fmt fmt-check clippy lint check-licenses check-targets check-docs buf-lint ci
+.PHONY: app ios-sim android build test fmt fmt-check clippy lint check-licenses check-targets check-docs buf-lint ci
 
 CARGO ?= cargo
 BUF ?= buf
-MOBILE_TARGETS := aarch64-apple-ios aarch64-linux-android
 # Crates that must compile for mobile clients. Grows as client crates are added.
-MOBILE_CRATES := -p urushi-core -p urushi-proto -p urushi-client
+MOBILE_CRATES := -p urushi-core -p urushi-proto -p urushi-client -p urushi-ui -p urushi-render
 
 build:
 	$(CARGO) build --workspace --all-targets
@@ -28,10 +27,17 @@ check-licenses:
 	$(CARGO) deny check
 
 check-targets:
-	@for t in $(MOBILE_TARGETS); do \
-		echo "==> $$t"; \
-		$(CARGO) check $(MOBILE_CRATES) --target $$t || exit 1; \
-	done
+	$(CARGO) check $(MOBILE_CRATES) -p urushi-ios --target aarch64-apple-ios
+	$(CARGO) check $(MOBILE_CRATES) -p urushi-android --target aarch64-linux-android
+
+app:
+	./scripts/bundle-macos.sh
+
+ios-sim:
+	./scripts/bundle-ios-sim.sh --run
+
+android:
+	./scripts/build-android.sh
 
 check-docs:
 	./scripts/check-docs.sh

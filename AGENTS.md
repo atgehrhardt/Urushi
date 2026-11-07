@@ -34,11 +34,12 @@ Crates marked ⏳ are planned but don't exist yet. Create them where listed; don
 | `crates/urushi-mux` | `Pty` / `Emulator` traits + adapters, the per-pane Session actor, screen diffs, key encoding. |
 | `crates/urushi-daemon` | `urushid`: server, request router, JSON document store, git worktree lifecycle, Tailscale. |
 | `crates/urushi-client` | Protocol client, state mirror, transports (Unix socket / named pipe / TCP), daemon launcher. |
-| ⏳ `crates/urushi-ui` | In-house widget toolkit (Elm-style). Produces a renderer-agnostic `Scene`. |
-| ⏳ `crates/urushi-render` | wgpu backend: quads, glyph atlas (cosmic-text), terminal-grid pipeline. |
-| ⏳ `crates/urushi-app` | Screens: sidebar, tabs, splits, dialogs, settings. Platform-neutral. |
+| `crates/urushi-ui` | In-house widget toolkit (Elm-style). Produces a renderer-agnostic `Scene`. |
+| `crates/urushi-render` | wgpu backend: quads, glyph atlas (cosmic-text), terminal-grid pipeline. |
+| `crates/urushi-app` | Screens: sidebar, tabs, splits, dialogs, settings. Platform-neutral. |
 | `crates/urushi-cli` | `urushi` CLI for scripting and headless verification. |
-| ⏳ `apps/{desktop,ios,android}` | Thin platform entry points only. |
+| `apps/desktop` | Desktop entry point (`urushi-app` binary); `scripts/bundle-macos.sh` builds `Urushi.app`. |
+| `apps/{ios,android}` | Thin mobile shells (remote-only clients). See [`docs/platforms.md`](docs/platforms.md). |
 
 ## Invariants (never break these)
 
@@ -72,7 +73,17 @@ make test             # all tests
 make check-licenses   # cargo deny check
 make check-targets    # cargo check for iOS + Android targets
 make check-docs       # docs indexed, links resolve, every crate documented
+make app              # build/Urushi.app (macOS)
+make ios-sim          # iOS simulator build, run and screenshot
+make android          # build/android/urushi.apk (needs the Android SDK and NDK)
 make ci               # everything CI runs; must be green before you finish
+```
+
+Run the GUI against an isolated daemon (the app starts `urushid` itself):
+
+```sh
+cargo build --workspace
+URUSHI_HOME=$(mktemp -d) ./target/debug/urushi-app      # or: make app && open build/Urushi.app
 ```
 
 Run the system without the GUI. The CLI starts the daemon automatically, and `URUSHI_HOME` keeps it isolated from your real workspace:
@@ -95,7 +106,7 @@ Toolchain: Rust is pinned in `rust-toolchain.toml` (needs rustup; make sure `~/.
 - **Pure logic** (`urushi-core`): unit tests next to the code, plus **property tests** in `tests/` for structural invariants (e.g. layout operations).
 - **Mux:** integration tests against a real PTY (`/bin/sh -c 'printf …'`). They must pass on macOS, Linux and Windows.
 - **Git:** temporary repos plus a local bare repo standing in for the remote. Never touch the developer's real repos.
-- **UI:** test `update()` directly. Snapshot `Scene` output with `insta` (no GPU needed).
+- **UI:** test `update()` directly. Assert on `Scene::dump()` (stable text, no GPU needed). GPU pixel tests use `urushi_render::Offscreen` and skip where there is no adapter.
 - **Protocol:** round-trip encode/decode tests for every message.
 - **End-to-end without the GUI:** drive `urushid` with the `urushi` CLI (`send-keys`, `dump-screen`). Prefer this over manual testing when verifying behaviour.
 

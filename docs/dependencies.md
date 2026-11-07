@@ -8,7 +8,9 @@
 
 ## Allowed licenses
 
-MIT, MIT-0, Apache-2.0 (incl. LLVM exception), BSD-2-Clause, BSD-3-Clause, ISC, Zlib, 0BSD, CC0-1.0, Unicode-3.0, Unlicense.
+MIT, MIT-0, Apache-2.0 (incl. LLVM exception), BSD-2-Clause, BSD-3-Clause, ISC, Zlib, 0BSD, CC0-1.0, Unicode-3.0, Unlicense, BSL-1.0.
+
+`BSL-1.0` is the **Boost Software License** (permissive, OSI-approved). Don't confuse it with **BUSL** (the Business Source License), which is banned.
 OFL-1.1 is allowed **for bundled font files only**.
 
 **Never allowed:** GPL, LGPL, AGPL, MPL, EPL, CDDL, SSPL, BUSL, "Commons Clause", or "free for non-commercial use" licenses.
@@ -34,20 +36,20 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | `alacritty_terminal` | Apache-2.0 | mux | VT emulation. Behind the `Emulator` trait (ADR 0001). |
 | `serde_json` | MIT/Apache-2.0 | daemon | Store document (ADR 0008) and the Tailscale CLI's JSON. |
 | `tempfile` *(dev)* | MIT/Apache-2.0 | tests | Temp dirs for git and daemon tests. |
+| `winit` | Apache-2.0 | app | Windowing and input on all five platforms. |
+| `wgpu` | MIT/Apache-2.0 | render | One GPU API over Metal, Vulkan, DX12 and GLES. |
+| `cosmic-text` | MIT/Apache-2.0 | ui, render | Text shaping and rasterization (swash, fontdb). |
+| `accesskit`, `accesskit_winit` | MIT/Apache-2.0 | ui, app | Screen reader support on every platform. |
+| `bytemuck` | MIT/Apache-2.0/Zlib | render | Safe casts of vertex data to bytes. |
+| `pollster` | MIT/Apache-2.0 | render | Blocks on wgpu's async setup calls. |
+| `arboard` | MIT/Apache-2.0 | app (desktop) | System clipboard. Its Windows backend pulls in `clipboard-win` (BSL-1.0, Boost). |
+| `rfd` | MIT | app (desktop) | Native folder picker. Built with `xdg-portal` and `wayland` only; never enable `gtk3` (LGPL). |
 
 ### Planned (approve when first added)
 
 | Crate | License | Purpose |
 |---|---|---|
-| `winit` | Apache-2.0 | Windowing and input on all five platforms |
-| `wgpu` | MIT/Apache-2.0 | GPU rendering (Metal/Vulkan/DX12/GLES) |
-| `cosmic-text` | MIT/Apache-2.0 | Text shaping and rasterization (includes swash and fontdb) |
-| `accesskit`, `accesskit_winit` | MIT/Apache-2.0 | Accessibility tree |
-| `arboard` | MIT/Apache-2.0 | Clipboard |
-| `rfd` | MIT | Native file pickers (desktop) |
-| `android-activity` | MIT/Apache-2.0 | Android entry point |
-| `windows-sys` | MIT/Apache-2.0 | Win32 APIs (named pipes, ACLs) |
-| `insta` *(dev)* | Apache-2.0 | Snapshot tests |
+| `android-activity` | MIT/Apache-2.0 | Android entry point (via winit's `android-native-activity` feature) |
 
 ## Tools
 
@@ -62,8 +64,8 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 
 | Asset | License | Purpose |
 |---|---|---|
-| JetBrains Mono *(planned)* | OFL-1.1 | Default terminal font |
-| Inter *(planned)* | OFL-1.1 | Default UI font |
+| JetBrains Mono (Regular, Bold, Italic, Bold Italic) | OFL-1.1 (`assets/fonts/JetBrainsMono-OFL.txt`) | Terminal font |
+| Inter (Regular, Medium, SemiBold) | OFL-1.1 (`assets/fonts/Inter-OFL.txt`) | UI font |
 
 ## Written in-house instead of depending on a crate
 

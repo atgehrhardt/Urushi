@@ -1,0 +1,18 @@
+[package]
+name = "urushi-ios"
+description = "Urushi iOS shell: a remote-only client (iOS can't run local shells)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "urushi-ios"
+path = "src/main.rs"
+
+[dependencies]
+tracing-subscriber = { workspace = true }
+urushi-app = { workspace = true }
+
+[lints]
+workspace = true

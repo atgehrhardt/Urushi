@@ -16,6 +16,9 @@ targets = [
 [advisories]
 version = 2
 yanked = "deny"
+# Vulnerabilities always fail. "Unmaintained" notices fail only for crates we depend on
+# directly; transitive ones are reviewed when upgrading (docs/dependencies.md).
+unmaintained = "workspace"
 
 [licenses]
 version = 2
@@ -33,6 +36,8 @@ allow = [
   "CC0-1.0",
   "Unicode-3.0",
   "Unlicense",
+  # Boost Software License 1.0: permissive (like MIT). Not the BUSL "Business Source License".
+  "BSL-1.0",
 ]
 # Exceptions require an ADR. Never add copyleft (GPL/LGPL/AGPL/MPL/EPL/SSPL/BUSL).
 exceptions = []

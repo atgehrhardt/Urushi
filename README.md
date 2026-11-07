@@ -1,13 +1,38 @@
 # Urushi
 
-A cross-platform graphical workspace for working with AI agents. Projects contain threads. Every thread is its own git worktree, with tabs of split, recoverable terminals.
+A cross-platform graphical workspace for working with AI agents.
 
-- **Platforms:** macOS, Linux, Windows (daemon + app), iOS and Android (remote clients over Tailscale)
-- **Stack:** all Rust. In-house multiplexer, widget toolkit and wire protocol. GPU rendering via wgpu.
-- **Licensing:** only permissively licensed dependencies (see `docs/dependencies.md`)
+- **Projects → Threads:** every thread is its own git worktree and branch.
+- **Tabs of split terminals:** sessions are *recoverable*. They keep running in the `urushid` daemon when the window closes, the app crashes or a client disconnects.
+- **Safe deletion:** deleting a thread removes its worktree and every branch it owns, local and (by default) remote, after a warning that lists exactly what will go.
+- **Remote access over Tailscale:** your phone (iOS and Android apps) or another computer can attach to the same live sessions. Only your tailnet identity is admitted.
 
-Start with [`AGENTS.md`](AGENTS.md) and [`docs/architecture.md`](docs/architecture.md).
+**Stack:** all Rust. An in-house multiplexer, widget toolkit, GPU renderer (wgpu) and wire protocol (protobuf). Only permissively licensed dependencies are used ([`docs/dependencies.md`](docs/dependencies.md)).
+
+## Quick start (macOS)
 
 ```sh
-make ci   # format check, clippy, tests, license audit
+make app && open build/Urushi.app       # GUI (starts the daemon itself)
+# or, during development:
+cargo run -p urushi-desktop             # binary: urushi-app
 ```
+
+Headless, with the CLI:
+
+```sh
+cargo build --workspace
+./target/debug/urushi project add ~/code/my-repo
+./target/debug/urushi thread new <project-id> "Try something"
+./target/debug/urushi ls
+./target/debug/urushi tailnet on        # serve on your tailnet
+```
+
+The other platforms are covered in [`docs/platforms.md`](docs/platforms.md): Linux, Windows, iOS (simulator) and Android (APK without Gradle).
+
+## Development
+
+```sh
+make ci   # fmt, clippy -D warnings, all tests, license audit, docs check, proto lint
+```
+
+Start with [`AGENTS.md`](AGENTS.md) and [`docs/README.md`](docs/README.md).

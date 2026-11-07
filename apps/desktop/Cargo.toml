@@ -7,8 +7,14 @@ rust-version.workspace = true
 publish.workspace = true
 
 [[bin]]
-name = "Urushi"
+name = "urushi-app"
 path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+tracing-subscriber = { workspace = true }
+urushi-app = { workspace = true }
 
 [lints]
 workspace = true

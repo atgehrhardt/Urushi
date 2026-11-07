@@ -1,0 +1,96 @@
+//! The Urushi graphical app: a workspace that *contains* terminals.
+//!
+//! Elm architecture (ADR 0006):
+//! - [`state::AppState`] is all application state.
+//! - `update.rs` changes state in response to [`msg::Msg`]s and returns [`msg::Effect`]s.
+//!   It is pure and unit-tested.
+//! - `view/` turns state into a `urushi-ui` node tree.
+//! - `runner.rs` (winit) feeds OS events in, draws frames with `urushi-render`, and hands
+//!   effects to `backend.rs`, which talks to the daemon on a background runtime.
+//!
+//! This crate is platform-neutral. `apps/desktop`, `apps/ios` and `apps/android` are thin
+//! entry points that call [`run`] or [`run_with`].
+
+mod backend;
+pub mod config;
+pub mod keys;
+pub mod msg;
+mod platform;
+mod runner;
+pub mod snapshot;
+pub mod state;
+pub mod terminal;
+mod update;
+mod view;
+
+use std::collections::HashMap;
+
+use thiserror::Error;
+use urushi_ui::{TextSystem, Theme};
+use winit::event_loop::EventLoop;
+
+pub use config::{AppConfig, ConnectTarget, SafeAreaFn};
+
+/// Events delivered to the winit loop from other threads.
+#[derive(Debug)]
+pub enum UserEvent {
+    /// A message for the app (from the backend).
+    App(msg::Msg),
+    /// An accessibility request.
+    Access(accesskit_winit::Event),
+}
+
+impl From<accesskit_winit::Event> for UserEvent {
+    fn from(event: accesskit_winit::Event) -> Self {
+        Self::Access(event)
+    }
+}
+
+/// App failures that stop it from running.
+#[derive(Debug, Error)]
+pub enum AppError {
+    /// The windowing system failed.
+    #[error("windowing error: {0}")]
+    EventLoop(#[from] winit::error::EventLoopError),
+    /// The background runtime couldn't start.
+    #[error("cannot start the network runtime: {0}")]
+    Runtime(#[from] std::io::Error),
+}
+
+/// Creates the event loop and runs the app until its window closes.
+pub fn run(config: AppConfig) -> Result<(), AppError> {
+    let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
+    run_with(event_loop, config)
+}
+
+/// Runs the app on an event loop the platform shell created (e.g. Android's, which needs
+/// the activity handle).
+pub fn run_with(event_loop: EventLoop<UserEvent>, config: AppConfig) -> Result<(), AppError> {
+    let proxy = event_loop.create_proxy();
+    let theme = Theme::dark();
+    tracing::debug!("loading fonts");
+    let mut text = TextSystem::new();
+    tracing::debug!("fonts loaded");
+    let cell = text.cell_metrics(theme.terminal_font_size);
+    let backend = backend::Backend::start(&config.target, proxy.clone())?;
+    let mut runner = runner::Runner {
+        state: state::AppState::new(config.target, cell),
+        theme,
+        text,
+        backend,
+        proxy,
+        window: None,
+        renderer: None,
+        access: None,
+        frame: None,
+        pointer: None,
+        mods: keys::Mods::default(),
+        pressed_in_area: false,
+        wheel_remainder: 0.0,
+        scroll: HashMap::new(),
+        clipboard: platform::Clipboard::new(),
+        safe_area: config.safe_area.clone(),
+    };
+    event_loop.run_app(&mut runner)?;
+    Ok(())
+}
