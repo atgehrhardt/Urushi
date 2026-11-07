@@ -1,0 +1,11 @@
+/target/
+/build/
+*.xcodeproj/
+xcuserdata/
+.DS_Store
+*.snap.new
+.idea/
+.vscode/
+/apps/android/.gradle/
+/apps/android/**/build/
+.claude/settings.local.json

@@ -1,0 +1,49 @@
+# cargo-deny policy. Licensing rules are a product requirement, not a preference:
+# only permissive licenses that allow free commercial use. See docs/dependencies.md.
+
+[graph]
+all-features = true
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+  "aarch64-apple-ios",
+  "aarch64-linux-android",
+]
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+confidence-threshold = 0.93
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "0BSD",
+  "CC0-1.0",
+  "Unicode-3.0",
+  "Unlicense",
+]
+# Exceptions require an ADR. Never add copyleft (GPL/LGPL/AGPL/MPL/EPL/SSPL/BUSL).
+exceptions = []
+
+[licenses.private]
+ignore = true   # our own unpublished workspace crates
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

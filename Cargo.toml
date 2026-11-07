@@ -1,0 +1,49 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+publish = false
+
+# Every external dependency is declared here, once, so versions stay unified and
+# each addition is reviewed against docs/dependencies.md (see the add-dependency skill).
+[workspace.dependencies]
+urushi-core = { path = "crates/urushi-core" }
+
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+uuid = { version = "1.18", default-features = false, features = ["serde", "std"] }
+
+# dev-only
+proptest = "1.7"
+serde_json = "1"
+
+[workspace.lints.rust]
+unsafe_code = "deny"            # opt in per module with #[allow(unsafe_code)] + `// SAFETY:` comments
+missing_docs = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+undocumented_unsafe_blocks = "warn"
+# Pedantic lints we deliberately do not enforce:
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+# Errors are typed enums whose variants document each failure; per-fn "# Errors" prose would duplicate them.
+missing_errors_doc = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

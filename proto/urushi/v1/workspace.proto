@@ -1,0 +1,214 @@
+// Projects, threads, tabs and layouts.
+syntax = "proto3";
+
+package urushi.v1;
+
+import "urushi/v1/settings.proto";
+
+message ListWorkspaceRequest {
+  // Also stream WorkspaceChanged events on this connection.
+  bool subscribe = 1;
+}
+
+message Workspace {
+  // Increases on every change.
+  uint64 revision = 1;
+  repeated Project projects = 2;
+  repeated Thread threads = 3;
+  repeated Tab tabs = 4;
+}
+
+message Project {
+  string id = 1;
+  string name = 2;
+  string repo_root = 3;
+  // Empty means the repository's current HEAD.
+  string default_base = 4;
+  ProjectSettings settings = 5;
+  int64 added_at_ms = 6;
+}
+
+enum ThreadState {
+  THREAD_STATE_UNSPECIFIED = 0;
+  THREAD_STATE_CREATING = 1;
+  THREAD_STATE_READY = 2;
+  THREAD_STATE_DELETING = 3;
+  THREAD_STATE_DELETION_FAILED = 4;
+}
+
+message Thread {
+  string id = 1;
+  string project_id = 2;
+  string title = 3;
+  string slug = 4;
+  string worktree_path = 5;
+  string primary_branch = 6;
+  string base_ref = 7;
+  string base_commit = 8;
+  int64 created_at_ms = 9;
+  ThreadState state = 10;
+  // Set when state is DELETION_FAILED.
+  string failure_reason = 11;
+  repeated string tab_ids = 12;
+}
+
+message Tab {
+  string id = 1;
+  string thread_id = 2;
+  string title = 3;
+  LayoutNode layout = 4;
+  string focused_pane_id = 5;
+}
+
+enum Axis {
+  AXIS_UNSPECIFIED = 0;
+  // Side by side, left to right.
+  AXIS_ROW = 1;
+  // Stacked, top to bottom.
+  AXIS_COLUMN = 2;
+}
+
+enum Direction {
+  DIRECTION_UNSPECIFIED = 0;
+  DIRECTION_LEFT = 1;
+  DIRECTION_RIGHT = 2;
+  DIRECTION_UP = 3;
+  DIRECTION_DOWN = 4;
+}
+
+message LayoutNode {
+  oneof kind {
+    string pane_id = 1;
+    LayoutSplit split = 2;
+  }
+}
+
+message LayoutSplit {
+  Axis axis = 1;
+  repeated LayoutChild children = 2;
+}
+
+message LayoutChild {
+  double ratio = 1;
+  LayoutNode node = 2;
+}
+
+message AddProjectRequest {
+  // Any path inside the repository on the daemon's machine.
+  string path = 1;
+  // Optional display name; defaults to the repository folder name.
+  string name = 2;
+}
+
+message RemoveProjectRequest {
+  string project_id = 1;
+}
+
+message ListBranchesRequest {
+  string project_id = 1;
+}
+
+message Branches {
+  repeated string branches = 1;
+  // Branch checked out in the main working tree (empty if detached).
+  string current = 2;
+}
+
+message CreateThreadRequest {
+  string project_id = 1;
+  string title = 2;
+  // Ref to branch from; empty uses the project's default base.
+  string base_ref = 3;
+}
+
+message RenameThreadRequest {
+  string thread_id = 1;
+  string title = 2;
+}
+
+message PlanThreadDeletionRequest {
+  string thread_id = 1;
+}
+
+// Everything a thread deletion will destroy. Clients MUST show this to the user
+// and get explicit confirmation before sending DeleteThreadRequest.
+message DeletionPlan {
+  string thread_id = 1;
+  string worktree_path = 2;
+  uint32 modified_files = 3;
+  uint32 untracked_files = 4;
+  uint32 unpushed_commits = 5;
+  repeated string local_branches = 6;
+  repeated RemoteBranch remote_branches = 7;
+  uint32 running_panes = 8;
+  bool delete_remote_branches = 9;
+  // Opaque; echo back in DeleteThreadRequest. Rejected if anything changed.
+  string token = 10;
+  // Non-fatal issues discovered while planning (e.g. a remote could not be inspected).
+  repeated string warnings = 11;
+}
+
+message RemoteBranch {
+  string remote = 1;
+  string branch = 2;
+}
+
+message DeleteThreadRequest {
+  string thread_id = 1;
+  string token = 2;
+}
+
+message CreateTabRequest {
+  string thread_id = 1;
+  string title = 2;
+}
+
+message CloseTabRequest {
+  string tab_id = 1;
+}
+
+message RenameTabRequest {
+  string tab_id = 1;
+  string title = 2;
+}
+
+message SplitPaneRequest {
+  string tab_id = 1;
+  string pane_id = 2;
+  Direction side = 3;
+}
+
+message PaneCreated {
+  string tab_id = 1;
+  string pane_id = 2;
+}
+
+message ClosePaneRequest {
+  string tab_id = 1;
+  string pane_id = 2;
+}
+
+message FocusPaneRequest {
+  string tab_id = 1;
+  string pane_id = 2;
+}
+
+message MoveDividerRequest {
+  string tab_id = 1;
+  string anchor_pane_id = 2;
+  Axis axis = 3;
+  // Fraction of the enclosing split, from its start.
+  double position = 4;
+}
+
+message ResizePaneEdgeRequest {
+  string tab_id = 1;
+  string pane_id = 2;
+  Direction side = 3;
+  // Fraction of the enclosing split; negative shrinks.
+  double amount = 4;
+}
+
+message EqualizeRequest {
+  string tab_id = 1;
+}

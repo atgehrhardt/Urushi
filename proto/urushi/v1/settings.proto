@@ -1,0 +1,55 @@
+// Settings stored by the daemon and shared by every client.
+syntax = "proto3";
+
+package urushi.v1;
+
+message GetSettingsRequest {}
+
+message Settings {
+  bool delete_remote_branches = 1;
+  string branch_prefix = 2;
+  // Empty means the user's login shell.
+  string default_shell = 3;
+  // Empty means <data dir>/worktrees.
+  string worktree_root = 4;
+  TailnetSettings tailnet = 5;
+}
+
+message TailnetSettings {
+  bool serve = 1;
+  uint32 port = 2;
+  // Empty means only the host's own tailnet login.
+  repeated string allowed_logins = 3;
+  bool allow_tagged_nodes = 4;
+}
+
+// Unset fields are left unchanged.
+message SettingsPatch {
+  optional bool delete_remote_branches = 1;
+  optional string branch_prefix = 2;
+  optional string default_shell = 3;
+  optional string worktree_root = 4;
+  optional bool tailnet_serve = 5;
+  optional uint32 tailnet_port = 6;
+  // Replaces the allowlist when `set_allowed_logins` is true.
+  bool set_allowed_logins = 7;
+  repeated string allowed_logins = 8;
+  optional bool allow_tagged_nodes = 9;
+}
+
+message UpdateSettingsRequest {
+  SettingsPatch patch = 1;
+}
+
+// Per-project overrides; unset means "use the global value".
+message ProjectSettings {
+  optional bool delete_remote_branches = 1;
+  optional string branch_prefix = 2;
+  optional string default_shell = 3;
+}
+
+message UpdateProjectSettingsRequest {
+  string project_id = 1;
+  // Replaces all overrides.
+  ProjectSettings settings = 2;
+}

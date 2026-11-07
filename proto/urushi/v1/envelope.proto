@@ -1,0 +1,131 @@
+// Framing-level messages. Every frame on the wire is a u32 big-endian length
+// followed by one encoded Envelope. See docs/protocol.md.
+syntax = "proto3";
+
+package urushi.v1;
+
+import "urushi/v1/remote.proto";
+import "urushi/v1/settings.proto";
+import "urushi/v1/terminal.proto";
+import "urushi/v1/workspace.proto";
+
+message Envelope {
+  oneof kind {
+    // Client -> daemon; always answered by a Response with the same id.
+    Request request = 1;
+    // Daemon -> client; answers a Request.
+    Response response = 2;
+    // Daemon -> client; unsolicited.
+    Event event = 3;
+    // Client -> daemon; fire-and-forget (high-frequency input and acks).
+    Notification notification = 4;
+  }
+}
+
+// First message on every connection.
+message Hello {
+  uint32 protocol_major = 1;
+  uint32 protocol_minor = 2;
+  string client_name = 3;
+  string client_version = 4;
+}
+
+message Welcome {
+  uint32 protocol_major = 1;
+  uint32 protocol_minor = 2;
+  string daemon_version = 3;
+  string host_name = 4;
+}
+
+message Request {
+  uint64 id = 1;
+  oneof body {
+    Hello hello = 2;
+    ListWorkspaceRequest list_workspace = 3;
+    AddProjectRequest add_project = 4;
+    RemoveProjectRequest remove_project = 5;
+    ListBranchesRequest list_branches = 6;
+    CreateThreadRequest create_thread = 7;
+    RenameThreadRequest rename_thread = 8;
+    PlanThreadDeletionRequest plan_thread_deletion = 9;
+    DeleteThreadRequest delete_thread = 10;
+    CreateTabRequest create_tab = 11;
+    CloseTabRequest close_tab = 12;
+    RenameTabRequest rename_tab = 13;
+    SplitPaneRequest split_pane = 14;
+    ClosePaneRequest close_pane = 15;
+    FocusPaneRequest focus_pane = 16;
+    MoveDividerRequest move_divider = 17;
+    ResizePaneEdgeRequest resize_pane_edge = 18;
+    EqualizeRequest equalize = 19;
+    AttachPaneRequest attach_pane = 20;
+    DetachPaneRequest detach_pane = 21;
+    SetPaneSizeRequest set_pane_size = 22;
+    GetSettingsRequest get_settings = 23;
+    UpdateSettingsRequest update_settings = 24;
+    UpdateProjectSettingsRequest update_project_settings = 25;
+    TailnetStatusRequest tailnet_status = 26;
+    SetTailnetServeRequest set_tailnet_serve = 27;
+    ReadScreenTextRequest read_screen_text = 28;
+  }
+}
+
+message Response {
+  uint64 id = 1;
+  oneof result {
+    Error error = 2;
+    Ok ok = 3;
+    Welcome welcome = 4;
+    Workspace workspace = 5;
+    Project project = 6;
+    Branches branches = 7;
+    Thread thread = 8;
+    DeletionPlan deletion_plan = 9;
+    Tab tab = 10;
+    PaneCreated pane_created = 11;
+    ScreenUpdate screen = 12;
+    Settings settings = 13;
+    TailnetStatus tailnet_status = 14;
+    ScreenText screen_text = 15;
+  }
+}
+
+message Event {
+  oneof body {
+    // The workspace changed; carries the full new state.
+    Workspace workspace_changed = 1;
+    // New screen content for an attached pane. Must be acknowledged.
+    ScreenUpdate screen_update = 2;
+    PaneExited pane_exited = 3;
+    PaneBell pane_bell = 4;
+  }
+}
+
+message Notification {
+  oneof body {
+    Input input = 1;
+    AckScreen ack_screen = 2;
+    ScrollPane scroll_pane = 3;
+  }
+}
+
+// An empty successful result.
+message Ok {}
+
+message Error {
+  ErrorCode code = 1;
+  string message = 2;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_INVALID_ARGUMENT = 1;
+  ERROR_CODE_NOT_FOUND = 2;
+  ERROR_CODE_FAILED_PRECONDITION = 3;
+  // The request was based on stale state (e.g. a deletion plan that no longer matches).
+  ERROR_CODE_CONFLICT = 4;
+  ERROR_CODE_PERMISSION_DENIED = 5;
+  ERROR_CODE_UNSUPPORTED = 6;
+  ERROR_CODE_GIT_FAILED = 7;
+  ERROR_CODE_INTERNAL = 8;
+}

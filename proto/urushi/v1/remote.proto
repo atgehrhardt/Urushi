@@ -1,0 +1,36 @@
+// Remote access over Tailscale.
+syntax = "proto3";
+
+package urushi.v1;
+
+message TailnetStatusRequest {}
+
+message TailnetStatus {
+  // The tailscale CLI was found.
+  bool installed = 1;
+  // Tailscale is up and logged in.
+  bool running = 2;
+  // MagicDNS name of this machine, without the trailing dot.
+  string dns_name = 3;
+  repeated string addresses = 4;
+  // Tailnet login of this machine's user.
+  string login = 5;
+  // The daemon is currently listening on the tailnet.
+  bool serving = 6;
+  uint32 port = 7;
+  // Human-readable problem, if any.
+  string error = 8;
+  repeated TailnetPeer peers = 9;
+}
+
+message TailnetPeer {
+  string name = 1;
+  string dns_name = 2;
+  repeated string addresses = 3;
+  bool online = 4;
+  string os = 5;
+}
+
+message SetTailnetServeRequest {
+  bool serve = 1;
+}
