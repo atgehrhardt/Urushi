@@ -43,14 +43,25 @@ Crates marked ⏳ are planned but don't exist yet. Create them where listed; don
 
 ## Your real workspace is running: never disturb it
 
-Urushi is developed *inside* Urushi. The installed `/Applications/Urushi.app` and its
-daemon (home `~/Library/Application Support/Urushi`) host the terminals you are probably
-running in right now. Killing that daemon kills those sessions, including your own.
+Urushi is developed *inside* Urushi. The installed `/Applications/Urushi.app` and its daemon (the **real home**, `~/Library/Application Support/Urushi`) host the terminals you are probably running in right now. Killing that daemon kills those sessions, including your own.
 
-- **Never** stop, signal or restart the real daemon. Never `pkill`/`killall` by broad patterns such as `urushid` or `urushi`. If you started a process, kill it by PID or by its full `--home <your temp dir>` command line.
-- **Every** manual run uses an isolated home: `URUSHI_HOME=$(mktemp -d)` for the CLI, or `make dev` (which uses `./.dev-home`). Tests already use temp homes; keep it that way.
-- Never point a dev daemon at port 7420 on the tailnet (the real daemon's default). Pick another `tailnet-port`.
-- Ship to the real install with `make install`. It swaps the bundle in safely and leaves the running daemon alone.
+**Safety by default:** debug builds (`cargo build`, `cargo run`, `cargo test`) resolve to a separate **dev home** (`… /Urushi Dev`, `urushi-dev` on Linux) unless `URUSHI_HOME` is set. Only release builds, which `make install` ships, use the real home. The dev app says "Urushi (dev)" and shows a DEV badge.
+
+Use `scripts/dev.sh` (or the make targets) for everything:
+
+| Command | What it does |
+|---|---|
+| `make dev` / `scripts/dev.sh run [--keep]` | Build debug, restart the **dev** daemon (unless `--keep`), open the dev app |
+| `scripts/dev.sh cli <args>` | The debug CLI against the dev daemon (`cli ls`, `cli thread new …`) |
+| `scripts/dev.sh test` | `make ci` with `URUSHI_HOME` set to a throwaway dir |
+| `scripts/dev.sh status` / `stop` | Inspect daemons; stop **only** the dev daemon (checked against its pidfile and `--home`) |
+| `make ship` / `scripts/dev.sh ship` | Run tests, then install into `/Applications`. The running daemon is never restarted; relaunch the app to use the new GUI. |
+
+Rules:
+- **Never** stop, signal or restart the real daemon. Never `pkill`/`killall` by broad patterns such as `urushid` or `urushi`. Stop dev daemons with `scripts/dev.sh stop`, and anything else you started by its PID.
+- **Never** run a release binary (`target/release/*`, or the installed CLI) for experiments; it talks to the real workspace. If you must, set `URUSHI_HOME=$(mktemp -d)`.
+- Don't serve a dev daemon on tailnet port 7420 (the real daemon's default). Pick another `tailnet-port`.
+- A new **daemon** version only takes effect when the real daemon next starts (e.g. after a reboot). Restarting it ends its sessions, so tell the user; never do it yourself.
 
 ## Invariants (never break these)
 
@@ -85,21 +96,15 @@ make check-licenses   # cargo deny check
 make check-targets    # cargo check for iOS + Android targets
 make check-docs       # docs indexed, links resolve, every crate documented
 make app              # build/Urushi.app (macOS)
-make install          # build and install into /Applications (safe while it's running)
-make dev              # debug GUI against an isolated ./.dev-home daemon
+make dev              # debug GUI against the dev daemon (scripts/dev.sh run)
+make ship             # tests, then install into /Applications (safe while it's running)
+make install          # install without running tests
 make ios-sim          # iOS simulator build, run and screenshot
 make android          # build/android/urushi.apk (needs the Android SDK and NDK)
 make ci               # everything CI runs; must be green before you finish
 ```
 
-Run the GUI against an isolated daemon (the app starts `urushid` itself):
-
-```sh
-cargo build --workspace
-URUSHI_HOME=$(mktemp -d) ./target/debug/urushi-app      # or: make app && open build/Urushi.app
-```
-
-Run the system without the GUI. The CLI starts the daemon automatically, and `URUSHI_HOME` keeps it isolated from your real workspace:
+Run the GUI against the dev daemon: `make dev`. Without the GUI, use `scripts/dev.sh cli …`, or a throwaway home as below. The CLI starts the daemon automatically, and `URUSHI_HOME` keeps it isolated from your real workspace:
 
 ```sh
 cargo build --workspace

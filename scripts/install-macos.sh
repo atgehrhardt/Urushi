@@ -25,7 +25,8 @@ echo "installed $DEST"
 CLI="$DEST/Contents/Resources/bin/urushi"
 if pgrep -qf "urushid --home $HOME/Library/Application Support/Urushi"; then
   echo "your daemon is still running (sessions kept):"
-  env -u URUSHI_HOME "$CLI" status 2>/dev/null | head -1 || true
+  STATUS="$(env -u URUSHI_HOME "$CLI" status 2>/dev/null || true)"
+  echo "  ${STATUS%%$'\n'*}"
   echo "it switches to the new urushid the next time it starts."
 fi
 echo "CLI: $CLI  (e.g. ln -s \"$CLI\" ~/.local/bin/urushi)"

@@ -44,6 +44,19 @@ fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
             theme.font_size + 2.0,
             theme.text,
         ))
+        .children(cfg!(debug_assertions).then(|| {
+            // Debug builds run against the dev home; make that impossible to miss.
+            Node::row()
+                .padding(Insets::symmetric(1.0, 6.0))
+                .radius(4.0)
+                .background(theme.warning.with_alpha(0.2))
+                .child(Node::text(
+                    "DEV",
+                    Font::UiSemibold,
+                    theme.font_size_small - 1.0,
+                    theme.warning,
+                ))
+        }))
         .child(Node::spacer())
         .child(
             Node::new()

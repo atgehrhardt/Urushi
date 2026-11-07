@@ -22,6 +22,13 @@ use crate::platform::{self, Clipboard};
 use crate::state::AppState;
 use crate::{UserEvent, view};
 
+/// Window title; debug builds say so, so they're never mistaken for the real app.
+const APP_TITLE: &str = if cfg!(debug_assertions) {
+    "Urushi (dev)"
+} else {
+    "Urushi"
+};
+
 /// Lines scrolled per wheel notch.
 const LINES_PER_NOTCH: f32 = 3.0;
 /// Windows narrower than this (logical pixels) use the one-column phone layout.
@@ -165,8 +172,8 @@ impl Runner {
             .selected_thread
             .as_ref()
             .and_then(|t| self.state.workspace.thread(t))
-            .map(|t| format!("{} — Urushi", t.title));
-        window.set_title(title.as_deref().unwrap_or("Urushi"));
+            .map(|t| format!("{} — {APP_TITLE}", t.title));
+        window.set_title(title.as_deref().unwrap_or(APP_TITLE));
         let area = frame
             .hits
             .iter()
@@ -276,7 +283,7 @@ impl ApplicationHandler<UserEvent> for Runner {
             return;
         }
         let mut attributes = Window::default_attributes()
-            .with_title("Urushi")
+            .with_title(APP_TITLE)
             .with_visible(false);
         // Mobile windows are always full screen; a requested size would be taken literally.
         if !cfg!(any(target_os = "ios", target_os = "android")) {

@@ -82,6 +82,9 @@ pub async fn run(
         Err(TryLockError::WouldBlock) => return Err(DaemonError::AlreadyRunning(options.home)),
         Err(TryLockError::Error(e)) => return Err(e.into()),
     }
+    // Lets tooling (scripts/dev.sh) stop exactly this daemon, never a different one.
+    let pid_file = options.home.join("urushid.pid");
+    std::fs::write(&pid_file, format!("{}\n", std::process::id()))?;
 
     let store = Arc::new(JsonFileStore::new(options.home.join("workspace.json")));
     let service = Service::start(ServiceConfig {
@@ -107,6 +110,7 @@ pub async fn run(
     if let LocalEndpoint::UnixSocket(path) = &endpoint {
         let _ = std::fs::remove_file(path);
     }
+    let _ = std::fs::remove_file(&pid_file);
     drop(lock_file);
     result
 }

@@ -12,7 +12,9 @@
 - `make install` builds the release bundle and swaps it into `/Applications/Urushi.app` (override with `INSTALL_DIR`). The swap uses renames, so a running app and daemon are never disturbed.
 - The app starts `urushid` from its own bundle when none is running. The daemon then keeps running when the app quits, so your sessions survive app restarts and upgrades.
 - A new daemon version takes effect only when the daemon next starts (e.g. after a reboot). Restarting the daemon ends its terminal sessions, so Urushi never does it for you.
-- For development, use `make dev`. It runs against `./.dev-home`, so the installed workspace is never touched.
+- **Developing Urushi inside Urushi:**
+  - Debug builds default to a separate dev home (`~/Library/Application Support/Urushi Dev`). `scripts/dev.sh` wraps the loop: `run` (dev app plus a fresh dev daemon), `cli`, `test`, `status`, `stop`, and `ship` (tests, then install).
+  - The dev app is titled "Urushi (dev)" and shows a DEV badge.
 
 ## Mobile clients
 - iOS and Android can't host agent shells, so they never start a local daemon.

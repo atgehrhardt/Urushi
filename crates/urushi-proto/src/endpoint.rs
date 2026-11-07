@@ -51,11 +51,36 @@ pub fn default_data_dir() -> Option<PathBuf> {
 
 /// The home directory: `URUSHI_HOME` if set, otherwise the platform's app data dir.
 /// `None` on platforms without a local daemon (iOS, Android) unless the variable is set.
+///
+/// **Debug builds use a separate `… Dev` home** (e.g. `~/Library/Application Support/Urushi
+/// Dev`), so anything built with plain `cargo build`/`cargo run`, while developing Urushi
+/// inside Urushi, can never touch the real workspace. Only release builds (what
+/// `make install` ships) use the real home.
 pub fn home_dir() -> Option<PathBuf> {
     match std::env::var_os(HOME_ENV) {
         Some(home) if !home.is_empty() => Some(PathBuf::from(home)),
-        _ => default_data_dir(),
+        _ => default_data_dir().map(|dir| {
+            if cfg!(debug_assertions) {
+                dev_variant(&dir)
+            } else {
+                dir
+            }
+        }),
     }
+}
+
+/// `…/Urushi` → `…/Urushi Dev`, `…/urushi` → `…/urushi-dev`.
+pub fn dev_variant(dir: &Path) -> PathBuf {
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let dev = if name.chars().next().is_some_and(char::is_uppercase) {
+        format!("{name} Dev")
+    } else {
+        format!("{name}-dev")
+    };
+    dir.with_file_name(dev)
 }
 
 /// The local endpoint of the daemon whose home is `home`.
@@ -112,6 +137,18 @@ mod tests {
         assert_eq!(parse_tcp("fd7a::1", 7420), tcp("fd7a::1", 7420));
         assert_eq!(parse_tcp("", 7420), None);
         assert_eq!(parse_tcp("host:notaport", 7420), None);
+    }
+
+    #[test]
+    fn dev_homes_are_separate() {
+        assert_eq!(
+            dev_variant(Path::new("/a/Urushi")),
+            PathBuf::from("/a/Urushi Dev")
+        );
+        assert_eq!(
+            dev_variant(Path::new("/a/urushi")),
+            PathBuf::from("/a/urushi-dev")
+        );
     }
 
     #[test]
