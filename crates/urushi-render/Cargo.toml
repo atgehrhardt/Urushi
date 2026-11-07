@@ -1,0 +1,19 @@
+[package]
+name = "urushi-render"
+description = "wgpu renderer for urushi-ui scenes: rounded quads and an atlas-backed glyph pipeline."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bytemuck = { workspace = true }
+pollster = { workspace = true }
+cosmic-text = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+urushi-ui = { workspace = true }
+wgpu = { workspace = true }
+
+[lints]
+workspace = true
