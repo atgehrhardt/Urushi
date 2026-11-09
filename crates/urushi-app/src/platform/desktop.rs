@@ -42,6 +42,9 @@ pub(crate) fn pick_files() -> Vec<String> {
 /// Desktop has a system file picker.
 pub(crate) const HAS_FILE_PICKER: bool = true;
 
+/// Desktop has a secondary (right or two-finger) click, which opens context menus.
+pub(crate) const HAS_SECONDARY_CLICK: bool = true;
+
 /// Opens a file with the system's default app for it.
 pub(crate) fn open_path(path: &std::path::Path) -> std::io::Result<()> {
     #[cfg(target_os = "macos")]

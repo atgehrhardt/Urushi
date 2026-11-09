@@ -82,8 +82,18 @@ impl AppState {
                 Body::CloseTab(v1::CloseTabRequest { tab_id }),
                 Followup::None,
             )),
-            Msg::Split(side) => self.split(side, &mut fx),
-            Msg::ClosePane => self.close_pane(&mut fx),
+            // Splitting and closing panes, and the pane menu: `update/panes.rs`.
+            Msg::Split(side) => {
+                if let Some(pane) = self.focused_pane() {
+                    self.split(pane, side, &mut fx);
+                }
+            }
+            Msg::ClosePane => {
+                if let Some(pane) = self.focused_pane() {
+                    self.close_pane(&pane, &mut fx);
+                }
+            }
+            Msg::Pane(msg) => self.pane_action(msg, &mut fx),
             Msg::AreaChanged(rect) => {
                 if self.area != Some(rect) {
                     self.area = Some(rect);
@@ -225,35 +235,6 @@ impl AppState {
         ));
     }
 
-    fn split(&self, side: v1::Direction, fx: &mut Vec<Effect>) {
-        if let (Some(tab), Some(pane)) = (
-            self.current_tab().map(|t| t.id.clone()),
-            self.focused_pane(),
-        ) {
-            let body = Body::SplitPane(v1::SplitPaneRequest {
-                tab_id: tab,
-                pane_id: pane,
-                side: side.into(),
-            });
-            fx.push(request(body, Followup::PaneCreated));
-        }
-    }
-
-    fn close_pane(&self, fx: &mut Vec<Effect>) {
-        if let (Some(tab), Some(pane)) = (
-            self.current_tab().map(|t| t.id.clone()),
-            self.focused_pane(),
-        ) {
-            fx.push(request(
-                Body::ClosePane(v1::ClosePaneRequest {
-                    tab_id: tab,
-                    pane_id: pane,
-                }),
-                Followup::None,
-            ));
-        }
-    }
-
     fn confirm_delete(&mut self, fx: &mut Vec<Effect>) {
         if let Some(Dialog::DeleteThread { plan, deleting, .. }) = &mut self.dialog
             && !*deleting
@@ -335,8 +316,21 @@ impl AppState {
         if !self.selected_thread.as_ref().is_some_and(thread_exists) {
             self.selected_thread = self.workspace.raw().threads.first().map(|t| t.id.clone());
         }
-        self.focused_override
-            .retain(|tab, _| self.workspace.raw().tabs.iter().any(|t| &t.id == tab));
+        // A local focus lasts until the daemon confirms it, and never outlives its pane
+        // (closed, or its process exited): the daemon has already moved focus on.
+        let overrides = std::mem::take(&mut self.focused_override);
+        self.focused_override = overrides
+            .into_iter()
+            .filter(|(tab, pane)| {
+                let confirmed = self
+                    .workspace
+                    .raw()
+                    .tabs
+                    .iter()
+                    .any(|t| &t.id == tab && &t.focused_pane_id == pane);
+                !confirmed && self.tab_has_pane(tab, pane)
+            })
+            .collect();
         self.sync_panes(fx);
     }
 
@@ -792,6 +786,7 @@ mod fields;
 mod intake;
 mod launcher;
 mod organize;
+mod panes;
 mod pointer;
 mod setup;
 mod task_threads;

@@ -320,7 +320,8 @@ impl Runner {
         let in_area =
             self.state.area.is_some_and(|a| a.contains(p)) && !self.state.terminals_covered();
         // A secondary click is a right click, or a two-finger click on a trackpad
-        // (macOS reports both as the right button). Over a terminal it goes to the app.
+        // (macOS reports both as the right button). Over a terminal it opens the pane's
+        // menu, and the middle button goes to the app (`update/pointer.rs`).
         if matches!(button, MouseButton::Right | MouseButton::Middle) {
             let pressed = state == ElementState::Pressed;
             let menu = (button == MouseButton::Right && pressed)

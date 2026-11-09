@@ -30,6 +30,8 @@ pub enum MenuTarget {
     Column(String),
     /// The board's tag filter (by board id).
     TagFilter(String),
+    /// A terminal pane (by pane id): split, copy, paste, close.
+    Pane(String),
 }
 
 /// Which page of the context menu is showing. Sub-pages replace the main page, which

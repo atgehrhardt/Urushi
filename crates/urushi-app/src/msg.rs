@@ -10,8 +10,10 @@ use crate::organize::{DropTarget, MenuPage, MenuTarget, Prompt, Select, SidebarT
 use crate::state::{Field, FieldCommand, Launch, SettingToggle, TaskLink};
 
 mod board;
+mod pane;
 
 pub use board::BoardMsg;
+pub use pane::PaneMsg;
 
 /// Something that happened.
 #[derive(Clone, Debug)]
@@ -172,6 +174,8 @@ pub enum Msg {
     Split(v1::Direction),
     /// Close the focused pane.
     ClosePane,
+    /// A pane acted on from its context menu.
+    Pane(PaneMsg),
     /// The terminal area moved or resized (logical pixels).
     AreaChanged(urushi_ui::Rect),
     /// Mouse pressed in the terminal area.

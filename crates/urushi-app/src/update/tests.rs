@@ -388,6 +388,7 @@ mod fields;
 mod flows;
 mod labels;
 mod organize;
+mod panes;
 mod pointer;
 mod setup;
 mod tasks;

@@ -32,9 +32,9 @@ pub fn scene(
 /// dragged (`drag`), the `repos` tab, the task `board` (a task being dragged across it in
 /// `board-drag`, a `task` with subtasks being edited, and a card's context menu in
 /// `task-menu`, a column's in `column-menu`, a subtask opened as a task in
-/// `task-nested`, and "Make subtask of…" in `nest`), and a terminal with an
-/// agent's plan usage in the `status` bar, and the first-run `setup` wizard (its mode
-/// step in `setup-mode`).
+/// `task-nested`, and "Make subtask of…" in `nest`), a terminal with an agent's plan
+/// usage in the `status` bar (and its pane's context menu in `pane-menu`), and the
+/// first-run `setup` wizard (its mode step in `setup-mode`).
 pub const SCENARIOS: &[&str] = &[
     "launcher",
     "picker",
@@ -54,6 +54,7 @@ pub const SCENARIOS: &[&str] = &[
     "task-nested",
     "nest",
     "status",
+    "pane-menu",
     "setup",
     "setup-mode",
 ];
@@ -328,7 +329,7 @@ fn scenario_frame(
             state.update(Msg::DragThread("t6".into()));
             state.update(Msg::DragMove(Point::new(140.0, 400.0)));
         }
-        name if BOARD_SCENARIOS.contains(&name) || name == "status" => {
+        name if BOARD_SCENARIOS.contains(&name) || name == "status" || name == "pane-menu" => {
             show_board_or_usage(&mut state, name);
         }
         _ => drop(state.update(Msg::SidebarTab(SidebarTab::Repos))),
@@ -343,7 +344,7 @@ fn scenario_frame(
     ))
 }
 
-/// The `board`, `task` and `status` scenarios.
+/// The `board`, `task`, `status` and `pane-menu` scenarios.
 fn show_board_or_usage(state: &mut AppState, name: &str) {
     match name {
         name if BOARD_SCENARIOS.contains(&name) => {
@@ -380,6 +381,11 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
                     before: Some("k3".into()),
                 }))));
             }
+        }
+        "pane-menu" => {
+            show_board_or_usage(state, "status");
+            state.update(Msg::Pointer(urushi_ui::Point::new(640.0, 300.0)));
+            state.update(Msg::OpenMenu(MenuTarget::Pane(PANE.into())));
         }
         "status" => {
             state.update(Msg::SelectThread("t2".into()));

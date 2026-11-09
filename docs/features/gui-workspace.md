@@ -8,7 +8,7 @@
 A graphical workspace:
 - **Sidebar:** a Projects tab (projects → pinned threads → status sections → threads, then threads in no project) and a Repos tab. See [organizing threads](thread-organization.md) for the context menu, statuses and drag and drop. Under the tabs, **Tasks** slides out the [task boards](task-boards.md).
 - **Tab bar:** the tabs of the selected thread. **+** opens the [agent launcher](agent-launcher.md) picker.
-- **Terminal area:** split, recoverable terminal panes. A thread with no tabs (new, or its last tab closed) keeps its tab bar and shows the launcher inline.
+- **Terminal area:** split, recoverable terminal panes. A right or two-finger click on a pane opens its menu: **Split right**, **Split down**, **Copy**, **Paste**, **Close pane** (see [split-pane layouts](split-pane-layouts.md)). Touch screens have no secondary click, so on mobile the tab bar keeps **→ ↓ ×** buttons for the focused pane. A thread with no tabs (new, or its last tab closed) keeps its tab bar and shows the launcher inline.
 - **Header:** the logo (the app icon's mark) and the name, a DEV badge in debug builds, and the connection.
 - **Status bar:** under the terminals: the thread's branch, and the [plan usage](agent-usage.md) of the agent running in the focused pane.
 - **Dialogs:**
@@ -38,7 +38,8 @@ A graphical workspace:
     - Alt+arrows: move focus
 - **Mouse** (`update/pointer.rs`):
   - Click to focus a pane, drag dividers to resize.
-  - If the pane's application asked for the mouse (`TerminalModes.mouse_reporting`, e.g. Claude Code, Codex, vim), presses, drags, releases, right/middle clicks and hover are sent to it as `MouseInput`. Hover and drag movement are sent once per cell. **Shift** selects text instead, as in other terminals.
+  - A right or two-finger click always focuses the pane under it and opens the pane menu, even over an application that takes the mouse (`update/panes.rs`).
+  - If the pane's application asked for the mouse (`TerminalModes.mouse_reporting`, e.g. Claude Code, Codex, vim), presses, drags, releases, middle clicks and hover are sent to it as `MouseInput`. Hover and drag movement are sent once per cell. **Shift** selects text instead, as in other terminals.
   - Otherwise, drag to select text.
   - The wheel is sent as `WheelInput`, and the daemon decides what it does (see [recoverable sessions](recoverable-sessions.md)). Daemons before protocol 1.3 get `ScrollPane` instead.
   - Input is queued on the UI thread in order (`Client::try_notify`), so a click's press and release, and a burst of motion, reach the application in the order they happened (`tests/mouse.rs::queued_input_arrives_in_order`).
@@ -60,8 +61,8 @@ A graphical workspace:
 ## Tests
 - `crates/urushi-app/src/update/tests.rs`: connect, attach, resize, screen updates, typing vs shortcuts, the deletion flow, dialog editing, connect-required mode, selection and copy. `update/tests/fields.rs`: field shortcuts, mouse selection and the field menu; `urushi-ui/tests/fields.rs`: pointer → caret, scrolling, selection painting.
 - `crates/urushi-app/src/update/tests/daemon.rs`: the restart confirmation and reconnecting.
-- `crates/urushi-app/src/update/tests/flows.rs`: launcher, branch name following the title, adding repos, dropped files, agent settings. `update/tests/organize.rs`: menus, prompts, drag and drop, selectors.
-- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `settings`, `menu`, `menu-status`, `drag`, `repos`, `board`, `task`, `status`) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
+- `crates/urushi-app/src/update/tests/flows.rs`: launcher, branch name following the title, adding repos, dropped files, agent settings. `update/tests/organize.rs`: menus, prompts, drag and drop, selectors. `update/tests/panes.rs`: the pane menu and focus after a pane closes.
+- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `settings`, `menu`, `menu-status`, `drag`, `repos`, `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `setup`, `setup-mode`) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
 - `crates/urushi-app/src/terminal.rs`: pane geometry, dividers, selection text, painting.
 - `crates/urushi-ui/tests/layout.rs` and `crates/urushi-render/tests/pixels.rs`: toolkit and GPU.
 

@@ -36,6 +36,10 @@ pub(crate) fn pick_files() -> Vec<String> {
 /// Mobile has no file picker yet.
 pub(crate) const HAS_FILE_PICKER: bool = false;
 
+/// Touch screens have no secondary click, so actions found in context menus on desktop
+/// need visible buttons.
+pub(crate) const HAS_SECONDARY_CLICK: bool = false;
+
 /// Opening attachments isn't supported on mobile yet.
 pub(crate) fn open_path(_path: &std::path::Path) -> std::io::Result<()> {
     Err(std::io::Error::new(

@@ -123,7 +123,7 @@ impl AppState {
     }
 
     /// Opens a context menu where the pointer was pressed.
-    fn open_menu(&mut self, target: crate::organize::MenuTarget) {
+    pub(super) fn open_menu(&mut self, target: crate::organize::MenuTarget) {
         // Menus don't open over dialogs, except a subtask's over its task's
         // editor.
         let over_editor = matches!(

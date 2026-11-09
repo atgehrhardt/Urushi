@@ -195,3 +195,22 @@ fn the_board_status_bar_and_task_editor_show_their_content() {
     );
     assert!(board.contains("image "), "the logo is drawn: {board}");
 }
+
+#[test]
+fn panes_split_and_close_from_their_context_menu_not_buttons() {
+    let menu = dump("pane-menu", 1280.0);
+    for text in [
+        "\"Split right\"",
+        "\"Split down\"",
+        "\"Copy\"",
+        "\"Paste\"",
+        "\"Close pane\"",
+    ] {
+        assert!(menu.contains(text), "{text} missing: {menu}");
+    }
+    // Desktop has a secondary click, so the tab bar has no split buttons.
+    let status = dump("status", 1280.0);
+    for text in ["\"→\"", "\"↓\""] {
+        assert!(!status.contains(text), "{text} in the tab bar: {status}");
+    }
+}

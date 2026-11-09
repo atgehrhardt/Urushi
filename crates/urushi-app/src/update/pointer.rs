@@ -1,11 +1,14 @@
-//! The mouse over the terminal area: dividers, text selection, the wheel, and mouse
-//! reporting to applications that ask for the mouse (Claude Code, Codex, vim, …).
+//! The mouse over the terminal area: dividers, text selection, the wheel, the pane
+//! menu, and mouse reporting to applications that ask for the mouse (Claude Code, Codex,
+//! vim, …).
 //!
-//! When a pane's application has mouse reporting on, presses, drags, releases, hover and
-//! the wheel go to it as `MouseInput` / `WheelInput`; the daemon encodes them (or, for
-//! the wheel, turns them into arrow keys or scrollback). Holding Shift selects text
-//! instead, as in other terminals. Daemons older than protocol 1.3 get the old
-//! behaviour: selection, and `ScrollPane` for the wheel.
+//! A right or two-finger click always opens the pane's context menu
+//! (`update/panes.rs`). When a pane's application has mouse reporting on, presses,
+//! drags, releases, hover, the middle button and the wheel go to it as `MouseInput` /
+//! `WheelInput`; the daemon encodes them (or, for the wheel, turns them into arrow keys
+//! or scrollback). Holding Shift selects text instead, as in other terminals. Daemons
+//! older than protocol 1.3 get the old behaviour: selection, and `ScrollPane` for the
+//! wheel.
 
 use urushi_client::v1::{self, notification, request::Body};
 use urushi_ui::{Point, Rect};
@@ -191,7 +194,8 @@ impl AppState {
         }
     }
 
-    /// Right and middle buttons: reported to applications that take the mouse.
+    /// A right (or two-finger) click opens the pane's menu, even over an application
+    /// that takes the mouse. The middle button is reported to applications that do.
     fn area_button(
         &mut self,
         p: Point,
@@ -202,9 +206,15 @@ impl AppState {
         if self.dialog.is_some() {
             return;
         }
-        if let Some((pane, _)) = self.pane_at(p)
-            && self.reports_mouse(&pane)
-        {
+        let Some((pane, _)) = self.pane_at(p) else {
+            return;
+        };
+        if button == v1::MouseButton::Right {
+            if pressed {
+                self.last_press = Some(p);
+                self.open_pane_menu(pane, fx);
+            }
+        } else if self.reports_mouse(&pane) {
             let action = if pressed {
                 v1::MouseAction::Press
             } else {

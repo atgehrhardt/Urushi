@@ -353,7 +353,8 @@ pub struct AppState {
     pub settings: Option<v1::Settings>,
     /// Tailnet status, once loaded.
     pub tailnet: Option<v1::TailnetStatus>,
-    /// Pane focused locally before the daemon confirms it.
+    /// Pane focused locally (tab id → pane id) before the daemon confirms it. Dropped
+    /// once the daemon agrees, or when the pane is gone.
     pub focused_override: HashMap<String, String>,
     /// Narrow window (phones): one column at a time.
     pub compact: bool,
@@ -500,15 +501,26 @@ impl AppState {
             .copied()
     }
 
-    /// The focused pane of the current tab.
+    /// The focused pane of the current tab: the pane focused here if the daemon hasn't
+    /// confirmed it yet and it still exists, otherwise the daemon's choice.
     pub fn focused_pane(&self) -> Option<String> {
         let tab = self.current_tab()?;
         Some(
             self.focused_override
                 .get(&tab.id)
+                .filter(|pane| self.tab_has_pane(&tab.id, pane))
                 .cloned()
                 .unwrap_or_else(|| tab.focused_pane_id.clone()),
         )
+    }
+
+    /// Whether `pane` is one of the panes of tab `tab`.
+    pub fn tab_has_pane(&self, tab: &str, pane: &str) -> bool {
+        pane.parse::<urushi_core::PaneId>().is_ok_and(|pane| {
+            self.workspace
+                .tab(tab)
+                .is_some_and(|t| t.layout().contains(pane))
+        })
     }
 
     /// Whether something covers the terminals (a dialog or the board panel), so the

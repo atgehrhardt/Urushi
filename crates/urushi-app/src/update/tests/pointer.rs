@@ -73,17 +73,17 @@ fn shift_selects_text_even_when_the_app_takes_the_mouse() {
 }
 
 #[test]
-fn hover_and_other_buttons_are_reported_once_per_cell() {
+fn hover_and_the_middle_button_are_reported_once_per_cell() {
     let mut s = reporting();
     let fx = s.update(Msg::AreaHover(Point::new(30.0, 40.0)));
     assert_eq!(mouse(&fx)[0].0, v1::MouseButton::None);
     assert!(s.update(Msg::AreaHover(Point::new(31.0, 41.0))).is_empty());
     let fx = s.update(Msg::AreaButton {
         at: Point::new(30.0, 40.0),
-        button: v1::MouseButton::Right,
+        button: v1::MouseButton::Middle,
         pressed: true,
     });
-    assert_eq!(mouse(&fx)[0].0, v1::MouseButton::Right);
+    assert_eq!(mouse(&fx)[0].0, v1::MouseButton::Middle);
 
     // Without mouse reporting, none of this is sent.
     let mut plain = attached();
@@ -97,7 +97,7 @@ fn hover_and_other_buttons_are_reported_once_per_cell() {
         plain
             .update(Msg::AreaButton {
                 at: Point::new(30.0, 40.0),
-                button: v1::MouseButton::Right,
+                button: v1::MouseButton::Middle,
                 pressed: true,
             })
             .is_empty()

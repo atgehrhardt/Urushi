@@ -174,31 +174,34 @@ fn tab_bar(state: &AppState, theme: &Theme) -> Node<Msg> {
                 .child(icon_button(theme, "‹", "Back to threads", Msg::ShowSidebar)),
         );
     }
-    bar.children(tabs)
-        .child(
-            Node::row()
-                .padding(Insets::symmetric(0.0, 6.0))
-                .child(icon_button(theme, "+", "New tab…", Msg::NewTab)),
-        )
-        .child(Node::spacer())
-        .child(
-            Node::row()
-                .padding(Insets::symmetric(0.0, 10.0))
-                .gap(4.0)
-                .child(icon_button(
-                    theme,
-                    "→",
-                    "Split right",
-                    Msg::Split(urushi_client::v1::Direction::Right),
-                ))
-                .child(icon_button(
-                    theme,
-                    "↓",
-                    "Split down",
-                    Msg::Split(urushi_client::v1::Direction::Down),
-                ))
-                .child(icon_button(theme, "×", "Close pane", Msg::ClosePane)),
-        )
+    let bar = bar.children(tabs).child(
+        Node::row()
+            .padding(Insets::symmetric(0.0, 6.0))
+            .child(icon_button(theme, "+", "New tab…", Msg::NewTab)),
+    );
+    // Splitting and closing panes is in each pane's context menu (a right or two-finger
+    // click). Touch screens have no such click, so they keep buttons for the focused pane.
+    if crate::platform::HAS_SECONDARY_CLICK {
+        return bar;
+    }
+    bar.child(Node::spacer()).child(
+        Node::row()
+            .padding(Insets::symmetric(0.0, 10.0))
+            .gap(4.0)
+            .child(icon_button(
+                theme,
+                "→",
+                "Split right",
+                Msg::Split(urushi_client::v1::Direction::Right),
+            ))
+            .child(icon_button(
+                theme,
+                "↓",
+                "Split down",
+                Msg::Split(urushi_client::v1::Direction::Down),
+            ))
+            .child(icon_button(theme, "×", "Close pane", Msg::ClosePane)),
+    )
 }
 
 /// The panes of the current tab, painted by one custom painter. The runner routes mouse
