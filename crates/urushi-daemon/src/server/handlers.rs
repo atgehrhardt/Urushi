@@ -123,6 +123,7 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
                     Some(task) => Some((task, optional_id(&r.subtask_id, "subtask_id")?)),
                     None => None,
                 },
+                start_task_agent: r.start_task_agent,
             };
             let thread = service
                 .create_thread(parse(&r.project_id, "project_id")?, request)

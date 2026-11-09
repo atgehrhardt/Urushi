@@ -3,11 +3,13 @@
 //! A tab running an agent is still an ordinary terminal. The daemon starts the user's
 //! shell and types the agent's command into it, so the shell is still there when the
 //! agent exits. This module knows each agent's program name and its "skip permission
-//! prompts" flag, and how it resumes a conversation (`resume.rs`). Finding the program on
-//! disk is the daemon's job.
+//! prompts" flag, how it resumes a conversation (`resume.rs`), and how it starts for a
+//! task (`mode.rs`). Finding the program on disk is the daemon's job.
 
+pub use mode::{AgentMode, TASK_PROMPT_ENV};
 pub use resume::{AgentSessionId, InvalidSessionId};
 
+mod mode;
 mod resume;
 
 use std::collections::BTreeSet;
@@ -86,6 +88,11 @@ pub struct AgentSettings {
     /// Agents started with their skip-permissions flag. Empty by default: every agent
     /// asks before running tools.
     pub skip_permissions: BTreeSet<Agent>,
+    /// The agent a thread started from a task runs. `None` until the user picks one
+    /// (the app's setup wizard asks); such threads then open on the launcher.
+    pub task_agent: Option<Agent>,
+    /// The mode [`Self::task_agent`] starts in. Only applies to task starts.
+    pub task_mode: AgentMode,
 }
 
 impl AgentSettings {
@@ -149,11 +156,28 @@ mod tests {
     }
 
     #[test]
+    fn older_settings_have_no_task_agent() {
+        let s: AgentSettings = serde_json::from_str(r#"{"skip_permissions":["claude"]}"#).unwrap();
+        assert_eq!(s.task_agent, None);
+        assert_eq!(s.task_mode, AgentMode::Normal);
+        let s = AgentSettings {
+            task_agent: Some(Agent::Claude),
+            task_mode: AgentMode::Plan,
+            ..AgentSettings::default()
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        assert_eq!(serde_json::from_str::<AgentSettings>(&json).unwrap(), s);
+    }
+
+    #[test]
     fn settings_serialize_as_names() {
         let mut s = AgentSettings::default();
         s.set_skip_permissions(Agent::Claude, true);
         let json = serde_json::to_string(&s).unwrap();
-        assert_eq!(json, r#"{"skip_permissions":["claude"]}"#);
+        assert_eq!(
+            json,
+            r#"{"skip_permissions":["claude"],"task_agent":null,"task_mode":"normal"}"#
+        );
         assert_eq!(serde_json::from_str::<AgentSettings>(&json).unwrap(), s);
     }
 }

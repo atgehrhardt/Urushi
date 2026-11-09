@@ -174,6 +174,10 @@ enum ThreadCmd {
         /// Start it for this board task or subtask (links them).
         #[arg(long)]
         task: Option<String>,
+        /// With --task: start the task agent (settings task-agent / task-mode) with the
+        /// task as its prompt.
+        #[arg(long, requires = "task")]
+        start_agent: bool,
     },
     /// Pin a thread (listed first in its group).
     Pin {
@@ -277,7 +281,8 @@ enum SettingsCmd {
     Get,
     /// Change one setting: delete-remote-branches, branch-prefix, default-shell,
     /// worktree-root, tailnet-port, allowed-logins (comma-separated), allow-tagged-nodes,
-    /// claude-skip-permissions, codex-skip-permissions, cursor-skip-permissions.
+    /// claude-skip-permissions, codex-skip-permissions, cursor-skip-permissions,
+    /// task-agent (claude, codex, cursor or none), task-mode (normal or plan).
     Set {
         /// Setting name.
         key: String,

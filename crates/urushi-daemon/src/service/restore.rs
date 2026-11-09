@@ -80,7 +80,7 @@ impl Service {
                 emulator.advance(SEPARATOR.as_bytes());
             }
             let cwd = record.cwd.clone();
-            match self.spawn_session_in(pane, &thread, shell.clone(), cwd, emulator) {
+            match self.spawn_session_in(pane, &thread, shell.clone(), cwd, emulator, Vec::new()) {
                 Ok(()) => {
                     if let Some(agent) = record.agent.clone() {
                         restarts.push((pane, shell, Restart::Agent(agent)));

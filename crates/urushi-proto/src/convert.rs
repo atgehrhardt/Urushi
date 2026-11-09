@@ -9,9 +9,9 @@ use std::str::FromStr;
 use thiserror::Error;
 use urushi_core::layout::{Child, Node};
 use urushi_core::{
-    Agent, AgentSettings, Axis, BranchName, BranchPrefix, Direction, Layout, PaneId, Project, Repo,
-    RepoSettingsOverrides, Settings, Slug, Status, Tab, TabId, TailnetSettings, Thread,
-    ThreadState, Timestamp,
+    Agent, AgentMode, AgentSettings, Axis, BranchName, BranchPrefix, Direction, Layout, PaneId,
+    Project, Repo, RepoSettingsOverrides, Settings, Slug, Status, Tab, TabId, TailnetSettings,
+    Thread, ThreadState, Timestamp,
 };
 
 use crate::v1;
@@ -343,6 +343,12 @@ pub fn settings_to_proto(s: &Settings) -> v1::Settings {
             claude_skip_permissions: s.agents.skips_permissions(Agent::Claude),
             codex_skip_permissions: s.agents.skips_permissions(Agent::Codex),
             cursor_skip_permissions: s.agents.skips_permissions(Agent::Cursor),
+            task_agent: s
+                .agents
+                .task_agent
+                .map_or(v1::Agent::Unspecified, agent_to_proto)
+                .into(),
+            task_mode: agent_mode_to_proto(s.agents.task_mode).into(),
         }),
     }
 }
@@ -371,6 +377,8 @@ fn agent_settings_from_proto(a: v1::AgentSettings) -> AgentSettings {
     settings.set_skip_permissions(Agent::Claude, a.claude_skip_permissions);
     settings.set_skip_permissions(Agent::Codex, a.codex_skip_permissions);
     settings.set_skip_permissions(Agent::Cursor, a.cursor_skip_permissions);
+    settings.task_agent = agent_from_proto(a.task_agent);
+    settings.task_mode = agent_mode_from_proto(a.task_mode);
     settings
 }
 
@@ -393,6 +401,23 @@ pub fn agent_from_proto(agent: i32) -> Option<Agent> {
         v1::Agent::Claude => Some(Agent::Claude),
         v1::Agent::Codex => Some(Agent::Codex),
         v1::Agent::Cursor => Some(Agent::Cursor),
+    }
+}
+
+/// Core agent mode → wire.
+pub fn agent_mode_to_proto(mode: AgentMode) -> v1::AgentMode {
+    match mode {
+        AgentMode::Normal => v1::AgentMode::Normal,
+        AgentMode::Plan => v1::AgentMode::Plan,
+    }
+}
+
+/// Wire agent mode → core. Unspecified, and any value from a newer peer that this build
+/// doesn't know, mean the normal mode: the agent then just asks as usual.
+pub fn agent_mode_from_proto(mode: i32) -> AgentMode {
+    match v1::AgentMode::try_from(mode) {
+        Ok(v1::AgentMode::Plan) => AgentMode::Plan,
+        _ => AgentMode::Normal,
     }
 }
 

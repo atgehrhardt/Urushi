@@ -31,7 +31,8 @@ pub fn scene(
 /// list open), `settings`, the thread `menu` and its `menu-status` page, a thread being
 /// dragged (`drag`), the `repos` tab, the task `board` (a task being dragged across it in
 /// `board-drag`, and a `task` with subtasks being edited), and a terminal with an
-/// agent's plan usage in the `status` bar.
+/// agent's plan usage in the `status` bar, and the first-run `setup` wizard (its mode
+/// step in `setup-mode`).
 pub const SCENARIOS: &[&str] = &[
     "launcher",
     "picker",
@@ -47,7 +48,36 @@ pub const SCENARIOS: &[&str] = &[
     "board-drag",
     "task",
     "status",
+    "setup",
+    "setup-mode",
 ];
+
+/// Settings with Claude in plan mode as the task agent.
+fn sample_settings() -> v1::Settings {
+    v1::Settings {
+        branch_prefix: "urushi/".into(),
+        agents: Some(v1::AgentSettings {
+            task_agent: v1::Agent::Claude.into(),
+            task_mode: v1::AgentMode::Plan.into(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+/// The setup wizard on its first step (`setup`) or its mode step (`setup-mode`).
+fn setup_wizard(name: &str) -> crate::state::Dialog {
+    use crate::task_agent::SetupStep;
+    crate::state::Dialog::Setup {
+        step: if name == "setup" {
+            SetupStep::Agent
+        } else {
+            SetupStep::Mode
+        },
+        agent: urushi_core::Agent::Claude,
+        mode: urushi_core::AgentMode::Plan,
+    }
+}
 
 /// A board with a few tasks, for the `board` and `task` scenarios.
 fn sample_board() -> v1::Board {
@@ -193,10 +223,7 @@ fn scenario_frame(
     // A daemon as new as the app (agents need protocol 1.1).
     state.daemon_minor = urushi_proto::PROTOCOL_MINOR;
     state.agents = vec![urushi_core::Agent::Claude, urushi_core::Agent::Codex];
-    state.settings = Some(v1::Settings {
-        branch_prefix: "urushi/".into(),
-        ..Default::default()
-    });
+    state.settings = Some(sample_settings());
     let branches = v1::Branches {
         branches: vec!["main".into(), "dev".into(), "release/1.2".into()],
         current: "main".into(),
@@ -218,6 +245,7 @@ fn scenario_frame(
             }
         }
         "settings" => drop(state.update(Msg::OpenSettings)),
+        "setup" | "setup-mode" => state.dialog = Some(setup_wizard(name)),
         "menu" | "menu-status" => {
             state.update(Msg::Pointer(Point::new(150.0, 230.0)));
             state.update(Msg::OpenMenu(MenuTarget::Thread("t2".into())));
@@ -309,6 +337,33 @@ mod tests {
             for width in [1280.0, 402.0] {
                 assert!(!dump(name, width).is_empty(), "{name} at {width}");
             }
+        }
+    }
+
+    #[test]
+    fn the_setup_wizard_offers_installed_agents_then_their_modes() {
+        let agents = dump("setup", 1280.0);
+        for text in [
+            "\"Set up Urushi\"",
+            "\"Claude\"",
+            "\"Codex\"",
+            "\"Later\"",
+            "\"Next\"",
+        ] {
+            assert!(agents.contains(text), "{text} missing: {agents}");
+        }
+        assert!(
+            !agents.contains("\"Cursor\""),
+            "only installed agents: {agents}"
+        );
+        let modes = dump("setup-mode", 1280.0);
+        for text in [
+            "\"How should Claude start?\"",
+            "\"Normal\"",
+            "\"Plan\"",
+            "\"Save\"",
+        ] {
+            assert!(modes.contains(text), "{text} missing: {modes}");
         }
     }
 

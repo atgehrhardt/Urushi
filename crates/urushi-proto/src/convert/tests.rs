@@ -179,6 +179,8 @@ fn settings_round_trip() {
         .set_skip_permissions(urushi_core::Agent::Claude, true);
     s.agents
         .set_skip_permissions(urushi_core::Agent::Cursor, true);
+    s.agents.task_agent = Some(urushi_core::Agent::Claude);
+    s.agents.task_mode = urushi_core::AgentMode::Plan;
     assert_eq!(settings_from_proto(&settings_to_proto(&s)).unwrap(), s);
     assert_eq!(
         settings_from_proto(&settings_to_proto(&Settings::default())).unwrap(),
@@ -193,6 +195,26 @@ fn agents_round_trip_and_unknown_values_mean_a_plain_shell() {
     }
     assert_eq!(agent_from_proto(v1::Agent::Unspecified.into()), None);
     assert_eq!(agent_from_proto(99), None, "a value from a newer peer");
+}
+
+#[test]
+fn agent_modes_round_trip_and_unknown_values_mean_normal() {
+    for mode in urushi_core::AgentMode::ALL {
+        assert_eq!(
+            agent_mode_from_proto(agent_mode_to_proto(mode).into()),
+            mode
+        );
+    }
+    let normal = urushi_core::AgentMode::Normal;
+    assert_eq!(
+        agent_mode_from_proto(v1::AgentMode::Unspecified.into()),
+        normal
+    );
+    assert_eq!(
+        agent_mode_from_proto(99),
+        normal,
+        "a value from a newer peer"
+    );
 }
 
 #[test]

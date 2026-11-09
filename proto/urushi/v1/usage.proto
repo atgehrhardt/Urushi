@@ -4,7 +4,7 @@ syntax = "proto3";
 
 package urushi.v1;
 
-import "urushi/v1/workspace.proto";
+import "urushi/v1/agents.proto";
 
 message GetAgentUsageRequest {
   string pane_id = 1;

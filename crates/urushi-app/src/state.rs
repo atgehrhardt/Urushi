@@ -205,6 +205,15 @@ pub enum Dialog {
         /// would make every dialog as big).
         subtasks: Box<SubtaskEditor>,
     },
+    /// The first-run setup wizard: which agent (and mode) threads started from tasks run.
+    Setup {
+        /// The step shown.
+        step: crate::task_agent::SetupStep,
+        /// The agent chosen so far.
+        agent: urushi_core::Agent,
+        /// The mode chosen so far.
+        mode: urushi_core::AgentMode,
+    },
     /// Confirm deleting a board and its tasks.
     DeleteBoard {
         /// Board id.
@@ -343,6 +352,8 @@ pub struct AppState {
     pub usage_pending: bool,
     /// Wall-clock time of the last tick (ms since the epoch), for "resets in …".
     pub now_ms: i64,
+    /// When the setup wizard may open.
+    pub setup: crate::task_agent::SetupGate,
 }
 
 impl AppState {
@@ -387,6 +398,7 @@ impl AppState {
             usage: None,
             usage_pending: false,
             now_ms: 0,
+            setup: crate::task_agent::SetupGate::default(),
         }
     }
 

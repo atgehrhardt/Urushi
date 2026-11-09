@@ -28,6 +28,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0011 – Read agent plan usage in the daemon, from each agent's own sign-in and logs](adr/0011-agent-usage-from-the-agents-own-sources.md)
 - [0012 – Keep subtasks as a task's checklist, and let the daemon link threads to tasks](adr/0012-subtasks-as-checklists-and-thread-links.md)
 - [0013 – Bring panes back after a daemon restart from per-pane restore points](adr/0013-restore-points-for-panes.md)
+- [0014 – Start a task's agent with the task as its prompt, passed through the pane's environment](adr/0014-task-prompt-via-pane-environment.md)
 
 ## Features
 - [_template](features/_template.md)
@@ -39,4 +40,5 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [Agent launcher](features/agent-launcher.md)
 - [Organizing threads (projects, pins, statuses)](features/thread-organization.md)
 - [Task boards](features/task-boards.md)
+- [Task agent and first-run setup](features/task-agent.md)
 - [Agent usage in the status bar](features/agent-usage.md)

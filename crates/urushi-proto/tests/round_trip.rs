@@ -85,6 +85,7 @@ fn all_request_kinds() {
             folder_id: "f".into(),
             task_id: "task".into(),
             subtask_id: "sub".into(),
+            start_task_agent: true,
         }),
         B::RenameThread(v1::RenameThreadRequest {
             thread_id: "t".into(),
@@ -153,6 +154,8 @@ fn all_request_kinds() {
                 set_allowed_logins: true,
                 claude_skip_permissions: Some(true),
                 codex_skip_permissions: Some(false),
+                task_agent: Some(v1::Agent::Claude.into()),
+                task_mode: Some(v1::AgentMode::Plan.into()),
                 ..Default::default()
             }),
         }),
@@ -232,6 +235,8 @@ fn all_response_kinds() {
         O::Settings(v1::Settings {
             agents: Some(v1::AgentSettings {
                 cursor_skip_permissions: true,
+                task_agent: v1::Agent::Codex.into(),
+                task_mode: v1::AgentMode::Normal.into(),
                 ..Default::default()
             }),
             ..Default::default()

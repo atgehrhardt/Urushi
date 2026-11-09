@@ -153,6 +153,18 @@ pub(crate) fn print_settings(s: &v1::Settings) -> Result<()> {
     writeln!(o, "claude-skip-permissions {}", a.claude_skip_permissions)?;
     writeln!(o, "codex-skip-permissions  {}", a.codex_skip_permissions)?;
     writeln!(o, "cursor-skip-permissions {}", a.cursor_skip_permissions)?;
+    let task_agent = match a.task_agent() {
+        v1::Agent::Unspecified => "(not chosen)",
+        v1::Agent::Claude => "claude",
+        v1::Agent::Codex => "codex",
+        v1::Agent::Cursor => "cursor",
+    };
+    writeln!(o, "task-agent              {task_agent}")?;
+    let task_mode = match a.task_mode() {
+        v1::AgentMode::Plan => "plan",
+        v1::AgentMode::Normal | v1::AgentMode::Unspecified => "normal",
+    };
+    writeln!(o, "task-mode               {task_mode}")?;
     Ok(())
 }
 

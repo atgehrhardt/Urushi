@@ -8,6 +8,7 @@ syntax = "proto3";
 
 package urushi.v1;
 
+import "urushi/v1/agents.proto";
 import "urushi/v1/boards.proto";
 import "urushi/v1/settings.proto";
 
@@ -157,6 +158,11 @@ message CreateThreadRequest {
   // that subtask of it (Subtask.thread_id). Empty: no link. Since 1.6.
   string task_id = 7;
   string subtask_id = 8;
+  // Open the first tab running the user's task agent (Settings.agents.task_agent) in
+  // its task mode, with the linked task or subtask as its first prompt. Requires
+  // task_id; fails before any worktree exists if no task agent is chosen or it isn't
+  // installed. Overrides skip_initial_tab. Since 1.7.
+  bool start_task_agent = 9;
 }
 
 // Changes a thread's organization. Unset fields are left unchanged. Since 1.2.
@@ -229,18 +235,6 @@ message CreateTabRequest {
   // Agent CLI to start in the tab's shell. Unspecified opens a plain shell.
   // Since protocol 1.1; older daemons ignore it.
   Agent agent = 3;
-}
-
-// Agent CLIs a tab can start. Each runs inside an ordinary shell.
-enum Agent {
-  // No agent: a plain shell.
-  AGENT_UNSPECIFIED = 0;
-  // Claude Code (`claude`).
-  AGENT_CLAUDE = 1;
-  // OpenAI Codex CLI (`codex`).
-  AGENT_CODEX = 2;
-  // Cursor CLI (`cursor-agent`).
-  AGENT_CURSOR = 3;
 }
 
 // Which agent CLIs are installed on the daemon's machine. Since protocol 1.1.

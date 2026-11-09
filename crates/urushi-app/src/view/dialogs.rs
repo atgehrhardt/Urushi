@@ -69,6 +69,9 @@ pub(super) fn view(
             (title, notes, subtasks),
         ),
         Dialog::DeleteBoard { name, tasks, .. } => super::tasks::delete_board(theme, name, *tasks),
+        Dialog::Setup { step, agent, mode } => {
+            super::setup::wizard(state, theme, *step, *agent, *mode)
+        }
     })
 }
 
@@ -402,6 +405,7 @@ fn settings_dialog(
             theme,
             "Off by default. When on, the agent runs commands and edits files without asking.",
         ))
+        .children(super::setup::settings_rows(state, theme))
         .child(label(theme, "Branch prefix"))
         .child(prefix)
         .child(label(theme, "Default shell"))

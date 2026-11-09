@@ -12,8 +12,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{BoardId, ColumnId, SubtaskId, TaskId, ThreadId, Timestamp};
 
+mod prompt;
 mod subtasks;
 
+pub use prompt::{MAX_PROMPT_BYTES, task_prompt};
 pub use subtasks::{MAX_SUBTASKS, Subtask};
 
 /// Longest board or column name, in characters.

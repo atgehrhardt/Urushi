@@ -2,7 +2,7 @@
 
 - **Status:** Shipped (manual boards, subtasks, threads started from tasks)
 - **Owners (crates):** `urushi-core` (`board`, `board/subtasks.rs`), `urushi-daemon` (`service/boards.rs`, `server/boards.rs`, the link in `service/threads.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards.rs`), `urushi-client` (`boards.rs`, `WorkspaceMirror::{boards, board, task, subtask}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/tasks.rs`, `view/board.rs`, `view/tasks.rs`), `urushi-cli` (`urushi board`, `urushi thread new --task`)
-- **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md)
+- **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0014](../adr/0014-task-prompt-via-pane-environment.md)
 
 ## What it does
 A **Tasks** button sits under the sidebar's Projects | Repos tabs. It shows the number of
@@ -30,7 +30,9 @@ it back.
   the title filled in, in the repo of the parent task's thread or else the thread on
   screen. The new thread is linked to the task or subtask: the button then reads **Go to
   thread**, and the card shows a "→ thread" chip that goes there. Deleting the thread
-  clears the link.
+  clears the link. With a task agent chosen (setup wizard or Settings), the thread starts
+  it with the task, its notes and its subtasks as the first prompt; otherwise it opens on
+  the launcher. See [task agent](task-agent.md).
 - **Drag** a card onto another card to put it above that card, or onto a column to put it
   at the bottom. While dragging, the card's place stays as a faint outline, an accent line
   shows where it would land (only where it would move), the column under the pointer is
@@ -133,8 +135,6 @@ restarts. Jira boards are planned as further tabs in the same panel.
 - In the notes, Up/Down move between lines separated by line breaks, not between the
   wrapped lines of a long paragraph (the editing model doesn't know the layout).
 - A card's title is one line, cut short with an ellipsis.
-- Starting a thread doesn't pass the task's notes to the agent; the thread opens on the
-  launcher like any other.
 - A dragged card doesn't scroll a column that is taller than the panel.
 - Jira integration: boards from Jira as extra tabs, optional per user. It will need a
   board `source` field and a sync service in the daemon.

@@ -43,6 +43,19 @@ impl State {
             .ok_or_else(|| ServiceError::NotFound(format!("subtask {subtask}")))
     }
 
+    /// The first prompt for an agent started for this task (or subtask of it).
+    pub(super) fn task_prompt(
+        &self,
+        (task, subtask): (TaskId, Option<SubtaskId>),
+    ) -> ServiceResult<String> {
+        let task = self
+            .boards
+            .iter()
+            .find_map(|b| b.task(task))
+            .ok_or_else(|| ServiceError::NotFound(format!("task {task}")))?;
+        Ok(urushi_core::task_prompt(task, subtask)?)
+    }
+
     /// Checks that a thread could be linked to this task (and subtask of it).
     pub(super) fn task_link_target(
         &self,

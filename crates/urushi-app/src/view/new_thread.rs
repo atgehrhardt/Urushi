@@ -83,6 +83,9 @@ pub(super) fn view(
         theme,
         "A new branch off “Start from”, in its own worktree, so agents never collide.",
     ));
+    if task.is_some() {
+        body = body.children(task_agent_hint(state, theme));
+    }
     let heading = match project.as_ref().and_then(|p| state.workspace.project(p)) {
         Some(p) => format!("New thread in {}", p.name),
         None => "New thread".to_owned(),
@@ -98,6 +101,27 @@ pub(super) fn view(
         ],
         Some(Msg::CloseDialog),
     ))
+}
+
+/// What a thread started from a task will run: the task agent with the task as its
+/// prompt, or (none chosen) the launcher.
+fn task_agent_hint(state: &AppState, theme: &Theme) -> Option<Node<Msg>> {
+    if !state.daemon_supports_task_agent() {
+        return None;
+    }
+    Some(match state.task_agent() {
+        Some((agent, mode)) => hint(
+            theme,
+            &format!(
+                "Starts {} with this task as its prompt.",
+                crate::task_agent::describe(agent, mode)
+            ),
+        ),
+        None => hint(
+            theme,
+            "No agent is set for tasks (Settings), so it opens on the launcher.",
+        ),
+    })
 }
 
 fn options_list(

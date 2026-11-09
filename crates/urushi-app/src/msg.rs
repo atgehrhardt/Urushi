@@ -223,6 +223,12 @@ pub enum Msg {
     DaemonStopped(Result<(), String>),
     /// Flip a settings switch.
     Toggle(SettingToggle),
+    /// A choice in the setup wizard.
+    Setup(crate::task_agent::SetupMsg),
+    /// Settings: the agent threads started from tasks run.
+    SetTaskAgent(urushi_core::Agent),
+    /// Settings: the mode the task agent starts in.
+    SetTaskMode(urushi_core::AgentMode),
     /// Open the system folder picker (desktop).
     BrowseFolder,
     /// The folder picker returned.

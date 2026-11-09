@@ -182,6 +182,7 @@ async fn thread(client: &Client, cmd: ThreadCmd) -> Result<()> {
             no_tab,
             project,
             task,
+            start_agent,
         } => {
             let folder_id = if project.is_empty() {
                 String::new()
@@ -209,6 +210,7 @@ async fn thread(client: &Client, cmd: ThreadCmd) -> Result<()> {
                     folder_id,
                     task_id,
                     subtask_id,
+                    start_task_agent: start_agent,
                 })
                 .await?;
             out(&format!(
@@ -307,6 +309,24 @@ fn patch(key: &str, value: &str) -> Result<v1::SettingsPatch> {
         "claude-skip-permissions" => p.claude_skip_permissions = Some(flag(value)?),
         "codex-skip-permissions" => p.codex_skip_permissions = Some(flag(value)?),
         "cursor-skip-permissions" => p.cursor_skip_permissions = Some(flag(value)?),
+        "task-agent" => {
+            let agent = match value {
+                "claude" => v1::Agent::Claude,
+                "codex" => v1::Agent::Codex,
+                "cursor" => v1::Agent::Cursor,
+                "none" | "" => v1::Agent::Unspecified,
+                _ => bail!("expected claude, codex, cursor or none, got {value:?}"),
+            };
+            p.task_agent = Some(agent.into());
+        }
+        "task-mode" => {
+            let mode = match value {
+                "normal" => v1::AgentMode::Normal,
+                "plan" => v1::AgentMode::Plan,
+                _ => bail!("expected normal or plan, got {value:?}"),
+            };
+            p.task_mode = Some(mode.into());
+        }
         other => bail!("unknown setting {other:?}"),
     }
     Ok(p)

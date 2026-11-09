@@ -20,6 +20,7 @@ mod restore;
 mod settings;
 mod state;
 mod tabs;
+mod task_agent;
 mod threads;
 
 use std::collections::HashMap;
@@ -273,12 +274,26 @@ impl Service {
         shell: Option<String>,
         size: TermSize,
     ) -> ServiceResult<()> {
+        self.spawn_session_with_env(pane, thread, shell, size, Vec::new())
+    }
+
+    /// Like [`Self::spawn_session`], with extra environment variables for the shell
+    /// (e.g. a task's prompt, ADR 0014).
+    fn spawn_session_with_env(
+        &self,
+        pane: PaneId,
+        thread: &Thread,
+        shell: Option<String>,
+        size: TermSize,
+        extra_env: Vec<(String, String)>,
+    ) -> ServiceResult<()> {
         let emulator = AlacrittyEmulator::new(size);
-        self.spawn_session_in(pane, thread, shell, None, emulator)
+        self.spawn_session_in(pane, thread, shell, None, emulator, extra_env)
     }
 
     /// Starts a terminal session for `pane` in `cwd` (when it's still a directory; else
-    /// `thread`'s worktree), with `emulator` (which may already show earlier output).
+    /// `thread`'s worktree), with `emulator` (which may already show earlier output) and
+    /// `extra_env` on top of the variables every pane gets.
     fn spawn_session_in(
         &self,
         pane: PaneId,
@@ -286,6 +301,7 @@ impl Service {
         shell: Option<String>,
         cwd: Option<PathBuf>,
         emulator: AlacrittyEmulator,
+        extra_env: Vec<(String, String)>,
     ) -> ServiceResult<()> {
         use urushi_mux::Emulator as _;
         let size = emulator.size();
@@ -295,18 +311,20 @@ impl Service {
                 .is_dir()
                 .then(|| thread.worktree_path.clone())
         });
+        let mut env = vec![
+            ("URUSHI_THREAD_ID".into(), thread.id.to_string()),
+            ("URUSHI_PANE_ID".into(), pane.to_string()),
+            (
+                "URUSHI_WORKTREE".into(),
+                thread.worktree_path.to_string_lossy().into_owned(),
+            ),
+        ];
+        env.extend(extra_env);
         let spec = SpawnSpec {
             program: shell,
             args: Vec::new(),
             cwd,
-            env: vec![
-                ("URUSHI_THREAD_ID".into(), thread.id.to_string()),
-                ("URUSHI_PANE_ID".into(), pane.to_string()),
-                (
-                    "URUSHI_WORKTREE".into(),
-                    thread.worktree_path.to_string_lossy().into_owned(),
-                ),
-            ],
+            env,
             size: Some(size),
         };
         let handle = SessionHandle::spawn(&*self.pty, &spec, Box::new(emulator))?;

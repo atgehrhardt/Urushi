@@ -139,6 +139,10 @@ impl AppState {
             Msg::ConfirmRestartDaemon => self.confirm_restart_daemon(&mut fx),
             Msg::DaemonStopped(result) => self.daemon_stopped(result, &mut fx),
             Msg::Toggle(toggle) => self.toggle(toggle, &mut fx),
+            // The task agent: `update/setup.rs`.
+            Msg::Setup(msg) => self.setup_msg(msg, &mut fx),
+            Msg::SetTaskAgent(agent) => self.set_task_agent(agent, &mut fx),
+            Msg::SetTaskMode(mode) => self.set_task_mode(mode, &mut fx),
             Msg::BrowseFolder => fx.push(Effect::PickFolder),
             Msg::FolderPicked(path) => {
                 if let (Some(path), Some(Dialog::AddProject { .. })) = (path, &self.dialog) {
@@ -308,6 +312,10 @@ impl AppState {
         {
             return;
         }
+        // Closing the setup wizard means "not now".
+        if matches!(self.dialog, Some(Dialog::Setup { .. })) {
+            self.setup.dismissed = true;
+        }
         self.dialog = None;
         self.focus = None;
     }
@@ -452,7 +460,10 @@ impl AppState {
                 // The new thread shows the launcher; make sure it lists what's installed.
                 self.request_agents(fx);
             }
-            (Followup::Agents, Outcome::Agents(agents)) => self.set_agents(&agents),
+            (Followup::Agents, Outcome::Agents(agents)) => {
+                self.set_agents(&agents);
+                self.maybe_open_setup();
+            }
             (Followup::Branches(repo), Outcome::Branches(branches)) => {
                 self.branches = Some((repo, branches));
             }
@@ -482,7 +493,10 @@ impl AppState {
                 self.focused_override
                     .insert(created.tab_id, created.pane_id);
             }
-            (Followup::Settings, Outcome::Settings(settings)) => self.settings = Some(settings),
+            (Followup::Settings, Outcome::Settings(settings)) => {
+                self.settings = Some(settings);
+                self.maybe_open_setup();
+            }
             (Followup::TailnetStatus, Outcome::TailnetStatus(status)) => {
                 self.tailnet = Some(status);
             }
@@ -519,6 +533,9 @@ impl AppState {
                 task,
                 ..
             }) => {
+                // From a task, with a task agent chosen: the daemon starts it with the
+                // task as its prompt. Otherwise the thread opens on the launcher.
+                let start_task_agent = task.is_some() && self.task_agent().is_some();
                 let body = Body::CreateThread(v1::CreateThreadRequest {
                     project_id: repo.clone(),
                     title: title.text().trim().to_owned(),
@@ -532,10 +549,12 @@ impl AppState {
                         .as_ref()
                         .and_then(|l| l.subtask.clone())
                         .unwrap_or_default(),
+                    start_task_agent,
                 });
                 fx.push(request(body, Followup::ThreadCreated));
             }
             Some(Dialog::Prompt { .. }) => self.submit_prompt(fx),
+            Some(Dialog::Setup { .. }) => self.setup_enter(fx),
             Some(Dialog::Task { .. }) => self.submit_task(fx),
             Some(Dialog::NewTab { highlighted }) => {
                 let choices = self.launch_choices();
@@ -751,6 +770,7 @@ mod intake;
 mod launcher;
 mod organize;
 mod pointer;
+mod setup;
 mod tasks;
 mod usage;
 

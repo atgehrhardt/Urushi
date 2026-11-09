@@ -21,6 +21,7 @@ mod platform;
 mod runner;
 pub mod snapshot;
 pub mod state;
+pub mod task_agent;
 pub mod terminal;
 pub mod ui_state;
 mod update;

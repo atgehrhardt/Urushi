@@ -9,6 +9,7 @@ use urushi_core::{
 };
 use urushi_mux::TermSize;
 
+use super::task_agent::TaskAgent;
 use super::{Service, ServiceError, ServiceResult, blocking, new_uuid, now};
 use crate::store::ThreadRecord;
 
@@ -34,6 +35,9 @@ pub struct ThreadRequest {
     /// The task (and maybe subtask) on a board this thread is for; it gets linked to
     /// the thread when the thread is recorded.
     pub task: Option<(TaskId, Option<SubtaskId>)>,
+    /// Open the first tab running the user's task agent, with `task` as its prompt
+    /// (ADR 0014). Needs `task`; wins over `initial_tab`.
+    pub start_task_agent: bool,
 }
 
 impl Service {
@@ -55,12 +59,10 @@ impl Service {
             initial_tab,
             project: project_id,
             task,
+            start_task_agent,
         } = request;
         let branch = parse_branch(branch)?;
-        let title = match title.trim() {
-            "" => DEFAULT_THREAD_TITLE.to_owned(),
-            t => t.to_owned(),
-        };
+        let title = thread_title(&title);
         let (project, settings, worktree_root) = self.read(|s| {
             if let Some(id) = project_id {
                 s.project(id)?;
@@ -78,16 +80,14 @@ impl Service {
                 .unwrap_or_else(|| self.home().join("worktrees"));
             Ok((project, settings, root))
         })?;
+        // Resolve the agent and the prompt before making a worktree, so a refusal
+        // leaves nothing behind.
+        let agent = self
+            .task_agent_for(start_task_agent, task, settings.default_shell.clone())
+            .await?;
 
         let id = ThreadId::from_uuid(new_uuid());
-        let slug = Slug::from_title(&title);
-        let worktree_path = worktree_root
-            .join(format!(
-                "{}-{}",
-                Slug::from_title(&project.name),
-                project.id.short()
-            ))
-            .join(format!("{slug}-{}", id.short()));
+        let worktree_path = worktree_dir(&worktree_root, &project, &title, id);
 
         let git = self.git.clone();
         let repo = project.repo_root.clone();
@@ -139,37 +139,50 @@ impl Service {
         .await?;
 
         let first_tab = FirstTab {
-            open: initial_tab,
+            open: initial_tab || agent.is_some(),
             shell: settings.default_shell,
             task,
+            agent,
         };
-        match self.finish_thread_creation(&mut thread, preexisting, first_tab) {
-            Ok(()) => Ok(thread),
+        let started = match self.finish_thread_creation(&mut thread, preexisting, first_tab) {
+            Ok(started) => started,
             Err(e) => {
                 self.rollback_worktree(&project.repo_root, &thread).await;
-                Err(e)
+                return Err(e);
             }
+        };
+        if let Some((pane, command_line)) = started {
+            self.start_task_agent(thread.id, pane, &command_line).await;
         }
+        Ok(thread)
     }
 
-    /// Records the thread, and opens its first tab if asked.
+    /// Records the thread, and opens its first tab if asked. Returns the pane and command
+    /// line of a task agent still to be typed in.
     fn finish_thread_creation(
         &self,
         thread: &mut Thread,
         preexisting: BTreeSet<BranchName>,
         first: FirstTab,
-    ) -> ServiceResult<()> {
+    ) -> ServiceResult<Option<(PaneId, String)>> {
         thread
             .mark_ready()
             .map_err(|e| ServiceError::Internal(e.to_string()))?;
         let mut first_tab = None;
+        let mut to_type = None;
         if first.open {
             let shell = first.shell;
             let tab_id = TabId::from_uuid(new_uuid());
             let pane = PaneId::from_uuid(new_uuid());
             thread.tabs.push(tab_id);
-            self.spawn_session(pane, thread, shell, TermSize::DEFAULT)?;
-            first_tab = Some(Tab::new(tab_id, thread.id, DEFAULT_TAB_TITLE, pane));
+            let env = first.agent.as_ref().map(TaskAgent::env).unwrap_or_default();
+            self.spawn_session_with_env(pane, thread, shell, TermSize::DEFAULT, env)?;
+            let title = first
+                .agent
+                .as_ref()
+                .map_or(DEFAULT_TAB_TITLE, |a| a.agent.display_name());
+            first_tab = Some(Tab::new(tab_id, thread.id, title, pane));
+            to_type = first.agent.map(|a| (pane, a.command_line));
         }
         let record = ThreadRecord {
             thread: thread.clone(),
@@ -196,7 +209,7 @@ impl Service {
         if result.is_err() {
             self.kill_sessions(pane);
         }
-        result
+        result.map(|()| to_type)
     }
 
     async fn rollback_worktree(&self, repo: &std::path::Path, thread: &Thread) {
@@ -234,6 +247,31 @@ struct FirstTab {
     shell: Option<String>,
     /// The board task to link the thread to once it's recorded.
     task: Option<(TaskId, Option<SubtaskId>)>,
+    /// The task agent the first tab starts, if any.
+    agent: Option<TaskAgent>,
+}
+
+/// The title to use: the user's, trimmed, or "New thread" when blank.
+fn thread_title(title: &str) -> String {
+    match title.trim() {
+        "" => DEFAULT_THREAD_TITLE.to_owned(),
+        t => t.to_owned(),
+    }
+}
+
+/// Where a thread's worktree goes: `<root>/<repo slug>-<short>/<title slug>-<short>`.
+fn worktree_dir(
+    root: &std::path::Path,
+    repo: &urushi_core::Repo,
+    title: &str,
+    id: ThreadId,
+) -> std::path::PathBuf {
+    root.join(format!(
+        "{}-{}",
+        Slug::from_title(&repo.name),
+        repo.id.short()
+    ))
+    .join(format!("{}-{}", Slug::from_title(title), id.short()))
 }
 
 /// Validates a branch name the user typed. Blank means "generate one".

@@ -1,0 +1,27 @@
+// The agent CLIs Urushi can start, and how they start.
+syntax = "proto3";
+
+package urushi.v1;
+
+// Agent CLIs a tab can start. Each runs inside an ordinary shell.
+enum Agent {
+  // No agent: a plain shell.
+  AGENT_UNSPECIFIED = 0;
+  // Claude Code (`claude`).
+  AGENT_CLAUDE = 1;
+  // OpenAI Codex CLI (`codex`).
+  AGENT_CODEX = 2;
+  // Cursor CLI (`cursor-agent`).
+  AGENT_CURSOR = 3;
+}
+
+// How an agent started for a task begins. Since protocol 1.7.
+enum AgentMode {
+  // Not set: the same as AGENT_MODE_NORMAL.
+  AGENT_MODE_UNSPECIFIED = 0;
+  // The agent's normal interactive mode.
+  AGENT_MODE_NORMAL = 1;
+  // Read-only planning first (Claude --permission-mode plan, Cursor --plan). Agents
+  // without one (Codex) start normally.
+  AGENT_MODE_PLAN = 2;
+}

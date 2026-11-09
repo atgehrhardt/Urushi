@@ -3,6 +3,8 @@ syntax = "proto3";
 
 package urushi.v1;
 
+import "urushi/v1/agents.proto";
+
 message GetSettingsRequest {}
 
 message Settings {
@@ -24,6 +26,11 @@ message AgentSettings {
   bool codex_skip_permissions = 2;
   // Start Cursor with --force.
   bool cursor_skip_permissions = 3;
+  // The agent a thread started from a task runs (CreateThreadRequest.start_task_agent).
+  // Unspecified: none chosen yet. Since 1.7.
+  Agent task_agent = 4;
+  // The mode task_agent starts in. Since 1.7.
+  AgentMode task_mode = 5;
 }
 
 message TailnetSettings {
@@ -49,6 +56,9 @@ message SettingsPatch {
   optional bool claude_skip_permissions = 10;
   optional bool codex_skip_permissions = 11;
   optional bool cursor_skip_permissions = 12;
+  // AGENT_UNSPECIFIED clears the choice. Since 1.7.
+  optional Agent task_agent = 13;
+  optional AgentMode task_mode = 14;
 }
 
 message UpdateSettingsRequest {

@@ -77,12 +77,44 @@ fn apply_patch(settings: &mut Settings, patch: &v1::SettingsPatch) -> ServiceRes
             settings.agents.set_skip_permissions(agent, skip);
         }
     }
+    if let Some(agent) = patch.task_agent {
+        settings.agents.task_agent = convert::agent_from_proto(agent);
+    }
+    if let Some(mode) = patch.task_mode {
+        settings.agents.task_mode = convert::agent_mode_from_proto(mode);
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_task_agent_is_chosen_and_cleared() {
+        let mut s = Settings::default();
+        let choose = v1::SettingsPatch {
+            task_agent: Some(v1::Agent::Claude.into()),
+            task_mode: Some(v1::AgentMode::Plan.into()),
+            ..Default::default()
+        };
+        apply_patch(&mut s, &choose).unwrap();
+        assert_eq!(s.agents.task_agent, Some(Agent::Claude));
+        assert_eq!(s.agents.task_mode, urushi_core::AgentMode::Plan);
+        apply_patch(&mut s, &v1::SettingsPatch::default()).unwrap();
+        assert_eq!(
+            s.agents.task_agent,
+            Some(Agent::Claude),
+            "unset fields stay"
+        );
+        let clear = v1::SettingsPatch {
+            task_agent: Some(v1::Agent::Unspecified.into()),
+            ..Default::default()
+        };
+        apply_patch(&mut s, &clear).unwrap();
+        assert_eq!(s.agents.task_agent, None);
+        assert_eq!(s.agents.task_mode, urushi_core::AgentMode::Plan);
+    }
 
     #[test]
     fn patch_changes_only_set_fields() {

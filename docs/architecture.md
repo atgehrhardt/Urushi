@@ -86,7 +86,7 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
   1. Snapshot the existing branches.
   2. `git worktree add -b <branch> <data>/worktrees/<repo>/<thread> <base>`
   3. Persist the thread.
-  4. Spawn the first tab, unless the client asked for none (the GUI then shows the agent launcher).
+  4. Spawn the first tab, unless the client asked for none (the GUI then shows the agent launcher). A thread started from a task with `start_task_agent` runs the user's task agent there, with the task as its prompt in `URUSHI_TASK_PROMPT` (ADR 0014); that agent and prompt are resolved before step 2.
 
   If any step fails, everything is rolled back.
 - **Ownership:** a thread owns its primary branch, plus branches that did not exist at creation and were checked out in its worktree (read from the worktree's own HEAD reflog). It never owns the base branch, the default branch, branches that existed before it, or branches checked out in other worktrees.

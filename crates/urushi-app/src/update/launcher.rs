@@ -34,6 +34,7 @@ impl AppState {
             .iter()
             .filter_map(|a| convert::agent_from_proto(a.agent))
             .collect();
+        self.setup.agents_loaded = true;
     }
 
     /// Opens the picker for a new tab in the current thread.

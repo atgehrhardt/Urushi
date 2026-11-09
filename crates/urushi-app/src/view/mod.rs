@@ -8,6 +8,7 @@ mod main_area;
 mod menu;
 mod new_thread;
 mod projects;
+mod setup;
 mod sidebar;
 mod status_bar;
 mod tasks;

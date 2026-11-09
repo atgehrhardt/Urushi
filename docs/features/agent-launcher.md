@@ -52,3 +52,5 @@ for the skip-permissions flag.
 - A profile that consumes typeahead at startup can swallow the typed command (ADR 0009).
 - After a daemon restart an agent pane resumes its conversation (see [recoverable sessions](recoverable-sessions.md), ADR 0013); Codex and Cursor resume the latest one in the pane's directory.
 - No per-repo agent settings, and no extra arguments per agent yet.
+- Agents picked here always start in normal mode. Threads started from a task run the
+  task agent in its own mode instead ([task agent](task-agent.md), ADR 0014).
