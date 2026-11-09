@@ -1,0 +1,197 @@
+//! Checks on the snapshot scenarios: what each screen shows, at desktop and phone sizes.
+
+use super::*;
+
+fn dump(name: &str, width: f32) -> String {
+    let theme = Theme::dark();
+    let mut text = TextSystem::bundled_only();
+    scenario(name, &theme, &mut text, width, 820.0)
+        .unwrap()
+        .dump()
+}
+
+#[test]
+fn every_scenario_renders_at_desktop_and_phone_sizes() {
+    for name in SCENARIOS {
+        for width in [1280.0, 402.0] {
+            assert!(!dump(name, width).is_empty(), "{name} at {width}");
+        }
+    }
+}
+
+#[test]
+fn the_setup_wizard_offers_installed_agents_then_their_modes() {
+    let agents = dump("setup", 1280.0);
+    for text in [
+        "\"Set up Urushi\"",
+        "\"Claude\"",
+        "\"Codex\"",
+        "\"Later\"",
+        "\"Next\"",
+    ] {
+        assert!(agents.contains(text), "{text} missing: {agents}");
+    }
+    assert!(
+        !agents.contains("\"Cursor\""),
+        "only installed agents: {agents}"
+    );
+    let modes = dump("setup-mode", 1280.0);
+    for text in [
+        "\"How should Claude start?\"",
+        "\"Normal\"",
+        "\"Plan\"",
+        "\"Save\"",
+    ] {
+        assert!(modes.contains(text), "{text} missing: {modes}");
+    }
+}
+
+#[test]
+fn task_cards_are_all_the_same_size() {
+    let theme = Theme::dark();
+    let mut text = TextSystem::bundled_only();
+    let frame = scenario_frame("board", &theme, &mut text, 1280.0, 820.0).unwrap();
+    // The sample has cards with no notes, one line, two lines, and subtasks.
+    let cards: Vec<_> = frame
+        .access
+        .iter()
+        .filter(|a| a.label.starts_with("Task "))
+        .map(|a| a.rect)
+        .collect();
+    assert_eq!(cards.len(), 4, "{cards:?}");
+    for card in &cards {
+        assert_eq!(
+            (card.width, card.height),
+            (cards[0].width, cards[0].height),
+            "{cards:?}"
+        );
+    }
+    let board = frame.scene.dump();
+    assert!(
+        board.contains("\"Waiting on legal\""),
+        "notes on the card: {board}"
+    );
+    assert!(
+        board.contains("\"then ship\""),
+        "a second line of notes: {board}"
+    );
+}
+
+#[test]
+fn a_cards_context_menu_offers_open_move_thread_and_delete() {
+    let menu = dump("task-menu", 1280.0);
+    for text in [
+        "\"Open\"",
+        "\"Move to\"",
+        "\"In progress  ›\"",
+        "\"Go to thread\"",
+        "\"Delete task\"",
+    ] {
+        assert!(menu.contains(text), "{text} missing: {menu}");
+    }
+}
+
+#[test]
+fn colors_tags_and_column_actions_show() {
+    let board = dump("board", 1280.0);
+    for text in [
+        "\"backend\"",
+        "\"copy\"",
+        "\"All tags  ▾\"",
+        "\"+ Column\"",
+        "\"2 files\"",
+    ] {
+        assert!(board.contains(text), "{text} missing: {board}");
+    }
+    let task = dump("task", 1280.0);
+    for text in [
+        "\"Color\"",
+        "\"Tags\"",
+        "\"legal\"",
+        "\"+ backend\"",
+        "\"Attachments\"",
+        "\"tiers-mockup.png\"",
+        "\"PDF\"",
+        "\"47.1 KB\"",
+        "\"Add files…\"",
+    ] {
+        assert!(task.contains(text), "{text} missing: {task}");
+    }
+    let menu = dump("column-menu", 1280.0);
+    for text in [
+        "\"Rename…\"",
+        "\"Teal  ›\"",
+        "\"Move left\"",
+        "\"Remove column…\"",
+    ] {
+        assert!(menu.contains(text), "{text} missing: {menu}");
+    }
+}
+
+#[test]
+fn a_subtask_opens_with_where_it_is_and_its_own_subtasks() {
+    let nested = dump("task-nested", 1280.0);
+    for text in [
+        "\"Edit subtask\"",
+        "\"Pricing page copy\"",
+        "\"Not done\"",
+        "\"Make standalone\"",
+        "\"EU terms\"",
+        "\"Subtasks  1/2\"",
+        "\"Delete subtask\"",
+    ] {
+        assert!(nested.contains(text), "{text} missing: {nested}");
+    }
+    let nest = dump("nest", 1280.0);
+    for text in [
+        "\"Pricing page copy › Legal review › EU terms\"",
+        "\"Stripe sandbox keys\"",
+    ] {
+        assert!(nest.contains(text), "{text} missing: {nest}");
+    }
+    // Once, on its card behind the dialog: it isn't offered as its own parent.
+    assert_eq!(nest.matches("\"Invoice PDF export\"").count(), 1, "{nest}");
+}
+
+#[test]
+fn long_subtask_titles_are_cut_short_inside_the_editor() {
+    let task = dump("task", 1280.0);
+    assert!(
+        !task.contains(LONG_SUBTASK),
+        "the whole title overflows the editor: {task}"
+    );
+    assert!(
+        task.contains("\"Publish the pricing page"),
+        "the start of the title shows: {task}"
+    );
+}
+
+#[test]
+fn the_board_status_bar_and_task_editor_show_their_content() {
+    let board = dump("board", 1280.0);
+    for text in [
+        "\"Billing launch\"",
+        "\"In progress\"",
+        "\"Retry failed webhooks\"",
+    ] {
+        assert!(board.contains(text), "{text} missing: {board}");
+    }
+    let status = dump("status", 1280.0);
+    assert!(status.contains("\"Claude · Max 20x\""), "{status}");
+    assert!(status.contains("\"41%\""), "{status}");
+    let task = dump("task", 1280.0);
+    for text in [
+        "\"Edit task\"",
+        "\"Subtasks  1/3\"",
+        "\"Legal review\"",
+        "\"Go to thread\"",
+        "\"Start thread\"",
+    ] {
+        assert!(task.contains(text), "{text} missing: {task}");
+    }
+    assert!(
+        board.contains("\"1/3\""),
+        "subtask progress on the card: {board}"
+    );
+    assert!(board.contains("image "), "the logo is drawn: {board}");
+}
