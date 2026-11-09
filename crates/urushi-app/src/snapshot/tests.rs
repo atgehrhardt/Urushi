@@ -223,3 +223,13 @@ fn threads_show_when_their_agent_finished_or_waits() {
         assert!(sidebar.contains(text), "{text} missing: {sidebar}");
     }
 }
+
+#[test]
+fn cards_show_when_an_agent_on_their_threads_finished_or_waits() {
+    // "Invoice PDF export" is linked to a waiting thread; a nested subtask of "Pricing
+    // page copy" to a finished one.
+    let board = dump("board", 1280.0);
+    for text in ["\"Needs input\"", "\"Finished\""] {
+        assert!(board.contains(text), "{text} missing: {board}");
+    }
+}

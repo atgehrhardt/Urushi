@@ -8,7 +8,8 @@
 When an agent in a pane **finishes its response**, its thread gets a green dot and
 "finished" in the sidebar. When it **waits for you** (a permission prompt, a question, or
 any program ringing the bell), it gets an amber dot and "needs input". The same dot shows
-on the tab and on the thread chip of a linked task card. While Urushi is in the
+on the tab, and task cards linked to the thread (directly or through a subtask at any
+depth) get a **Finished** or **Needs input** badge and a border in that color. While Urushi is in the
 background, each new one also posts a system notification, e.g. "Invoice API — Claude
 finished". The dot goes away once you look at the pane (it's on screen and the window
 has focus) or type into it.
@@ -41,6 +42,8 @@ has focus) or type into it.
    - Raises that already existed when the app connected aren't announced.
    - Threads and tabs show their most urgent pane (`thread_attention`, `tab_attention`;
      waiting outranks done).
+   - Task cards show the most urgent of the threads linked to the task and its nested
+     subtasks (`task_attention`, `subtask_attention`; `view/board/card.rs`).
    - Older daemons (< 1.9) are never asked.
 5. **CLI.** `urushi ls` marks panes `[finished]` or `[needs input]`.
 
@@ -68,8 +71,10 @@ has focus) or type into it.
   - Every pane gets `URUSHI_TTY` and the settings.
 - `urushi-app`:
   - `update/tests/attention.rs`: clearing what's visible, announcing in the background
-    only and once, not announcing old raises, older daemons.
-  - `snapshot/tests.rs`: the sidebar's "finished" and "needs input".
+    only and once, not announcing old raises, older daemons, and cards counting nested
+    subtasks' threads.
+  - `snapshot/tests.rs`: the sidebar's "finished" and "needs input", and the board's
+    card badges.
 - Manually: real Claude Code 2.1 started through `urushi tab new --agent claude` in a
   throwaway home. Its `Stop` hook marked the pane `[finished]`, and typing cleared it.
   notify-rust's call returned `Ok` from an unbundled process on macOS 26 (not seen on

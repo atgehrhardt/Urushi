@@ -83,6 +83,31 @@ impl AppState {
             .max_by_key(|k| urgency(*k))
     }
 
+    /// The most urgent attention among the threads linked to a task and, at any depth,
+    /// to its subtasks: a card shows when any of its agents finished or waits.
+    pub fn task_attention(&self, task: &v1::Task) -> Option<v1::AttentionKind> {
+        self.linked_attention(&task.thread_id, &task.subtasks)
+    }
+
+    /// Like [`Self::task_attention`], for a subtask and its own subtasks.
+    pub fn subtask_attention(&self, subtask: &v1::Subtask) -> Option<v1::AttentionKind> {
+        self.linked_attention(&subtask.thread_id, &subtask.subtasks)
+    }
+
+    fn linked_attention(
+        &self,
+        thread: &str,
+        subtasks: &[v1::Subtask],
+    ) -> Option<v1::AttentionKind> {
+        let mut threads = vec![thread];
+        linked_threads(subtasks, &mut threads);
+        threads
+            .into_iter()
+            .filter(|t| !t.is_empty())
+            .filter_map(|t| self.thread_attention(t))
+            .max_by_key(|k| urgency(*k))
+    }
+
     /// Panes the user can see right now: the current tab's, while the window has focus
     /// and nothing covers the terminals.
     pub fn visible_panes(&self) -> Vec<String> {
@@ -96,5 +121,13 @@ impl AppState {
             .into_iter()
             .map(|(pane, _)| pane)
             .collect()
+    }
+}
+
+/// The threads linked to `subtasks` and theirs, at any depth.
+fn linked_threads<'a>(subtasks: &'a [v1::Subtask], out: &mut Vec<&'a str>) {
+    for s in subtasks {
+        out.push(&s.thread_id);
+        linked_threads(&s.subtasks, out);
     }
 }

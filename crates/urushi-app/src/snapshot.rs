@@ -157,13 +157,16 @@ fn sample_board() -> v1::Board {
     let mut invoice = task("k1", "Invoice PDF export", "Use the new template");
     invoice.color = v1::LabelColor::Blue.into();
     invoice.tags = vec!["backend".into()];
+    // Its agent waits for permission (see `sample_tabs`).
+    invoice.thread_id = "t4".into();
     pricing.subtasks = vec![
         sub("s1", "Draft tiers table", true, ""),
         v1::Subtask {
             notes: "Send the tiers table to legal.".into(),
             tags: vec!["legal".into()],
             subtasks: vec![
-                sub("s4", "EU terms", false, ""),
+                // A nested subtask whose agent finished: its card shows it.
+                sub("s4", "EU terms", false, "t3"),
                 sub("s5", "US terms", true, ""),
             ],
             ..sub("s2", "Legal review", false, "t6")

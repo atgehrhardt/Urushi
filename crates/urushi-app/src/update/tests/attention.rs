@@ -151,3 +151,24 @@ fn older_daemons_are_never_asked_to_clear() {
     let mut s = showing(&[], 8);
     assert!(cleared(&changed(&mut s, &[(100, DONE, 5)])).is_empty());
 }
+
+#[test]
+fn cards_show_the_most_urgent_agent_on_their_threads_and_nested_subtasks() {
+    let s = showing(&[(101, DONE, 5), (100, WAITING, 6)], 9);
+    let first = ThreadId::from_u128(10).to_string();
+    let other = ThreadId::from_u128(11).to_string();
+    let subtask = |thread: &str, subtasks| v1::Subtask {
+        thread_id: thread.into(),
+        subtasks,
+        ..Default::default()
+    };
+    // A card without threads, and one whose only thread is two subtasks down.
+    let mut task = v1::Task::default();
+    assert_eq!(s.task_attention(&task), None);
+    task.subtasks = vec![subtask("", vec![subtask(&other, Vec::new())])];
+    assert_eq!(s.task_attention(&task), Some(DONE));
+    assert_eq!(s.subtask_attention(&task.subtasks[0]), Some(DONE));
+    // Its own thread waits: waiting outranks done.
+    task.thread_id = first;
+    assert_eq!(s.task_attention(&task), Some(WAITING));
+}

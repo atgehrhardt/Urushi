@@ -1,12 +1,14 @@
 //! Task cards: all the same size, with the title, two lines of notes and a footer
-//! (tags, subtask progress, the thread chip); a colored task has a stripe and a tint. The copy that follows the pointer while dragging
-//! is the same card.
+//! (tags, subtask progress, the thread chip); a colored task has a stripe and a tint.
+//! When an agent in a thread linked to the task (or one of its subtasks) finished or
+//! waits for the user, the card shows a badge by its title and a border in that color
+//! (ADR 0017). The copy that follows the pointer while dragging is the same card.
 
 use urushi_client::v1;
 use urushi_ui::widgets;
 use urushi_ui::{Color, Font, Insets, Length, Node, Point, Role, TextSystem, Theme, key};
 
-use super::super::labels;
+use super::super::{attention, labels};
 use super::{CARD_PADDING, CARD_ROW_GAP, FOOTER_HEIGHT, GHOST_WIDTH, NOTES_LINES, shorten};
 use crate::msg::Msg;
 use crate::organize::MenuTarget;
@@ -39,25 +41,31 @@ pub(super) fn card(state: &AppState, theme: &Theme, task: &v1::Task) -> Node<Msg
         .dragging
         .as_ref()
         .is_some_and(|(id, _)| *id == task.id);
+    let needs = state.task_attention(task);
+    let (border_width, border) = match needs {
+        _ if dragged => (1.0, theme.accent.with_alpha(0.5)),
+        Some(kind) => (1.5, attention::color(theme, kind)),
+        None => (1.0, theme.border),
+    };
     let mut node = card_body(state, theme, task, dragged, true)
         .background(if dragged {
             Color::TRANSPARENT
         } else {
             card_background(theme, task)
         })
-        .border(
-            1.0,
-            if dragged {
-                theme.accent.with_alpha(0.5)
-            } else {
-                theme.border
-            },
-        )
+        .border(border_width, border)
         .key(key(&["task", &task.id]))
         .on_click(Msg::PressTask(task.id.clone()))
         .on_drag(Msg::DragTask(task.id.clone()))
         .on_secondary_click(Msg::OpenMenu(MenuTarget::Task(task.id.clone())))
-        .role(Role::Button, format!("Task {}", task.title));
+        .role(
+            Role::Button,
+            format!(
+                "Task {}{}",
+                task.title,
+                needs.map_or(String::new(), |k| format!(", {}", attention::label(k)))
+            ),
+        );
     if state.board.dragging.is_none() {
         node = node.hover_background(theme.hover);
     }
@@ -89,12 +97,7 @@ fn card_body(
         .height(Length::Fixed(height))
         .padding(Insets::symmetric(CARD_PADDING, 10.0))
         .gap(CARD_ROW_GAP)
-        .child(Node::text(
-            &task.title,
-            Font::UiMedium,
-            theme.font_size,
-            fade(theme.text),
-        ))
+        .child(title_row(state, theme, task, fade(theme.text)))
         .child(notes_row(state, theme, task, (&notes.join("\n"), fade)))
         .child(card_footer(state, theme, task, dragged, interactive));
     let mut row = Node::row()
@@ -112,6 +115,23 @@ fn card_body(
         );
     }
     row.child(content)
+}
+
+/// The title, cut short to make room for the attention badge when there is one.
+fn title_row(state: &AppState, theme: &Theme, task: &v1::Task, color: Color) -> Node<Msg> {
+    Node::row()
+        .width(Length::Fill(1.0))
+        .gap(6.0)
+        .align(urushi_ui::Align::Center)
+        .child(
+            Node::text(&task.title, Font::UiMedium, theme.font_size, color)
+                .width(Length::Fill(1.0)),
+        )
+        .children(
+            state
+                .task_attention(task)
+                .map(|kind| attention::badge(theme, kind)),
+        )
 }
 
 /// The notes, wrapped to fit, with the first attached image's thumbnail beside them.
@@ -237,7 +257,7 @@ fn card_footer(
             .children(
                 state
                     .thread_attention(&thread.id)
-                    .map(|k| super::super::attention::indicator(theme, k, 6.0)),
+                    .map(|k| attention::indicator(theme, k, 6.0)),
             )
             .child(Node::text(
                 format!("→ {}", shorten(&thread.title, CHIP_CHARS)),

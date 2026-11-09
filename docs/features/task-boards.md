@@ -60,6 +60,11 @@ it back.
   clears the link. With a task agent chosen (setup wizard or Settings), the thread starts
   it with the task, its notes and its subtasks as the first prompt; otherwise it opens on
   the launcher. See [task agent](task-agent.md).
+- **Agent attention on cards:** when an agent in a thread linked to the task, or to any
+  of its subtasks at any depth, finishes or waits for the user, the card gets a
+  **Finished** (green) or **Needs input** (amber) badge by its title and a border in that
+  color. Waiting outranks finished (`AppState::task_attention`). The thread chip and the
+  editor's subtask rows show the same dot. See [agent attention](agent-attention.md).
 - **Attachments:** the editor's **Attachments** list shows each file (an image's
   thumbnail, or the file's type), its name and size, and × to delete it; clicking one
   opens it with the system's app. **Add files…** opens the file picker, and files
