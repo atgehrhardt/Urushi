@@ -27,7 +27,13 @@ impl AppState {
             }
             Msg::BoardReveal(reveal) => self.board.reveal = reveal.clamp(0.0, 1.0),
             Msg::BoardBackground => self.board.pressed = None,
-            Msg::SelectBoard(id) => self.board.selected = Some(id),
+            Msg::SelectBoard(id) => {
+                let shown = self.board.board(&self.workspace).map(|b| b.id.as_str());
+                if shown != Some(id.as_str()) {
+                    self.board.tag_filter = None;
+                }
+                self.board.selected = Some(id);
+            }
             Msg::NewTask { board, column } => self.new_task(board, column),
             Msg::PressTask(task) => self.board.pressed = Some(task),
             Msg::PressEnded => {
@@ -115,6 +121,22 @@ impl AppState {
                 Body::RenameBoard(v1::RenameBoardRequest {
                     board_id: board_id.clone(),
                     name: text,
+                }),
+                Followup::CloseDialog,
+            )),
+            Prompt::NewColumn(board_id) => Some((
+                Body::CreateColumn(v1::CreateColumnRequest {
+                    board_id: board_id.clone(),
+                    name: text,
+                    index: u32::MAX,
+                }),
+                Followup::CloseDialog,
+            )),
+            Prompt::RenameColumn(column_id) => Some((
+                Body::UpdateColumn(v1::UpdateColumnRequest {
+                    column_id: column_id.clone(),
+                    name: Some(text),
+                    color: None,
                 }),
                 Followup::CloseDialog,
             )),

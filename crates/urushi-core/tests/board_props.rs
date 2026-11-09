@@ -103,3 +103,63 @@ proptest! {
 fn board_column(i: usize) -> ColumnId {
     ColumnId::from_u128(10 + i as u128)
 }
+
+#[derive(Clone, Debug)]
+enum ColumnOp {
+    AddTask { column: usize },
+    AddColumn { index: usize },
+    MoveColumn { column: usize, index: usize },
+    RemoveColumn { column: usize },
+}
+
+fn column_op() -> impl Strategy<Value = ColumnOp> {
+    prop_oneof![
+        (0..6usize).prop_map(|column| ColumnOp::AddTask { column }),
+        (0..6usize).prop_map(|index| ColumnOp::AddColumn { index }),
+        (0..6usize, 0..6usize).prop_map(|(column, index)| ColumnOp::MoveColumn { column, index }),
+        (0..6usize).prop_map(|column| ColumnOp::RemoveColumn { column }),
+    ]
+}
+
+proptest! {
+    #[test]
+    fn column_changes_never_lose_tasks_or_the_last_column(
+        ops in prop::collection::vec(column_op(), 0..60)
+    ) {
+        let mut board = Board::new(
+            BoardId::from_u128(1),
+            "b",
+            Timestamp::from_unix_millis(0),
+            [10, 11, 12].map(ColumnId::from_u128),
+        )
+        .unwrap();
+        let mut expected: BTreeSet<TaskId> = BTreeSet::new();
+        let mut next = 100u128;
+        for op in ops {
+            let at = |i: usize| board.columns.get(i).map_or(ColumnId::from_u128(9999), |c| c.id);
+            let before = board.clone();
+            let ok = match op {
+                ColumnOp::AddTask { column } => {
+                    let task = Task::new(TaskId::from_u128(next), "t", "", Timestamp::from_unix_millis(0)).unwrap();
+                    let ok = board.add_task(at(column), task).is_ok();
+                    if ok {
+                        expected.insert(TaskId::from_u128(next));
+                    }
+                    ok
+                }
+                ColumnOp::AddColumn { index } => board.add_column(ColumnId::from_u128(next), "c", index).is_ok(),
+                ColumnOp::MoveColumn { column, index } => board.move_column(at(column), index).is_ok(),
+                ColumnOp::RemoveColumn { column } => board.remove_column(at(column)).is_ok(),
+            };
+            next += 1;
+            if !ok {
+                prop_assert_eq!(&board, &before);
+            }
+            prop_assert!(!board.columns.is_empty());
+            let now = ids(&board);
+            let unique: BTreeSet<TaskId> = now.iter().copied().collect();
+            prop_assert_eq!(unique.len(), now.len(), "a task appears twice");
+            prop_assert_eq!(&unique, &expected);
+        }
+    }
+}

@@ -34,6 +34,9 @@ pub struct Theme {
     pub warning: Color,
     /// Dims the app behind dialogs.
     pub scrim: Color,
+    /// Label colours for cards, columns and tags: red, orange, yellow, green, teal,
+    /// blue, purple, pink, gray (the order of `urushi_core::LabelColor::ALL`).
+    pub labels: [Color; 9],
     /// Terminal colours.
     pub terminal: TerminalPalette,
     /// UI text size.
@@ -97,6 +100,17 @@ impl Theme {
             success: Color::hex(0x46a758),
             warning: Color::hex(0xe2a336),
             scrim: Color::hex(0x000000).with_alpha(0.55),
+            labels: [
+                Color::hex(0xe5534b),
+                Color::hex(0xe8853d),
+                Color::hex(0xd9b73a),
+                Color::hex(0x57ab5a),
+                Color::hex(0x39a9a0),
+                Color::hex(0x4d8fe0),
+                Color::hex(0x9a72d8),
+                Color::hex(0xd8679f),
+                Color::hex(0x868a93),
+            ],
             terminal: TerminalPalette {
                 foreground: Color::hex(0xd8d9dc),
                 background: Color::hex(0x15161a),

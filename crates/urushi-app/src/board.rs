@@ -10,6 +10,8 @@ use urushi_ui::Point;
 pub const BOARDS_SINCE_MINOR: u32 = 5;
 /// First protocol minor version with subtasks and threads started from tasks.
 pub const SUBTASKS_SINCE_MINOR: u32 = 6;
+/// First protocol minor version with colors, tags and changeable columns.
+pub const BOARD_EXTRAS_SINCE_MINOR: u32 = 8;
 
 /// How long the panel takes to slide fully in or out, in seconds.
 pub const SLIDE_SECONDS: f32 = 0.18;
@@ -31,6 +33,58 @@ pub struct BoardPanel {
     /// While dragging: where the task would land if dropped now, as `(column, before)`
     /// (see [`drop_position`]); `None` when it wouldn't move.
     pub over: Option<(String, Option<String>)>,
+    /// Show only the tasks with this tag (compared ignoring case); `None` shows all.
+    pub tag_filter: Option<String>,
+}
+
+/// The color and tags part of the task editor, kept as drafts and sent with Save.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TaskLabels {
+    /// The chosen color, as a wire `LabelColor` value (0: none).
+    pub color: i32,
+    /// The tags, in order.
+    pub tags: Vec<String>,
+    /// The "add a tag" field.
+    pub input: urushi_ui::TextField,
+}
+
+impl TaskLabels {
+    /// Adds `tag` unless it is blank or already there (ignoring case).
+    pub fn add(&mut self, tag: &str) {
+        let tag = tag.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !tag.is_empty() && !self.tags.iter().any(|t| t.eq_ignore_ascii_case(&tag)) {
+            self.tags.push(tag);
+        }
+    }
+
+    /// The tags, plus whatever is typed in the field but not yet added.
+    pub fn with_typed(&self) -> Vec<String> {
+        let mut all = self.clone();
+        all.add(self.input.text());
+        all.tags
+    }
+}
+
+/// Whether `task` passes the tag filter.
+pub fn shows(filter: Option<&str>, task: &v1::Task) -> bool {
+    filter.is_none_or(|f| task.tags.iter().any(|t| t.eq_ignore_ascii_case(f)))
+}
+
+/// Every tag used on a board, in first-seen order (ignoring case), for suggestions and
+/// the filter.
+pub fn board_tags(board: &v1::Board) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for tag in board
+        .columns
+        .iter()
+        .flat_map(|c| &c.tasks)
+        .flat_map(|t| &t.tags)
+    {
+        if !out.iter().any(|o| o.eq_ignore_ascii_case(tag)) {
+            out.push(tag.clone());
+        }
+    }
+    out
 }
 
 impl BoardPanel {
@@ -118,6 +172,7 @@ mod tests {
             id: id.into(),
             name: id.into(),
             tasks: tasks.iter().map(|t| task(t)).collect(),
+            ..Default::default()
         };
         v1::Board {
             id: "b".into(),

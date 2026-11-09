@@ -70,6 +70,8 @@ pub enum Field {
     NewSubtask,
     /// Task editor: the title of the subtask being renamed.
     SubtaskTitle,
+    /// Task editor: the "add a tag" field.
+    TaskTag,
 }
 
 /// An editing command on the focused text field, from a shortcut or its context menu.
@@ -204,6 +206,8 @@ pub enum Dialog {
         /// The editor's subtask fields (boxed: they hold two more text fields, and
         /// would make every dialog as big).
         subtasks: Box<SubtaskEditor>,
+        /// The color and tags, sent with Save.
+        labels: Box<crate::board::TaskLabels>,
     },
     /// The first-run setup wizard: which agent (and mode) threads started from tasks run.
     Setup {
@@ -213,6 +217,17 @@ pub enum Dialog {
         agent: urushi_core::Agent,
         /// The mode chosen so far.
         mode: urushi_core::AgentMode,
+    },
+    /// Confirm removing a column; its tasks move to the column next to it.
+    DeleteColumn {
+        /// Column id.
+        column: String,
+        /// Its name, for the heading.
+        name: String,
+        /// How many tasks move.
+        tasks: usize,
+        /// The name of the column they move to.
+        into: String,
     },
     /// Confirm deleting a board and its tasks.
     DeleteBoard {
@@ -424,6 +439,11 @@ impl AppState {
     /// Whether the daemon keeps subtasks and links threads to tasks (protocol 1.6).
     pub fn daemon_supports_subtasks(&self) -> bool {
         self.daemon_minor >= crate::board::SUBTASKS_SINCE_MINOR
+    }
+
+    /// Whether the daemon keeps colors, tags and changeable columns (protocol 1.8).
+    pub fn daemon_supports_board_extras(&self) -> bool {
+        self.daemon_minor >= crate::board::BOARD_EXTRAS_SINCE_MINOR
     }
 
     /// Whether `agent` is started with its skip-permissions flag (per the daemon's settings).

@@ -1,11 +1,12 @@
 //! Task cards: all the same size, with the title, two lines of notes and a footer
-//! (subtask progress, the thread chip). The copy that follows the pointer while dragging
+//! (tags, subtask progress, the thread chip); a colored task has a stripe and a tint. The copy that follows the pointer while dragging
 //! is the same card.
 
 use urushi_client::v1;
 use urushi_ui::widgets;
 use urushi_ui::{Color, Font, Insets, Length, Node, Point, Role, TextSystem, Theme, key};
 
+use super::super::labels;
 use super::{CARD_PADDING, CARD_ROW_GAP, FOOTER_HEIGHT, GHOST_WIDTH, NOTES_LINES, shorten};
 use crate::msg::Msg;
 use crate::organize::MenuTarget;
@@ -13,6 +14,14 @@ use crate::state::{AppState, TaskLink};
 
 /// Longest thread title shown whole in a card's thread chip.
 const CHIP_CHARS: usize = 22;
+/// Longest tag shown whole on a card.
+const TAG_CHARS: usize = 14;
+/// Most tags a card shows.
+const FOOTER_TAGS: usize = 3;
+/// Width of a colored card's stripe.
+const STRIPE: f32 = 4.0;
+/// How much a card's color tints its background.
+const TINT: f32 = 0.1;
 
 /// The height of every card, whatever it holds: the title, two lines of notes and the
 /// footer, so a board reads as a grid.
@@ -34,7 +43,7 @@ pub(super) fn card(state: &AppState, theme: &Theme, task: &v1::Task) -> Node<Msg
         .background(if dragged {
             Color::TRANSPARENT
         } else {
-            theme.surface
+            card_background(theme, task)
         })
         .border(
             1.0,
@@ -74,13 +83,12 @@ fn card_body(
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .collect();
-    Node::column()
+    let height = card_height(theme);
+    let content = Node::column()
         .width(Length::Fill(1.0))
-        .height(Length::Fixed(card_height(theme)))
+        .height(Length::Fixed(height))
         .padding(Insets::symmetric(CARD_PADDING, 10.0))
         .gap(CARD_ROW_GAP)
-        .radius(theme.radius)
-        .clip()
         .child(Node::text(
             &task.title,
             Font::UiMedium,
@@ -93,10 +101,57 @@ fn card_body(
             theme.font_size_small,
             fade(theme.text_muted),
         ))
-        .child(card_footer(state, theme, task, dragged, interactive))
+        .child(card_footer(state, theme, task, dragged, interactive));
+    let mut row = Node::row()
+        .width(Length::Fill(1.0))
+        .height(Length::Fixed(height))
+        .radius(theme.radius)
+        .clip();
+    // A colored task has a stripe down its left edge.
+    if let Some(c) = labels::color(theme, task.color) {
+        row = row.child(
+            Node::new()
+                .width(Length::Fixed(STRIPE))
+                .height(Length::Fixed(height))
+                .background(fade(c)),
+        );
+    }
+    row.child(content)
 }
 
-/// Subtask progress ("✓ 1/3") and the task's thread, if it has either; an empty row
+/// The card's background: the surface, tinted with the task's color if it has one.
+fn card_background(theme: &Theme, task: &v1::Task) -> Color {
+    labels::color(theme, task.color).map_or(theme.surface, |c| theme.surface.mix(c, TINT))
+}
+
+/// The task's tags as small chips, at most [`FOOTER_TAGS`] and then "+n".
+fn footer_tags(theme: &Theme, task: &v1::Task, dragged: bool) -> Vec<Node<Msg>> {
+    let size = theme.font_size_small - 1.0;
+    let mut out: Vec<Node<Msg>> = task
+        .tags
+        .iter()
+        .take(FOOTER_TAGS)
+        .map(|t| {
+            let chip = labels::tag_chip(theme, &shorten(t, TAG_CHARS), size, None);
+            if dragged {
+                chip.background(Color::TRANSPARENT)
+            } else {
+                chip
+            }
+        })
+        .collect();
+    if task.tags.len() > FOOTER_TAGS {
+        out.push(Node::text(
+            format!("+{}", task.tags.len() - FOOTER_TAGS),
+            Font::UiMedium,
+            size,
+            theme.text_muted,
+        ));
+    }
+    out
+}
+
+/// Tags, subtask progress ("✓ 1/3") and the task's thread, if it has any; an empty row
 /// otherwise, so every card is the same height. The thread chip goes to the thread.
 fn card_footer(
     state: &AppState,
@@ -118,7 +173,8 @@ fn card_footer(
     let mut row = Node::row()
         .width(Length::Fill(1.0))
         .height(Length::Fixed(FOOTER_HEIGHT))
-        .gap(8.0);
+        .gap(6.0)
+        .children(footer_tags(theme, task, dragged));
     if !task.subtasks.is_empty() {
         let done = task.subtasks.iter().filter(|s| s.done).count();
         let all = done == task.subtasks.len();
@@ -168,7 +224,7 @@ pub(in crate::view) fn drag_ghost(state: &AppState, theme: &Theme) -> Option<Nod
     let (task, at) = state.board.dragging.as_ref()?;
     let (_, _, task) = state.workspace.task(task)?;
     let card = card_body(state, theme, task, false, false)
-        .background(theme.surface.mix(theme.hover, 0.5))
+        .background(card_background(theme, task).mix(theme.hover, 0.5))
         .border(1.5, theme.accent);
     // A soft dark rim stands in for a drop shadow.
     Some(

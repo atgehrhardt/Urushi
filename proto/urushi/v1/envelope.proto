@@ -88,6 +88,11 @@ message Request {
     CreateSubtaskRequest create_subtask = 43;
     UpdateSubtaskRequest update_subtask = 44;
     DeleteSubtaskRequest delete_subtask = 45;
+    // Since 1.8.
+    CreateColumnRequest create_column = 46;
+    UpdateColumnRequest update_column = 47;
+    MoveColumnRequest move_column = 48;
+    DeleteColumnRequest delete_column = 49;
   }
 }
 
@@ -116,6 +121,8 @@ message Response {
     Task task = 20;
     // Since 1.6.
     Subtask subtask = 21;
+    // Since 1.8.
+    BoardColumn column = 22;
   }
 }
 

@@ -129,6 +129,7 @@ async fn subtasks_are_created_checked_renamed_and_deleted() {
         title: "Ship search".into(),
         notes: String::new(),
         subtasks: vec!["index".into(), "  query   page ".into()],
+        ..Default::default()
     });
     let v1::response::Outcome::Task(task) = client.request(body).await.unwrap() else {
         panic!("CreateTask answers with the task");

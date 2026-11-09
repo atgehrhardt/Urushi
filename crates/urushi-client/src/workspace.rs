@@ -108,6 +108,14 @@ impl WorkspaceMirror {
         self.workspace.boards.iter().find(|b| b.id == id)
     }
 
+    /// A column, with the board holding it.
+    pub fn column(&self, id: &str) -> Option<(&v1::Board, &v1::BoardColumn)> {
+        self.workspace
+            .boards
+            .iter()
+            .find_map(|b| b.columns.iter().find(|c| c.id == id).map(|c| (b, c)))
+    }
+
     /// A task, with the board and the column holding it.
     pub fn task(&self, id: &str) -> Option<(&v1::Board, &v1::BoardColumn, &v1::Task)> {
         self.workspace.boards.iter().find_map(|b| {

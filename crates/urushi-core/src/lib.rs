@@ -28,7 +28,7 @@ pub mod time;
 pub use agent::{
     Agent, AgentMode, AgentSessionId, AgentSettings, InvalidSessionId, TASK_PROMPT_ENV,
 };
-pub use board::{Board, BoardError, Column, Subtask, Task, task_prompt};
+pub use board::{Board, BoardError, Column, LabelColor, Subtask, Task, TaskPatch, task_prompt};
 pub use ids::{BoardId, ColumnId, PaneId, ProjectId, RepoId, SubtaskId, TabId, TaskId, ThreadId};
 pub use layout::{Axis, Direction, Layout, LayoutError};
 pub use naming::{BranchName, BranchPrefix, NamingError, Slug};

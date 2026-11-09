@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.7 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.8 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -37,6 +37,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 8 | Board labels and columns: the `LabelColor` enum (`UNSPECIFIED` = no color; unknown values read as none), `BoardColumn.color`, `Task.{color, tags}`, `CreateTask.{color, tags}`, `UpdateTask.{optional color, TagList tags}`, and `CreateColumn` → `BoardColumn`, `UpdateColumn`, `MoveColumn`, `DeleteColumn` (its tasks move to the column on its left, or right for the first; the last column is `FAILED_PRECONDITION`). Clients check `Welcome.protocol_minor ≥ 8`. |
 | 7 | The task agent (ADR 0014): `AgentSettings.{task_agent, task_mode}`, `SettingsPatch.{task_agent, task_mode}`, the `AgentMode` enum (`agents.proto`, which now also holds `Agent`), and `CreateThread.start_task_agent`, which opens the first tab running the task agent with the linked task as its prompt. No task agent chosen or not installed is `FAILED_PRECONDITION`, and no task is `INVALID_ARGUMENT`, before any worktree is made. Clients check `Welcome.protocol_minor ≥ 7`. |
 | 6 | Subtasks and threads started from tasks: `Task.{subtasks[Subtask], thread_id}`, `Subtask{id, title, done, thread_id}`, `CreateTask.subtasks` (titles), `CreateSubtask` → `Subtask`, `UpdateSubtask{optional title, optional done}`, `DeleteSubtask`, and `CreateThread.{task_id, subtask_id}`, which links the new thread to the task or subtask (ADR 0012). A missing task is `NOT_FOUND` before any worktree is made; deleting a thread clears its links. Clients check `Welcome.protocol_minor ≥ 6`. |
 | 5 | Task boards: `Workspace.boards` (`Board{columns[BoardColumn{tasks[Task]}]}`), `CreateBoard` → `Board`, `RenameBoard`, `DeleteBoard`, `CreateTask` → `Task`, `UpdateTask{optional title, optional notes}`, `MoveTask{column_id, index}`, `DeleteTask`. Agent usage: `GetAgentUsage{pane_id}` → `AgentUsage{agent, plan, windows[UsageWindow], unavailable, fetched_at_ms}` (ADR 0011). Clients check `Welcome.protocol_minor ≥ 5` before sending them. |
@@ -55,7 +56,7 @@ v1 field names are frozen (`buf breaking` uses `WIRE_JSON`). On the wire, **`Pro
   - `AttachPane{pane, cols, rows}` returns a full `ScreenUpdate`. After that the daemon streams `ScreenUpdate{seq}` events, and the client must send the `AckScreen{seq}` notification before the next one is sent.
   - `DetachPane`, `SetPaneSize`, the `Input{key|text|paste|mouse|wheel}` and `ScrollPane` notifications, and `ReadScreenText` (plain text, for the CLI and tests).
   - Events: `PaneExited`, `PaneBell`.
-- **Task boards:** `CreateBoard`, `RenameBoard`, `DeleteBoard`, `CreateTask`, `UpdateTask`, `MoveTask`, `DeleteTask`, `CreateSubtask`, `UpdateSubtask`, `DeleteSubtask`. Boards arrive with the workspace (`Workspace.boards`), so subscribers see changes through `WorkspaceChanged`.
+- **Task boards:** `CreateBoard`, `RenameBoard`, `DeleteBoard`, `CreateColumn`, `UpdateColumn`, `MoveColumn`, `DeleteColumn`, `CreateTask`, `UpdateTask`, `MoveTask`, `DeleteTask`, `CreateSubtask`, `UpdateSubtask`, `DeleteSubtask`. Boards arrive with the workspace (`Workspace.boards`), so subscribers see changes through `WorkspaceChanged`.
 - **Settings:** `GetSettings`, `UpdateSettings` (global and per repo).
 - **Remote:** `TailnetStatus`, `SetTailnetServe`.
 

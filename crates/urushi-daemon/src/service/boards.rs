@@ -4,7 +4,9 @@
 //! it. Boards never touch git or terminals (threads link themselves to tasks when they
 //! are created, in `threads.rs`).
 
-use urushi_core::{Board, BoardError, BoardId, ColumnId, Subtask, SubtaskId, Task, TaskId};
+use urushi_core::{
+    Board, BoardError, BoardId, ColumnId, LabelColor, Subtask, SubtaskId, Task, TaskId, TaskPatch,
+};
 
 use super::{Service, ServiceError, ServiceResult, State, new_uuid, now};
 
@@ -14,13 +16,29 @@ impl From<BoardError> for ServiceError {
             BoardError::NoSuchColumn(id) => Self::NotFound(format!("column {id}")),
             BoardError::NoSuchTask(id) => Self::NotFound(format!("task {id}")),
             BoardError::NoSuchSubtask(id) => Self::NotFound(format!("subtask {id}")),
+            BoardError::LastColumn => Self::Precondition(e.to_string()),
             _ => Self::Invalid(e.to_string()),
         }
     }
 }
 
+/// What a new task starts with.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NewTask<'a> {
+    /// Title.
+    pub title: &'a str,
+    /// Notes; may be empty.
+    pub notes: &'a str,
+    /// Color, if any.
+    pub color: Option<LabelColor>,
+    /// Tags.
+    pub tags: &'a [String],
+    /// Titles of subtasks to create with it.
+    pub subtasks: &'a [String],
+}
+
 impl State {
-    fn board_mut(&mut self, id: BoardId) -> ServiceResult<&mut Board> {
+    pub(super) fn board_mut(&mut self, id: BoardId) -> ServiceResult<&mut Board> {
         self.boards
             .iter_mut()
             .find(|b| b.id == id)
@@ -104,19 +122,21 @@ impl Service {
         })
     }
 
-    /// Adds a task at the bottom of a column, with these subtasks.
+    /// Adds a task at the bottom of a column.
     pub fn create_task(
         &self,
         board: BoardId,
         column: ColumnId,
-        (title, notes): (&str, &str),
-        subtasks: &[String],
+        new: &NewTask<'_>,
     ) -> ServiceResult<Task> {
-        let mut task = Task::new(TaskId::from_uuid(new_uuid()), title, notes, now())?;
-        if subtasks.len() > urushi_core::board::MAX_SUBTASKS {
+        let mut task = Task::new(TaskId::from_uuid(new_uuid()), new.title, new.notes, now())?;
+        task.color = new.color;
+        task.tags = urushi_core::board::task_tags(new.tags)?;
+        if new.subtasks.len() > urushi_core::board::MAX_SUBTASKS {
             return Err(BoardError::TooManySubtasks.into());
         }
-        task.subtasks = subtasks
+        task.subtasks = new
+            .subtasks
             .iter()
             .map(|t| Subtask::new(SubtaskId::from_uuid(new_uuid()), t))
             .collect::<Result<_, _>>()?;
@@ -126,14 +146,9 @@ impl Service {
         })
     }
 
-    /// Changes a task's title and/or notes (`None` keeps them).
-    pub fn update_task(
-        &self,
-        task: TaskId,
-        title: Option<&str>,
-        notes: Option<&str>,
-    ) -> ServiceResult<()> {
-        self.mutate(|state| Ok(state.board_of_task(task)?.update_task(task, title, notes)?))
+    /// Changes a task's title, notes, color and/or tags (`None` keeps them).
+    pub fn update_task(&self, task: TaskId, patch: &TaskPatch) -> ServiceResult<()> {
+        self.mutate(|state| Ok(state.board_of_task(task)?.update_task(task, patch)?))
     }
 
     /// Moves a task to `index` in a column of its board.

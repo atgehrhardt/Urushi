@@ -13,6 +13,7 @@
 
 mod agents;
 mod boards;
+mod columns;
 mod deletion;
 mod projects;
 mod repos;
@@ -34,6 +35,7 @@ use urushi_core::{PaneId, Thread, Timestamp};
 use urushi_mux::{AlacrittyEmulator, MuxError, Pty, SessionHandle, SpawnSpec, TermSize};
 use urushi_proto::v1;
 
+pub use boards::NewTask;
 pub use deletion::DeletionPlan;
 pub use projects::{Assign, ThreadUpdate};
 pub(crate) use state::State;

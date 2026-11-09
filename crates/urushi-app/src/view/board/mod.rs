@@ -8,9 +8,12 @@ use urushi_client::v1;
 use urushi_ui::widgets::{ButtonKind, button, icon_button};
 use urushi_ui::{Align, Color, Font, Insets, Key, Length, Node, Role, Theme, key};
 
-use crate::board::BOARDS_SINCE_MINOR;
+use urushi_core::board::MAX_COLUMNS;
+
+use super::labels;
+use crate::board::{BOARDS_SINCE_MINOR, board_tags};
 use crate::msg::Msg;
-use crate::organize::Prompt;
+use crate::organize::{MenuTarget, Prompt};
 use crate::state::AppState;
 
 /// How opaque the panel is over the terminals.
@@ -32,10 +35,14 @@ const FOOTER_HEIGHT: f32 = 18.0;
 
 mod card;
 mod column;
+mod dialogs;
 
 pub(in crate::view) use card::drag_ghost;
 use column::column;
+pub(in crate::view) use dialogs::{delete_board, delete_column};
 
+/// Width of the slot that adds a column.
+const ADD_COLUMN_WIDTH: f32 = 96.0;
 /// Longest board name shown whole on its tab.
 const TAB_CHARS: usize = 24;
 
@@ -148,6 +155,13 @@ fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
         ));
     }
     row = row.child(Node::spacer());
+    if let Some(filter) = state
+        .board
+        .board(&state.workspace)
+        .and_then(|b| tag_filter(state, theme, b))
+    {
+        row = row.child(filter);
+    }
     if let Some(id) = shown {
         row = row
             .child(button(
@@ -212,6 +226,53 @@ fn columns(
                 .unwrap_or(0.0);
             column(state, theme, board, c, offset)
         }))
+        .children(
+            (state.daemon_supports_board_extras() && board.columns.len() < MAX_COLUMNS)
+                .then(|| add_column(theme, &board.id)),
+        )
+}
+
+/// The narrow slot after the last column that adds one.
+fn add_column(theme: &Theme, board: &str) -> Node<Msg> {
+    Node::column()
+        .width(Length::Fixed(ADD_COLUMN_WIDTH))
+        .padding(Insets::symmetric(4.0, 0.0))
+        .child(button(
+            theme,
+            "+ Column",
+            ButtonKind::Ghost,
+            Msg::OpenPrompt(Prompt::NewColumn(board.to_owned())),
+        ))
+}
+
+/// The tag filter's button: "All tags" or the tag shown. Only on boards with tags.
+fn tag_filter(state: &AppState, theme: &Theme, board: &v1::Board) -> Option<Node<Msg>> {
+    if !state.daemon_supports_board_extras() || board_tags(board).is_empty() {
+        return None;
+    }
+    let (text, color) = match &state.board.tag_filter {
+        Some(tag) => (
+            format!("#{}  ▾", shorten(tag, TAB_CHARS)),
+            labels::tag_color(theme, tag),
+        ),
+        None => ("All tags  ▾".to_owned(), theme.text_muted),
+    };
+    Some(
+        Node::row()
+            .padding(Insets::symmetric(4.0, 10.0))
+            .radius(theme.radius)
+            .border(1.0, theme.border)
+            .hover_background(theme.hover)
+            .key(key(&["board-tag-filter"]))
+            .on_click(Msg::OpenMenu(MenuTarget::TagFilter(board.id.clone())))
+            .role(Role::Button, "Filter by tag")
+            .child(Node::text(
+                text,
+                Font::UiMedium,
+                theme.font_size_small,
+                color,
+            )),
+    )
 }
 
 #[cfg(test)]

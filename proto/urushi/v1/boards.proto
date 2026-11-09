@@ -17,6 +17,30 @@ message BoardColumn {
   string id = 1;
   string name = 2;
   repeated Task tasks = 3;
+  // Unspecified: no color. Since 1.8.
+  LabelColor color = 4;
+}
+
+// A color from the board palette. Clients choose the shade for their theme, and treat
+// values they don't know as no color. Since 1.8.
+enum LabelColor {
+  // No color.
+  LABEL_COLOR_UNSPECIFIED = 0;
+  LABEL_COLOR_RED = 1;
+  LABEL_COLOR_ORANGE = 2;
+  LABEL_COLOR_YELLOW = 3;
+  LABEL_COLOR_GREEN = 4;
+  LABEL_COLOR_TEAL = 5;
+  LABEL_COLOR_BLUE = 6;
+  LABEL_COLOR_PURPLE = 7;
+  LABEL_COLOR_PINK = 8;
+  LABEL_COLOR_GRAY = 9;
+}
+
+// A task's tags, as one value, so a request can tell "keep the tags" (unset) from "no
+// tags" (empty). Since 1.8.
+message TagList {
+  repeated string tags = 1;
 }
 
 message Task {
@@ -29,6 +53,10 @@ message Task {
   repeated Subtask subtasks = 5;
   // The thread started for this task; empty if none. It may no longer exist. Since 1.6.
   string thread_id = 6;
+  // Unspecified: no color. Since 1.8.
+  LabelColor color = 7;
+  // Free-text tags; a tag's color comes from its name. Since 1.8.
+  repeated string tags = 8;
 }
 
 // One step of a task's checklist. Since protocol 1.6.
@@ -63,13 +91,20 @@ message CreateTaskRequest {
   string notes = 4;
   // Titles of subtasks to create with it, in order. Since 1.6.
   repeated string subtasks = 5;
+  // Since 1.8.
+  LabelColor color = 6;
+  repeated string tags = 7;
 }
 
-// Changes a task's text. Unset fields are kept.
+// Changes a task's text, color or tags. Unset fields are kept.
 message UpdateTaskRequest {
   string task_id = 1;
   optional string title = 2;
   optional string notes = 3;
+  // Set to LABEL_COLOR_UNSPECIFIED to clear the color. Since 1.8.
+  optional LabelColor color = 4;
+  // Replaces all the tags. Since 1.8.
+  TagList tags = 5;
 }
 
 // Moves a task to `index` in a column of the same board (clamped; past the end means
@@ -100,4 +135,33 @@ message UpdateSubtaskRequest {
 // Since 1.6.
 message DeleteSubtaskRequest {
   string subtask_id = 1;
+}
+
+// Adds an empty column at `index` (clamped; past the end means last). Answered with the
+// BoardColumn. Since 1.8.
+message CreateColumnRequest {
+  string board_id = 1;
+  string name = 2;
+  uint32 index = 3;
+}
+
+// Renames and/or recolors a column. Unset fields are kept; LABEL_COLOR_UNSPECIFIED
+// clears the color. Since 1.8.
+message UpdateColumnRequest {
+  string column_id = 1;
+  optional string name = 2;
+  optional LabelColor color = 3;
+}
+
+// Moves a column to `index` among the others (clamped). Since 1.8.
+message MoveColumnRequest {
+  string column_id = 1;
+  uint32 index = 2;
+}
+
+// Removes a column. Its tasks move to the bottom of the column on its left (on its right
+// for the first column). The last column can't be removed (FAILED_PRECONDITION).
+// Since 1.8.
+message DeleteColumnRequest {
+  string column_id = 1;
 }

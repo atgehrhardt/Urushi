@@ -1,5 +1,5 @@
 //! Typed wrappers for task-board and agent-usage requests (protocol 1.5; subtasks since
-//! 1.6).
+//! 1.6; colors, tags and columns since 1.8).
 
 use urushi_proto::v1::{self, request::Body, response::Outcome};
 
@@ -41,14 +41,22 @@ impl Client {
         title: &str,
         notes: &str,
     ) -> Result<v1::Task, ClientError> {
-        let body = Body::CreateTask(v1::CreateTaskRequest {
+        self.create_task_with(v1::CreateTaskRequest {
             board_id: board_id.into(),
             column_id: column_id.into(),
             title: title.into(),
             notes: notes.into(),
-            subtasks: Vec::new(),
-        });
-        match self.request(body).await? {
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Adds a task with everything a `CreateTask` can carry (color and tags since 1.8).
+    pub async fn create_task_with(
+        &self,
+        request: v1::CreateTaskRequest,
+    ) -> Result<v1::Task, ClientError> {
+        match self.request(Body::CreateTask(request)).await? {
             Outcome::Task(task) => Ok(task),
             _ => Err(unexpected("CreateTask")),
         }
@@ -100,12 +108,72 @@ impl Client {
         title: Option<&str>,
         notes: Option<&str>,
     ) -> Result<(), ClientError> {
-        let body = Body::UpdateTask(v1::UpdateTaskRequest {
+        self.update_task_with(v1::UpdateTaskRequest {
             task_id: task_id.into(),
             title: title.map(Into::into),
             notes: notes.map(Into::into),
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Changes any of a task's fields (color and tags since 1.8); unset ones are kept.
+    pub async fn update_task_with(
+        &self,
+        request: v1::UpdateTaskRequest,
+    ) -> Result<(), ClientError> {
+        self.ok(Body::UpdateTask(request), "UpdateTask").await
+    }
+
+    /// Adds an empty column at `index` of a board (protocol 1.8).
+    pub async fn create_column(
+        &self,
+        board_id: &str,
+        name: &str,
+        index: u32,
+    ) -> Result<v1::BoardColumn, ClientError> {
+        let body = Body::CreateColumn(v1::CreateColumnRequest {
+            board_id: board_id.into(),
+            name: name.into(),
+            index,
         });
-        self.ok(body, "UpdateTask").await
+        match self.request(body).await? {
+            Outcome::Column(column) => Ok(column),
+            _ => Err(unexpected("CreateColumn")),
+        }
+    }
+
+    /// Renames and/or recolors a column (`None` keeps the value; `Some(Unspecified)`
+    /// clears the color).
+    pub async fn update_column(
+        &self,
+        column_id: &str,
+        name: Option<&str>,
+        color: Option<v1::LabelColor>,
+    ) -> Result<(), ClientError> {
+        let body = Body::UpdateColumn(v1::UpdateColumnRequest {
+            column_id: column_id.into(),
+            name: name.map(Into::into),
+            color: color.map(Into::into),
+        });
+        self.ok(body, "UpdateColumn").await
+    }
+
+    /// Moves a column to `index` among the others.
+    pub async fn move_column(&self, column_id: &str, index: u32) -> Result<(), ClientError> {
+        let body = Body::MoveColumn(v1::MoveColumnRequest {
+            column_id: column_id.into(),
+            index,
+        });
+        self.ok(body, "MoveColumn").await
+    }
+
+    /// Removes a column; its tasks move to the column next to it.
+    pub async fn delete_column(&self, column_id: &str) -> Result<(), ClientError> {
+        let body = Body::DeleteColumn(v1::DeleteColumnRequest {
+            column_id: column_id.into(),
+        });
+        self.ok(body, "DeleteColumn").await
     }
 
     /// Moves a task to `index` in a column of its board.

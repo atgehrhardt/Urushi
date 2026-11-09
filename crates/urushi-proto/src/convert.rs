@@ -459,7 +459,10 @@ fn non_empty(s: &str) -> Option<String> {
 }
 
 mod boards;
-pub use boards::{board_from_proto, board_to_proto, subtask_to_proto, task_to_proto};
+pub use boards::{
+    board_from_proto, board_to_proto, color_from_proto, color_to_proto, column_to_proto,
+    subtask_to_proto, task_to_proto,
+};
 
 #[cfg(test)]
 mod tests;

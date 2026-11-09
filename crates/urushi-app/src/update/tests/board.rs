@@ -26,11 +26,13 @@ pub(super) fn board() -> v1::Board {
                 id: "todo".into(),
                 name: "To do".into(),
                 tasks: vec![task("a", "A"), task("b", "B")],
+                ..Default::default()
             },
             v1::BoardColumn {
                 id: "done".into(),
                 name: "Done".into(),
                 tasks: vec![],
+                ..Default::default()
             },
         ],
     }

@@ -136,7 +136,11 @@ impl AppState {
             Prompt::RenameThread(id) => self.workspace.thread(id).map(|t| t.title.clone()),
             Prompt::RenameProject(id) => self.workspace.project(id).map(|p| p.name.clone()),
             Prompt::RenameBoard(id) => self.workspace.board(id).map(|b| b.name.clone()),
-            Prompt::NewStatus(_) | Prompt::NewProject(_) | Prompt::NewBoard => None,
+            Prompt::RenameColumn(id) => self.workspace.column(id).map(|(_, c)| c.name.clone()),
+            Prompt::NewStatus(_)
+            | Prompt::NewProject(_)
+            | Prompt::NewBoard
+            | Prompt::NewColumn(_) => None,
         };
         self.dialog = Some(Dialog::Prompt {
             prompt,
@@ -182,7 +186,10 @@ impl AppState {
                 }),
                 Followup::CloseDialog,
             ),
-            board @ (Prompt::NewBoard | Prompt::RenameBoard(_)) => {
+            board @ (Prompt::NewBoard
+            | Prompt::RenameBoard(_)
+            | Prompt::NewColumn(_)
+            | Prompt::RenameColumn(_)) => {
                 let Some(request) = Self::board_prompt(&board, text) else {
                     return;
                 };

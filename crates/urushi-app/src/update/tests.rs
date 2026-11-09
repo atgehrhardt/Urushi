@@ -385,6 +385,7 @@ mod board;
 mod daemon;
 mod fields;
 mod flows;
+mod labels;
 mod organize;
 mod pointer;
 mod setup;

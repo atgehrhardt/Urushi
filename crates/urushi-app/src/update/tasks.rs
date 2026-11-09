@@ -11,6 +11,7 @@ use urushi_client::v1::{self, request::Body};
 use urushi_ui::TextField;
 
 use super::request;
+use crate::board::TaskLabels;
 use crate::msg::{Effect, Followup, Msg};
 use crate::state::{AppState, Dialog, Field, TaskLink};
 
@@ -85,6 +86,7 @@ impl AppState {
                 title: TextField::default(),
                 notes: TextField::multiline(""),
                 subtasks: Box::default(),
+                labels: Box::default(),
             },
             Some(Field::TaskTitle),
         );
@@ -102,6 +104,11 @@ impl AppState {
             title: TextField::new(task.title.clone()),
             notes: TextField::multiline(task.notes.clone()),
             subtasks: Box::default(),
+            labels: Box::new(TaskLabels {
+                color: task.color,
+                tags: task.tags.clone(),
+                input: TextField::default(),
+            }),
         };
         self.open(dialog, Some(Field::TaskTitle));
     }
@@ -110,10 +117,22 @@ impl AppState {
     /// rename. Returns whether it did (otherwise Enter saves the task).
     pub(super) fn task_editor_enter(&mut self, fx: &mut Vec<Effect>) -> bool {
         let focus = self.focus;
-        let Some(Dialog::Task { task, subtasks, .. }) = &mut self.dialog else {
+        let Some(Dialog::Task {
+            task,
+            subtasks,
+            labels,
+            ..
+        }) = &mut self.dialog
+        else {
             return false;
         };
         match focus {
+            Some(Field::TaskTag) if !labels.input.text().trim().is_empty() => {
+                let typed = labels.input.text().to_owned();
+                labels.add(&typed);
+                labels.input.clear();
+                true
+            }
             Some(Field::NewSubtask) if !subtasks.new.text().trim().is_empty() => {
                 let title = subtasks.new.text().trim().to_owned();
                 subtasks.new.clear();
@@ -161,10 +180,12 @@ impl AppState {
             title,
             notes,
             subtasks,
+            labels,
         }) = &self.dialog
         else {
             return;
         };
+        let tags = labels.with_typed();
         let (title, notes) = (title.text().trim().to_owned(), notes.text().to_owned());
         if title.is_empty() {
             return;
@@ -178,6 +199,8 @@ impl AppState {
                 title,
                 notes,
                 subtasks: subtasks.drafts.iter().cloned().chain(typed).collect(),
+                color: labels.color,
+                tags,
             });
             fx.push(request(body, Followup::CloseDialog));
             return;
@@ -210,8 +233,14 @@ impl AppState {
             // a task changes nothing.
             notes: (notes.trim_end() != TextField::multiline(current.notes.clone()).text())
                 .then_some(notes),
+            color: (labels.color != current.color).then_some(labels.color),
+            tags: (tags != current.tags).then_some(v1::TagList { tags }),
         };
-        if update.title.is_some() || update.notes.is_some() {
+        if update.title.is_some()
+            || update.notes.is_some()
+            || update.color.is_some()
+            || update.tags.is_some()
+        {
             fx.push(request(Body::UpdateTask(update), Followup::CloseDialog));
         } else {
             self.dialog = None;

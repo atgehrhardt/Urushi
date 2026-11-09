@@ -4,7 +4,9 @@
 //! its tasks top to bottom. A task is in exactly one column of one board; moving it is
 //! the only way it changes column, and no operation can lose or duplicate a task
 //! (`tests/board_props.rs`). A task can have a checklist of subtasks (`subtasks.rs`),
-//! and a task or subtask can name the thread that was started for it. Boards are
+//! a color and tags (`labels.rs`), and a task or subtask can name the thread that was
+//! started for it. Columns can be added, recolored, reordered and removed
+//! (`columns.rs`); new boards start with [`DEFAULT_COLUMNS`]. Boards are
 //! organization only: they never touch git or terminals. Ids and timestamps are passed
 //! in by the daemon.
 
@@ -12,9 +14,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{BoardId, ColumnId, SubtaskId, TaskId, ThreadId, Timestamp};
 
+mod columns;
+mod labels;
 mod prompt;
 mod subtasks;
 
+pub use columns::MAX_COLUMNS;
+pub use labels::{LabelColor, MAX_TAG, MAX_TAGS, tag_color, task_tags};
 pub use prompt::{MAX_PROMPT_BYTES, task_prompt};
 pub use subtasks::{MAX_SUBTASKS, Subtask};
 
@@ -57,6 +63,18 @@ pub enum BoardError {
     /// The task already has [`MAX_SUBTASKS`] subtasks.
     #[error("a task can have at most {MAX_SUBTASKS} subtasks")]
     TooManySubtasks,
+    /// A column name was blank.
+    #[error("a column name must not be empty")]
+    EmptyColumnName,
+    /// The board already has [`MAX_COLUMNS`] columns.
+    #[error("a board can have at most {MAX_COLUMNS} columns")]
+    TooManyColumns,
+    /// The board's only column can't be removed.
+    #[error("a board needs at least one column")]
+    LastColumn,
+    /// More than [`MAX_TAGS`] tags.
+    #[error("a task can have at most {MAX_TAGS} tags")]
+    TooManyTags,
 }
 
 /// A kanban board.
@@ -79,6 +97,9 @@ pub struct Column {
     pub id: ColumnId,
     /// Display name.
     pub name: String,
+    /// Its color, if one was chosen.
+    #[serde(default)]
+    pub color: Option<LabelColor>,
     /// Tasks, top to bottom.
     #[serde(default)]
     pub tasks: Vec<Task>,
@@ -96,6 +117,12 @@ pub struct Task {
     pub notes: String,
     /// When it was created.
     pub created_at: Timestamp,
+    /// Its color, if one was chosen.
+    #[serde(default)]
+    pub color: Option<LabelColor>,
+    /// Free-text tags, cleaned up by [`task_tags`].
+    #[serde(default)]
+    pub tags: Vec<String>,
     /// A checklist of smaller steps, in order.
     #[serde(default)]
     pub subtasks: Vec<Subtask>,
@@ -117,10 +144,25 @@ impl Task {
             title: task_title(title)?,
             notes: task_notes(notes)?,
             created_at,
+            color: None,
+            tags: Vec::new(),
             subtasks: Vec::new(),
             thread: None,
         })
     }
+}
+
+/// A change to a task's own fields; `None` keeps the current value.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TaskPatch {
+    /// New title.
+    pub title: Option<String>,
+    /// New notes.
+    pub notes: Option<String>,
+    /// New color; `Some(None)` clears it.
+    pub color: Option<Option<LabelColor>>,
+    /// New tags (replacing all of them).
+    pub tags: Option<Vec<String>>,
 }
 
 /// A board name, with runs of whitespace collapsed. Blank and over-long names are refused.
@@ -172,6 +214,7 @@ impl Board {
                 .map(|(name, id)| Column {
                     id,
                     name: (*name).to_owned(),
+                    color: None,
                     tasks: Vec::new(),
                 })
                 .collect(),
@@ -203,22 +246,24 @@ impl Board {
         Ok(())
     }
 
-    /// Changes a task's title and/or notes; `None` keeps the current value. Nothing
-    /// changes unless both are valid.
-    pub fn update_task(
-        &mut self,
-        id: TaskId,
-        title: Option<&str>,
-        notes: Option<&str>,
-    ) -> Result<(), BoardError> {
-        let title = title.map(task_title).transpose()?;
-        let notes = notes.map(task_notes).transpose()?;
+    /// Changes a task's title, notes, color and/or tags. Nothing changes unless every
+    /// given value is valid.
+    pub fn update_task(&mut self, id: TaskId, patch: &TaskPatch) -> Result<(), BoardError> {
+        let title = patch.title.as_deref().map(task_title).transpose()?;
+        let notes = patch.notes.as_deref().map(task_notes).transpose()?;
+        let tags = patch.tags.as_deref().map(task_tags).transpose()?;
         let task = self.task_mut(id)?;
         if let Some(title) = title {
             task.title = title;
         }
         if let Some(notes) = notes {
             task.notes = notes;
+        }
+        if let Some(color) = patch.color {
+            task.color = color;
+        }
+        if let Some(tags) = tags {
+            task.tags = tags;
         }
         Ok(())
     }
@@ -249,7 +294,7 @@ impl Board {
         Err(BoardError::NoSuchTask(id))
     }
 
-    fn column_mut(&mut self, id: ColumnId) -> Result<&mut Column, BoardError> {
+    pub(crate) fn column_mut(&mut self, id: ColumnId) -> Result<&mut Column, BoardError> {
         self.columns
             .iter_mut()
             .find(|c| c.id == id)

@@ -3,6 +3,7 @@
 mod board;
 mod daemon;
 mod dialogs;
+mod labels;
 mod launcher;
 mod main_area;
 mod menu;

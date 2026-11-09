@@ -92,8 +92,11 @@ fn failed_operations_change_nothing() {
     assert_eq!(
         b.update_task(
             TaskId::from_u128(1),
-            Some("ok"),
-            Some(&"x".repeat(MAX_NOTES + 1))
+            &TaskPatch {
+                title: Some("ok".into()),
+                notes: Some("x".repeat(MAX_NOTES + 1)),
+                ..TaskPatch::default()
+            }
         ),
         Err(BoardError::TooLong {
             what: "task notes",
@@ -119,10 +122,111 @@ fn updating_a_task_keeps_unset_fields() {
     let todo = b.columns[0].id;
     b.add_task(todo, task(1, "a")).unwrap();
     let id = TaskId::from_u128(1);
-    b.update_task(id, None, Some("details")).unwrap();
-    b.update_task(id, Some("renamed"), None).unwrap();
+    let patch = |p: TaskPatch| p;
+    b.update_task(
+        id,
+        &patch(TaskPatch {
+            notes: Some("details".into()),
+            color: Some(Some(LabelColor::Teal)),
+            tags: Some(vec!["ui".into(), " UI ".into(), "docs".into()]),
+            ..TaskPatch::default()
+        }),
+    )
+    .unwrap();
+    b.update_task(
+        id,
+        &TaskPatch {
+            title: Some("renamed".into()),
+            ..TaskPatch::default()
+        },
+    )
+    .unwrap();
     let t = b.task(id).unwrap();
     assert_eq!((t.title.as_str(), t.notes.as_str()), ("renamed", "details"));
+    assert_eq!(
+        (t.color, t.tags.as_slice()),
+        (
+            Some(LabelColor::Teal),
+            &["ui".to_owned(), "docs".to_owned()][..]
+        )
+    );
+    // Clearing the color; bad tags change nothing.
+    b.update_task(
+        id,
+        &TaskPatch {
+            color: Some(None),
+            ..TaskPatch::default()
+        },
+    )
+    .unwrap();
+    let before = b.clone();
+    let many = (0..=MAX_TAGS).map(|i| i.to_string()).collect();
+    assert_eq!(
+        b.update_task(
+            id,
+            &TaskPatch {
+                title: Some("x".into()),
+                tags: Some(many),
+                ..TaskPatch::default()
+            }
+        ),
+        Err(BoardError::TooManyTags)
+    );
+    assert_eq!(b, before);
+    assert_eq!(b.task(id).unwrap().color, None);
+}
+
+#[test]
+fn columns_are_added_renamed_colored_moved_and_removed() {
+    let mut b = board();
+    let [todo, doing, done] = [0, 1, 2].map(|i| b.columns[i].id);
+    let review = ColumnId::from_u128(20);
+    b.add_column(review, " Review ", 2).unwrap();
+    assert_eq!(b.columns[2].name, "Review");
+    assert_eq!(
+        b.add_column(ColumnId::from_u128(21), "  ", 0),
+        Err(BoardError::EmptyColumnName)
+    );
+    b.update_column(review, Some("In review"), Some(Some(LabelColor::Purple)))
+        .unwrap();
+    assert_eq!(b.column(review).unwrap().color, Some(LabelColor::Purple));
+    b.update_column(review, None, Some(None)).unwrap();
+    assert_eq!(b.column(review).unwrap().color, None);
+    b.move_column(review, 0).unwrap();
+    let order: Vec<_> = b.columns.iter().map(|c| c.id).collect();
+    assert_eq!(order, [review, todo, doing, done]);
+    b.move_column(review, 99).unwrap();
+    assert_eq!(b.columns.last().unwrap().id, review);
+
+    // Removing moves the tasks left, or right for the first column.
+    b.add_task(doing, task(1, "a")).unwrap();
+    b.add_task(todo, task(2, "b")).unwrap();
+    b.add_task(doing, task(3, "c")).unwrap();
+    assert_eq!(b.column_heir(doing), Ok(Some(todo)));
+    assert_eq!(b.remove_column(doing), Ok(todo));
+    assert_eq!(titles(&b, 0), ["b", "a", "c"]);
+    assert_eq!(b.column_heir(todo), Ok(Some(done)));
+    assert_eq!(b.remove_column(todo), Ok(done));
+    assert_eq!(b.columns[0].id, done);
+    assert_eq!(titles(&b, 0), ["b", "a", "c"]);
+    b.remove_column(review).unwrap();
+    let before = b.clone();
+    assert_eq!(b.remove_column(done), Err(BoardError::LastColumn));
+    assert_eq!(b, before);
+    assert_eq!(b.task_count(), 3);
+}
+
+#[test]
+fn a_board_holds_a_bounded_number_of_columns() {
+    let mut b = board();
+    for i in 3..MAX_COLUMNS {
+        b.add_column(ColumnId::from_u128(100 + i as u128), "c", 99)
+            .unwrap();
+    }
+    assert_eq!(
+        b.add_column(ColumnId::from_u128(999), "c", 0),
+        Err(BoardError::TooManyColumns)
+    );
 }
 
 #[test]

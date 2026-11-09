@@ -1,5 +1,6 @@
-//! Messages for acting on a board's cards from outside the task editor: the card
-//! context menu (opened with a secondary click, i.e. a right or two-finger click).
+//! Messages for acting on a board's cards and columns from outside the task editor
+//! (their context menus, opened with a secondary click, i.e. a right or two-finger
+//! click), the tag filter, and the editor's colors and tags.
 
 /// Something done to a card on the board.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -15,4 +16,37 @@ pub enum BoardMsg {
         /// Column id.
         column: String,
     },
+    /// Color a task (a wire `LabelColor` value; 0 clears it).
+    ColorTask {
+        /// Task id.
+        task: String,
+        /// The color.
+        color: i32,
+    },
+    /// Color a column (0 clears it).
+    ColorColumn {
+        /// Column id.
+        column: String,
+        /// The color.
+        color: i32,
+    },
+    /// Move a column to `index` among the board's columns.
+    MoveColumn {
+        /// Column id.
+        column: String,
+        /// New position.
+        index: u32,
+    },
+    /// Ask before removing a column.
+    OpenDeleteColumn(String),
+    /// Confirmed: remove the column (its tasks move next door).
+    ConfirmDeleteColumn,
+    /// Show only tasks with this tag, or all with `None`.
+    FilterTag(Option<String>),
+    /// In the task editor: choose the color (0: none).
+    PickColor(i32),
+    /// In the task editor: add a tag (a suggestion).
+    AddTag(String),
+    /// In the task editor: remove a tag.
+    RemoveTag(String),
 }

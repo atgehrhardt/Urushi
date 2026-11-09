@@ -1,5 +1,6 @@
 //! Overlays drawn above everything: the context menu (opened by a secondary click on a
-//! thread, a project, a text field or a task card) and the label that follows the pointer while dragging a thread.
+//! thread, a project, a text field, a task card or a board column, or as the board's tag
+//! filter) and the label that follows the pointer while dragging a thread.
 
 use urushi_client::v1;
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Point, Role, Theme, key};
@@ -22,6 +23,8 @@ pub(super) fn overlay(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
         MenuTarget::Project(id) => project_items(theme, id),
         MenuTarget::Field(_) => field_items(state, theme),
         MenuTarget::Task(id) => tasks::task_items(state, theme, menu, id),
+        MenuTarget::Column(id) => tasks::column_items(state, theme, menu, id),
+        MenuTarget::TagFilter(board) => tasks::tag_filter_items(state, theme, board),
     };
     let backdrop = Node::new()
         .width(Length::Fill(1.0))
@@ -173,7 +176,7 @@ fn thread_items(state: &AppState, theme: &Theme, menu: &ContextMenu, id: &str) -
     };
     let id = id.to_owned();
     match menu.page {
-        MenuPage::Main => vec![
+        MenuPage::Main | MenuPage::Color => vec![
             item(
                 theme,
                 "Rename…",

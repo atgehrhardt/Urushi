@@ -62,13 +62,17 @@ pub(super) fn view(
             title,
             notes,
             subtasks,
+            labels,
         } => super::tasks::editor(
             state,
             (theme, scroll),
             (board, column, task.as_deref()),
-            (title, notes, subtasks),
+            (title, notes, subtasks, labels),
         ),
-        Dialog::DeleteBoard { name, tasks, .. } => super::tasks::delete_board(theme, name, *tasks),
+        Dialog::DeleteBoard { name, tasks, .. } => super::board::delete_board(theme, name, *tasks),
+        Dialog::DeleteColumn {
+            name, tasks, into, ..
+        } => super::board::delete_column(theme, name, *tasks, into),
         Dialog::Setup { step, agent, mode } => {
             super::setup::wizard(state, theme, *step, *agent, *mode)
         }

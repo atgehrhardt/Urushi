@@ -31,7 +31,7 @@ pub fn scene(
 /// list open), `settings`, the thread `menu` and its `menu-status` page, a thread being
 /// dragged (`drag`), the `repos` tab, the task `board` (a task being dragged across it in
 /// `board-drag`, a `task` with subtasks being edited, and a card's context menu in
-/// `task-menu`), and a terminal with an
+/// `task-menu`, and a column's in `column-menu`), and a terminal with an
 /// agent's plan usage in the `status` bar, and the first-run `setup` wizard (its mode
 /// step in `setup-mode`).
 pub const SCENARIOS: &[&str] = &[
@@ -49,6 +49,7 @@ pub const SCENARIOS: &[&str] = &[
     "board-drag",
     "task",
     "task-menu",
+    "column-menu",
     "status",
     "setup",
     "setup-mode",
@@ -101,6 +102,11 @@ fn sample_board() -> v1::Board {
     };
     let mut pricing = task("k3", "Pricing page copy", "Waiting on legal\nthen ship");
     pricing.thread_id = "t2".into();
+    pricing.color = v1::LabelColor::Orange.into();
+    pricing.tags = vec!["copy".into(), "legal".into()];
+    let mut invoice = task("k1", "Invoice PDF export", "Use the new template");
+    invoice.color = v1::LabelColor::Blue.into();
+    invoice.tags = vec!["backend".into()];
     pricing.subtasks = vec![
         sub("s1", "Draft tiers table", true, ""),
         sub("s2", "Legal review", false, "t6"),
@@ -110,6 +116,7 @@ fn sample_board() -> v1::Board {
         id: id.into(),
         name: name.into(),
         tasks,
+        ..Default::default()
     };
     v1::Board {
         id: "b1".into(),
@@ -119,12 +126,12 @@ fn sample_board() -> v1::Board {
             column(
                 "c1",
                 "To do",
-                vec![
-                    task("k1", "Invoice PDF export", "Use the new template"),
-                    task("k2", "Retry failed webhooks", ""),
-                ],
+                vec![invoice, task("k2", "Retry failed webhooks", "")],
             ),
-            column("c2", "In progress", vec![pricing]),
+            v1::BoardColumn {
+                color: v1::LabelColor::Teal.into(),
+                ..column("c2", "In progress", vec![pricing])
+            },
             column("c3", "Done", vec![task("k4", "Stripe sandbox keys", "")]),
         ],
     }
@@ -264,7 +271,7 @@ fn scenario_frame(
             state.update(Msg::DragThread("t6".into()));
             state.update(Msg::DragMove(Point::new(140.0, 400.0)));
         }
-        "board" | "board-drag" | "task" | "task-menu" | "status" => {
+        "board" | "board-drag" | "task" | "task-menu" | "column-menu" | "status" => {
             show_board_or_usage(&mut state, name);
         }
         _ => drop(state.update(Msg::SidebarTab(SidebarTab::Repos))),
@@ -282,12 +289,16 @@ fn scenario_frame(
 /// The `board`, `task` and `status` scenarios.
 fn show_board_or_usage(state: &mut AppState, name: &str) {
     match name {
-        "board" | "board-drag" | "task" | "task-menu" => {
+        "board" | "board-drag" | "task" | "task-menu" | "column-menu" => {
             state.update(Msg::ToggleBoard);
             state.update(Msg::BoardReveal(1.0));
             if name == "task-menu" {
                 state.update(Msg::Pointer(urushi_ui::Point::new(700.0, 150.0)));
                 state.update(Msg::OpenMenu(MenuTarget::Task("k3".into())));
+            }
+            if name == "column-menu" {
+                state.update(Msg::Pointer(urushi_ui::Point::new(760.0, 110.0)));
+                state.update(Msg::OpenMenu(MenuTarget::Column("c2".into())));
             }
             if name == "task" {
                 state.update(Msg::PressTask("k3".into()));
@@ -419,6 +430,27 @@ mod tests {
             "\"In progress  ›\"",
             "\"Go to thread\"",
             "\"Delete task\"",
+        ] {
+            assert!(menu.contains(text), "{text} missing: {menu}");
+        }
+    }
+
+    #[test]
+    fn colors_tags_and_column_actions_show() {
+        let board = dump("board", 1280.0);
+        for text in ["\"backend\"", "\"copy\"", "\"All tags  ▾\"", "\"+ Column\""] {
+            assert!(board.contains(text), "{text} missing: {board}");
+        }
+        let task = dump("task", 1280.0);
+        for text in ["\"Color\"", "\"Tags\"", "\"legal\"", "\"+ backend\""] {
+            assert!(task.contains(text), "{text} missing: {task}");
+        }
+        let menu = dump("column-menu", 1280.0);
+        for text in [
+            "\"Rename…\"",
+            "\"Teal  ›\"",
+            "\"Move left\"",
+            "\"Remove column…\"",
         ] {
             assert!(menu.contains(text), "{text} missing: {menu}");
         }

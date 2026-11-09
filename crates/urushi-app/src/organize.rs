@@ -26,6 +26,10 @@ pub enum MenuTarget {
     Field(crate::state::Field),
     /// A task card on the board (by task id).
     Task(String),
+    /// A column of a board (by column id).
+    Column(String),
+    /// The board's tag filter (by board id).
+    TagFilter(String),
 }
 
 /// Which page of the context menu is showing. Sub-pages replace the main page, which
@@ -38,6 +42,8 @@ pub enum MenuPage {
     Status,
     /// Choose a project (for a thread) or a column (for a task).
     Move,
+    /// Choose a color (for a task or a column).
+    Color,
 }
 
 /// An open context menu.
@@ -75,6 +81,10 @@ pub enum Prompt {
     NewBoard,
     /// Rename a task board.
     RenameBoard(String),
+    /// Add a column at the end of a board.
+    NewColumn(String),
+    /// Rename a column.
+    RenameColumn(String),
 }
 
 impl Prompt {
@@ -87,6 +97,8 @@ impl Prompt {
             Self::RenameProject(_) => ("Rename project", "Project name", "Rename"),
             Self::NewBoard => ("New board", "e.g. Sprint 12", "Create"),
             Self::RenameBoard(_) => ("Rename board", "Board name", "Rename"),
+            Self::NewColumn(_) => ("New column", "e.g. In review", "Add column"),
+            Self::RenameColumn(_) => ("Rename column", "Column name", "Rename"),
         }
     }
 }

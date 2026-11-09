@@ -1,4 +1,4 @@
-//! `urushi board …` (task boards and their subtasks) and `urushi usage` (an agent's plan
+//! `urushi board …` (task boards, their columns, tasks and subtasks) and `urushi usage` (an agent's plan
 //! usage).
 
 use anyhow::{Context, Result, bail};
@@ -7,6 +7,12 @@ use urushi_client::{Client, WorkspaceMirror, v1};
 
 use crate::commands::{out, resolve};
 use crate::render::short;
+
+mod columns;
+mod print;
+
+use columns::{ColCmd, color_arg};
+use print::print_boards;
 
 #[derive(Subcommand)]
 pub(crate) enum BoardCmd {
@@ -40,8 +46,14 @@ pub(crate) enum BoardCmd {
         /// Notes.
         #[arg(long, default_value = "")]
         notes: String,
+        /// Color: red, orange, yellow, green, teal, blue, purple, pink or gray.
+        #[arg(long)]
+        color: Option<String>,
+        /// A tag (repeat for more).
+        #[arg(long = "tag")]
+        tags: Vec<String>,
     },
-    /// Change a task's title or notes.
+    /// Change a task's title, notes, color or tags.
     Edit {
         /// Task id.
         task: String,
@@ -51,6 +63,15 @@ pub(crate) enum BoardCmd {
         /// New notes.
         #[arg(long)]
         notes: Option<String>,
+        /// New color, or "none" to clear it.
+        #[arg(long)]
+        color: Option<String>,
+        /// Add a tag (repeat for more).
+        #[arg(long = "tag")]
+        tags: Vec<String>,
+        /// Remove a tag (repeat for more).
+        #[arg(long = "untag")]
+        untags: Vec<String>,
     },
     /// Move a task to a column of its board.
     Mv {
@@ -70,6 +91,9 @@ pub(crate) enum BoardCmd {
     /// Manage a task's subtasks (its checklist).
     #[command(subcommand)]
     Sub(SubCmd),
+    /// Manage a board's columns.
+    #[command(subcommand)]
+    Col(ColCmd),
 }
 
 #[derive(Subcommand)]
@@ -121,19 +145,57 @@ pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
             column,
             title,
             notes,
+            color,
+            tags,
         } => {
             let board = resolve(client, &board).await?;
             let column = column_id(client, &board, &column).await?;
-            let task = client.create_task(&board, &column, &title, &notes).await?;
+            let task = client
+                .create_task_with(v1::CreateTaskRequest {
+                    board_id: board,
+                    column_id: column,
+                    title,
+                    notes,
+                    color: color
+                        .as_deref()
+                        .map(color_arg)
+                        .transpose()?
+                        .unwrap_or_default()
+                        .into(),
+                    tags,
+                    ..Default::default()
+                })
+                .await?;
             out(&format!("task {} {}", short(&task.id), task.title))
         }
-        BoardCmd::Edit { task, title, notes } => Ok(client
-            .update_task(
-                &resolve(client, &task).await?,
-                title.as_deref(),
-                notes.as_deref(),
-            )
-            .await?),
+        BoardCmd::Edit {
+            task,
+            title,
+            notes,
+            color,
+            tags,
+            untags,
+        } => {
+            let task = resolve(client, &task).await?;
+            let tags = if tags.is_empty() && untags.is_empty() {
+                None
+            } else {
+                let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
+                let mut now = mirror.task(&task).context("no such task")?.2.tags.clone();
+                now.retain(|t| !untags.iter().any(|u| u.trim().eq_ignore_ascii_case(t)));
+                now.extend(tags);
+                Some(v1::TagList { tags: now })
+            };
+            Ok(client
+                .update_task_with(v1::UpdateTaskRequest {
+                    task_id: task,
+                    title,
+                    notes,
+                    color: color.as_deref().map(color_arg).transpose()?.map(Into::into),
+                    tags,
+                })
+                .await?)
+        }
         BoardCmd::Mv {
             task,
             column,
@@ -149,6 +211,7 @@ pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
         }
         BoardCmd::RmTask { task } => Ok(client.delete_task(&resolve(client, &task).await?).await?),
         BoardCmd::Sub(cmd) => sub(client, cmd).await,
+        BoardCmd::Col(cmd) => columns::run(client, cmd).await,
     }
 }
 
@@ -176,7 +239,7 @@ async fn sub(client: &Client, cmd: SubCmd) -> Result<()> {
 }
 
 /// A column of `board`, by name (any case) or id prefix.
-async fn column_id(client: &Client, board: &str, column: &str) -> Result<String> {
+pub(super) async fn column_id(client: &Client, board: &str, column: &str) -> Result<String> {
     let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
     let board = mirror.board(board).context("no such board")?;
     let matches: Vec<&v1::BoardColumn> = board
@@ -189,52 +252,6 @@ async fn column_id(client: &Client, board: &str, column: &str) -> Result<String>
         [] => bail!("no column {column:?} on board {}", board.name),
         _ => bail!("{column:?} matches more than one column"),
     }
-}
-
-fn print_boards(mirror: &WorkspaceMirror) -> Result<()> {
-    if mirror.boards().is_empty() {
-        return out("no boards (create one with `urushi board new <name>`)");
-    }
-    for board in mirror.boards() {
-        out(&format!("board {} {}", short(&board.id), board.name))?;
-        for column in &board.columns {
-            out(&format!(
-                "  {} ({})  [{}]",
-                column.name,
-                column.tasks.len(),
-                short(&column.id)
-            ))?;
-            for task in &column.tasks {
-                let thread = link(mirror, &task.thread_id);
-                out(&format!(
-                    "    - {}  [{}]{thread}",
-                    task.title,
-                    short(&task.id)
-                ))?;
-                for line in task.notes.lines() {
-                    out(&format!("        {line}"))?;
-                }
-                for s in &task.subtasks {
-                    let mark = if s.done { "x" } else { " " };
-                    let thread = link(mirror, &s.thread_id);
-                    out(&format!(
-                        "        [{mark}] {}  [{}]{thread}",
-                        s.title,
-                        short(&s.id)
-                    ))?;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-/// " → thread <title>" for a task's or subtask's thread, if it still exists.
-fn link(mirror: &WorkspaceMirror, thread: &str) -> String {
-    mirror
-        .thread(thread)
-        .map(|t| format!("  → thread {} [{}]", t.title, short(&t.id)))
-        .unwrap_or_default()
 }
 
 /// Prints which agent runs in `pane` and its plan usage.

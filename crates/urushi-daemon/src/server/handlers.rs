@@ -272,7 +272,11 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         | Body::DeleteTask(_)
         | Body::CreateSubtask(_)
         | Body::UpdateSubtask(_)
-        | Body::DeleteSubtask(_)) => super::boards::route(service, body)?,
+        | Body::DeleteSubtask(_)
+        | Body::CreateColumn(_)
+        | Body::UpdateColumn(_)
+        | Body::MoveColumn(_)
+        | Body::DeleteColumn(_)) => super::boards::route(service, body)?,
         Body::ShutdownDaemon(_) => {
             if !connection.local {
                 return Err(ServiceError::Forbidden(
