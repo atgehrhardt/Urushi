@@ -191,8 +191,8 @@ fn slot(dragging: bool, drop: Msg) -> Node<Msg> {
     if dragging { node.on_drop(drop) } else { node }
 }
 
-/// Where a dragged card would land.
-fn drop_line(theme: &Theme) -> Node<Msg> {
+/// The accent line that shows where a dragged card or project would land.
+pub(in crate::view) fn drop_line(theme: &Theme) -> Node<Msg> {
     Node::new()
         .width(Length::Fill(1.0))
         .height(Length::Fixed(3.0))

@@ -15,6 +15,7 @@ mod sidebar;
 mod status_bar;
 mod task_in_thread;
 mod tasks;
+mod thread_card;
 
 use std::collections::HashMap;
 

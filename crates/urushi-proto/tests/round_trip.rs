@@ -189,6 +189,10 @@ fn all_request_kinds() {
         B::DeleteFolder(v1::DeleteFolderRequest {
             folder_id: "f".into(),
         }),
+        B::MoveFolder(v1::MoveFolderRequest {
+            folder_id: "f".into(),
+            index: 2,
+        }),
         B::ClearAttention(v1::ClearAttentionRequest {
             pane_ids: vec!["p".into(), "q".into()],
         }),

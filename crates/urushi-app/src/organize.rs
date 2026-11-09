@@ -1,9 +1,13 @@
 //! Client-side types for organizing the sidebar: tabs, collapsed sections, the context
-//! menu, text prompts, dragging threads, and the new-thread selectors. The organization
+//! menu, text prompts, dragging threads and projects, and the new-thread selectors. The organization
 //! itself (projects, pins, statuses) lives in the daemon; these only describe what the
 //! UI is doing with it.
 
+use urushi_client::v1;
 use urushi_ui::Point;
+
+/// First protocol minor version that can reorder projects (`MoveFolder`).
+pub const PROJECT_ORDER_SINCE_MINOR: u32 = 11;
 
 /// Which list the sidebar shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -57,6 +61,28 @@ pub struct ContextMenu {
     pub page: MenuPage,
     /// Where it opened (logical pixels).
     pub at: Point,
+}
+
+/// What is being dragged in the sidebar.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Dragged {
+    /// A thread (by id), to file it under another project.
+    Thread(String),
+    /// A project (by id), to change the order of projects.
+    Project(String),
+}
+
+/// Where project `dragged` goes when it is dropped on project `target`: it takes the
+/// target's place, so it lands below a target further down and above one further up.
+/// The index counts positions without the dragged project, as `MoveFolder` does.
+/// `None` when nothing would move or either project is unknown.
+pub fn project_drop_index(projects: &[v1::Folder], dragged: &str, target: &str) -> Option<u32> {
+    let from = projects.iter().position(|p| p.id == dragged)?;
+    let to = projects.iter().position(|p| p.id == target)?;
+    if from == to {
+        return None;
+    }
+    u32::try_from(to).ok()
 }
 
 /// Where a dragged thread can be dropped.

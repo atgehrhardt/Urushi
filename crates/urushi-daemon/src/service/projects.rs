@@ -2,7 +2,7 @@
 //! pins, statuses and which project a thread is filed under. None of this touches
 //! worktrees or branches.
 
-use urushi_core::{Project, ProjectId, Status, ThreadId};
+use urushi_core::{Project, ProjectId, Status, ThreadId, project};
 
 use super::{Service, ServiceError, ServiceResult, new_uuid, now};
 
@@ -79,6 +79,16 @@ impl Service {
                     record.thread.project = None;
                 }
             }
+            Ok(())
+        })
+    }
+
+    /// Moves a project to `index` among the others (counted without it; clamped to the
+    /// end). Projects are listed in this order.
+    pub fn move_project(&self, id: ProjectId, index: usize) -> ServiceResult<()> {
+        self.mutate(|state| {
+            state.project(id)?;
+            project::move_project(&mut state.projects, id, index);
             Ok(())
         })
     }

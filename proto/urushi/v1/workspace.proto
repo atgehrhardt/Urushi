@@ -218,6 +218,13 @@ message DeleteFolderRequest {
   string folder_id = 1;
 }
 
+// Moves a folder to `index` among the others (counted without it; clamped to the end).
+// Folders are listed in this order. Since 1.11.
+message MoveFolderRequest {
+  string folder_id = 1;
+  uint32 index = 2;
+}
+
 message RenameThreadRequest {
   string thread_id = 1;
   string title = 2;

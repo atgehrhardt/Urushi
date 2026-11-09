@@ -388,8 +388,10 @@ pub struct AppState {
     pub collapsed: HashSet<String>,
     /// The open context menu.
     pub menu: Option<ContextMenu>,
-    /// The thread being dragged, and where the pointer is.
-    pub dragging: Option<(String, Point)>,
+    /// The thread or project being dragged in the sidebar, and where the pointer is.
+    pub dragging: Option<(crate::organize::Dragged, Point)>,
+    /// While a project is dragged: the project whose place it would take if dropped now.
+    pub project_over: Option<String>,
     /// Where the last mouse press was (anchors context menus).
     pub last_press: Option<Point>,
     /// Branches of a repo, for the new-thread dialog: `(repo id, branches)`.
@@ -445,6 +447,7 @@ impl AppState {
             collapsed: HashSet::new(),
             menu: None,
             dragging: None,
+            project_over: None,
             last_press: None,
             branches: None,
             mods: crate::keys::Mods::default(),
@@ -484,6 +487,11 @@ impl AppState {
     /// Whether the daemon keeps colors, tags and changeable columns (protocol 1.8).
     pub fn daemon_supports_board_extras(&self) -> bool {
         self.daemon_minor >= crate::board::BOARD_EXTRAS_SINCE_MINOR
+    }
+
+    /// Whether the daemon can reorder projects (protocol 1.11).
+    pub fn daemon_supports_project_order(&self) -> bool {
+        self.daemon_minor >= crate::organize::PROJECT_ORDER_SINCE_MINOR
     }
 
     /// Whether `agent` is started with its skip-permissions flag (per the daemon's settings).

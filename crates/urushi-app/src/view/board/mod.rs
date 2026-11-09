@@ -39,6 +39,7 @@ mod dialogs;
 
 pub(in crate::view) use card::drag_ghost;
 use column::column;
+pub(in crate::view) use column::drop_line;
 pub(in crate::view) use dialogs::{delete_board, delete_column};
 
 /// Width of the slot that adds a column.

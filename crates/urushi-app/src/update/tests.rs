@@ -392,6 +392,7 @@ mod labels;
 mod organize;
 mod panes;
 mod pointer;
+mod project_order;
 mod setup;
 mod task_in_thread;
 mod tasks;

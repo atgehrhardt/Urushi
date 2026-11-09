@@ -8,7 +8,9 @@ use urushi_ui::Point;
 use super::{attached, bodies, named, workspace};
 use crate::keys::Named;
 use crate::msg::{Effect, Followup, Msg};
-use crate::organize::{DropTarget, MenuPage, MenuTarget, Prompt, Select, SidebarTab, section_key};
+use crate::organize::{
+    Dragged, DropTarget, MenuPage, MenuTarget, Prompt, Select, SidebarTab, section_key,
+};
 use crate::state::{AppState, Dialog};
 
 fn thread() -> String {
@@ -141,7 +143,10 @@ fn dragging_a_thread_onto_a_project_moves_it() {
     s.update(Msg::Pointer(Point::new(10.0, 10.0)));
     s.update(Msg::DragThread(thread()));
     s.update(Msg::DragMove(Point::new(30.0, 80.0)));
-    assert_eq!(s.dragging, Some((thread(), Point::new(30.0, 80.0))));
+    assert_eq!(
+        s.dragging,
+        Some((Dragged::Thread(thread()), Point::new(30.0, 80.0)))
+    );
     let fx = s.update(Msg::DropThread(DropTarget::Project("f1".into())));
     assert_eq!(
         update_request(&fx).unwrap().folder_id.as_deref(),

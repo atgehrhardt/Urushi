@@ -55,6 +55,16 @@ impl Client {
         self.ok(body, "DeleteFolder").await
     }
 
+    /// Moves a project to `index` among the others (0 is first; clamped to the end).
+    /// Needs protocol 1.11.
+    pub async fn move_project(&self, project_id: &str, index: u32) -> Result<(), ClientError> {
+        let body = Body::MoveFolder(v1::MoveFolderRequest {
+            folder_id: project_id.into(),
+            index,
+        });
+        self.ok(body, "MoveFolder").await
+    }
+
     /// Stops the daemon (it answers first). Every running terminal closes. Daemons
     /// before protocol 1.4 don't know this request; see [`crate::stop_local_daemon`].
     pub async fn shutdown_daemon(&self) -> Result<(), ClientError> {

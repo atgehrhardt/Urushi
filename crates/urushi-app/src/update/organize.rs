@@ -1,5 +1,6 @@
 //! Organizing threads: the sidebar's tabs and sections, the context menu, pins,
-//! statuses, projects, prompts, and dragging threads between projects. Every change is a
+//! statuses, projects, prompts, dragging threads between projects, and reordering
+//! projects. Every change is a
 //! request to the daemon (`UpdateThread`, `CreateFolder`, ...); the sidebar updates when
 //! the daemon reports the new workspace.
 
@@ -8,7 +9,7 @@ use urushi_ui::TextField;
 
 use super::request;
 use crate::msg::{Effect, Followup, Msg};
-use crate::organize::{ContextMenu, DropTarget, MenuPage, Prompt};
+use crate::organize::{ContextMenu, Dragged, DropTarget, MenuPage, Prompt, project_drop_index};
 use crate::state::{AppState, Dialog, Field, ThreadTarget};
 
 impl AppState {
@@ -51,41 +52,13 @@ impl AppState {
                     Followup::None,
                 ));
             }
-            Msg::DragThread(thread) => {
-                if self.dialog.is_none() {
-                    self.menu = None;
-                    self.dragging = Some((thread, self.last_press.unwrap_or_default()));
-                }
-            }
-            Msg::DragMove(p) => {
-                if let Some((_, at)) = &mut self.dragging {
-                    *at = p;
-                }
-                if let Some((_, at)) = &mut self.board.dragging {
-                    *at = p;
-                }
-            }
-            Msg::DropThread(target) => {
-                if let Some((thread, _)) = self.dragging.take() {
-                    let project = match target {
-                        DropTarget::Project(id) => Some(id),
-                        DropTarget::Ungrouped => None,
-                    };
-                    let current = self.workspace.thread(&thread).map(|t| t.folder_id.clone());
-                    if current != Some(project.clone().unwrap_or_default()) {
-                        self.update_thread(
-                            thread,
-                            |r| r.folder_id = Some(project.unwrap_or_default()),
-                            fx,
-                        );
-                    }
-                }
-            }
-            Msg::DragCancel => {
-                self.dragging = None;
-                self.board.dragging = None;
-                self.board.over = None;
-            }
+            msg @ (Msg::DragThread(_)
+            | Msg::DragProject(_)
+            | Msg::DropProject(_)
+            | Msg::DragMove(_)
+            | Msg::DropThread(_)
+            | Msg::DragCancel) => self.drag(msg, fx),
+            Msg::MoveProject { project, index } => self.move_project(project, index, fx),
             Msg::ToggleSelect(which) => {
                 if let Some(Dialog::NewThread { open, .. }) = &mut self.dialog {
                     *open = if *open == Some(which) {
@@ -110,6 +83,92 @@ impl AppState {
             }
             _ => {}
         }
+    }
+
+    /// Dragging threads between projects and reordering projects.
+    fn drag(&mut self, msg: Msg, fx: &mut Vec<Effect>) {
+        match msg {
+            Msg::DragThread(thread) => self.start_drag(Dragged::Thread(thread)),
+            Msg::DragProject(project) => {
+                if self.daemon_supports_project_order() {
+                    self.start_drag(Dragged::Project(project));
+                }
+            }
+            Msg::DropProject(target) => {
+                self.project_over = None;
+                if let Some((Dragged::Project(project), _)) = self.dragging.take()
+                    && let Some(index) =
+                        project_drop_index(self.workspace.projects(), &project, &target)
+                {
+                    self.move_project(project, index, fx);
+                }
+            }
+            Msg::DragMove(p) => {
+                if let Some((_, at)) = &mut self.dragging {
+                    *at = p;
+                }
+                if let Some((_, at)) = &mut self.board.dragging {
+                    *at = p;
+                }
+            }
+            Msg::DropThread(target) => {
+                if let Some((Dragged::Thread(thread), _)) = self.dragging.take() {
+                    let project = match target {
+                        DropTarget::Project(id) => Some(id),
+                        DropTarget::Ungrouped => None,
+                    };
+                    let current = self.workspace.thread(&thread).map(|t| t.folder_id.clone());
+                    if current != Some(project.clone().unwrap_or_default()) {
+                        self.update_thread(
+                            thread,
+                            |r| r.folder_id = Some(project.unwrap_or_default()),
+                            fx,
+                        );
+                    }
+                }
+            }
+            Msg::DragCancel => {
+                self.dragging = None;
+                self.project_over = None;
+                self.board.dragging = None;
+                self.board.over = None;
+            }
+            _ => {}
+        }
+    }
+
+    /// Starts dragging a thread or project from where the pointer was pressed.
+    fn start_drag(&mut self, what: Dragged) {
+        if self.dialog.is_none() {
+            self.menu = None;
+            self.project_over = None;
+            self.dragging = Some((what, self.last_press.unwrap_or_default()));
+        }
+    }
+
+    /// Sends a `MoveFolder` and closes the menu.
+    fn move_project(&mut self, folder_id: String, index: u32, fx: &mut Vec<Effect>) {
+        self.menu = None;
+        fx.push(request(
+            Body::MoveFolder(v1::MoveFolderRequest { folder_id, index }),
+            Followup::None,
+        ));
+    }
+
+    /// While a project is dragged: remember which project's place it would take, for the
+    /// drop line. Only drops that move it count.
+    pub(super) fn project_drag_over(&mut self, target: Option<Msg>) {
+        let Some((Dragged::Project(project), _)) = &self.dragging else {
+            return;
+        };
+        self.project_over = match target {
+            Some(Msg::DropProject(t))
+                if project_drop_index(self.workspace.projects(), project, &t).is_some() =>
+            {
+                Some(t)
+            }
+            _ => None,
+        };
     }
 
     /// Sends an `UpdateThread` for `thread` and closes the menu.
@@ -288,8 +347,12 @@ impl AppState {
 
     /// Escape: close the menu or end a drag. Returns whether it did something.
     pub(super) fn dismiss_overlay(&mut self) -> bool {
-        self.menu.take().is_some()
+        let dismissed = self.menu.take().is_some()
             || self.dragging.take().is_some()
-            || self.board.dragging.take().is_some()
+            || self.board.dragging.take().is_some();
+        if self.dragging.is_none() {
+            self.project_over = None;
+        }
+        dismissed
     }
 }

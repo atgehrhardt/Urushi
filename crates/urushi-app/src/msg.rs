@@ -95,6 +95,17 @@ pub enum Msg {
     DropThread(DropTarget),
     /// The drag was released anywhere else.
     DragCancel,
+    /// A project's header started being dragged.
+    DragProject(String),
+    /// A dragged project was released over another project (by id): it takes its place.
+    DropProject(String),
+    /// Move a project to `index` in the list (counted without it).
+    MoveProject {
+        /// Project id.
+        project: String,
+        /// New position.
+        index: u32,
+    },
     /// Open or close a selector in the new-thread dialog.
     ToggleSelect(Select),
     /// Choose the repo in the new-thread dialog.

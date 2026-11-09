@@ -324,6 +324,11 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             service.delete_project(parse(&r.folder_id, "folder_id")?)?;
             ok()
         }
+        Body::MoveFolder(r) => {
+            let index = usize::try_from(r.index).unwrap_or(usize::MAX);
+            service.move_project(parse(&r.folder_id, "folder_id")?, index)?;
+            ok()
+        }
         Body::TailnetStatus(_) => Outcome::TailnetStatus(remote::status(service).await),
         Body::SetTailnetServe(r) => {
             service.update_settings(&v1::SettingsPatch {

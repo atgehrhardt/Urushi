@@ -148,6 +148,13 @@ enum ProjectCmd {
         /// Project id.
         project: String,
     },
+    /// Move a project to a position in the list (0 is first).
+    Move {
+        /// Project id.
+        project: String,
+        /// New position, counted without the project (clamped to the end).
+        index: u32,
+    },
 }
 
 #[derive(Subcommand)]

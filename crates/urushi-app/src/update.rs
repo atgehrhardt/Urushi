@@ -46,6 +46,9 @@ impl AppState {
             | Msg::DragMove(_)
             | Msg::DropThread(_)
             | Msg::DragCancel
+            | Msg::DragProject(_)
+            | Msg::DropProject(_)
+            | Msg::MoveProject { .. }
             | Msg::ToggleSelect(_)
             | Msg::PickRepo(_)
             | Msg::PickBase(_)
@@ -100,6 +103,15 @@ impl AppState {
                     self.area = Some(rect);
                     self.sync_panes(&mut fx);
                 }
+            }
+            // A dragged project shows where it would land: `update/organize.rs`.
+            Msg::DragOver(target)
+                if matches!(
+                    self.dragging,
+                    Some((crate::organize::Dragged::Project(_), _))
+                ) =>
+            {
+                self.project_drag_over(target.map(|m| *m));
             }
             // The task-board panel: `update/board.rs`.
             msg @ (Msg::ToggleBoard

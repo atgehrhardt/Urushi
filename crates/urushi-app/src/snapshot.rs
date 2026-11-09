@@ -28,9 +28,10 @@ pub fn scene(
 
 /// Named screens for [`scenario`]: a thread with no tabs (`launcher`), the new-tab
 /// `picker`, the `add-repo` and `new-thread` dialogs (`new-thread-base` with the branch
-/// list open, `new-thread-project` with the project list open), `settings`, the thread `menu` and its `menu-status` page, a thread being
-/// dragged (`drag`), the `repos` tab, the task `board` (a task being dragged across it in
-/// `board-drag`, a `task` with subtasks being edited, and a card's context menu in
+/// list open, `new-thread-project` with the project list open), `settings`, the thread
+/// `menu` and its `menu-status` page, a thread being dragged (`drag`), a project being
+/// dragged above another (`drag-project`), the `repos` tab, the task `board` (a task
+/// being dragged across it in `board-drag`, a `task` with subtasks being edited, and a card's context menu in
 /// `task-menu`, a column's in `column-menu`, a subtask opened as a task in
 /// `task-nested`, "Make subtask of…" in `nest`, and Start thread switched to an existing
 /// thread in `task-in-thread`), a terminal with an agent's plan
@@ -47,6 +48,7 @@ pub const SCENARIOS: &[&str] = &[
     "menu",
     "menu-status",
     "drag",
+    "drag-project",
     "repos",
     "board",
     "board-drag",
@@ -358,11 +360,7 @@ fn scenario_frame(
                 state.update(Msg::MenuPage(MenuPage::Status));
             }
         }
-        "drag" => {
-            state.update(Msg::Pointer(Point::new(120.0, 470.0)));
-            state.update(Msg::DragThread("t6".into()));
-            state.update(Msg::DragMove(Point::new(140.0, 400.0)));
-        }
+        "drag" | "drag-project" => show_drag(&mut state, name),
         name if BOARD_SCENARIOS.contains(&name) || name == "status" || name == "pane-menu" => {
             show_board_or_usage(&mut state, name);
         }
@@ -376,6 +374,20 @@ fn scenario_frame(
         text,
         pointer,
     ))
+}
+
+/// The `drag` (a thread) and `drag-project` (a project, over the one above) scenarios.
+fn show_drag(state: &mut AppState, name: &str) {
+    if name == "drag" {
+        state.update(Msg::Pointer(Point::new(120.0, 470.0)));
+        state.update(Msg::DragThread("t6".into()));
+        state.update(Msg::DragMove(Point::new(140.0, 400.0)));
+    } else {
+        state.update(Msg::Pointer(Point::new(120.0, 300.0)));
+        state.update(Msg::DragProject("f2".into()));
+        state.update(Msg::DragMove(Point::new(140.0, 110.0)));
+        state.update(Msg::DragOver(Some(Box::new(Msg::DropProject("f1".into())))));
+    }
 }
 
 /// The `board`, `task`, `status` and `pane-menu` scenarios.

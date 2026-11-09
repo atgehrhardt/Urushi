@@ -99,6 +99,8 @@ message Request {
     DeleteAttachmentRequest delete_attachment = 53;
     // Since 1.9.
     ClearAttentionRequest clear_attention = 54;
+    // Since 1.11.
+    MoveFolderRequest move_folder = 55;
   }
 }
 

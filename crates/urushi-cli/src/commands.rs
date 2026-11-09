@@ -151,6 +151,9 @@ async fn project(client: &Client, cmd: ProjectCmd) -> Result<()> {
         ProjectCmd::Rm { project } => Ok(client
             .delete_project(&resolve(client, &project).await?)
             .await?),
+        ProjectCmd::Move { project, index } => Ok(client
+            .move_project(&resolve(client, &project).await?, index)
+            .await?),
     }
 }
 

@@ -6,7 +6,7 @@ use urushi_client::v1;
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Point, Role, Theme, key};
 
 use crate::msg::Msg;
-use crate::organize::{ContextMenu, MenuPage, MenuTarget, Prompt};
+use crate::organize::{ContextMenu, Dragged, MenuPage, MenuTarget, Prompt};
 use crate::state::{AppState, FieldCommand};
 
 mod pane;
@@ -21,7 +21,7 @@ pub(super) fn overlay(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
     };
     let items = match &menu.target {
         MenuTarget::Thread(id) => thread_items(state, theme, menu, id),
-        MenuTarget::Project(id) => project_items(theme, id),
+        MenuTarget::Project(id) => project_items(state, theme, id),
         MenuTarget::Field(_) => field_items(state, theme),
         MenuTarget::Task(id) => tasks::task_items(state, theme, menu, id),
         MenuTarget::Column(id) => tasks::column_items(state, theme, menu, id),
@@ -49,10 +49,13 @@ pub(super) fn overlay(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
     vec![backdrop, card]
 }
 
-/// The dragged thread's title, next to the pointer.
+/// The dragged thread's title or project's name, next to the pointer.
 pub(super) fn drag_ghost(state: &AppState, theme: &Theme) -> Option<Node<Msg>> {
-    let (thread, at) = state.dragging.as_ref()?;
-    let title = state.workspace.thread(thread)?.title.clone();
+    let (dragged, at) = state.dragging.as_ref()?;
+    let title = match dragged {
+        Dragged::Thread(thread) => state.workspace.thread(thread)?.title.clone(),
+        Dragged::Project(project) => state.workspace.project(project)?.name.clone(),
+    };
     Some(
         Node::row()
             .padding(Insets::symmetric(5.0, 10.0))
@@ -302,8 +305,8 @@ fn move_page(state: &AppState, theme: &Theme, thread: &v1::Thread, id: String) -
     items
 }
 
-fn project_items(theme: &Theme, id: &str) -> Vec<Node<Msg>> {
-    vec![
+fn project_items(state: &AppState, theme: &Theme, id: &str) -> Vec<Node<Msg>> {
+    let mut items = vec![
         item(
             theme,
             "New thread…",
@@ -321,13 +324,39 @@ fn project_items(theme: &Theme, id: &str) -> Vec<Node<Msg>> {
             theme.text,
             Msg::OpenPrompt(Prompt::RenameProject(id.to_owned())),
         ),
-        separator(theme),
-        item(
-            theme,
-            "Delete project",
-            "threads are kept",
-            theme.danger,
-            Msg::DeleteProject(id.to_owned()),
-        ),
-    ]
+    ];
+    items.extend(move_items(state, theme, id));
+    items.push(separator(theme));
+    items.push(item(
+        theme,
+        "Delete project",
+        "threads are kept",
+        theme.danger,
+        Msg::DeleteProject(id.to_owned()),
+    ));
+    items
+}
+
+/// "Move up" and "Move down" for a project, where it can go that way and the daemon can
+/// reorder projects (protocol 1.11).
+fn move_items(state: &AppState, theme: &Theme, id: &str) -> Vec<Node<Msg>> {
+    let projects = state.workspace.projects();
+    let Some(at) = projects.iter().position(|p| p.id == id) else {
+        return Vec::new();
+    };
+    if !state.daemon_supports_project_order() {
+        return Vec::new();
+    }
+    let moved = |index: usize| Msg::MoveProject {
+        project: id.to_owned(),
+        index: u32::try_from(index).unwrap_or(u32::MAX),
+    };
+    let mut items = Vec::new();
+    if at > 0 {
+        items.push(item(theme, "Move up", "", theme.text, moved(at - 1)));
+    }
+    if at + 1 < projects.len() {
+        items.push(item(theme, "Move down", "", theme.text, moved(at + 1)));
+    }
+    items
 }
