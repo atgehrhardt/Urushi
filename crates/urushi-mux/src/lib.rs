@@ -9,16 +9,21 @@
 //! - [`session`]: the per-pane actor tying them together ([`SessionHandle`]).
 //! - [`screen`]: the renderer-neutral screen model that clients draw.
 //! - [`keys`]: abstract key events → terminal bytes.
+//! - [`replay`]: a pane's recent output, saved and replayed after a daemon restart.
 
 pub mod emulator;
 pub mod keys;
+pub mod mouse;
 pub mod pty;
+pub mod replay;
 pub mod screen;
 pub mod session;
 
 pub use emulator::{AlacrittyEmulator, Emulator, Scroll};
 pub use keys::{Key, KeyEvent, Modifiers};
+pub use mouse::{MouseAction, MouseButton, MouseEvent, WheelEvent};
 pub use pty::{NativePty, Pty, SpawnSpec};
+pub use replay::Snapshot;
 pub use screen::{ScreenFrame, TermSize};
 pub use session::{Input, SessionHandle, SessionStatus};
 

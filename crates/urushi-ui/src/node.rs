@@ -8,7 +8,7 @@
 use std::rc::Rc;
 
 use crate::color::Color;
-use crate::geometry::{Insets, Rect};
+use crate::geometry::{Insets, Point, Rect};
 use crate::scene::{Font, Scene};
 use crate::text::TextSystem;
 
@@ -131,6 +131,9 @@ pub struct Style {
     pub radius: f32,
     /// Clip children to this box.
     pub clip: bool,
+    /// Shifts the box (and everything in it) left by this fraction of its own width:
+    /// 0 is in place, 1 is fully to the left. For panels that slide in.
+    pub slide: f32,
 }
 
 impl Default for Style {
@@ -148,6 +151,7 @@ impl Default for Style {
             border: None,
             radius: 0.0,
             clip: false,
+            slide: 0.0,
         }
     }
 }
@@ -172,12 +176,14 @@ pub enum Content {
         /// Colour.
         color: Color,
     },
-    /// An editable line of text.
+    /// Editable text: one line, or several wrapped to the box (`multiline`).
     Field {
         /// Current text.
         text: String,
         /// Caret byte offset when focused.
         caret: Option<usize>,
+        /// Selected byte range when focused.
+        selection: Option<(usize, usize)>,
         /// Shown when empty.
         placeholder: String,
         /// Text colour.
@@ -186,9 +192,15 @@ pub enum Content {
         placeholder_color: Color,
         /// Caret colour.
         caret_color: Color,
+        /// Selection highlight colour.
+        selection_color: Color,
         /// Size.
         size: f32,
+        /// Wraps and keeps line breaks, rather than scrolling one line sideways.
+        multiline: bool,
     },
+    /// A bitmap, stretched over the box.
+    Image(std::sync::Arc<crate::scene::ImageData>),
     /// Custom painting.
     Paint(Painter),
 }
@@ -199,6 +211,7 @@ impl std::fmt::Debug for Content {
             Self::None => write!(f, "None"),
             Self::Label { text, .. } => write!(f, "Label({text:?})"),
             Self::Field { text, .. } => write!(f, "Field({text:?})"),
+            Self::Image(i) => write!(f, "Image(#{})", i.id),
             Self::Paint(_) => write!(f, "Paint"),
         }
     }
@@ -234,6 +247,15 @@ pub struct Node<M> {
     pub label: Option<String>,
     /// Makes this a vertically scrolling container.
     pub scroll: Option<Scroll>,
+    /// Message sent on a secondary click (right click, or two-finger click on a trackpad).
+    pub on_secondary_click: Option<M>,
+    /// Message sent when the pointer is dragged starting on this node.
+    pub on_drag: Option<M>,
+    /// Message sent when a drag ends over this node.
+    pub on_drop: Option<M>,
+    /// Inside a [`Flow::Stack`], places this node at this point (its natural size,
+    /// clamped to the stack), instead of filling the stack. For menus and popups.
+    pub position: Option<Point>,
 }
 
 impl<M> Node<M> {
@@ -249,6 +271,10 @@ impl<M> Node<M> {
             role: Role::None,
             label: None,
             scroll: None,
+            on_secondary_click: None,
+            on_drag: None,
+            on_drop: None,
+            position: None,
         }
     }
 
@@ -282,6 +308,14 @@ impl<M> Node<M> {
             color,
         };
         node
+    }
+
+    /// A bitmap of `width` × `height` logical pixels.
+    pub fn image(data: std::sync::Arc<crate::scene::ImageData>, width: f32, height: f32) -> Self {
+        let mut node = Self::new();
+        node.content = Content::Image(data);
+        node.width(Length::Fixed(width))
+            .height(Length::Fixed(height))
     }
 
     /// An invisible flexible spacer.
@@ -389,6 +423,45 @@ impl<M> Node<M> {
         if self.cursor == CursorIcon::Default {
             self.cursor = CursorIcon::Pointer;
         }
+        self
+    }
+
+    /// Sends `message` on a secondary click (right click / two-finger click), e.g. to
+    /// open a context menu.
+    #[must_use]
+    pub fn on_secondary_click(mut self, message: M) -> Self {
+        self.on_secondary_click = Some(message);
+        self
+    }
+
+    /// Sends `message` when a drag starts on this node. The runner decides when a press
+    /// has moved far enough to count as a drag.
+    #[must_use]
+    pub fn on_drag(mut self, message: M) -> Self {
+        self.on_drag = Some(message);
+        self
+    }
+
+    /// Sends `message` when a drag is released over this node. While set, the node also
+    /// shows its hover background under the pointer, as a drop highlight.
+    #[must_use]
+    pub fn on_drop(mut self, message: M) -> Self {
+        self.on_drop = Some(message);
+        self
+    }
+
+    /// Shifts this node left by `fraction` of its width (see [`Style::slide`]). Put it
+    /// in a clipped parent so the part outside doesn't show.
+    #[must_use]
+    pub fn slide_x(mut self, fraction: f32) -> Self {
+        self.style.slide = fraction;
+        self
+    }
+
+    /// Places this node at `at` inside its [`Flow::Stack`] parent, at its natural size.
+    #[must_use]
+    pub fn at(mut self, at: Point) -> Self {
+        self.position = Some(at);
         self
     }
 

@@ -12,21 +12,15 @@ pub(crate) fn short(id: &str) -> &str {
 
 pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
     let mut o = std::io::stdout().lock();
-    if mirror.projects().is_empty() {
-        writeln!(
-            o,
-            "no projects yet; add one with `urushi project add <path>`"
-        )?;
+    if mirror.repos().is_empty() {
+        writeln!(o, "no repos yet; add one with `urushi repo add <path>`")?;
     }
     for project in mirror.projects() {
-        writeln!(
-            o,
-            "{} {}  {}",
-            short(&project.id),
-            project.name,
-            project.repo_root
-        )?;
-        for thread in mirror.threads_of(&project.id) {
+        writeln!(o, "project {} {}", short(&project.id), project.name)?;
+    }
+    for repo in mirror.repos() {
+        writeln!(o, "{} {}  {}", short(&repo.id), repo.name, repo.repo_root)?;
+        for thread in mirror.threads_of_repo(&repo.id) {
             let state = match v1::ThreadState::try_from(thread.state) {
                 Ok(v1::ThreadState::Ready) => String::new(),
                 Ok(v1::ThreadState::DeletionFailed) => {
@@ -35,9 +29,25 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
                 Ok(other) => format!("  [{}]", other.as_str_name()),
                 Err(_) => "  [?]".into(),
             };
+            let mut organization = String::new();
+            if thread.pinned {
+                organization.push_str("  pinned");
+            }
+            if !thread.status.is_empty() {
+                let _ = std::fmt::Write::write_fmt(
+                    &mut organization,
+                    format_args!("  status: {}", thread.status),
+                );
+            }
+            if let Some(project) = mirror.project(&thread.folder_id) {
+                let _ = std::fmt::Write::write_fmt(
+                    &mut organization,
+                    format_args!("  in {}", project.name),
+                );
+            }
             writeln!(
                 o,
-                "  {} {}  ({}){state}",
+                "  {} {}  ({}){state}{organization}",
                 short(&thread.id),
                 thread.title,
                 thread.primary_branch
@@ -139,6 +149,10 @@ pub(crate) fn print_settings(s: &v1::Settings) -> Result<()> {
         }
     )?;
     writeln!(o, "allow-tagged-nodes      {}", t.allow_tagged_nodes)?;
+    let a = s.agents.unwrap_or_default();
+    writeln!(o, "claude-skip-permissions {}", a.claude_skip_permissions)?;
+    writeln!(o, "codex-skip-permissions  {}", a.codex_skip_permissions)?;
+    writeln!(o, "cursor-skip-permissions {}", a.cursor_skip_permissions)?;
     Ok(())
 }
 

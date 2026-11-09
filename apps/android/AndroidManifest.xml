@@ -5,7 +5,7 @@
     android:versionName="0.1.0">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <application android:label="Urushi" android:hasCode="false" android:theme="@android:style/Theme.Black.NoTitleBar">
+    <application android:label="Urushi" android:icon="@mipmap/ic_launcher" android:hasCode="false" android:theme="@android:style/Theme.Black.NoTitleBar">
         <activity android:name="android.app.NativeActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|density|uiMode"

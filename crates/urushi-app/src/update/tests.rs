@@ -1,5 +1,5 @@
 use urushi_client::v1::{self, request::Body, response::Outcome};
-use urushi_core::{Layout, PaneId, ProjectId, TabId, ThreadId};
+use urushi_core::{Layout, PaneId, RepoId, TabId, ThreadId};
 use urushi_proto::convert;
 use urushi_ui::{CellMetrics, Rect};
 
@@ -8,28 +8,28 @@ use crate::keys::{KeyPress, Mods, Named};
 use crate::msg::{Effect, Followup, Msg};
 use crate::state::{AppState, Dialog};
 
-const CELL: CellMetrics = CellMetrics {
+pub(super) const CELL: CellMetrics = CellMetrics {
     width: 8.0,
     height: 16.0,
 };
 
-fn id(n: u128) -> String {
+pub(super) fn id(n: u128) -> String {
     PaneId::from_u128(n).to_string()
 }
 
-fn workspace() -> v1::Workspace {
+pub(super) fn workspace() -> v1::Workspace {
     let pane = PaneId::from_u128(100);
     let layout = convert::layout_to_proto(&Layout::single(pane));
     v1::Workspace {
         revision: 1,
         projects: vec![v1::Project {
-            id: ProjectId::from_u128(1).to_string(),
+            id: RepoId::from_u128(1).to_string(),
             name: "repo".into(),
             ..Default::default()
         }],
         threads: vec![v1::Thread {
             id: ThreadId::from_u128(10).to_string(),
-            project_id: ProjectId::from_u128(1).to_string(),
+            project_id: RepoId::from_u128(1).to_string(),
             title: "Fix bug".into(),
             primary_branch: "urushi/fix-bug-1".into(),
             state: v1::ThreadState::Ready.into(),
@@ -43,10 +43,12 @@ fn workspace() -> v1::Workspace {
             layout: Some(layout),
             focused_pane_id: pane.to_string(),
         }],
+        folders: Vec::new(),
+        boards: Vec::new(),
     }
 }
 
-fn connected() -> AppState {
+pub(super) fn connected() -> AppState {
     let mut s = AppState::new(ConnectTarget::Local(None), CELL);
     s.update(Msg::Connected {
         welcome: v1::Welcome {
@@ -58,7 +60,7 @@ fn connected() -> AppState {
     s
 }
 
-fn bodies(fx: &[Effect]) -> Vec<&Body> {
+pub(super) fn bodies(fx: &[Effect]) -> Vec<&Body> {
     fx.iter()
         .filter_map(|e| {
             if let Effect::Request { body, .. } = e {
@@ -70,7 +72,7 @@ fn bodies(fx: &[Effect]) -> Vec<&Body> {
         .collect()
 }
 
-fn key(character: &str, mods: Mods) -> KeyPress {
+pub(super) fn key(character: &str, mods: Mods) -> KeyPress {
     KeyPress {
         named: None,
         character: Some(character.into()),
@@ -79,7 +81,7 @@ fn key(character: &str, mods: Mods) -> KeyPress {
     }
 }
 
-fn named(n: Named) -> KeyPress {
+pub(super) fn named(n: Named) -> KeyPress {
     KeyPress {
         named: Some(n),
         character: None,
@@ -88,7 +90,7 @@ fn named(n: Named) -> KeyPress {
     }
 }
 
-fn shortcut() -> Mods {
+pub(super) fn shortcut() -> Mods {
     if cfg!(any(target_os = "macos", target_os = "ios")) {
         Mods {
             logo: true,
@@ -103,7 +105,7 @@ fn shortcut() -> Mods {
     }
 }
 
-fn attached() -> AppState {
+pub(super) fn attached() -> AppState {
     let mut s = connected();
     let fx = s.update(Msg::AreaChanged(Rect::new(0.0, 0.0, 816.0, 400.0)));
     assert!(
@@ -161,6 +163,56 @@ fn connecting_selects_the_first_thread_and_loads_settings() {
 }
 
 #[test]
+fn reopening_shows_the_remembered_thread_and_tab() {
+    let mut ws = workspace();
+    let mut other = ws.threads[0].clone();
+    other.id = ThreadId::from_u128(11).to_string();
+    other.tab_ids = vec![
+        TabId::from_u128(21).to_string(),
+        TabId::from_u128(22).to_string(),
+    ];
+    ws.threads.push(other.clone());
+    for tab in [21, 22] {
+        let mut t = ws.tabs[0].clone();
+        t.id = TabId::from_u128(tab).to_string();
+        t.thread_id.clone_from(&other.id);
+        ws.tabs.push(t);
+    }
+    let remembered = crate::ui_state::UiState {
+        thread: Some(other.id.clone()),
+        tabs: [(other.id.clone(), TabId::from_u128(22).to_string())].into(),
+    };
+    let mut s = AppState::new(ConnectTarget::Local(None), CELL);
+    remembered.clone().apply(&mut s);
+    s.update(Msg::Connected {
+        welcome: v1::Welcome::default(),
+        workspace: ws.clone(),
+    });
+    assert_eq!(s.selected_thread.as_deref(), Some(other.id.as_str()));
+    assert_eq!(
+        s.current_tab().map(|t| t.id.clone()),
+        Some(TabId::from_u128(22).to_string())
+    );
+    assert_eq!(crate::ui_state::UiState::of(&s), remembered);
+
+    // A thread deleted meanwhile: the first thread is shown instead.
+    let mut s = AppState::new(ConnectTarget::Local(None), CELL);
+    crate::ui_state::UiState {
+        thread: Some(ThreadId::from_u128(99).to_string()),
+        ..Default::default()
+    }
+    .apply(&mut s);
+    s.update(Msg::Connected {
+        welcome: v1::Welcome::default(),
+        workspace: ws,
+    });
+    assert_eq!(
+        s.selected_thread.as_deref(),
+        Some(ThreadId::from_u128(10).to_string().as_str())
+    );
+}
+
+#[test]
 fn panes_attach_resize_and_receive_updates() {
     let mut s = attached();
     assert!(s.screens.contains_key(&id(100)));
@@ -202,7 +254,10 @@ fn typing_goes_to_the_focused_pane_and_shortcuts_do_not() {
     assert!(
         matches!(&fx[..], [Effect::Notify(v1::notification::Body::Input(v1::Input { kind: Some(v1::input::Kind::Text(t)), .. }))] if t == "a")
     );
-    let fx = s.update(Msg::Key(key("t", shortcut())));
+    // The new-tab shortcut asks what to run; Enter picks a terminal.
+    s.update(Msg::Key(key("t", shortcut())));
+    assert!(matches!(s.dialog, Some(Dialog::NewTab { .. })));
+    let fx = s.update(Msg::Key(named(Named::Enter)));
     assert!(matches!(bodies(&fx)[..], [Body::CreateTab(_)]));
     let fx = s.update(Msg::Key(key("d", shortcut())));
     assert!(
@@ -258,16 +313,21 @@ fn deleting_a_thread_always_goes_through_the_warning() {
 #[test]
 fn new_thread_dialog_edits_fields_and_submits() {
     let mut s = attached();
-    s.update(Msg::OpenNewThread(ProjectId::from_u128(1).to_string()));
+    s.update(Msg::OpenNewThread {
+        repo: Some(RepoId::from_u128(1).to_string()),
+        project: None,
+    });
     for c in ["F", "i", "x"] {
         s.update(Msg::Key(key(c, Mods::default())));
     }
     s.update(Msg::Key(named(Named::Backspace)));
-    s.update(Msg::Key(named(Named::Tab)));
-    s.update(Msg::Paste("main".into()));
+    // Start from is chosen from the repo's branches.
+    s.update(Msg::ToggleSelect(crate::organize::Select::Base));
+    s.update(Msg::PickBase(Some("main".into())));
     let fx = s.update(Msg::Key(named(Named::Enter)));
     assert!(
-        matches!(bodies(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { title, base_ref, .. })] if title == "Fi" && base_ref == "main")
+        matches!(bodies(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { title, base_ref, branch, skip_initial_tab: true, .. })] if title == "Fi" && base_ref == "main" && branch == "urushi/fi"),
+        "{fx:?}"
     );
     let created = v1::Thread {
         id: id(77),
@@ -320,3 +380,11 @@ fn compact_layout_navigates_between_threads_and_terminals() {
     s.update(Msg::SelectThread(ThreadId::from_u128(10).to_string()));
     assert!(!s.sidebar_open, "choosing a thread shows its terminals");
 }
+
+mod board;
+mod daemon;
+mod fields;
+mod flows;
+mod organize;
+mod pointer;
+mod tasks;

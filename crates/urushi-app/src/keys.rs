@@ -43,7 +43,8 @@ impl Mods {
         }
     }
 
-    fn bits(self) -> u32 {
+    /// As the wire's `Modifier` bits.
+    pub(crate) fn bits(self) -> u32 {
         u32::from(self.shift)
             | u32::from(self.ctrl) << 1
             | u32::from(self.alt) << 2

@@ -12,7 +12,9 @@ use alacritty_terminal::vte::ansi::{
 };
 
 use super::{Damage, Emulator, EmulatorEvent, Scroll};
-use crate::screen::{Color, Cursor, CursorShape, Line, Modes, Span, Style, TermSize, flags};
+use crate::screen::{
+    Color, Cursor, CursorShape, Line, Modes, MouseEncoding, MouseMode, Span, Style, TermSize, flags,
+};
 
 /// Scrollback kept per pane.
 const SCROLLBACK_LINES: usize = 10_000;
@@ -157,8 +159,24 @@ impl Emulator for AlacrittyEmulator {
         Modes {
             app_cursor: mode.contains(TermMode::APP_CURSOR),
             bracketed_paste: mode.contains(TermMode::BRACKETED_PASTE),
-            mouse_reporting: mode.intersects(TermMode::MOUSE_MODE),
+            mouse: if mode.contains(TermMode::MOUSE_MOTION) {
+                MouseMode::Motion
+            } else if mode.contains(TermMode::MOUSE_DRAG) {
+                MouseMode::Drag
+            } else if mode.contains(TermMode::MOUSE_REPORT_CLICK) {
+                MouseMode::Click
+            } else {
+                MouseMode::Off
+            },
+            mouse_encoding: if mode.contains(TermMode::SGR_MOUSE) {
+                MouseEncoding::Sgr
+            } else if mode.contains(TermMode::UTF8_MOUSE) {
+                MouseEncoding::Utf8
+            } else {
+                MouseEncoding::X10
+            },
             alt_screen: mode.contains(TermMode::ALT_SCREEN),
+            alternate_scroll: mode.contains(TermMode::ALTERNATE_SCROLL),
         }
     }
 
@@ -175,6 +193,22 @@ impl Emulator for AlacrittyEmulator {
 
     fn history_size(&self) -> u32 {
         u32::try_from(self.term.grid().history_size()).unwrap_or(u32::MAX)
+    }
+
+    fn history(&self, max_lines: usize) -> Vec<Line> {
+        let grid = self.term.grid();
+        let line = |l: i32| {
+            let row = &grid[GridLine(l)];
+            line_from_cells((0..grid.columns()).map(|c| &row[Column(c)]))
+        };
+        let oldest = -i32::try_from(grid.history_size()).unwrap_or(0);
+        // One past the last line with something on it.
+        let mut end = i32::from(self.size.rows);
+        while end > oldest && line(end - 1).spans.is_empty() {
+            end -= 1;
+        }
+        let first = oldest.max(end - i32::try_from(max_lines).unwrap_or(i32::MAX));
+        (first..end).map(line).collect()
     }
 }
 

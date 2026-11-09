@@ -1,20 +1,20 @@
 # Feature: Thread worktrees and safe deletion
 
-- **Status:** Shipped in the daemon and CLI. The GUI warning dialog is pending.
+- **Status:** Shipped (daemon, CLI and GUI).
 - **Owners (crates):** `urushi-core` (`thread`, `ownership`, `naming`), `urushi-daemon` (`git/`, `service/threads.rs`, `service/deletion.rs`)
 - **Related ADRs:** [0004](../adr/0004-git-cli-worktrees.md)
 
 ## What it does
-Every thread **always** gets its own git worktree on a new branch `<prefix><slug>-<short id>`. Deleting a thread removes the worktree and every branch the thread owns, locally and (by default, configurable) on remotes. It always shows a warning listing exactly what will be destroyed.
+Every thread **always** gets its own git worktree on a new branch: the name the user gave (`CreateThread.branch`), or `<prefix><slug>-<short id>`. The branch must not exist yet. Deleting a thread removes the worktree and every branch the thread owns, locally and (by default, configurable) on remotes. It always shows a warning listing exactly what will be destroyed.
 
 ## How it works
 - **Creation** is all-or-nothing:
   1. Snapshot the existing branches.
   2. `git worktree add -b`.
   3. Persist the thread.
-  4. Open the first tab.
+  4. Open the first tab, unless the client asked for none (`skip_initial_tab`; the GUI does, and shows the [agent launcher](agent-launcher.md)).
 
-  If any step fails, everything is rolled back.
+  If any step fails, everything is rolled back. A base ref that doesn't resolve is reported as `INVALID_ARGUMENT` ("no branch, tag or commit has that name"), an invalid branch name as `INVALID_ARGUMENT`, an existing one as `CONFLICT`.
 - **Ownership** is decided in `urushi_core::ownership::owned_branches` from facts the daemon gathers. Those facts include the worktree's own HEAD reflog and the branches that existed before the thread.
 - **Deletion** has two steps:
   1. `PlanThreadDeletion` returns a `DeletionPlan` and a token.
@@ -33,6 +33,7 @@ Every thread **always** gets its own git worktree on a new branch `<prefix><slug
   - full lifecycle: worktree, env, push, extra branch, dirty file, plan contents, stale token refused, everything deleted except `main` locally and on the remote
   - remote deletion disabled
   - failed creation leaves no branches behind
+- `crates/urushi-daemon/tests/threads_and_agents.rs`: named branch, no first tab, duplicate and invalid names, unknown base.
 
 ## Limitations and follow-ups
 - A branch created with `git branch x` and never checked out in the worktree is not detected as owned.

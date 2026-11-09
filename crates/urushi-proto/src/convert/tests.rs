@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use urushi_core::thread::NewThread;
 use urushi_core::{
-    BranchPrefix, Direction, Layout, PaneId, Project, ProjectId, ProjectSettingsOverrides,
-    Settings, Tab, TabId, Thread, ThreadId, ThreadState, Timestamp,
+    BranchPrefix, Direction, Layout, PaneId, Project, ProjectId, Repo, RepoId,
+    RepoSettingsOverrides, Settings, Status, Tab, TabId, Thread, ThreadId, ThreadState, Timestamp,
 };
 
 use super::*;
@@ -79,12 +79,14 @@ fn thread_round_trip_all_states() {
     let mut thread = Thread::new(
         NewThread {
             id: ThreadId::from_u128(9),
-            project: ProjectId::from_u128(1),
+            repo: RepoId::from_u128(1),
+            project: None,
             title: "Ship it".into(),
             worktree_path: PathBuf::from("/w/t"),
             base_ref: "main".into(),
             base_commit: "abc123".into(),
             created_at: Timestamp::from_unix_millis(1_700_000_000_000),
+            branch: None,
         },
         &BranchPrefix::default(),
     )
@@ -104,13 +106,36 @@ fn thread_round_trip_all_states() {
             thread
         );
     }
+    // Organization: project, pin and status.
+    thread.project = Some(ProjectId::from_u128(4));
+    thread.pinned = true;
+    thread.status = Some(Status::new("In review").unwrap());
+    assert_eq!(
+        thread_from_proto(&thread_to_proto(&thread)).unwrap(),
+        thread
+    );
+}
+
+#[test]
+fn folders_are_projects_and_statuses_are_validated() {
+    let project = Project {
+        id: ProjectId::from_u128(8),
+        name: "Billing launch".into(),
+        created_at: Timestamp::from_unix_millis(7),
+    };
+    assert_eq!(
+        project_from_proto(&project_to_proto(&project)).unwrap(),
+        project
+    );
+    assert_eq!(status_from_proto("").unwrap(), None);
+    assert!(status_from_proto(&"x".repeat(80)).is_err());
 }
 
 #[test]
 fn thread_from_proto_rejects_bad_branch() {
     let mut wire = v1::Thread {
         id: ThreadId::from_u128(1).to_string(),
-        project_id: ProjectId::from_u128(1).to_string(),
+        project_id: RepoId::from_u128(1).to_string(),
         primary_branch: "bad..branch".into(),
         state: v1::ThreadState::Ready.into(),
         ..Default::default()
@@ -125,23 +150,20 @@ fn thread_from_proto_rejects_bad_branch() {
 }
 
 #[test]
-fn project_round_trip() {
-    let project = Project {
-        id: ProjectId::from_u128(3),
+fn repo_round_trip() {
+    let repo = Repo {
+        id: RepoId::from_u128(3),
         name: "urushi".into(),
         repo_root: PathBuf::from("/src/urushi"),
         default_base: Some("main".into()),
-        settings: ProjectSettingsOverrides {
+        settings: RepoSettingsOverrides {
             delete_remote_branches: Some(false),
             branch_prefix: Some(BranchPrefix::new("a/").unwrap()),
             default_shell: None,
         },
         added_at: Timestamp::from_unix_millis(42),
     };
-    assert_eq!(
-        project_from_proto(&project_to_proto(&project)).unwrap(),
-        project
-    );
+    assert_eq!(repo_from_proto(&repo_to_proto(&repo)).unwrap(), repo);
 }
 
 #[test]
@@ -153,11 +175,24 @@ fn settings_round_trip() {
     };
     s.tailnet.serve = true;
     s.tailnet.allowed_logins = vec!["me@example.com".into()];
+    s.agents
+        .set_skip_permissions(urushi_core::Agent::Claude, true);
+    s.agents
+        .set_skip_permissions(urushi_core::Agent::Cursor, true);
     assert_eq!(settings_from_proto(&settings_to_proto(&s)).unwrap(), s);
     assert_eq!(
         settings_from_proto(&settings_to_proto(&Settings::default())).unwrap(),
         Settings::default()
     );
+}
+
+#[test]
+fn agents_round_trip_and_unknown_values_mean_a_plain_shell() {
+    for agent in urushi_core::Agent::ALL {
+        assert_eq!(agent_from_proto(agent_to_proto(agent).into()), Some(agent));
+    }
+    assert_eq!(agent_from_proto(v1::Agent::Unspecified.into()), None);
+    assert_eq!(agent_from_proto(99), None, "a value from a newer peer");
 }
 
 #[test]

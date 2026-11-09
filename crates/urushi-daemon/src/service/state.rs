@@ -1,7 +1,8 @@
 //! The in-memory workspace state and its pure helpers (lookups, invariants, wire snapshot).
 
 use urushi_core::{
-    EffectiveSettings, PaneId, Project, ProjectId, Settings, Tab, TabId, ThreadId, ThreadState,
+    Board, EffectiveSettings, PaneId, Project, ProjectId, Repo, RepoId, Settings, Tab, TabId,
+    ThreadId, ThreadState,
 };
 use urushi_proto::{convert, v1};
 
@@ -12,9 +13,11 @@ use crate::store::{Document, FORMAT_VERSION, ThreadRecord};
 #[derive(Debug, Default)]
 pub(crate) struct State {
     pub(crate) settings: Settings,
+    pub(crate) repos: Vec<Repo>,
     pub(crate) projects: Vec<Project>,
     pub(crate) threads: Vec<ThreadRecord>,
     pub(crate) tabs: Vec<Tab>,
+    pub(crate) boards: Vec<Board>,
     pub(crate) revision: u64,
 }
 
@@ -22,9 +25,11 @@ impl State {
     pub(crate) fn from_document(doc: Document) -> Self {
         Self {
             settings: doc.settings,
+            repos: doc.repos,
             projects: doc.projects,
             threads: doc.threads,
             tabs: doc.tabs,
+            boards: doc.boards,
             revision: 0,
         }
     }
@@ -33,16 +38,19 @@ impl State {
         Document {
             format: FORMAT_VERSION,
             settings: self.settings.clone(),
+            repos: self.repos.clone(),
             projects: self.projects.clone(),
             threads: self.threads.clone(),
             tabs: self.tabs.clone(),
+            boards: self.boards.clone(),
         }
     }
 
     pub(crate) fn to_proto(&self) -> v1::Workspace {
         v1::Workspace {
             revision: self.revision,
-            projects: self
+            projects: self.repos.iter().map(convert::repo_to_proto).collect(),
+            folders: self
                 .projects
                 .iter()
                 .map(convert::project_to_proto)
@@ -53,6 +61,7 @@ impl State {
                 .map(|r| convert::thread_to_proto(&r.thread))
                 .collect(),
             tabs: self.tabs.iter().map(convert::tab_to_proto).collect(),
+            boards: self.boards.iter().map(convert::board_to_proto).collect(),
         }
     }
 
@@ -73,6 +82,31 @@ impl State {
         // Drop tabs whose thread no longer exists.
         let threads: Vec<ThreadId> = self.threads.iter().map(|r| r.thread.id).collect();
         self.tabs.retain(|t| threads.contains(&t.thread()));
+        // Ungroup threads whose project no longer exists.
+        let projects: Vec<ProjectId> = self.projects.iter().map(|p| p.id).collect();
+        for record in &mut self.threads {
+            if record
+                .thread
+                .project
+                .is_some_and(|p| !projects.contains(&p))
+            {
+                record.thread.project = None;
+            }
+        }
+    }
+
+    pub(crate) fn repo(&self, id: RepoId) -> ServiceResult<&Repo> {
+        self.repos
+            .iter()
+            .find(|p| p.id == id)
+            .ok_or_else(|| ServiceError::NotFound(format!("repo {id}")))
+    }
+
+    pub(crate) fn repo_mut(&mut self, id: RepoId) -> ServiceResult<&mut Repo> {
+        self.repos
+            .iter_mut()
+            .find(|p| p.id == id)
+            .ok_or_else(|| ServiceError::NotFound(format!("repo {id}")))
     }
 
     pub(crate) fn project(&self, id: ProjectId) -> ServiceResult<&Project> {
@@ -117,15 +151,15 @@ impl State {
             .ok_or_else(|| ServiceError::NotFound(format!("tab {id}")))
     }
 
-    /// Settings for `project`, with its overrides applied (globals if it doesn't exist).
-    pub(crate) fn effective_settings(&self, project: ProjectId) -> EffectiveSettings {
+    /// Settings for `repo`, with its overrides applied (globals if it doesn't exist).
+    pub(crate) fn effective_settings(&self, repo: RepoId) -> EffectiveSettings {
         let overrides = self
-            .projects
+            .repos
             .iter()
-            .find(|p| p.id == project)
+            .find(|p| p.id == repo)
             .map(|p| p.settings.clone())
             .unwrap_or_default();
-        self.settings.for_project(&overrides)
+        self.settings.for_repo(&overrides)
     }
 
     /// Every pane in the thread's tabs.

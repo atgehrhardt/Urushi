@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use cosmic_text::{CacheKey, SwashCache, SwashContent};
-use urushi_ui::TextSystem;
+use urushi_ui::{ImageData, TextSystem};
 
 /// Atlas edge length in texels.
 pub(crate) const ATLAS_SIZE: u32 = 2048;
@@ -67,6 +67,8 @@ pub(crate) struct Atlas {
     swash: SwashCache,
     shelves: Shelves,
     glyphs: HashMap<CacheKey, Option<AtlasGlyph>>,
+    /// Bitmaps by (image id, width, height): each size drawn is scaled once.
+    images: HashMap<(u64, u32, u32), AtlasGlyph>,
     pub(crate) pending: Vec<Upload>,
 }
 
@@ -80,6 +82,7 @@ impl Atlas {
             swash: SwashCache::new(),
             shelves: Shelves::default(),
             glyphs: HashMap::new(),
+            images: HashMap::new(),
             pending: Vec::new(),
         }
     }
@@ -87,7 +90,40 @@ impl Atlas {
     pub(crate) fn clear(&mut self) {
         self.shelves = Shelves::default();
         self.glyphs.clear();
+        self.images.clear();
         self.pending.clear();
+    }
+
+    /// `image` scaled to `width` × `height` pixels, packed as a colour entry.
+    pub(crate) fn image(
+        &mut self,
+        image: &ImageData,
+        width: u32,
+        height: u32,
+    ) -> Result<AtlasGlyph, AtlasFull> {
+        let key = (image.id, width, height);
+        if let Some(entry) = self.images.get(&key) {
+            return Ok(*entry);
+        }
+        let (x, y) = self.shelves.insert(width, height).ok_or(AtlasFull)?;
+        self.pending.push(Upload {
+            x,
+            y,
+            width,
+            height,
+            rgba: crate::image::resample(image, width, height),
+        });
+        let entry = AtlasGlyph {
+            x,
+            y,
+            width,
+            height,
+            left: 0,
+            top: 0,
+            is_color: true,
+        };
+        self.images.insert(key, entry);
+        Ok(entry)
     }
 
     /// The glyph's atlas entry, rasterizing and queueing an upload if it is new. `None`

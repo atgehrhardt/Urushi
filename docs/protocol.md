@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.0 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.6 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -34,14 +34,28 @@ The client sends `Hello { protocol_major, protocol_minor, client_name, client_ve
 The daemon replies with `Welcome { protocol_major, protocol_minor, daemon_version, host_name }`, or with an error and closes the connection.
 Within one major version, minor versions are additive. A different major version is rejected.
 
+| Minor | Adds |
+|---|---|
+| 0 | Everything below unless marked. |
+| 6 | Subtasks and threads started from tasks: `Task.{subtasks[Subtask], thread_id}`, `Subtask{id, title, done, thread_id}`, `CreateTask.subtasks` (titles), `CreateSubtask` → `Subtask`, `UpdateSubtask{optional title, optional done}`, `DeleteSubtask`, and `CreateThread.{task_id, subtask_id}`, which links the new thread to the task or subtask (ADR 0012). A missing task is `NOT_FOUND` before any worktree is made; deleting a thread clears its links. Clients check `Welcome.protocol_minor ≥ 6`. |
+| 5 | Task boards: `Workspace.boards` (`Board{columns[BoardColumn{tasks[Task]}]}`), `CreateBoard` → `Board`, `RenameBoard`, `DeleteBoard`, `CreateTask` → `Task`, `UpdateTask{optional title, optional notes}`, `MoveTask{column_id, index}`, `DeleteTask`. Agent usage: `GetAgentUsage{pane_id}` → `AgentUsage{agent, plan, windows[UsageWindow], unavailable, fetched_at_ms}` (ADR 0011). Clients check `Welcome.protocol_minor ≥ 5` before sending them. |
+| 4 | `ShutdownDaemon` (local connections only; `PERMISSION_DENIED` over the tailnet). Older daemons are stopped with SIGTERM instead, the pid read from the socket's peer credentials. |
+| 3 | `Input.mouse` (`MouseInput`: button, press/release/move, cell, modifiers) and `Input.wheel` (`WheelInput`). Clients send `ScrollPane` for the wheel to older daemons. |
+| 2 | Projects as `Folder`s: `Workspace.folders`, `Thread.{folder_id, pinned, status}`, `CreateThread.folder_id`, `UpdateThread`, `CreateFolder` → `Folder`, `RenameFolder`, `DeleteFolder`. |
+| 1 | `ListAgents` → `Agents`; `CreateTab.agent`; `CreateThread.branch` and `skip_initial_tab`; `Settings.agents` and `SettingsPatch.*_skip_permissions`. Clients check `Welcome.protocol_minor ≥ 1` before sending `ListAgents`. Older daemons ignore the new fields (a plain shell, a generated branch, a first tab). |
+
+## Naming (ADR 0010)
+v1 field names are frozen (`buf breaking` uses `WIRE_JSON`). On the wire, **`Project` means repo** (`projects`, `project_id`, `AddProject`, `RemoveProject`, `UpdateProjectSettings`), and **`Folder` means project** (a user-made group of threads). `urushi-proto::convert` maps them to `urushi_core::Repo` and `urushi_core::Project`.
+
 ## Message groups (v1)
 
-- **Workspace:** `ListWorkspace{subscribe}`, `AddProject`, `RemoveProject`, `ListBranches`, `CreateThread`, `RenameThread`, `PlanThreadDeletion` → `DeletionPlan{token}`, `DeleteThread{token}`, `CreateTab`, `CloseTab`, `RenameTab`, `SplitPane`, `ClosePane`, `FocusPane`, `MoveDivider`, `ResizePaneEdge`, `Equalize`. The daemon sends `WorkspaceChanged` events to subscribers.
+- **Workspace:** `ListWorkspace{subscribe}`, `AddProject`, `RemoveProject`, `ListBranches`, `CreateThread{branch, skip_initial_tab, folder_id, task_id, subtask_id}`, `RenameThread`, `UpdateThread`, `CreateFolder`, `RenameFolder`, `DeleteFolder`, `PlanThreadDeletion` → `DeletionPlan{token}`, `DeleteThread{token}`, `CreateTab{agent}`, `ListAgents`, `GetAgentUsage`, `CloseTab`, `RenameTab`, `SplitPane`, `ClosePane`, `FocusPane`, `MoveDivider`, `ResizePaneEdge`, `Equalize`. The daemon sends `WorkspaceChanged` events to subscribers.
 - **Terminal:**
   - `AttachPane{pane, cols, rows}` returns a full `ScreenUpdate`. After that the daemon streams `ScreenUpdate{seq}` events, and the client must send the `AckScreen{seq}` notification before the next one is sent.
-  - `DetachPane`, `SetPaneSize`, the `Input{key|text|paste}` and `ScrollPane` notifications, and `ReadScreenText` (plain text, for the CLI and tests).
+  - `DetachPane`, `SetPaneSize`, the `Input{key|text|paste|mouse|wheel}` and `ScrollPane` notifications, and `ReadScreenText` (plain text, for the CLI and tests).
   - Events: `PaneExited`, `PaneBell`.
-- **Settings:** `GetSettings`, `UpdateSettings` (global and per project).
+- **Task boards:** `CreateBoard`, `RenameBoard`, `DeleteBoard`, `CreateTask`, `UpdateTask`, `MoveTask`, `DeleteTask`, `CreateSubtask`, `UpdateSubtask`, `DeleteSubtask`. Boards arrive with the workspace (`Workspace.boards`), so subscribers see changes through `WorkspaceChanged`.
+- **Settings:** `GetSettings`, `UpdateSettings` (global and per repo).
 - **Remote:** `TailnetStatus`, `SetTailnetServe`.
 
 ## Screen encoding

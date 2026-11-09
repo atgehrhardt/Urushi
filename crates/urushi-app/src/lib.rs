@@ -12,14 +12,17 @@
 //! entry points that call [`run`] or [`run_with`].
 
 mod backend;
+pub mod board;
 pub mod config;
 pub mod keys;
 pub mod msg;
+pub mod organize;
 mod platform;
 mod runner;
 pub mod snapshot;
 pub mod state;
 pub mod terminal;
+pub mod ui_state;
 mod update;
 mod view;
 
@@ -34,8 +37,9 @@ pub use config::{AppConfig, ConnectTarget, SafeAreaFn};
 /// Events delivered to the winit loop from other threads.
 #[derive(Debug)]
 pub enum UserEvent {
-    /// A message for the app (from the backend).
-    App(msg::Msg),
+    /// A message for the app (from the backend). Boxed: messages are large and rare
+    /// compared to accessibility events.
+    App(Box<msg::Msg>),
     /// An accessibility request.
     Access(accesskit_winit::Event),
 }
@@ -73,8 +77,17 @@ pub fn run_with(event_loop: EventLoop<UserEvent>, config: AppConfig) -> Result<(
     tracing::debug!("fonts loaded");
     let cell = text.cell_metrics(theme.terminal_font_size);
     let backend = backend::Backend::start(&config.target, proxy.clone())?;
+    // Show the thread and tabs the window showed when it was last closed.
+    let ui_state_path = ui_state::UiState::path(&config.target);
+    let ui_state = ui_state_path
+        .as_deref()
+        .map(ui_state::UiState::load)
+        .unwrap_or_default();
+    let mut state = state::AppState::new(config.target, cell);
+    ui_state.clone().apply(&mut state);
     let mut runner = runner::Runner {
-        state: state::AppState::new(config.target, cell),
+        state,
+        ui_state: (ui_state_path, ui_state),
         theme,
         text,
         backend,
@@ -86,10 +99,14 @@ pub fn run_with(event_loop: EventLoop<UserEvent>, config: AppConfig) -> Result<(
         pointer: None,
         mods: keys::Mods::default(),
         pressed_in_area: false,
+        press: None,
         wheel_remainder: 0.0,
         scroll: HashMap::new(),
         clipboard: platform::Clipboard::new(),
         safe_area: config.safe_area.clone(),
+        animated_at: None,
+        field_press: None,
+        last_click: None,
     };
     event_loop.run_app(&mut runner)?;
     Ok(())

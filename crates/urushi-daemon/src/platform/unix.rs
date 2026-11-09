@@ -44,6 +44,7 @@ pub(crate) async fn serve_local(
             stream,
             Peer {
                 description: "local".into(),
+                local: true,
             },
         ));
     }
@@ -63,4 +64,99 @@ pub(crate) async fn shutdown_signal() {
             let _ = tokio::signal::ctrl_c().await;
         }
     }
+}
+
+/// Whether `path` is a file the current user may execute.
+pub(crate) fn is_executable(path: &Path) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+}
+
+/// File names under which `program` may be installed.
+pub(crate) fn executable_names(program: &str) -> Vec<String> {
+    vec![program.to_owned()]
+}
+
+/// The `PATH` an interactive login `shell` ends up with.
+///
+/// A daemon started by the GUI inherits launchd's minimal `PATH`, but agent CLIs are
+/// usually installed in directories that the user's shell profile adds (`~/.local/bin`,
+/// Homebrew, nvm). Terminals run that profile, so this is the `PATH` they see. Returns
+/// `None` if the shell fails or takes longer than `timeout`.
+pub(crate) fn login_shell_path(
+    shell: &str,
+    timeout: std::time::Duration,
+) -> Option<std::ffi::OsString> {
+    use std::io::Read;
+    use std::os::unix::ffi::OsStringExt;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new(shell)
+        .args(["-l", "-i", "-c", "env"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut out = Vec::new();
+        let _ = stdout.read_to_end(&mut out);
+        out
+    });
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+    let out = reader.join().ok()?;
+    // Profiles may print their own text, so take the last line that looks like `PATH=`.
+    out.split(|b| *b == b'\n')
+        .filter_map(|line| line.strip_prefix(b"PATH="))
+        .next_back()
+        .map(|p| std::ffi::OsString::from_vec(p.to_vec()))
+}
+
+/// Every process on this machine, one line each, from `ps` (see `process::PS_COLUMNS`).
+pub(crate) fn process_table() -> Option<String> {
+    crate::usage::exec_run(
+        "ps",
+        &["-A", "-o", crate::usage::process::PS_COLUMNS],
+        None,
+        std::time::Duration::from_secs(5),
+    )
+    .ok()
+    .map(|out| String::from_utf8_lossy(&out).into_owned())
+}
+
+/// Claude Code's stored sign-in (JSON). On macOS it's normally in the login keychain,
+/// read with `security` (as Claude Code itself does, so the system doesn't ask for
+/// permission); otherwise, and as Claude's own fallback, `~/.claude/.credentials.json`.
+pub(crate) fn claude_credentials() -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let keychain = crate::usage::exec_run(
+            "security",
+            &[
+                "find-generic-password",
+                "-s",
+                "Claude Code-credentials",
+                "-w",
+            ],
+            None,
+            std::time::Duration::from_secs(5),
+        );
+        if let Ok(out) = keychain {
+            return Ok(String::from_utf8_lossy(&out).trim().to_owned());
+        }
+    }
+    crate::usage::claude_credentials_file()
 }

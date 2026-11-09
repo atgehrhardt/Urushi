@@ -7,6 +7,7 @@
 //!    measured size, and `Fill` children share the rest by weight.
 
 use crate::color::Color;
+use crate::field::{self, FieldRegion};
 use crate::geometry::{Point, Rect, Size};
 use crate::node::{Align, Content, CursorIcon, Flow, Key, Length, Node, Role};
 use crate::scene::{Quad, Scene};
@@ -24,6 +25,12 @@ pub struct Hit<M> {
     pub key: Option<Key>,
     /// Message on click.
     pub on_click: Option<M>,
+    /// Message on secondary click.
+    pub on_secondary_click: Option<M>,
+    /// Message when a drag starts here.
+    pub on_drag: Option<M>,
+    /// Message when a drag is released here.
+    pub on_drop: Option<M>,
     /// Cursor while hovered.
     pub cursor: CursorIcon,
 }
@@ -74,6 +81,8 @@ pub struct Frame<M> {
     pub scroll_regions: Vec<ScrollRegion>,
     /// Accessible elements, in paint order.
     pub access: Vec<AccessNode>,
+    /// Text fields, in paint order.
+    pub fields: Vec<FieldRegion>,
 }
 
 impl<M: Clone> Frame<M> {
@@ -91,9 +100,56 @@ impl<M: Clone> Frame<M> {
             .find_map(|h| h.on_click.clone())
     }
 
+    /// The message for a secondary click (right / two-finger click) at `p`.
+    pub fn secondary_click(&self, p: Point) -> Option<M> {
+        self.topmost(p, |h| h.on_secondary_click.as_ref())
+    }
+
+    /// The message to send if a drag starts at `p`.
+    pub fn drag_source(&self, p: Point) -> Option<M> {
+        self.topmost(p, |h| h.on_drag.as_ref())
+    }
+
+    /// The message to send if a drag is released at `p`.
+    pub fn drop_target(&self, p: Point) -> Option<M> {
+        self.topmost(p, |h| h.on_drop.as_ref())
+    }
+
+    fn topmost(&self, p: Point, pick: impl Fn(&Hit<M>) -> Option<&M>) -> Option<M> {
+        self.hits
+            .iter()
+            .rev()
+            .filter(|h| h.rect.contains(p))
+            .find_map(|h| pick(h).cloned())
+    }
+
     /// The cursor to show at `p`.
     pub fn cursor(&self, p: Point) -> CursorIcon {
         self.hit(p).map_or(CursorIcon::Default, |h| h.cursor)
+    }
+
+    /// The topmost text field at `p`, if it's visible there.
+    pub fn field_at(&self, p: Point) -> Option<&FieldRegion> {
+        let visible = |f: &&FieldRegion| {
+            f.key.is_none_or(|k| {
+                self.hits
+                    .iter()
+                    .rev()
+                    .find(|h| h.rect.contains(p))
+                    .is_some_and(|h| h.key == Some(k))
+            })
+        };
+        self.fields
+            .iter()
+            .rev()
+            .filter(|f| f.rect.contains(p))
+            .find(visible)
+    }
+
+    /// The text field whose widget has `key` (e.g. to keep selecting by drag after the
+    /// pointer has left it).
+    pub fn field(&self, key: Key) -> Option<&FieldRegion> {
+        self.fields.iter().rev().find(|f| f.key == Some(key))
     }
 
     /// The innermost scroll area at `p`.
@@ -121,8 +177,10 @@ pub fn build<M: Clone>(
             hits: Vec::new(),
             scroll_regions: Vec::new(),
             access: Vec::new(),
+            fields: Vec::new(),
         },
         clips: vec![bounds],
+        owner: None,
     };
     ctx.place(root, bounds, &mut 0);
     ctx.frame
@@ -133,6 +191,8 @@ struct Ctx<'t, M> {
     pointer: Option<Point>,
     frame: Frame<M>,
     clips: Vec<Rect>,
+    /// Key of the innermost keyed node being placed (a field's widget).
+    owner: Option<Key>,
 }
 
 fn main_axis(flow: Flow, size: Size) -> f32 {
@@ -162,7 +222,7 @@ impl<M: Clone> Ctx<'_, M> {
             Content::Field { size, .. } => {
                 Size::new(FIELD_FIT_WIDTH, TextSystem::line_height(*size))
             }
-            Content::None | Content::Paint(_) => Size::default(),
+            Content::None | Content::Image(_) | Content::Paint(_) => Size::default(),
         };
         let s = &node.style;
         let mut main = 0.0f32;
@@ -210,9 +270,20 @@ impl<M: Clone> Ctx<'_, M> {
         *index += 1;
         let my_index = *index;
         let s = &node.style;
+        let rect = if s.slide == 0.0 {
+            rect
+        } else {
+            Rect::new(
+                rect.x - rect.width * s.slide,
+                rect.y,
+                rect.width,
+                rect.height,
+            )
+        };
         let clip = *self.clips.last().unwrap_or(&rect);
         let visible = rect.intersect(&clip);
-        let hovered = node.on_click.is_some() && self.pointer.is_some_and(|p| visible.contains(p));
+        let hovered = (node.on_click.is_some() || node.on_drop.is_some())
+            && self.pointer.is_some_and(|p| visible.contains(p));
 
         // Background and border.
         let fill = if hovered {
@@ -232,11 +303,20 @@ impl<M: Clone> Ctx<'_, M> {
         }
 
         // Interaction and accessibility.
-        if node.on_click.is_some() || node.cursor != CursorIcon::Default || node.key.is_some() {
+        if node.on_click.is_some()
+            || node.on_secondary_click.is_some()
+            || node.on_drag.is_some()
+            || node.on_drop.is_some()
+            || node.cursor != CursorIcon::Default
+            || node.key.is_some()
+        {
             self.frame.hits.push(Hit {
                 rect: visible,
                 key: node.key,
                 on_click: node.on_click.clone(),
+                on_secondary_click: node.on_secondary_click.clone(),
+                on_drag: node.on_drag.clone(),
+                on_drop: node.on_drop.clone(),
                 cursor: node.cursor,
             });
         }
@@ -261,6 +341,8 @@ impl<M: Clone> Ctx<'_, M> {
         if node.children.is_empty() {
             return;
         }
+        let outer_owner = self.owner;
+        self.owner = node.key.or(outer_owner);
         if s.clip {
             let c = inner.intersect(&clip);
             self.frame.scene.push_clip(c);
@@ -271,6 +353,7 @@ impl<M: Clone> Ctx<'_, M> {
             self.clips.pop();
             self.frame.scene.pop_clip();
         }
+        self.owner = outer_owner;
     }
 
     fn paint_content(&mut self, node: &Node<M>, inner: Rect) {
@@ -293,41 +376,29 @@ impl<M: Clone> Ctx<'_, M> {
             Content::Field {
                 text,
                 caret,
+                selection,
                 placeholder,
                 color,
                 placeholder_color,
                 caret_color,
+                selection_color,
                 size,
+                multiline,
             } => {
-                let line = TextSystem::line_height(*size);
-                let y = (inner.y + (inner.height - line) / 2.0).round();
-                self.frame.scene.push_clip(inner);
-                if text.is_empty() {
-                    self.frame.scene.text(
-                        Point::new(inner.x, y),
-                        placeholder.clone(),
-                        crate::scene::Font::Ui,
-                        *size,
-                        *placeholder_color,
-                    );
-                } else {
-                    self.frame.scene.text(
-                        Point::new(inner.x, y),
-                        text.clone(),
-                        crate::scene::Font::Ui,
-                        *size,
-                        *color,
-                    );
-                }
-                if let Some(caret) = caret {
-                    let before = text.get(..*caret).unwrap_or(text);
-                    let x = inner.x + self.text.measure(before, crate::scene::Font::Ui, *size);
-                    self.frame
-                        .scene
-                        .rect(Rect::new(x.round(), y + 2.0, 1.5, line - 4.0), *caret_color);
-                }
-                self.frame.scene.pop_clip();
+                let look = field::Look {
+                    text,
+                    caret: *caret,
+                    selection: *selection,
+                    placeholder,
+                    colors: [*color, *placeholder_color, *caret_color, *selection_color],
+                    size: *size,
+                    multiline: *multiline,
+                };
+                let region =
+                    field::paint(&mut self.frame.scene, self.text, inner, &look, self.owner);
+                self.frame.fields.push(region);
             }
+            Content::Image(data) => self.frame.scene.image(inner, data.clone()),
             Content::Paint(painter) => painter(inner, &mut self.frame.scene, self.text),
         }
     }
@@ -336,7 +407,11 @@ impl<M: Clone> Ctx<'_, M> {
         let s = &node.style;
         if s.flow == Flow::Stack && node.scroll.is_none() {
             for child in &node.children {
-                self.place(child, inner, index);
+                let rect = match child.position {
+                    Some(at) => positioned(at, self.resolved_size(child), inner),
+                    None => inner,
+                };
+                self.place(child, rect, index);
             }
             return;
         }
@@ -426,6 +501,16 @@ impl<M: Clone> Ctx<'_, M> {
             offset += main + s.gap + extra_gap;
         }
     }
+}
+
+/// A rectangle of `size` at `at`, moved (not shrunk, unless it can't fit) to stay inside
+/// `bounds`, so a menu opened near an edge stays on screen.
+fn positioned(at: Point, size: Size, bounds: Rect) -> Rect {
+    let width = size.width.min(bounds.width);
+    let height = size.height.min(bounds.height);
+    let x = at.x.min(bounds.x + bounds.width - width).max(bounds.x);
+    let y = at.y.min(bounds.y + bounds.height - height).max(bounds.y);
+    Rect::new(x, y, width, height)
 }
 
 /// Child counts are tiny, so the conversion is exact.

@@ -29,6 +29,9 @@ if pgrep -qf "urushid --home $HOME/Library/Application Support/Urushi"; then
   echo "your daemon is still running (sessions kept):"
   STATUS="$(env -u URUSHI_HOME "$CLI" status 2>/dev/null || true)"
   echo "  ${STATUS%%$'\n'*}"
-  echo "it switches to the new urushid the next time it starts."
+  echo "it switches to the new urushid the next time it starts. To switch now (closes your"
+  echo "running terminals; threads and tabs come back with fresh shells), use Settings ->"
+  echo "Restart daemon in the app, or run:"
+  echo "  \"$CLI\" daemon restart"
 fi
 echo "CLI: $CLI  (e.g. ln -s \"$CLI\" ~/.local/bin/urushi)"

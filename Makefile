@@ -1,4 +1,4 @@
-.PHONY: app install dev ship ios-sim android build test fmt fmt-check clippy lint check-licenses check-targets check-docs buf-lint ci
+.PHONY: icons app install dev ship ios-sim android build test fmt fmt-check clippy lint check-licenses check-targets check-docs buf-lint ci
 
 CARGO ?= cargo
 BUF ?= buf
@@ -29,6 +29,10 @@ check-licenses:
 check-targets:
 	$(CARGO) check $(MOBILE_CRATES) -p urushi-ios --target aarch64-apple-ios
 	$(CARGO) check $(MOBILE_CRATES) -p urushi-android --target aarch64-linux-android
+
+# Re-render every platform's app icon from assets/icon/icon.svg (macOS only; outputs are committed).
+icons:
+	swift scripts/render-icons.swift
 
 app:
 	./scripts/bundle-macos.sh

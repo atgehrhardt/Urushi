@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
-use urushi_client::{Client, Endpoint, ensure_local_daemon, parse_tcp};
+use urushi_client::{
+    Client, Endpoint, StopMethod, ensure_local_daemon, parse_tcp, stop_local_daemon,
+};
 use winit::event_loop::EventLoopProxy;
 
 use crate::UserEvent;
@@ -18,6 +20,8 @@ use crate::config::ConnectTarget;
 use crate::msg::{Effect, Msg};
 
 const RETRY: Duration = Duration::from_secs(2);
+/// How often [`Msg::Tick`] is sent.
+const TICK: Duration = Duration::from_secs(3);
 const CLIENT_NAME: &str = "urushi-app";
 
 /// Owns the runtime and the current connection.
@@ -39,6 +43,7 @@ impl Backend {
             .enable_all()
             .thread_name("urushi-net")
             .build()?;
+        runtime.spawn(ticks(proxy.clone()));
         let mut backend = Self {
             runtime,
             proxy,
@@ -60,6 +65,23 @@ impl Backend {
         }
         let (proxy, slot) = (self.proxy.clone(), self.client.clone());
         self.connection = Some(self.runtime.spawn(connection_loop(target, proxy, slot)));
+    }
+
+    /// Drops the connection and stops the local daemon in `home`, then sends
+    /// [`Msg::DaemonStopped`]. Reconnecting afterwards starts this app's daemon.
+    pub(crate) fn stop_daemon(&mut self, home: Option<std::path::PathBuf>) {
+        if let Some(task) = self.connection.take() {
+            task.abort();
+        }
+        *self.client.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        let proxy = self.proxy.clone();
+        self.runtime.spawn(async move {
+            let result = stop_local_daemon(home.as_deref(), StopMethod::Auto)
+                .await
+                .map(drop)
+                .map_err(|e| e.to_string());
+            send(&proxy, Msg::DaemonStopped(result));
+        });
     }
 
     /// Runs a request or notification effect. Other effects are handled by the runner.
@@ -89,10 +111,13 @@ impl Backend {
                     send(&proxy, Msg::Response { followup, result });
                 });
             }
+            // Queued right here, on the UI thread, so input reaches the daemon in the
+            // order it happened. (A task per notification could reorder a click's press
+            // and release.)
             Effect::Notify(body) => {
-                self.runtime.spawn(async move {
-                    let _ = client.notify(body).await;
-                });
+                if let Err(e) = client.try_notify(body) {
+                    tracing::warn!(error = %e, "dropped a notification");
+                }
             }
             _ => {}
         }
@@ -101,7 +126,21 @@ impl Backend {
 
 fn send(proxy: &EventLoopProxy<UserEvent>, msg: Msg) {
     // Fails only when the event loop has exited, at which point nothing matters.
-    let _ = proxy.send_event(UserEvent::App(msg));
+    let _ = proxy.send_event(UserEvent::App(Box::new(msg)));
+}
+
+/// Sends [`Msg::Tick`] with the wall-clock time every few seconds, for as long as the
+/// app runs. The status bar refreshes the agent usage on each one.
+async fn ticks(proxy: EventLoopProxy<UserEvent>) {
+    let mut interval = tokio::time::interval(TICK);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        interval.tick().await;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+        send(&proxy, Msg::Tick(now));
+    }
 }
 
 async fn connect(target: &ConnectTarget) -> Result<(Client, urushi_client::Events), String> {

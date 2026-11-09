@@ -1,0 +1,108 @@
+//! Client-side types for organizing the sidebar: tabs, collapsed sections, the context
+//! menu, text prompts, dragging threads, and the new-thread selectors. The organization
+//! itself (projects, pins, statuses) lives in the daemon; these only describe what the
+//! UI is doing with it.
+
+use urushi_ui::Point;
+
+/// Which list the sidebar shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SidebarTab {
+    /// Projects, then ungrouped threads.
+    #[default]
+    Projects,
+    /// Repos (git repositories).
+    Repos,
+}
+
+/// What a context menu is for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MenuTarget {
+    /// A thread (by id).
+    Thread(String),
+    /// A project (by id).
+    Project(String),
+    /// A text field in a dialog: cut, copy, paste, select all.
+    Field(crate::state::Field),
+}
+
+/// Which page of the context menu is showing. Sub-pages replace the main page, which
+/// keeps menus simple to draw and to use on touch screens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuPage {
+    /// Rename, pin, status ›, move ›, delete.
+    Main,
+    /// Choose a status.
+    Status,
+    /// Choose a project.
+    Move,
+}
+
+/// An open context menu.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ContextMenu {
+    /// What it acts on.
+    pub target: MenuTarget,
+    /// Which page shows.
+    pub page: MenuPage,
+    /// Where it opened (logical pixels).
+    pub at: Point,
+}
+
+/// Where a dragged thread can be dropped.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DropTarget {
+    /// File it under this project.
+    Project(String),
+    /// Take it out of any project.
+    Ungrouped,
+}
+
+/// What a one-line text prompt is for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Prompt {
+    /// Rename a thread.
+    RenameThread(String),
+    /// Give a thread a new status.
+    NewStatus(String),
+    /// Create a project, then move this thread into it if given.
+    NewProject(Option<String>),
+    /// Rename a project.
+    RenameProject(String),
+    /// Create a task board.
+    NewBoard,
+    /// Rename a task board.
+    RenameBoard(String),
+}
+
+impl Prompt {
+    /// Dialog heading, placeholder and button label.
+    pub fn texts(&self) -> (&'static str, &'static str, &'static str) {
+        match self {
+            Self::RenameThread(_) => ("Rename thread", "Thread name", "Rename"),
+            Self::NewStatus(_) => ("New status", "e.g. In review", "Set status"),
+            Self::NewProject(_) => ("New project", "e.g. Billing launch", "Create"),
+            Self::RenameProject(_) => ("Rename project", "Project name", "Rename"),
+            Self::NewBoard => ("New board", "e.g. Sprint 12", "Create"),
+            Self::RenameBoard(_) => ("Rename board", "Board name", "Rename"),
+        }
+    }
+}
+
+/// A selector in the new-thread dialog that can be open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Select {
+    /// The repo to create the thread in.
+    Repo,
+    /// The branch to start from.
+    Base,
+}
+
+/// Key of a collapsible sidebar section. Collapsed sections are remembered per client.
+pub fn section_key(project: Option<&str>, status: Option<&str>) -> String {
+    format!(
+        "{}/{}",
+        project.unwrap_or("-"),
+        status.map_or_else(String::new, |s| format!("s:{s}"))
+    )
+}

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use bytemuck::{Pod, Zeroable};
 use cosmic_text::CacheKey;
-use urushi_ui::{Color, Font, Primitive, Rect, Scene, Text, TextSystem};
+use urushi_ui::{Color, Font, Image, Primitive, Rect, Scene, Text, TextSystem};
 
 use crate::atlas::{ATLAS_SIZE, Atlas, AtlasFull};
 
@@ -326,9 +326,56 @@ impl SceneRenderer {
                     frame.push_batch(Kind::Quads, scissor, frame.quads.len() - 1);
                 }
                 Primitive::Text(t) => self.push_text(t, (scale, scissor), text, &mut frame)?,
+                Primitive::Image(i) => self.push_image(i, (scale, scissor), &mut frame)?,
             }
         }
         Ok(frame)
+    }
+
+    fn push_image(
+        &mut self,
+        image: &Image,
+        (scale, scissor): (f32, [u32; 4]),
+        frame: &mut FrameData,
+    ) -> Result<(), AtlasFull> {
+        let bounds = image.rect;
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "on-screen sizes, clamped to the atlas"
+        )]
+        let pixels = |v: f32| ((v * scale).round().max(1.0) as u32).min(ATLAS_SIZE - 1);
+        let (width, height) = (pixels(bounds.width), pixels(bounds.height));
+        let entry = self.atlas.image(&image.data, width, height)?;
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "atlas size and coordinates are small integers"
+        )]
+        let (rect, uv) = {
+            let atlas = ATLAS_SIZE as f32;
+            (
+                [
+                    (bounds.x * scale).round(),
+                    (bounds.y * scale).round(),
+                    width as f32,
+                    height as f32,
+                ],
+                [
+                    entry.x as f32 / atlas,
+                    entry.y as f32 / atlas,
+                    (entry.x + entry.width) as f32 / atlas,
+                    (entry.y + entry.height) as f32 / atlas,
+                ],
+            )
+        };
+        frame.glyphs.push(GlyphInstance {
+            rect,
+            uv,
+            color: [1.0; 4],
+            is_color: 1.0,
+        });
+        frame.push_batch(Kind::Glyphs, scissor, frame.glyphs.len() - 1);
+        Ok(())
     }
 
     fn push_text(

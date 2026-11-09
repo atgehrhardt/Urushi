@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::BranchPrefix;
+use crate::{AgentSettings, BranchPrefix};
 
 /// Global settings.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,6 +24,8 @@ pub struct Settings {
     pub worktree_root: Option<PathBuf>,
     /// Remote access over Tailscale.
     pub tailnet: TailnetSettings,
+    /// How agent CLIs (Claude, Codex, Cursor) are started.
+    pub agents: AgentSettings,
 }
 
 impl Default for Settings {
@@ -34,6 +36,7 @@ impl Default for Settings {
             default_shell: None,
             worktree_root: None,
             tailnet: TailnetSettings::default(),
+            agents: AgentSettings::default(),
         }
     }
 }
@@ -68,10 +71,10 @@ impl Default for TailnetSettings {
     }
 }
 
-/// Per-project overrides. `None` means "use the global value".
+/// Per-repo overrides. `None` means "use the global value".
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct ProjectSettingsOverrides {
+pub struct RepoSettingsOverrides {
     /// Overrides [`Settings::delete_remote_branches`].
     pub delete_remote_branches: Option<bool>,
     /// Overrides [`Settings::branch_prefix`].
@@ -80,7 +83,7 @@ pub struct ProjectSettingsOverrides {
     pub default_shell: Option<String>,
 }
 
-/// Settings that apply to one project, after its overrides have been applied.
+/// Settings that apply to one repo, after its overrides have been applied.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EffectiveSettings {
     /// See [`Settings::delete_remote_branches`].
@@ -92,8 +95,8 @@ pub struct EffectiveSettings {
 }
 
 impl Settings {
-    /// Applies a project's overrides on top of these settings.
-    pub fn for_project(&self, overrides: &ProjectSettingsOverrides) -> EffectiveSettings {
+    /// Applies a repo's overrides on top of these settings.
+    pub fn for_repo(&self, overrides: &RepoSettingsOverrides) -> EffectiveSettings {
         EffectiveSettings {
             delete_remote_branches: overrides
                 .delete_remote_branches
@@ -128,17 +131,17 @@ mod tests {
             default_shell: Some("/bin/zsh".into()),
             ..Settings::default()
         };
-        let o = ProjectSettingsOverrides {
+        let o = RepoSettingsOverrides {
             delete_remote_branches: Some(false),
             branch_prefix: Some(BranchPrefix::new("agents/").unwrap()),
             default_shell: None,
         };
-        let e = s.for_project(&o);
+        let e = s.for_repo(&o);
         assert!(!e.delete_remote_branches);
         assert_eq!(e.branch_prefix.as_str(), "agents/");
         assert_eq!(e.default_shell.as_deref(), Some("/bin/zsh"));
         assert!(
-            s.for_project(&ProjectSettingsOverrides::default())
+            s.for_repo(&RepoSettingsOverrides::default())
                 .delete_remote_branches
         );
     }

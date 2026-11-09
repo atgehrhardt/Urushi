@@ -1,7 +1,7 @@
 //! The workspace service: the daemon's single source of truth (ADR 0002).
 //!
-//! [`Service`] owns the workspace state (settings, projects, threads, tabs), the live
-//! terminal sessions, and every operation on them. It knows nothing about the wire.
+//! [`Service`] owns the workspace state (settings, projects, threads, tabs, boards), the
+//! live terminal sessions, and every operation on them. It knows nothing about the wire.
 //! The `server` module translates protocol messages into calls on this type.
 //!
 //! # Concurrency
@@ -11,8 +11,12 @@
 //! change bumps the revision, is persisted, and wakes subscribers through a `watch`
 //! channel.
 
+mod agents;
+mod boards;
 mod deletion;
 mod projects;
+mod repos;
+mod restore;
 mod settings;
 mod state;
 mod tabs;
@@ -25,17 +29,22 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 use tokio::sync::watch;
-use urushi_core::{PaneId, Thread, ThreadState, Timestamp};
+use urushi_core::{PaneId, Thread, Timestamp};
 use urushi_mux::{AlacrittyEmulator, MuxError, Pty, SessionHandle, SpawnSpec, TermSize};
 use urushi_proto::v1;
 
 pub use deletion::DeletionPlan;
+pub use projects::{Assign, ThreadUpdate};
 pub(crate) use state::State;
+pub use threads::ThreadRequest;
 
+use crate::agents::AgentLocator;
 use crate::git::{Git, GitError};
+use crate::restore::{PaneRecord, RestoreStore};
 use crate::server::remote::RemoteState;
 use crate::store::{Store, StoreError};
 use crate::tailscale::TailscaleProvider;
+use crate::usage::{Report, UsageMonitor};
 
 /// Why a service operation failed. The server maps each variant to an `ErrorCode`.
 #[derive(Debug, Error)]
@@ -61,6 +70,9 @@ pub enum ServiceError {
     /// Persisting state failed.
     #[error(transparent)]
     Store(#[from] StoreError),
+    /// The peer isn't allowed to do this.
+    #[error("{0}")]
+    Forbidden(String),
     /// An unexpected internal failure.
     #[error("internal error: {0}")]
     Internal(String),
@@ -82,6 +94,10 @@ pub struct ServiceConfig {
     pub pty: Arc<dyn Pty>,
     /// Tailscale access.
     pub tailscale: Arc<dyn TailscaleProvider>,
+    /// Finds installed agent CLIs.
+    pub agents: Arc<AgentLocator>,
+    /// Which agent runs in a pane, and its plan usage.
+    pub usage: Arc<UsageMonitor>,
 }
 
 /// The workspace service. Always used as `Arc<Service>`.
@@ -94,9 +110,18 @@ pub struct Service {
     git: Arc<dyn Git>,
     pty: Arc<dyn Pty>,
     pub(crate) tailscale: Arc<dyn TailscaleProvider>,
+    agents: Arc<AgentLocator>,
+    usage: Arc<UsageMonitor>,
     pub(crate) remote: Mutex<RemoteState>,
+    /// Restore points on disk (`<home>/restore`).
+    restore: RestoreStore,
+    /// The last restore point saved for each pane, and the screen version its output
+    /// was taken at (so unchanged output isn't read again).
+    restore_points: Mutex<HashMap<PaneId, (u64, PaneRecord)>>,
     home: PathBuf,
     changes: watch::Sender<u64>,
+    /// Woken when a client asks the daemon to stop (`ShutdownDaemon`).
+    shutdown: tokio::sync::Notify,
     me: Weak<Service>,
 }
 
@@ -131,8 +156,9 @@ where
 }
 
 impl Service {
-    /// Loads the stored workspace, repairs interrupted operations, and restarts a shell
-    /// for every pane. Must be called inside a tokio runtime.
+    /// Loads the stored workspace, repairs interrupted operations, and starts every pane
+    /// again from its restore point (output, directory, agent). Must be called inside a
+    /// tokio runtime.
     pub fn start(config: ServiceConfig) -> ServiceResult<Arc<Self>> {
         let document = config.store.load()?;
         let mut state = State::from_document(document);
@@ -146,19 +172,36 @@ impl Service {
             git: config.git,
             pty: config.pty,
             tailscale: config.tailscale,
+            agents: config.agents,
+            usage: config.usage,
             remote: Mutex::new(RemoteState::default()),
+            restore: RestoreStore::new(config.home.join("restore")),
+            restore_points: Mutex::new(HashMap::new()),
             home: config.home,
             changes: watch::channel(revision).0,
+            shutdown: tokio::sync::Notify::new(),
             me: me.clone(),
         });
         service.restore_sessions();
         service.persist()?;
+        service.keep_restore_points();
         Ok(service)
     }
 
     /// The daemon's home directory.
     pub fn home(&self) -> &Path {
         &self.home
+    }
+
+    /// Asks the daemon to stop. [`crate::run`] returns once [`Service::shutdown_requested`]
+    /// resolves.
+    pub fn request_shutdown(&self) {
+        self.shutdown.notify_one();
+    }
+
+    /// Resolves when a client asked the daemon to stop.
+    pub async fn shutdown_requested(&self) {
+        self.shutdown.notified().await;
     }
 
     /// A receiver that wakes on every workspace change (its value is the revision).
@@ -169,6 +212,12 @@ impl Service {
     /// The whole workspace as a wire message.
     pub fn workspace(&self) -> v1::Workspace {
         lock(&self.state).to_proto()
+    }
+
+    /// Which agent runs in `pane`, and how much of its plan is used.
+    pub async fn agent_usage(&self, pane: PaneId) -> ServiceResult<Report> {
+        let pid = self.session(pane)?.pid();
+        Ok(self.usage.report(pid).await)
     }
 
     /// The live session of `pane`.
@@ -224,11 +273,28 @@ impl Service {
         shell: Option<String>,
         size: TermSize,
     ) -> ServiceResult<()> {
-        let cwd = if thread.worktree_path.is_dir() {
-            Some(thread.worktree_path.clone())
-        } else {
-            None
-        };
+        let emulator = AlacrittyEmulator::new(size);
+        self.spawn_session_in(pane, thread, shell, None, emulator)
+    }
+
+    /// Starts a terminal session for `pane` in `cwd` (when it's still a directory; else
+    /// `thread`'s worktree), with `emulator` (which may already show earlier output).
+    fn spawn_session_in(
+        &self,
+        pane: PaneId,
+        thread: &Thread,
+        shell: Option<String>,
+        cwd: Option<PathBuf>,
+        emulator: AlacrittyEmulator,
+    ) -> ServiceResult<()> {
+        use urushi_mux::Emulator as _;
+        let size = emulator.size();
+        let cwd = cwd.filter(|d| d.is_dir()).or_else(|| {
+            thread
+                .worktree_path
+                .is_dir()
+                .then(|| thread.worktree_path.clone())
+        });
         let spec = SpawnSpec {
             program: shell,
             args: Vec::new(),
@@ -243,8 +309,7 @@ impl Service {
             ],
             size: Some(size),
         };
-        let handle =
-            SessionHandle::spawn(&*self.pty, &spec, Box::new(AlacrittyEmulator::new(size)))?;
+        let handle = SessionHandle::spawn(&*self.pty, &spec, Box::new(emulator))?;
         lock(&self.sessions).insert(pane, handle.clone());
         self.watch_exit(pane, handle);
         Ok(())
@@ -299,37 +364,6 @@ impl Service {
             tokio::spawn(async move {
                 let _ = handle.kill().await;
             });
-        }
-    }
-
-    fn restore_sessions(&self) {
-        let work: Vec<(PaneId, Thread, Option<String>)> = {
-            let state = lock(&self.state);
-            state
-                .tabs
-                .iter()
-                .filter_map(|tab| {
-                    let record = state.threads.iter().find(|r| r.thread.id == tab.thread())?;
-                    if record.thread.state != ThreadState::Ready {
-                        return None;
-                    }
-                    let shell = state
-                        .effective_settings(record.thread.project)
-                        .default_shell;
-                    Some(
-                        tab.layout()
-                            .panes()
-                            .into_iter()
-                            .map(move |p| (p, record.thread.clone(), shell.clone())),
-                    )
-                })
-                .flatten()
-                .collect()
-        };
-        for (pane, thread, shell) in work {
-            if let Err(e) = self.spawn_session(pane, &thread, shell, TermSize::DEFAULT) {
-                tracing::error!(%pane, error = %e, "failed to restore pane");
-            }
         }
     }
 

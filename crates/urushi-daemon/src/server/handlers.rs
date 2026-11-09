@@ -4,14 +4,14 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use urushi_core::{PaneId, ProjectId, TabId, ThreadId};
+use urushi_core::{PaneId, RepoId, TabId, ThreadId};
 use urushi_mux::TermSize;
 use urushi_proto::convert;
 use urushi_proto::v1::{self, ErrorCode, request::Body, response::Outcome};
 
 use super::connection::Connection;
 use super::remote;
-use crate::service::{DeletionPlan, ServiceError, ServiceResult};
+use crate::service::{DeletionPlan, ServiceError, ServiceResult, ThreadRequest};
 
 /// An error outcome for a malformed request.
 pub(crate) fn invalid(message: &str) -> Outcome {
@@ -27,6 +27,7 @@ fn error_outcome(error: &ServiceError) -> Outcome {
         ServiceError::NotFound(_) => ErrorCode::NotFound,
         ServiceError::Precondition(_) => ErrorCode::FailedPrecondition,
         ServiceError::Conflict(_) => ErrorCode::Conflict,
+        ServiceError::Forbidden(_) => ErrorCode::PermissionDenied,
         ServiceError::Git(_) => ErrorCode::GitFailed,
         ServiceError::Mux(_) | ServiceError::Store(_) | ServiceError::Internal(_) => {
             ErrorCode::Internal
@@ -38,11 +39,23 @@ fn error_outcome(error: &ServiceError) -> Outcome {
     })
 }
 
-fn parse<T: FromStr>(value: &str, field: &'static str) -> ServiceResult<T>
+pub(super) fn parse<T: FromStr>(value: &str, field: &'static str) -> ServiceResult<T>
 where
     T::Err: std::fmt::Display,
 {
     convert::parse_id(value, field).map_err(|e| ServiceError::Invalid(e.to_string()))
+}
+
+/// An id that may be empty (meaning "none").
+pub(super) fn optional_id<T: FromStr>(value: &str, field: &'static str) -> ServiceResult<Option<T>>
+where
+    T::Err: std::fmt::Display,
+{
+    if value.trim().is_empty() {
+        Ok(None)
+    } else {
+        parse(value, field).map(Some)
+    }
 }
 
 fn size(cols: u32, rows: u32) -> TermSize {
@@ -50,7 +63,7 @@ fn size(cols: u32, rows: u32) -> TermSize {
     TermSize::new(clamp(cols), clamp(rows))
 }
 
-const fn ok() -> Outcome {
+pub(super) const fn ok() -> Outcome {
     Outcome::Ok(v1::Empty {})
 }
 
@@ -79,14 +92,15 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             }
             Outcome::Workspace(service.workspace())
         }
+        // `*Project*` on the wire is a repo (ADR 0010).
         Body::AddProject(r) => {
             let name = Some(r.name).filter(|n| !n.is_empty());
-            Outcome::Project(convert::project_to_proto(
-                &service.add_project(PathBuf::from(r.path), name).await?,
+            Outcome::Project(convert::repo_to_proto(
+                &service.add_repo(PathBuf::from(r.path), name).await?,
             ))
         }
         Body::RemoveProject(r) => {
-            service.remove_project(parse::<ProjectId>(&r.project_id, "project_id")?)?;
+            service.remove_repo(parse::<RepoId>(&r.project_id, "project_id")?)?;
             ok()
         }
         Body::ListBranches(r) => {
@@ -99,9 +113,19 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             })
         }
         Body::CreateThread(r) => {
-            let base = Some(r.base_ref).filter(|b| !b.is_empty());
+            let request = ThreadRequest {
+                title: r.title,
+                base_ref: Some(r.base_ref).filter(|b| !b.trim().is_empty()),
+                branch: Some(r.branch).filter(|b| !b.trim().is_empty()),
+                initial_tab: !r.skip_initial_tab,
+                project: optional_id(&r.folder_id, "folder_id")?,
+                task: match optional_id(&r.task_id, "task_id")? {
+                    Some(task) => Some((task, optional_id(&r.subtask_id, "subtask_id")?)),
+                    None => None,
+                },
+            };
             let thread = service
-                .create_thread(parse(&r.project_id, "project_id")?, &r.title, base)
+                .create_thread(parse(&r.project_id, "project_id")?, request)
                 .await?;
             Outcome::Thread(convert::thread_to_proto(&thread))
         }
@@ -126,9 +150,24 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
                 .await?;
             ok()
         }
-        Body::CreateTab(r) => Outcome::Tab(convert::tab_to_proto(
-            &service.create_tab(parse(&r.thread_id, "thread_id")?, &r.title)?,
-        )),
+        Body::CreateTab(r) => {
+            let agent = convert::agent_from_proto(r.agent);
+            let tab = service
+                .create_tab(parse(&r.thread_id, "thread_id")?, &r.title, agent)
+                .await?;
+            Outcome::Tab(convert::tab_to_proto(&tab))
+        }
+        Body::ListAgents(_) => Outcome::Agents(v1::Agents {
+            agents: service
+                .installed_agents()
+                .await?
+                .into_iter()
+                .map(|found| v1::InstalledAgent {
+                    agent: convert::agent_to_proto(found.agent).into(),
+                    path: found.path.to_string_lossy().into_owned(),
+                })
+                .collect(),
+        }),
         Body::CloseTab(r) => {
             service.close_tab(parse::<TabId>(&r.tab_id, "tab_id")?)?;
             ok()
@@ -213,9 +252,50 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             Outcome::Settings(convert::settings_to_proto(&settings))
         }
         Body::UpdateProjectSettings(r) => {
-            let overrides = convert::project_settings_from_proto(&r.settings.unwrap_or_default())
+            let overrides = convert::repo_settings_from_proto(&r.settings.unwrap_or_default())
                 .map_err(|e| ServiceError::Invalid(e.to_string()))?;
-            service.update_project_settings(parse(&r.project_id, "project_id")?, overrides)?;
+            service.update_repo_settings(parse(&r.project_id, "project_id")?, overrides)?;
+            ok()
+        }
+        Body::UpdateThread(r) => super::organize::update_thread(connection, r)?,
+        Body::GetAgentUsage(r) => {
+            let report = service.agent_usage(parse(&r.pane_id, "pane_id")?).await?;
+            Outcome::AgentUsage(super::usage::to_proto(&report))
+        }
+        body @ (Body::CreateBoard(_)
+        | Body::RenameBoard(_)
+        | Body::DeleteBoard(_)
+        | Body::CreateTask(_)
+        | Body::UpdateTask(_)
+        | Body::MoveTask(_)
+        | Body::DeleteTask(_)
+        | Body::CreateSubtask(_)
+        | Body::UpdateSubtask(_)
+        | Body::DeleteSubtask(_)) => super::boards::route(service, body)?,
+        Body::ShutdownDaemon(_) => {
+            if !connection.local {
+                return Err(ServiceError::Forbidden(
+                    "the daemon can only be stopped from its own machine".into(),
+                ));
+            }
+            tracing::info!("stopping at a client's request");
+            // Answer first: the reply has to leave before the listener stops.
+            let service = service.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                service.request_shutdown();
+            });
+            ok()
+        }
+        Body::CreateFolder(r) => {
+            Outcome::Folder(convert::project_to_proto(&service.create_project(&r.name)?))
+        }
+        Body::RenameFolder(r) => {
+            service.rename_project(parse(&r.folder_id, "folder_id")?, &r.name)?;
+            ok()
+        }
+        Body::DeleteFolder(r) => {
+            service.delete_project(parse(&r.folder_id, "folder_id")?)?;
             ok()
         }
         Body::TailnetStatus(_) => Outcome::TailnetStatus(remote::status(service).await),

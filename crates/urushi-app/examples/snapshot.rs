@@ -2,8 +2,10 @@
 //! checking layouts at phone, tablet and desktop sizes:
 //!
 //! ```sh
-//! cargo run -p urushi-app --example snapshot -- out.bmp 402 874 3 [connect|empty]
+//! cargo run -p urushi-app --example snapshot -- out.bmp 402 874 3 [connect|empty|<scenario>]
 //! ```
+//! Scenarios (see `snapshot::SCENARIOS`) show screens of a sample workspace, e.g.
+//! `launcher`, `picker`, `add-project`, `new-thread`, `settings`.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -26,7 +28,8 @@ fn main() {
     let width: f32 = args.get(2).and_then(|a| a.parse().ok()).unwrap_or(1280.0);
     let height: f32 = args.get(3).and_then(|a| a.parse().ok()).unwrap_or(820.0);
     let scale: f32 = args.get(4).and_then(|a| a.parse().ok()).unwrap_or(2.0);
-    let target = if args.get(5).map(String::as_str) == Some("connect") {
+    let mode = args.get(5).map_or("empty", String::as_str);
+    let target = if mode == "connect" {
         ConnectTarget::Ask
     } else {
         ConnectTarget::Local(None)
@@ -34,7 +37,8 @@ fn main() {
 
     let theme = Theme::dark();
     let mut text = TextSystem::bundled_only();
-    let scene = snapshot::scene(target, &theme, &mut text, width, height);
+    let scene = snapshot::scenario(mode, &theme, &mut text, width, height)
+        .unwrap_or_else(|| snapshot::scene(target, &theme, &mut text, width, height));
     let mut gpu = Offscreen::new().expect("a GPU adapter");
     #[allow(
         clippy::cast_possible_truncation,

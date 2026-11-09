@@ -22,10 +22,14 @@ use crate::service::{Service, lock};
 /// to absorb bursts of responses.
 const OUTBOUND_QUEUE: usize = 256;
 
-/// Who is on the other end, for logging.
+/// Who is on the other end.
 #[derive(Clone, Debug)]
 pub(crate) struct Peer {
+    /// For logging.
     pub(crate) description: String,
+    /// Connected through the local socket or pipe (the same OS user on this machine),
+    /// not over the tailnet. Only local peers may stop the daemon.
+    pub(crate) local: bool,
 }
 
 /// State shared by a connection's tasks.
@@ -34,6 +38,8 @@ pub(crate) struct Connection {
     pub(crate) out: mpsc::Sender<Envelope>,
     pub(crate) attachments: Mutex<HashMap<PaneId, attach::Attachment>>,
     pub(crate) subscription: Mutex<Option<JoinHandle<()>>>,
+    /// See [`Peer::local`].
+    pub(crate) local: bool,
 }
 
 impl Connection {
@@ -109,6 +115,7 @@ where
         out,
         attachments: Mutex::new(HashMap::new()),
         subscription: Mutex::new(None),
+        local: peer.local,
     });
     loop {
         match read_envelope(&mut reader).await {

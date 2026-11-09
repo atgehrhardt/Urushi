@@ -63,6 +63,34 @@ mod unix {
     use super::*;
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn scrolling_back_produces_a_frame_showing_history() {
+        let s = spawn(
+            "/bin/sh",
+            &[
+                "-c",
+                "i=1; while [ $i -le 40 ]; do echo line$i; i=$((i+1)); done; sleep 5",
+            ],
+            TermSize::new(20, 5),
+        );
+        wait_for_text(&s, "line40").await;
+        let before = s.frame_since(0).await.unwrap();
+        assert_eq!(before.display_offset, 0);
+
+        s.scroll(urushi_mux::Scroll::Lines(10)).await.unwrap();
+        let after = s.frame_since(before.version).await.unwrap();
+        assert_eq!(after.display_offset, 10);
+        assert!(
+            after.version > before.version,
+            "scrolling must bump the version"
+        );
+        let text: Vec<String> = after.lines.iter().map(|(_, l)| l.text()).collect();
+        assert!(
+            text.iter().any(|l| l.contains("line30")),
+            "scrolled-back lines are sent: {text:#?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn output_reaches_the_screen() {
         let s = spawn(
             "/bin/sh",

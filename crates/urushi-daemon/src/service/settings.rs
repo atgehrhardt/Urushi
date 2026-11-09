@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use urushi_core::{BranchPrefix, ProjectId, ProjectSettingsOverrides, Settings};
+use urushi_core::{Agent, BranchPrefix, RepoId, RepoSettingsOverrides, Settings};
 use urushi_proto::{convert, v1};
 
 use super::{Service, ServiceError, ServiceResult};
@@ -23,14 +23,14 @@ impl Service {
         })
     }
 
-    /// Replaces a project's overrides.
-    pub fn update_project_settings(
+    /// Replaces a repo's overrides.
+    pub fn update_repo_settings(
         &self,
-        project: ProjectId,
-        overrides: ProjectSettingsOverrides,
+        repo: RepoId,
+        overrides: RepoSettingsOverrides,
     ) -> ServiceResult<()> {
         self.mutate(|state| {
-            state.project_mut(project)?.settings = overrides;
+            state.repo_mut(repo)?.settings = overrides;
             Ok(())
         })
     }
@@ -68,6 +68,15 @@ fn apply_patch(settings: &mut Settings, patch: &v1::SettingsPatch) -> ServiceRes
     if let Some(v) = patch.allow_tagged_nodes {
         settings.tailnet.allow_tagged_nodes = v;
     }
+    for (agent, skip) in [
+        (Agent::Claude, patch.claude_skip_permissions),
+        (Agent::Codex, patch.codex_skip_permissions),
+        (Agent::Cursor, patch.cursor_skip_permissions),
+    ] {
+        if let Some(skip) = skip {
+            settings.agents.set_skip_permissions(agent, skip);
+        }
+    }
     Ok(())
 }
 
@@ -90,6 +99,26 @@ mod tests {
         assert_eq!(s.tailnet.port, 9000);
         assert_eq!(s.tailnet.allowed_logins, vec!["me@example.com"]);
         assert_eq!(s.branch_prefix.as_str(), "urushi/", "untouched");
+    }
+
+    #[test]
+    fn skip_permissions_is_patched_per_agent() {
+        let mut s = Settings::default();
+        let on = v1::SettingsPatch {
+            claude_skip_permissions: Some(true),
+            cursor_skip_permissions: Some(true),
+            ..Default::default()
+        };
+        apply_patch(&mut s, &on).unwrap();
+        assert!(s.agents.skips_permissions(Agent::Claude));
+        assert!(!s.agents.skips_permissions(Agent::Codex));
+        let off = v1::SettingsPatch {
+            claude_skip_permissions: Some(false),
+            ..Default::default()
+        };
+        apply_patch(&mut s, &off).unwrap();
+        assert!(!s.agents.skips_permissions(Agent::Claude));
+        assert!(s.agents.skips_permissions(Agent::Cursor), "untouched");
     }
 
     #[test]

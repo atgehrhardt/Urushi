@@ -31,10 +31,23 @@
   - Android: wgpu runs without debug labels, because some Vulkan drivers (including the emulator's) crash on them.
   - Android: logs go to logcat under the tag `urushi`.
 
+## App icon
+- **Source:** `assets/icon/icon.svg` (the app tile), `mark-dark.svg` and `mark-light.svg` (the mark alone, for dark and light backgrounds). They are the "Leaf tag" design: code brackets around a lacquer-tree (*Toxicodendron vernicifluum*) sprig, on lacquer black `#15110F` with urushi red `#C8432F`.
+- **Rendered files are committed**, so builds need no tools. Re-render with `make icons` (`scripts/render-icons.swift`, macOS only) after changing the SVG:
+
+  | Platform | File | How it's laid out |
+  |---|---|---|
+  | macOS | `assets/icon/Urushi.icns` | Tile at 824 of 1024 (Apple's icon grid); `bundle-macos.sh` sets `CFBundleIconFile`. |
+  | iOS | `apps/ios/icons/AppIcon*.png` | Full bleed (iOS masks the corners); `CFBundleIcons` in `bundle-ios-sim.sh`. |
+  | Android | `apps/android/res/` | Adaptive icon: mark in the 72 dp safe area on a `#15110F` background; compiled by `aapt2` in `build-android.sh`. |
+  | Windows, Linux | `assets/icon/window-64.rgba` | Raw RGBA embedded as the window and taskbar icon (`platform::window_icon`). |
+  | In the app (all) | `assets/icon/mark-128.rgba` | The mark alone on transparent, raw 128×128 RGBA: the logo beside the name in the sidebar header (`view/sidebar.rs::LOGO`). |
+
 ## Rendering without a window
 `cargo run -p urushi-app --example snapshot -- out.bmp <width> <height> <scale> [connect]` renders the UI offscreen. Use it to check layouts at phone and desktop sizes.
 
 ## Known gaps
 - **Soft keyboard:** the Android soft keyboard doesn't open for `NativeActivity` (a winit limitation). Hardware keyboards and the key bar work. A small Java `showSoftInput` shim is the follow-up.
 - **Edge-to-edge:** Android targets SDK 34 to avoid forced edge-to-edge until insets are handled everywhere.
-- **Icons and signing:** there are no app icons yet. Release signing and notarization aren't set up.
+- **Signing:** release signing and notarization aren't set up.
+- **Icons:** there's no Windows `.ico` embedded in the `.exe` yet (the window icon is set at runtime), and the iOS icons are loose files rather than an asset catalog.

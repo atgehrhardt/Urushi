@@ -1,6 +1,6 @@
 //! Durable workspace state.
 //!
-//! The whole workspace (settings, projects, threads, tabs) is one small document. It is
+//! The whole workspace (settings, repos, projects, threads, tabs) is one small document. It is
 //! rewritten atomically on every change: write a temp file, fsync, rename. A document of
 //! thousands of threads is still only kilobytes, so this stays simple and needs no C
 //! dependency. The [`Store`] trait lets us move to an embedded database if that ever
@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use urushi_core::{BranchName, Project, Settings, Tab, Thread};
+use urushi_core::{Board, BranchName, Project, Repo, Settings, Tab, Thread};
 
 /// Current document format. Bump it and add a migration in [`JsonFileStore::load`] when
 /// a change isn't backward-compatible.
@@ -38,8 +38,13 @@ pub struct Document {
     /// Global settings.
     #[serde(default)]
     pub settings: Settings,
-    /// Projects, in sidebar order.
-    #[serde(default)]
+    /// Repos, in sidebar order. Stored as `projects` before repos were renamed, so that
+    /// key is still read (ADR 0010).
+    #[serde(default, alias = "projects")]
+    pub repos: Vec<Repo>,
+    /// Projects (groups of threads), in sidebar order. Stored as `folders`, since the old
+    /// `projects` key holds repos in older files.
+    #[serde(default, rename = "folders")]
     pub projects: Vec<Project>,
     /// Threads, oldest first.
     #[serde(default)]
@@ -47,6 +52,9 @@ pub struct Document {
     /// All tabs of all threads.
     #[serde(default)]
     pub tabs: Vec<Tab>,
+    /// Task boards, in tab order. Older files have none.
+    #[serde(default)]
+    pub boards: Vec<Board>,
 }
 
 impl Default for Document {
@@ -54,9 +62,11 @@ impl Default for Document {
         Self {
             format: FORMAT_VERSION,
             settings: Settings::default(),
+            repos: Vec::new(),
             projects: Vec::new(),
             threads: Vec::new(),
             tabs: Vec::new(),
+            boards: Vec::new(),
         }
     }
 }
@@ -145,7 +155,8 @@ impl Store for JsonFileStore {
     }
 }
 
-fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+/// Replaces the file at `path` with `bytes`: write a temp file next to it, fsync, rename.
+pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension("json.tmp");
     {
         let mut file = File::create(&tmp)?;
@@ -169,6 +180,30 @@ mod tests {
         store.save(&doc).unwrap();
         assert_eq!(store.load().unwrap(), doc);
         assert!(!dir.path().join("workspace.json.tmp").exists());
+    }
+
+    #[test]
+    fn files_from_before_the_repo_rename_still_load() {
+        // `projects` held repos, and threads named their repo `project`.
+        let old = r#"{
+            "format": 1,
+            "projects": [{"id": "00000000-0000-0000-0000-000000000001", "name": "r",
+                          "repo_root": "/r", "default_base": null,
+                          "added_at": 0}],
+            "threads": []
+        }"#;
+        let doc: Document = serde_json::from_str(old).unwrap();
+        assert_eq!(doc.repos.len(), 1);
+        assert_eq!(doc.repos[0].name, "r");
+        assert!(doc.projects.is_empty());
+
+        // Saved again, repos and projects get their own keys.
+        let json = serde_json::to_string(&doc).unwrap();
+        assert!(
+            json.contains("\"repos\"") && json.contains("\"folders\""),
+            "{json}"
+        );
+        assert_eq!(serde_json::from_str::<Document>(&json).unwrap(), doc);
     }
 
     #[test]

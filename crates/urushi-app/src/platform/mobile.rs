@@ -19,3 +19,11 @@ impl Clipboard {
 pub(crate) fn pick_folder() -> Option<String> {
     None
 }
+
+/// Mobile has no folder picker (and no local daemon whose folders it could pick).
+pub(crate) const HAS_FOLDER_PICKER: bool = false;
+
+/// Mobile apps get their icon from the app package, not the window.
+pub(crate) fn window_icon() -> Option<winit::window::Icon> {
+    None
+}

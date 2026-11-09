@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 use urushi_client::v1::{notification, request::Body, response::Outcome};
 use urushi_client::{ScreenState, WorkspaceMirror, v1};
-use urushi_ui::{Point, TextField};
+use urushi_ui::TextField;
 
 use crate::config::ConnectTarget;
 use crate::keys::{KeyPress, Named};
 use crate::msg::{Effect, Followup, Msg};
-use crate::state::{AppState, Connection, Dialog, Drag, Field, Selection, SettingToggle};
+use crate::state::{AppState, Connection, Dialog, Field, SettingToggle};
 use crate::terminal;
 
 fn request(body: Body, followup: Followup) -> Effect {
@@ -19,9 +19,36 @@ fn request(body: Body, followup: Followup) -> Effect {
 
 impl AppState {
     /// Applies `msg` and returns what needs doing.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one arm per message kind keeps routing in one place"
+    )]
     pub fn update(&mut self, msg: Msg) -> Vec<Effect> {
         let mut fx = Vec::new();
         match msg {
+            // A dialog field's Cut/Copy/Paste menu: `update/fields.rs`.
+            Msg::OpenMenu(crate::organize::MenuTarget::Field(field)) => {
+                self.open_field_menu(field);
+            }
+            // Organizing threads and the sidebar: `update/organize.rs`.
+            msg @ (Msg::SidebarTab(_)
+            | Msg::ToggleSection(_)
+            | Msg::Pointer(_)
+            | Msg::OpenMenu(_)
+            | Msg::MenuPage(_)
+            | Msg::CloseMenu
+            | Msg::TogglePin(_)
+            | Msg::SetStatus { .. }
+            | Msg::MoveThread { .. }
+            | Msg::OpenPrompt(_)
+            | Msg::DeleteProject(_)
+            | Msg::DragThread(_)
+            | Msg::DragMove(_)
+            | Msg::DropThread(_)
+            | Msg::DragCancel
+            | Msg::ToggleSelect(_)
+            | Msg::PickRepo(_)
+            | Msg::PickBase(_)) => self.organize(msg, &mut fx),
             Msg::Connected { welcome, workspace } => self.on_connected(welcome, workspace, &mut fx),
             Msg::Disconnected(reason) => {
                 self.connection = Connection::Disconnected(reason);
@@ -33,21 +60,10 @@ impl AppState {
             Msg::SetCompact(compact) => self.compact = compact,
             Msg::ShowSidebar => self.sidebar_open = true,
             Msg::SelectTab(id) => self.select_tab(id, &mut fx),
-            Msg::OpenAddProject => self.open(
-                Dialog::AddProject {
-                    path: TextField::default(),
-                },
-                Some(Field::ProjectPath),
-            ),
-            Msg::OpenNewThread(project) => self.open(
-                Dialog::NewThread {
-                    project,
-                    title: TextField::default(),
-                    base: TextField::default(),
-                },
-                Some(Field::ThreadTitle),
-            ),
+            Msg::OpenAddProject => self.open_add_repo(),
+            Msg::OpenNewThread { repo, project } => self.open_new_thread(repo, project, &mut fx),
             Msg::RequestDeleteThread(thread_id) => {
+                self.menu = None;
                 fx.push(request(
                     Body::PlanThreadDeletion(v1::PlanThreadDeletionRequest { thread_id }),
                     Followup::DeletionPlan,
@@ -60,7 +76,8 @@ impl AppState {
                 },
                 Some(Field::Host),
             ),
-            Msg::NewTab => self.new_tab(&mut fx),
+            Msg::NewTab => self.open_launcher(&mut fx),
+            Msg::Launch(choice) => self.launch(choice, &mut fx),
             Msg::CloseTab(tab_id) => fx.push(request(
                 Body::CloseTab(v1::CloseTabRequest { tab_id }),
                 Followup::None,
@@ -73,23 +90,66 @@ impl AppState {
                     self.sync_panes(&mut fx);
                 }
             }
-            Msg::AreaPress(p) => self.area_press(p, &mut fx),
-            Msg::AreaDrag(p) => self.area_drag(p, &mut fx),
-            Msg::AreaRelease(_) => self.area_release(),
-            Msg::AreaWheel(p, lines) => self.area_wheel(p, lines, &mut fx),
+            // The task-board panel: `update/board.rs`.
+            msg @ (Msg::ToggleBoard
+            | Msg::BoardReveal(_)
+            | Msg::BoardBackground
+            | Msg::SelectBoard(_)
+            | Msg::NewTask { .. }
+            | Msg::PressTask(_)
+            | Msg::PressEnded
+            | Msg::DragTask(_)
+            | Msg::DropTask { .. }
+            | Msg::DragOver(_)
+            | Msg::PickColumn(_)
+            | Msg::ToggleSubtask(_)
+            | Msg::RenameSubtask(_)
+            | Msg::DeleteSubtask(_)
+            | Msg::RemoveDraftSubtask(_)
+            | Msg::StartThread(_)
+            | Msg::DeleteTask
+            | Msg::OpenDeleteBoard(_)
+            | Msg::ConfirmDeleteBoard) => self.board_msg(msg, &mut fx),
+            Msg::Tick(now_ms) => self.tick(now_ms, &mut fx),
+            // The mouse over terminals: `update/pointer.rs`.
+            msg @ (Msg::AreaPress(_)
+            | Msg::AreaDrag(_)
+            | Msg::AreaRelease(_)
+            | Msg::AreaWheel(..)
+            | Msg::AreaHover(_)
+            | Msg::AreaButton { .. }
+            | Msg::Modifiers(_)) => self.pointer(&msg, &mut fx),
             Msg::FocusField(field) => self.focus = Some(field),
+            // Editing text fields with the mouse and shortcuts: `update/fields.rs`.
+            Msg::FieldPress {
+                caret,
+                extend,
+                clicks,
+            } => self.field_press(caret, extend, clicks),
+            Msg::FieldDrag(caret) => {
+                if let Some(field) = self.field_mut() {
+                    field.place(caret, true);
+                }
+            }
+            Msg::EditField(command) => self.edit_field(command, &mut fx),
             Msg::Submit => self.submit(&mut fx),
             Msg::CloseDialog => self.close_dialog(),
             Msg::ConfirmDelete => self.confirm_delete(&mut fx),
+            Msg::OpenRestartDaemon => self.open_restart_daemon(),
+            Msg::ConfirmRestartDaemon => self.confirm_restart_daemon(&mut fx),
+            Msg::DaemonStopped(result) => self.daemon_stopped(result, &mut fx),
             Msg::Toggle(toggle) => self.toggle(toggle, &mut fx),
             Msg::BrowseFolder => fx.push(Effect::PickFolder),
             Msg::FolderPicked(path) => {
-                if let (Some(path), Some(Dialog::AddProject { path: field })) =
-                    (path, &mut self.dialog)
-                {
-                    field.set(path);
+                if let (Some(path), Some(Dialog::AddProject { .. })) = (path, &self.dialog) {
+                    Self::add_project(&path, &mut fx);
                 }
             }
+            Msg::FileDropped {
+                path,
+                is_dir,
+                over_terminal,
+            } => self.file_dropped(&path, is_dir, over_terminal, &mut fx),
             Msg::DismissError => self.error = None,
             Msg::Key(key) => self.on_key(&key, &mut fx),
             Msg::Text(text) => self.insert_text(text, v1::input::Kind::Text, &mut fx),
@@ -105,11 +165,17 @@ impl AppState {
         workspace: v1::Workspace,
         fx: &mut Vec<Effect>,
     ) {
+        self.daemon_minor = welcome.protocol_minor;
+        self.daemon_version.clone_from(&welcome.daemon_version);
         self.connection = Connection::Connected {
             host: welcome.host_name,
         };
         self.reset_panes();
         self.on_workspace(workspace, fx);
+        self.request_agents(fx);
+        self.usage = None;
+        self.usage_pending = false;
+        self.poll_usage(fx);
         fx.push(request(
             Body::GetSettings(v1::GetSettingsRequest {}),
             Followup::Settings,
@@ -154,18 +220,6 @@ impl AppState {
         ));
     }
 
-    fn new_tab(&self, fx: &mut Vec<Effect>) {
-        if let Some(thread_id) = self.selected_thread.clone() {
-            fx.push(request(
-                Body::CreateTab(v1::CreateTabRequest {
-                    thread_id,
-                    title: String::new(),
-                }),
-                Followup::TabCreated,
-            ));
-        }
-    }
-
     fn split(&self, side: v1::Direction, fx: &mut Vec<Effect>) {
         if let (Some(tab), Some(pane)) = (
             self.current_tab().map(|t| t.id.clone()),
@@ -195,29 +249,6 @@ impl AppState {
         }
     }
 
-    fn area_release(&mut self) {
-        self.drag = None;
-        if self
-            .selection
-            .as_ref()
-            .is_some_and(|(_, s)| s.anchor == s.head)
-        {
-            self.selection = None;
-        }
-    }
-
-    fn area_wheel(&self, p: Point, lines: i32, fx: &mut Vec<Effect>) {
-        if let Some(pane) = self.pane_at(p) {
-            fx.push(Effect::Notify(notification::Body::ScrollPane(
-                v1::ScrollPane {
-                    pane_id: pane,
-                    lines,
-                    to_bottom: false,
-                },
-            )));
-        }
-    }
-
     fn confirm_delete(&mut self, fx: &mut Vec<Effect>) {
         if let Some(Dialog::DeleteThread { plan, deleting, .. }) = &mut self.dialog
             && !*deleting
@@ -240,7 +271,10 @@ impl AppState {
     ) {
         if let Some(field) = self.field_mut() {
             field.insert(&text);
-        } else if let Some(pane) = self.focused_pane() {
+            self.after_field_edit();
+        } else if !self.terminals_covered()
+            && let Some(pane) = self.focused_pane()
+        {
             fx.push(input(pane, to_terminal(text)));
         }
     }
@@ -255,14 +289,22 @@ impl AppState {
         }
     }
 
-    fn open(&mut self, dialog: Dialog, focus: Option<Field>) {
+    pub(super) fn open(&mut self, dialog: Dialog, focus: Option<Field>) {
         self.dialog = Some(dialog);
         self.focus = focus;
     }
 
     fn close_dialog(&mut self) {
-        // The connect dialog is the only way forward when no daemon is chosen yet.
+        // The connect dialog is the only way forward when no daemon is chosen yet, and a
+        // restart under way can't be cancelled.
         if self.target == ConnectTarget::Ask && matches!(self.dialog, Some(Dialog::Connect { .. }))
+            || matches!(
+                self.dialog,
+                Some(Dialog::RestartDaemon {
+                    restarting: true,
+                    ..
+                })
+            )
         {
             return;
         }
@@ -270,7 +312,7 @@ impl AppState {
         self.focus = None;
     }
 
-    fn reset_panes(&mut self) {
+    pub(super) fn reset_panes(&mut self) {
         self.screens.clear();
         self.attaching.clear();
         self.sizes.clear();
@@ -365,6 +407,17 @@ impl AppState {
     ) {
         let outcome = match result {
             Ok(outcome) => outcome,
+            // An older daemon, or no agents: the picker just offers a terminal.
+            Err(_) if followup == Followup::Agents => return,
+            // Without branches the selector just offers the repo's default.
+            Err(_) if matches!(followup, Followup::Branches(_)) => return,
+            // The status bar just shows no usage.
+            Err(_) if matches!(followup, Followup::Usage(_)) => {
+                if let Followup::Usage(pane) = followup {
+                    self.usage_answered(pane, None);
+                }
+                return;
+            }
             Err(message) => {
                 if let Followup::Attached(pane) = &followup {
                     self.attaching.remove(pane);
@@ -389,9 +442,22 @@ impl AppState {
                 }
             }
             (Followup::ThreadCreated, Outcome::Thread(thread)) => {
+                // Started from a task: the board makes way for the new thread.
+                if matches!(self.dialog, Some(Dialog::NewThread { task: Some(_), .. })) {
+                    self.board.open = false;
+                }
                 self.selected_thread = Some(thread.id);
                 self.close_dialog();
                 self.sync_panes(fx);
+                // The new thread shows the launcher; make sure it lists what's installed.
+                self.request_agents(fx);
+            }
+            (Followup::Agents, Outcome::Agents(agents)) => self.set_agents(&agents),
+            (Followup::Branches(repo), Outcome::Branches(branches)) => {
+                self.branches = Some((repo, branches));
+            }
+            (Followup::ProjectCreated(thread), Outcome::Folder(project)) => {
+                self.project_created(thread, &project, fx);
             }
             (Followup::DeletionPlan, Outcome::DeletionPlan(plan)) => {
                 let title = self
@@ -420,6 +486,14 @@ impl AppState {
             (Followup::TailnetStatus, Outcome::TailnetStatus(status)) => {
                 self.tailnet = Some(status);
             }
+            (Followup::Usage(pane), Outcome::AgentUsage(usage)) => {
+                self.usage_answered(pane, Some(usage));
+            }
+            (Followup::BoardCreated, Outcome::Board(board)) => {
+                self.board.selected = Some(board.id);
+                self.dialog = None;
+                self.focus = None;
+            }
             (Followup::CloseDialog, _) => {
                 self.dialog = None;
                 self.focus = None;
@@ -431,23 +505,42 @@ impl AppState {
     fn submit(&mut self, fx: &mut Vec<Effect>) {
         match &self.dialog {
             Some(Dialog::AddProject { path }) if !path.text().trim().is_empty() => {
-                let body = Body::AddProject(v1::AddProjectRequest {
-                    path: path.text().trim().to_owned(),
-                    name: String::new(),
-                });
-                fx.push(request(body, Followup::CloseDialog));
+                Self::add_project(path.text(), fx);
+            }
+            Some(Dialog::AddProject { .. }) if self.can_pick_folders() => {
+                fx.push(Effect::PickFolder);
             }
             Some(Dialog::NewThread {
+                repo,
                 project,
                 title,
+                branch,
                 base,
+                task,
+                ..
             }) => {
                 let body = Body::CreateThread(v1::CreateThreadRequest {
-                    project_id: project.clone(),
+                    project_id: repo.clone(),
                     title: title.text().trim().to_owned(),
-                    base_ref: base.text().trim().to_owned(),
+                    base_ref: base.clone().unwrap_or_default(),
+                    branch: branch.text().trim().to_owned(),
+                    // The thread opens on the launcher, so the user picks what runs first.
+                    skip_initial_tab: true,
+                    folder_id: project.clone().unwrap_or_default(),
+                    task_id: task.as_ref().map(|l| l.task.clone()).unwrap_or_default(),
+                    subtask_id: task
+                        .as_ref()
+                        .and_then(|l| l.subtask.clone())
+                        .unwrap_or_default(),
                 });
                 fx.push(request(body, Followup::ThreadCreated));
+            }
+            Some(Dialog::Prompt { .. }) => self.submit_prompt(fx),
+            Some(Dialog::Task { .. }) => self.submit_task(fx),
+            Some(Dialog::NewTab { highlighted }) => {
+                let choices = self.launch_choices();
+                let choice = choices[(*highlighted).min(choices.len() - 1)];
+                self.launch(choice, fx);
             }
             Some(Dialog::Settings { prefix, shell }) => {
                 let patch = v1::SettingsPatch {
@@ -494,6 +587,21 @@ impl AppState {
                     Followup::Settings,
                 ));
             }
+            SettingToggle::SkipPermissions(_) if !self.daemon_supports_agents() => {}
+            SettingToggle::SkipPermissions(agent) => {
+                let current = self.skips_permissions(agent);
+                let mut patch = v1::SettingsPatch::default();
+                let flag = match agent {
+                    urushi_core::Agent::Claude => &mut patch.claude_skip_permissions,
+                    urushi_core::Agent::Codex => &mut patch.codex_skip_permissions,
+                    urushi_core::Agent::Cursor => &mut patch.cursor_skip_permissions,
+                };
+                *flag = Some(!current);
+                fx.push(request(
+                    Body::UpdateSettings(v1::UpdateSettingsRequest { patch: Some(patch) }),
+                    Followup::Settings,
+                ));
+            }
             SettingToggle::ServeTailnet => {
                 let serving = self.tailnet.as_ref().is_some_and(|t| t.serving);
                 fx.push(request(
@@ -504,87 +612,26 @@ impl AppState {
         }
     }
 
-    fn field_mut(&mut self) -> Option<&mut TextField> {
-        let focus = self.focus?;
-        match (&mut self.dialog, focus) {
-            (Some(Dialog::AddProject { path }), Field::ProjectPath) => Some(path),
-            (Some(Dialog::NewThread { title, .. }), Field::ThreadTitle) => Some(title),
-            (Some(Dialog::NewThread { base, .. }), Field::ThreadBase) => Some(base),
-            (Some(Dialog::Settings { prefix, .. }), Field::BranchPrefix) => Some(prefix),
-            (Some(Dialog::Settings { shell, .. }), Field::DefaultShell) => Some(shell),
-            (Some(Dialog::Connect { host }), Field::Host) => Some(host),
-            _ => None,
-        }
-    }
-
-    fn dialog_fields(&self) -> &'static [Field] {
-        match self.dialog {
-            Some(Dialog::AddProject { .. }) => &[Field::ProjectPath],
-            Some(Dialog::NewThread { .. }) => &[Field::ThreadTitle, Field::ThreadBase],
-            Some(Dialog::Settings { .. }) => &[Field::BranchPrefix, Field::DefaultShell],
-            Some(Dialog::Connect { .. }) => &[Field::Host],
-            _ => &[],
-        }
-    }
-
     fn on_key(&mut self, key: &KeyPress, fx: &mut Vec<Effect>) {
-        if self.dialog.is_some() {
+        if key.named == Some(Named::Escape) && (self.dismiss_overlay() || self.board_escape()) {
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::NewTab { .. }))
+            && !(key.mods.is_shortcut() || key.mods.logo)
+        {
+            self.launcher_dialog_key(key, fx);
+        } else if self.dialog.is_some() {
             self.dialog_key(key, fx);
         } else if key.mods.is_shortcut() || key.mods.logo {
             self.shortcut(key, fx);
+        } else if self.board.visible() {
+            // The panel covers the terminals; typing doesn't reach them.
+        } else if self.empty_thread_key(key, fx) {
         } else if let Some(pane) = self.focused_pane()
             && let Some(kind) = key.to_terminal()
         {
             self.selection = None;
             fx.push(input(pane, kind));
-        }
-    }
-
-    fn dialog_key(&mut self, key: &KeyPress, fx: &mut Vec<Effect>) {
-        if key.mods.is_shortcut() || key.mods.logo {
-            match key.character.as_deref().map(str::to_lowercase).as_deref() {
-                Some("v") => fx.push(Effect::RequestPaste),
-                Some("w") => self.close_dialog(),
-                _ => {}
-            }
-            return;
-        }
-        match key.named {
-            Some(Named::Escape) => self.close_dialog(),
-            Some(Named::Enter) => self.submit(fx),
-            Some(Named::Tab) => {
-                let fields = self.dialog_fields();
-                if !fields.is_empty() {
-                    let i = self
-                        .focus
-                        .and_then(|f| fields.iter().position(|x| *x == f))
-                        .map_or(0, |i| (i + 1) % fields.len());
-                    self.focus = Some(fields[i]);
-                }
-            }
-            Some(named) => {
-                if let Some(field) = self.field_mut() {
-                    match named {
-                        Named::Backspace => field.backspace(),
-                        Named::Delete => field.delete(),
-                        Named::Left => field.left(),
-                        Named::Right => field.right(),
-                        Named::Home | Named::Up => field.home(),
-                        Named::End | Named::Down => field.end(),
-                        Named::Space => field.insert(" "),
-                        _ => {}
-                    }
-                }
-            }
-            None => {
-                if let (Some(text), false) = (
-                    key.text.clone().or_else(|| key.character.clone()),
-                    key.mods.ctrl,
-                ) && let Some(field) = self.field_mut()
-                {
-                    field.insert(&text);
-                }
-            }
         }
     }
 
@@ -615,15 +662,19 @@ impl AppState {
             "c" => self.update(Msg::Copy),
             "v" => vec![Effect::RequestPaste],
             "," => self.update(Msg::OpenSettings),
-            "n" => match self
-                .selected_thread
-                .as_ref()
-                .and_then(|t| self.workspace.thread(t))
-                .map(|t| t.project_id.clone())
-            {
-                Some(project) => self.update(Msg::OpenNewThread(project)),
-                None => self.update(Msg::OpenAddProject),
-            },
+            "b" => self.update(Msg::ToggleBoard),
+            "n" => {
+                // Same repo and project as the thread on screen.
+                let current = self
+                    .selected_thread
+                    .as_ref()
+                    .and_then(|t| self.workspace.thread(t));
+                let repo = current.map(|t| t.project_id.clone());
+                let project = current
+                    .map(|t| t.folder_id.clone())
+                    .filter(|f| self.workspace.project(f).is_some());
+                self.update(Msg::OpenNewThread { repo, project })
+            }
             "[" | "{" => self.cycle_tab(-1),
             "]" | "}" => self.cycle_tab(1),
             _ => Vec::new(),
@@ -676,83 +727,13 @@ impl AppState {
             fx.push(request(body, Followup::None));
         }
     }
+}
 
-    fn pane_at(&self, p: Point) -> Option<String> {
-        self.pane_rects()
-            .into_iter()
-            .find(|(_, r)| r.contains(p))
-            .map(|(id, _)| id)
-    }
-
-    fn area_press(&mut self, p: Point, fx: &mut Vec<Effect>) {
-        if self.dialog.is_some() {
-            return;
-        }
-        let (Some(area), Some(tab_id)) = (self.area, self.current_tab().map(|t| t.id.clone()))
-        else {
-            return;
-        };
-        if let Some(tab) = self.workspace.tab(&tab_id)
-            && let Some(hit) = terminal::divider_at(tab.layout(), area, p)
-        {
-            self.drag = Some(Drag::Divider {
-                tab: tab_id,
-                anchor: hit.anchor,
-                axis: hit.axis,
-                split: hit.split,
-            });
-            return;
-        }
-        let Some((pane, rect)) = self.pane_rects().into_iter().find(|(_, r)| r.contains(p)) else {
-            return;
-        };
-        self.focus_pane(&tab_id, &pane, fx);
-        if let Some(screen) = self.screens.get(&pane) {
-            let cell = terminal::cell_at(rect, self.cell, screen, p);
-            self.selection = Some((
-                pane.clone(),
-                Selection {
-                    anchor: cell,
-                    head: cell,
-                },
-            ));
-            self.drag = Some(Drag::Select { pane });
-        }
-    }
-
-    fn area_drag(&mut self, p: Point, fx: &mut Vec<Effect>) {
-        match self.drag.clone() {
-            Some(Drag::Divider {
-                tab,
-                anchor,
-                axis,
-                split,
-            }) => {
-                let position = terminal::divider_position(axis, split, p);
-                let axis = urushi_proto::convert::axis_to_proto(axis);
-                let body = Body::MoveDivider(v1::MoveDividerRequest {
-                    tab_id: tab,
-                    anchor_pane_id: anchor,
-                    axis: axis.into(),
-                    position,
-                });
-                fx.push(request(body, Followup::None));
-            }
-            Some(Drag::Select { pane }) => {
-                let rect = self
-                    .pane_rects()
-                    .into_iter()
-                    .find(|(id, _)| *id == pane)
-                    .map(|(_, r)| r);
-                if let (Some(rect), Some(screen)) = (rect, self.screens.get(&pane)) {
-                    let cell = terminal::cell_at(rect, self.cell, screen, p);
-                    if let Some((_, selection)) = &mut self.selection {
-                        selection.head = cell;
-                    }
-                }
-            }
-            None => {}
-        }
+impl AppState {
+    /// Whether the system folder picker can choose a folder the daemon can open: only on
+    /// desktop, connected to the daemon on this machine.
+    pub(crate) fn can_pick_folders(&self) -> bool {
+        crate::platform::HAS_FOLDER_PICKER && matches!(self.target, ConnectTarget::Local(_))
     }
 }
 
@@ -762,6 +743,16 @@ fn input(pane_id: String, kind: v1::input::Kind) -> Effect {
         kind: Some(kind),
     }))
 }
+
+mod board;
+mod daemon;
+mod fields;
+mod intake;
+mod launcher;
+mod organize;
+mod pointer;
+mod tasks;
+mod usage;
 
 #[cfg(test)]
 mod tests;

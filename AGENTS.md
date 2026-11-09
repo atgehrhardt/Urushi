@@ -6,7 +6,7 @@ Guide for AI agents and humans contributing to **Urushi**. Read this file fully 
 
 Urushi is a **cross-platform graphical workspace for AI agents**. It runs on macOS, Linux, Windows, iOS and Android. It is a windowed GUI that *contains* terminals; it is **not** a terminal/TUI app.
 
-- The sidebar lists **Projects → Threads**. Every thread is backed by its own **git worktree**.
+- The sidebar lists **Projects → Threads** (projects group threads from any repo) and **Repos**. Every thread is backed by its own **git worktree** of a repo.
 - A thread has **tabs**. Each tab is a tree of **split panes**, and each pane is a terminal.
 - Terminal sessions are **recoverable**. A headless in-house multiplexer inside the `urushid` daemon keeps processes and screen state alive across window close, app crash or client disconnect.
 - Mobile apps are remote-only clients. They reach a desktop or server daemon over **Tailscale**.
@@ -29,10 +29,10 @@ Crates marked ⏳ are planned but don't exist yet. Create them where listed; don
 
 | Crate | Role |
 |---|---|
-| `crates/urushi-core` | Pure domain model: ids, projects, threads, tabs, layout tree, settings, branch-ownership rules. **No IO, no async, compiles on every target.** |
+| `crates/urushi-core` | Pure domain model: ids, repos, projects, threads, tabs, layout tree, task boards, settings, branch-ownership rules. **No IO, no async, compiles on every target.** |
 | `crates/urushi-proto` | Protobuf types (prost + protox) and the length-prefixed frame codec. |
 | `crates/urushi-mux` | `Pty` / `Emulator` traits + adapters, the per-pane Session actor, screen diffs, key encoding. |
-| `crates/urushi-daemon` | `urushid`: server, request router, JSON document store, git worktree lifecycle, Tailscale. |
+| `crates/urushi-daemon` | `urushid`: server, request router, JSON document store, git worktree lifecycle, Tailscale, agent usage. |
 | `crates/urushi-client` | Protocol client, state mirror, transports (Unix socket / named pipe / TCP), daemon launcher. |
 | `crates/urushi-ui` | In-house widget toolkit (Elm-style). Produces a renderer-agnostic `Scene`. |
 | `crates/urushi-render` | wgpu backend: quads, glyph atlas (cosmic-text), terminal-grid pipeline. |
@@ -61,7 +61,7 @@ Rules:
 - **Never** stop, signal or restart the real daemon. Never `pkill`/`killall` by broad patterns such as `urushid` or `urushi`. Stop dev daemons with `scripts/dev.sh stop`, and anything else you started by its PID.
 - **Never** run a release binary (`target/release/*`, or the installed CLI) for experiments; it talks to the real workspace. If you must, set `URUSHI_HOME=$(mktemp -d)`.
 - Don't serve a dev daemon on tailnet port 7420 (the real daemon's default). Pick another `tailnet-port`.
-- A new **daemon** version only takes effect when the real daemon next starts (e.g. after a reboot). Restarting it ends its sessions, so tell the user; never do it yourself.
+- A new **daemon** version only takes effect when the real daemon next starts. The user can switch on purpose with Settings → Restart daemon… or `urushi daemon restart`, which ends all their sessions. Tell them; never do it yourself, and never run `urushi daemon restart|stop` against the real home.
 
 ## Invariants (never break these)
 
@@ -84,7 +84,7 @@ Rules:
 - **Types over comments:** use newtypes for ids and validated values (e.g. `BranchPrefix`), and constructors that enforce invariants. Make invalid states unrepresentable.
 - **Async:** actor + mailbox (tokio tasks owning their state). Never hold a lock across `.await`. Bound every channel and buffer.
 - **Dependencies:** declare versions once in the root `[workspace.dependencies]`. Crates use `dep = { workspace = true }`.
-- **Naming:** say *pane* (one terminal), *tab* (layout of panes), *thread* (worktree + tabs), *project* (git repo). Don't use "window" or "session" in the domain model.
+- **Naming:** say *pane* (one terminal), *tab* (layout of panes), *thread* (worktree + tabs), *repo* (git repository), *project* (a user-made group of threads). On the v1 wire, `Project` means repo and `Folder` means project (ADR 0010). Don't use "window" or "session" in the domain model.
 
 ## Commands
 
@@ -110,8 +110,8 @@ Run the GUI against the dev daemon: `make dev`. Without the GUI, use `scripts/de
 cargo build --workspace
 export URUSHI_HOME=$(mktemp -d)
 ./target/debug/urushi settings set default-shell /bin/sh
-./target/debug/urushi project add <repo>
-./target/debug/urushi thread new <project-id> "My thread"
+./target/debug/urushi repo add <path>
+./target/debug/urushi thread new <repo-id> "My thread"
 ./target/debug/urushi ls
 ./target/debug/urushi send <pane-id> 'echo hi' && ./target/debug/urushi screen <pane-id>
 ./target/debug/urushi thread rm <thread-id>     # prints the deletion plan, asks to confirm

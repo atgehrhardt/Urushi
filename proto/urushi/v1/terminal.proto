@@ -111,7 +111,50 @@ message Input {
     string text = 3;
     // Clipboard paste; wrapped in bracketed-paste markers when the app asks for it.
     string paste = 4;
+    // A mouse button or movement over the pane. The daemon reports it only if the
+    // application asked for the mouse (TerminalModes.mouse_reporting). Since 1.3.
+    MouseInput mouse = 5;
+    // The wheel over the pane. The daemon reports it to the application, sends arrow
+    // keys on the alternate screen, or scrolls the scrollback. Since 1.3; older
+    // daemons ignore it, so clients send ScrollPane to them instead.
+    WheelInput wheel = 6;
   }
+}
+
+enum MouseButton {
+  MOUSE_BUTTON_UNSPECIFIED = 0;
+  MOUSE_BUTTON_LEFT = 1;
+  MOUSE_BUTTON_MIDDLE = 2;
+  MOUSE_BUTTON_RIGHT = 3;
+  // Movement with no button held.
+  MOUSE_BUTTON_NONE = 4;
+}
+
+enum MouseAction {
+  MOUSE_ACTION_UNSPECIFIED = 0;
+  MOUSE_ACTION_PRESS = 1;
+  MOUSE_ACTION_RELEASE = 2;
+  MOUSE_ACTION_MOVE = 3;
+}
+
+// Positions are cells from the pane's top-left, 0-based.
+message MouseInput {
+  MouseButton button = 1;
+  MouseAction action = 2;
+  uint32 col = 3;
+  uint32 row = 4;
+  // Bitwise OR of Modifier values, as in KeyInput.
+  uint32 modifiers = 5;
+}
+
+message WheelInput {
+  // Towards older content.
+  bool up = 1;
+  // Lines (notches); the daemon clamps it.
+  uint32 lines = 2;
+  uint32 col = 3;
+  uint32 row = 4;
+  uint32 modifiers = 5;
 }
 
 enum Key {

@@ -61,4 +61,7 @@ pub trait Emulator: Send {
     fn display_offset(&self) -> u32;
     /// Lines of scrollback available.
     fn history_size(&self) -> u32;
+    /// The last `max_lines` lines of scrollback and screen, oldest first, as on the live
+    /// view (whatever the scrollback position). Blank lines at the bottom are left out.
+    fn history(&self, max_lines: usize) -> Vec<Line>;
 }

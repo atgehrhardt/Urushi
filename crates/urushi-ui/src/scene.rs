@@ -6,6 +6,8 @@
 
 use std::fmt::Write;
 
+use std::sync::Arc;
+
 use crate::color::Color;
 use crate::geometry::{Point, Rect};
 
@@ -89,6 +91,43 @@ pub struct Text {
     pub color: Color,
 }
 
+/// A bitmap, such as the app's logo: straight (not premultiplied) RGBA rows, top to
+/// bottom. The renderer scales it to the size it is drawn at.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImageData {
+    /// Identifies the bitmap, so the renderer can cache it; distinct images need
+    /// distinct ids.
+    pub id: u64,
+    /// Width in pixels.
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+    /// `width * height * 4` bytes.
+    pub rgba: Vec<u8>,
+}
+
+impl ImageData {
+    /// An image from raw RGBA rows. `None` if `rgba` isn't `width * height * 4` bytes.
+    pub fn new(id: u64, width: u32, height: u32, rgba: Vec<u8>) -> Option<Self> {
+        let expected = usize::try_from(u64::from(width) * u64::from(height) * 4).ok()?;
+        (width > 0 && height > 0 && rgba.len() == expected).then_some(Self {
+            id,
+            width,
+            height,
+            rgba,
+        })
+    }
+}
+
+/// A bitmap stretched over a rectangle.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Image {
+    /// Where it goes.
+    pub rect: Rect,
+    /// The pixels.
+    pub data: Arc<ImageData>,
+}
+
 /// One drawing operation.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Primitive {
@@ -96,6 +135,8 @@ pub enum Primitive {
     Quad(Quad),
     /// A line of text.
     Text(Text),
+    /// A bitmap.
+    Image(Image),
     /// Restrict following primitives to `Rect` (intersected with any outer clip).
     PushClip(Rect),
     /// Undo the most recent `PushClip`.
@@ -157,6 +198,13 @@ impl Scene {
         }
     }
 
+    /// Adds a bitmap stretched over `rect`.
+    pub fn image(&mut self, rect: Rect, data: Arc<ImageData>) {
+        if rect.width > 0.0 && rect.height > 0.0 {
+            self.primitives.push(Primitive::Image(Image { rect, data }));
+        }
+    }
+
     /// Starts clipping to `rect`.
     pub fn push_clip(&mut self, rect: Rect) {
         self.primitives.push(Primitive::PushClip(rect));
@@ -197,6 +245,7 @@ impl Scene {
                     t.size,
                     t.color.to_hex()
                 ),
+                Primitive::Image(i) => writeln!(out, "image {} #{}", r(&i.rect), i.data.id),
                 Primitive::PushClip(c) => writeln!(out, "clip {}", r(c)),
                 Primitive::PopClip => writeln!(out, "unclip"),
             };

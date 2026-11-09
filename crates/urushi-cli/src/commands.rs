@@ -6,17 +6,20 @@ use anyhow::{Context, Result, bail};
 use urushi_client::{Client, WorkspaceMirror, v1};
 
 use crate::render::{print_plan, print_settings, print_tailnet, print_tree, short};
-use crate::{Command, PaneCmd, ProjectCmd, SettingsCmd, Side, TabCmd, TailnetCmd, ThreadCmd};
+use crate::{
+    AgentArg, Command, PaneCmd, ProjectCmd, RepoCmd, SettingsCmd, Side, TabCmd, TailnetCmd,
+    ThreadCmd,
+};
 
 /// Resolves an abbreviated id against the current workspace.
-async fn resolve(client: &Client, id: &str) -> Result<String> {
+pub(crate) async fn resolve(client: &Client, id: &str) -> Result<String> {
     let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
-    mirror
-        .resolve(id)
-        .with_context(|| format!("no unique project, thread, tab or pane matches {id:?}"))
+    mirror.resolve(id).with_context(|| {
+        format!("no unique repo, project, thread, tab, pane, board, task or subtask matches {id:?}")
+    })
 }
 
-fn out(text: &str) -> Result<()> {
+pub(crate) fn out(text: &str) -> Result<()> {
     let mut stdout = std::io::stdout().lock();
     writeln!(stdout, "{text}")?;
     Ok(())
@@ -32,12 +35,25 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
             ))?;
             print_tailnet(&client.tailnet_status().await?)
         }
+        // Handled before connecting (see `main`).
+        Command::Daemon(_) => Ok(()),
         Command::Ls => print_tree(&WorkspaceMirror::new(client.list_workspace(false).await?)),
+        Command::Repo(cmd) => repo(client, cmd).await,
         Command::Project(cmd) => project(client, cmd).await,
         Command::Thread(cmd) => thread(client, cmd).await,
-        Command::Tab(TabCmd::New { thread, title }) => {
+        Command::Tab(TabCmd::New {
+            thread,
+            title,
+            agent,
+        }) => {
+            let agent = match agent {
+                None => v1::Agent::Unspecified,
+                Some(AgentArg::Claude) => v1::Agent::Claude,
+                Some(AgentArg::Codex) => v1::Agent::Codex,
+                Some(AgentArg::Cursor) => v1::Agent::Cursor,
+            };
             let tab = client
-                .create_tab(&resolve(client, &thread).await?, &title)
+                .create_tab(&resolve(client, &thread).await?, &title, agent)
                 .await?;
             out(&format!("tab {}", short(&tab.id)))
         }
@@ -45,6 +61,10 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
             Ok(client.close_tab(&resolve(client, &tab).await?).await?)
         }
         Command::Pane(cmd) => pane(client, cmd).await,
+        Command::Board(cmd) => crate::boards::run(client, cmd).await,
+        Command::Usage { pane } => {
+            crate::boards::usage(client, &resolve(client, &pane).await?).await
+        }
         Command::Send {
             pane,
             text,
@@ -72,6 +92,20 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
                 .map_or(0, |i| i + 1);
             out(&lines[..end].join("\n"))
         }
+        Command::Agents => {
+            for installed in client.list_agents().await? {
+                out(&format!(
+                    "{:<8} {}",
+                    installed
+                        .agent()
+                        .as_str_name()
+                        .trim_start_matches("AGENT_")
+                        .to_lowercase(),
+                    installed.path
+                ))?;
+            }
+            Ok(())
+        }
         Command::Settings(SettingsCmd::Get) => print_settings(&client.settings().await?),
         Command::Settings(SettingsCmd::Set { key, value }) => {
             let settings = client.update_settings(patch(&key, &value)?).await?;
@@ -83,27 +117,21 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
     }
 }
 
-async fn project(client: &Client, cmd: ProjectCmd) -> Result<()> {
+async fn repo(client: &Client, cmd: RepoCmd) -> Result<()> {
     match cmd {
-        ProjectCmd::Add { path, name } => {
+        RepoCmd::Add { path, name } => {
             let absolute = std::fs::canonicalize(&path).unwrap_or(path);
-            let p = client
-                .add_project(&absolute.to_string_lossy(), &name)
-                .await?;
+            let p = client.add_repo(&absolute.to_string_lossy(), &name).await?;
             out(&format!(
-                "project {} {} ({})",
+                "repo {} {} ({})",
                 short(&p.id),
                 p.name,
                 p.repo_root
             ))
         }
-        ProjectCmd::Rm { project } => Ok(client
-            .remove_project(&resolve(client, &project).await?)
-            .await?),
-        ProjectCmd::Branches { project } => {
-            let b = client
-                .list_branches(&resolve(client, &project).await?)
-                .await?;
+        RepoCmd::Rm { repo } => Ok(client.remove_repo(&resolve(client, &repo).await?).await?),
+        RepoCmd::Branches { repo } => {
+            let b = client.list_branches(&resolve(client, &repo).await?).await?;
             for branch in b.branches {
                 out(&format!(
                     "{} {branch}",
@@ -115,15 +143,73 @@ async fn project(client: &Client, cmd: ProjectCmd) -> Result<()> {
     }
 }
 
+async fn project(client: &Client, cmd: ProjectCmd) -> Result<()> {
+    match cmd {
+        ProjectCmd::New { name } => {
+            let p = client.create_project(&name).await?;
+            out(&format!("project {} {}", short(&p.id), p.name))
+        }
+        ProjectCmd::Rename { project, name } => Ok(client
+            .rename_project(&resolve(client, &project).await?, &name)
+            .await?),
+        ProjectCmd::Rm { project } => Ok(client
+            .delete_project(&resolve(client, &project).await?)
+            .await?),
+    }
+}
+
+/// `UpdateThread` for one thread.
+async fn update_thread(
+    client: &Client,
+    thread: &str,
+    change: impl FnOnce(&mut v1::UpdateThreadRequest),
+) -> Result<()> {
+    let mut request = v1::UpdateThreadRequest {
+        thread_id: resolve(client, thread).await?,
+        ..Default::default()
+    };
+    change(&mut request);
+    Ok(client.update_thread(request).await?)
+}
+
 async fn thread(client: &Client, cmd: ThreadCmd) -> Result<()> {
     match cmd {
         ThreadCmd::New {
-            project,
+            repo,
             title,
             base,
+            branch,
+            no_tab,
+            project,
+            task,
         } => {
+            let folder_id = if project.is_empty() {
+                String::new()
+            } else {
+                resolve(client, &project).await?
+            };
+            let (task_id, subtask_id) = match task {
+                None => (String::new(), String::new()),
+                Some(id) => {
+                    let id = resolve(client, &id).await?;
+                    let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
+                    match mirror.subtask(&id) {
+                        Some((parent, _)) => (parent.id.clone(), id),
+                        None => (id, String::new()),
+                    }
+                }
+            };
             let t = client
-                .create_thread(&resolve(client, &project).await?, &title, &base)
+                .create_thread_with(v1::CreateThreadRequest {
+                    project_id: resolve(client, &repo).await?,
+                    title,
+                    base_ref: base,
+                    branch,
+                    skip_initial_tab: no_tab,
+                    folder_id,
+                    task_id,
+                    subtask_id,
+                })
                 .await?;
             out(&format!(
                 "thread {} {} on {} at {}",
@@ -136,6 +222,23 @@ async fn thread(client: &Client, cmd: ThreadCmd) -> Result<()> {
         ThreadCmd::Rename { thread, title } => Ok(client
             .rename_thread(&resolve(client, &thread).await?, &title)
             .await?),
+        ThreadCmd::Pin { thread } => {
+            update_thread(client, &thread, |r| r.pinned = Some(true)).await
+        }
+        ThreadCmd::Unpin { thread } => {
+            update_thread(client, &thread, |r| r.pinned = Some(false)).await
+        }
+        ThreadCmd::Status { thread, status } => {
+            update_thread(client, &thread, |r| r.status = Some(status)).await
+        }
+        ThreadCmd::Move { thread, project } => {
+            let folder = if project.is_empty() {
+                String::new()
+            } else {
+                resolve(client, &project).await?
+            };
+            update_thread(client, &thread, |r| r.folder_id = Some(folder)).await
+        }
         ThreadCmd::Rm { thread, yes } => {
             let id = resolve(client, &thread).await?;
             let plan = client.plan_thread_deletion(&id).await?;
@@ -201,12 +304,15 @@ fn patch(key: &str, value: &str) -> Result<v1::SettingsPatch> {
                 .collect();
         }
         "allow-tagged-nodes" => p.allow_tagged_nodes = Some(flag(value)?),
+        "claude-skip-permissions" => p.claude_skip_permissions = Some(flag(value)?),
+        "codex-skip-permissions" => p.codex_skip_permissions = Some(flag(value)?),
+        "cursor-skip-permissions" => p.cursor_skip_permissions = Some(flag(value)?),
         other => bail!("unknown setting {other:?}"),
     }
     Ok(p)
 }
 
-fn confirm(prompt: &str) -> Result<bool> {
+pub(crate) fn confirm(prompt: &str) -> Result<bool> {
     let mut stdout = std::io::stdout().lock();
     write!(stdout, "{prompt}")?;
     stdout.flush()?;

@@ -4,7 +4,9 @@
 //! AGENTS.md). Ids can be abbreviated to any unique prefix or suffix (`ls` shows the last
 //! 8 characters).
 
+mod boards;
 mod commands;
+mod daemon;
 mod render;
 
 use std::path::PathBuf;
@@ -35,9 +37,12 @@ struct Cli {
 enum Command {
     /// Show the daemon and tailnet status.
     Status,
-    /// List projects, threads, tabs and panes.
+    /// List repos, threads, tabs and panes.
     Ls,
-    /// Manage projects (git repositories).
+    /// Manage repos (git repositories).
+    #[command(subcommand)]
+    Repo(RepoCmd),
+    /// Manage projects (groups of threads, from any repo).
     #[command(subcommand)]
     Project(ProjectCmd),
     /// Manage threads (each one is a worktree).
@@ -46,6 +51,14 @@ enum Command {
     /// Manage tabs.
     #[command(subcommand)]
     Tab(TabCmd),
+    /// Manage task boards.
+    #[command(subcommand)]
+    Board(boards::BoardCmd),
+    /// Show which agent runs in a pane and how much of its plan is used.
+    Usage {
+        /// Pane id.
+        pane: String,
+    },
     /// Manage panes (terminals).
     #[command(subcommand)]
     Pane(PaneCmd),
@@ -64,6 +77,11 @@ enum Command {
         /// Pane id.
         pane: String,
     },
+    /// List the agent CLIs installed on the daemon's machine.
+    Agents,
+    /// Restart or stop the local daemon, e.g. to switch to a newly installed version.
+    #[command(subcommand)]
+    Daemon(DaemonCmd),
     /// Show or change settings.
     #[command(subcommand)]
     Settings(SettingsCmd),
@@ -73,7 +91,24 @@ enum Command {
 }
 
 #[derive(Subcommand)]
-enum ProjectCmd {
+enum DaemonCmd {
+    /// Stop the daemon and start this installation's daemon. Every running terminal
+    /// closes; threads, tabs and layouts come back with fresh shells.
+    Restart {
+        /// Don't ask for confirmation.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Stop the daemon. Every running terminal closes.
+    Stop {
+        /// Don't ask for confirmation.
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum RepoCmd {
     /// Add the repository containing PATH.
     Add {
         /// Any path inside the repository.
@@ -82,13 +117,34 @@ enum ProjectCmd {
         #[arg(long, default_value = "")]
         name: String,
     },
-    /// Remove a project (it must have no threads).
+    /// Remove a repo (it must have no threads).
     Rm {
+        /// Repo id.
+        repo: String,
+    },
+    /// List a repo's branches.
+    Branches {
+        /// Repo id.
+        repo: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProjectCmd {
+    /// Create a project.
+    New {
+        /// Name.
+        name: String,
+    },
+    /// Rename a project.
+    Rename {
         /// Project id.
         project: String,
+        /// New name.
+        name: String,
     },
-    /// List a project's branches.
-    Branches {
+    /// Delete a project. Its threads become ungrouped; nothing on disk changes.
+    Rm {
         /// Project id.
         project: String,
     },
@@ -98,14 +154,52 @@ enum ProjectCmd {
 enum ThreadCmd {
     /// Create a thread: a new branch and worktree, with a terminal in it.
     New {
-        /// Project id.
-        project: String,
+        /// Repo id.
+        repo: String,
         /// Title.
         #[arg(default_value = "")]
         title: String,
         /// Branch or commit to start from.
         #[arg(long, default_value = "")]
         base: String,
+        /// Name of the new branch (default: `<prefix><title>-<id>`).
+        #[arg(long, default_value = "")]
+        branch: String,
+        /// Don't open a first terminal.
+        #[arg(long)]
+        no_tab: bool,
+        /// File it under this project.
+        #[arg(long, default_value = "")]
+        project: String,
+        /// Start it for this board task or subtask (links them).
+        #[arg(long)]
+        task: Option<String>,
+    },
+    /// Pin a thread (listed first in its group).
+    Pin {
+        /// Thread id.
+        thread: String,
+    },
+    /// Unpin a thread.
+    Unpin {
+        /// Thread id.
+        thread: String,
+    },
+    /// Set a thread's status, or clear it when STATUS is omitted.
+    Status {
+        /// Thread id.
+        thread: String,
+        /// Status label, e.g. "In review".
+        #[arg(default_value = "")]
+        status: String,
+    },
+    /// File a thread under a project, or ungroup it when PROJECT is omitted.
+    Move {
+        /// Thread id.
+        thread: String,
+        /// Project id.
+        #[arg(default_value = "")]
+        project: String,
     },
     /// Rename a thread.
     Rename {
@@ -134,12 +228,22 @@ enum TabCmd {
         /// Title.
         #[arg(long, default_value = "")]
         title: String,
+        /// Agent CLI to start in the tab's shell.
+        #[arg(long, value_enum)]
+        agent: Option<AgentArg>,
     },
     /// Close a tab.
     Close {
         /// Tab id.
         tab: String,
     },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum AgentArg {
+    Claude,
+    Codex,
+    Cursor,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -172,7 +276,8 @@ enum SettingsCmd {
     /// Print all settings.
     Get,
     /// Change one setting: delete-remote-branches, branch-prefix, default-shell,
-    /// worktree-root, tailnet-port, allowed-logins (comma-separated), allow-tagged-nodes.
+    /// worktree-root, tailnet-port, allowed-logins (comma-separated), allow-tagged-nodes,
+    /// claude-skip-permissions, codex-skip-permissions, cursor-skip-permissions.
     Set {
         /// Setting name.
         key: String,
@@ -209,6 +314,10 @@ async fn connect(cli: &Cli) -> Result<(Client, Events)> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    // Restarting must not start (or keep) a daemon first.
+    if let Command::Daemon(cmd) = cli.command {
+        return daemon::run(cli.home.as_deref(), cli.host.as_deref(), cmd).await;
+    }
     let (client, _events) = connect(&cli).await?;
     commands::run(&client, cli.command).await
 }

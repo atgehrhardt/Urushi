@@ -7,6 +7,7 @@
 //! - [`WorkspaceMirror`]: the workspace as last reported, with domain-typed lookups.
 //! - [`ensure_local_daemon`]: connects to the local daemon, starting it if needed.
 
+mod boards;
 mod connection;
 mod launcher;
 mod platform;
@@ -15,7 +16,10 @@ mod screen;
 mod workspace;
 
 pub use connection::{Client, Events};
-pub use launcher::{DAEMON_BIN_ENV, ensure_local_daemon, local_daemon_endpoint};
+pub use launcher::{
+    DAEMON_BIN_ENV, StopMethod, StoppedDaemon, ensure_local_daemon, local_daemon_endpoint,
+    restart_local_daemon, stop_local_daemon,
+};
 pub use screen::{Cell, ScreenState};
 pub use urushi_proto::endpoint::{Endpoint, parse_tcp};
 pub use urushi_proto::v1;

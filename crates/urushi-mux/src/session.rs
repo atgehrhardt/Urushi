@@ -21,7 +21,9 @@ use tokio::sync::{mpsc, oneshot, watch};
 use crate::MuxError;
 use crate::emulator::{Damage, Emulator, EmulatorEvent, Scroll};
 use crate::keys::{KeyEvent, encode_key, encode_paste};
+use crate::mouse::{MouseEvent, WheelAction, WheelEvent, encode_mouse, wheel};
 use crate::pty::{Pty, PtyControl, SpawnSpec};
+use crate::replay::Snapshot;
 use crate::screen::{ScreenFrame, TermSize};
 
 /// Commands queued to the actor. Bounded, so a flood of input applies backpressure.
@@ -43,6 +45,11 @@ pub enum Input {
     Text(String),
     /// A clipboard paste (bracketed if the application asked for that).
     Paste(String),
+    /// A mouse button or movement, reported if the application asked for the mouse.
+    Mouse(MouseEvent),
+    /// The wheel: reported to the application, turned into arrow keys, or scrolling the
+    /// scrollback, depending on its modes (see [`crate::mouse::wheel`]).
+    Wheel(WheelEvent),
     /// Raw bytes, for tests and scripting.
     Bytes(Vec<u8>),
 }
@@ -68,6 +75,10 @@ enum Command {
     },
     Text {
         reply: oneshot::Sender<Vec<String>>,
+    },
+    Snapshot {
+        max_lines: usize,
+        reply: oneshot::Sender<Snapshot>,
     },
     Kill,
 }
@@ -158,6 +169,14 @@ impl SessionHandle {
     pub async fn text(&self) -> Result<Vec<String>, MuxError> {
         let (reply, rx) = oneshot::channel();
         self.send(Command::Text { reply }).await?;
+        rx.await.map_err(|_| MuxError::Closed)
+    }
+
+    /// The pane's last `max_lines` lines of output, to save for a restart (see
+    /// [`crate::replay`]).
+    pub async fn snapshot(&self, max_lines: usize) -> Result<Snapshot, MuxError> {
+        let (reply, rx) = oneshot::channel();
+        self.send(Command::Snapshot { max_lines, reply }).await?;
         rx.await.map_err(|_| MuxError::Closed)
     }
 
@@ -271,6 +290,15 @@ impl Actor {
                     Input::Text(text) => text.into_bytes(),
                     Input::Paste(text) => encode_paste(&text, modes),
                     Input::Bytes(bytes) => bytes,
+                    Input::Mouse(event) => encode_mouse(&event, modes),
+                    Input::Wheel(event) => match wheel(&event, modes) {
+                        WheelAction::Send(bytes) => bytes,
+                        WheelAction::Scrollback(lines) => {
+                            self.emulator.scroll(Scroll::Lines(lines));
+                            self.record_damage();
+                            return;
+                        }
+                    },
                 };
                 if !bytes.is_empty() {
                     if self.emulator.display_offset() > 0 {
@@ -303,6 +331,13 @@ impl Actor {
                         .map(|l| self.emulator.line(l).text().trim_end().to_owned())
                         .collect(),
                 );
+            }
+            Command::Snapshot { max_lines, reply } => {
+                let _ = reply.send(Snapshot {
+                    size: self.emulator.size(),
+                    alt_screen: self.emulator.modes().alt_screen,
+                    lines: self.emulator.history(max_lines),
+                });
             }
             Command::Kill => {}
         }

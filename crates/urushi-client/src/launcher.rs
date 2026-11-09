@@ -1,7 +1,9 @@
-//! Finding, and if necessary starting, the local daemon.
+//! Finding, starting, stopping and restarting the local daemon.
 //!
 //! The daemon outlives every client (that is what makes sessions recoverable), so the
-//! first client to need it starts it, detached, and later clients just connect.
+//! first client to need it starts it, detached, and later clients just connect. That
+//! also means installing a new version doesn't replace a running daemon: the user
+//! restarts it on purpose ([`restart_local_daemon`]), which closes every terminal.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -16,6 +18,28 @@ pub const DAEMON_BIN_ENV: &str = "URUSHID";
 
 const START_ATTEMPTS: u32 = 100;
 const START_POLL: Duration = Duration::from_millis(50);
+/// How long a stopping daemon gets to close its terminals and exit.
+const STOP_TIMEOUT: Duration = Duration::from_secs(15);
+/// First protocol minor version that accepts `ShutdownDaemon`.
+const SHUTDOWN_SINCE_MINOR: u32 = 4;
+
+/// How [`stop_local_daemon`] asks the daemon to stop.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StopMethod {
+    /// `ShutdownDaemon` if the daemon knows it, otherwise a signal (older daemons).
+    Auto,
+    /// Always a signal (SIGTERM), as for daemons before protocol 1.4. Unix only.
+    Signal,
+}
+
+/// The daemon that was stopped.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoppedDaemon {
+    /// Its version.
+    pub version: String,
+    /// Its protocol minor version.
+    pub protocol_minor: u32,
+}
 
 /// The home directory and endpoint of the local daemon. `home` overrides the default
 /// (`URUSHI_HOME`, then the platform data dir).
@@ -57,6 +81,68 @@ pub async fn ensure_local_daemon(
     )))
 }
 
+/// Stops the local daemon and waits until it has exited. `Ok(None)` if none was running.
+///
+/// Every terminal it runs closes. The next daemon restores threads, tabs and layouts with
+/// fresh shells.
+pub async fn stop_local_daemon(
+    home: Option<&Path>,
+    method: StopMethod,
+) -> Result<Option<StoppedDaemon>, ClientError> {
+    let (_, endpoint) = local_daemon_endpoint(home)?;
+    let Endpoint::Local(local) = &endpoint else {
+        return Ok(None);
+    };
+    let Ok((client, _events)) = Client::connect(&endpoint, "urushi-stop").await else {
+        return Ok(None);
+    };
+    let welcome = client.welcome().clone();
+    let stopped = StoppedDaemon {
+        version: welcome.daemon_version,
+        protocol_minor: welcome.protocol_minor,
+    };
+    let pid = platform::daemon_pid(local).await;
+    if method == StopMethod::Auto && stopped.protocol_minor >= SHUTDOWN_SINCE_MINOR {
+        client.shutdown_daemon().await?;
+    } else {
+        let pid = pid.ok_or_else(|| {
+            ClientError::Launch(
+                "this daemon is too old to be stopped from here; quit it or restart the computer"
+                    .into(),
+            )
+        })?;
+        platform::terminate(pid).map_err(|e| ClientError::Launch(e.to_string()))?;
+    }
+    drop(client);
+    let deadline = tokio::time::Instant::now() + STOP_TIMEOUT;
+    loop {
+        let gone = match pid {
+            Some(pid) => !platform::is_running(pid),
+            None => Client::connect(&endpoint, "urushi-stop").await.is_err(),
+        };
+        if gone {
+            return Ok(Some(stopped));
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(ClientError::Launch(
+                "the daemon did not stop in time; its terminals may still be closing".into(),
+            ));
+        }
+        tokio::time::sleep(START_POLL).await;
+    }
+}
+
+/// Stops the local daemon (if any) and starts this installation's daemon in its place.
+/// Returns what was stopped, and a connection to the new daemon.
+pub async fn restart_local_daemon(
+    home: Option<&Path>,
+    client_name: &str,
+) -> Result<(Option<StoppedDaemon>, Client, Events), ClientError> {
+    let stopped = stop_local_daemon(home, StopMethod::Auto).await?;
+    let (client, events) = ensure_local_daemon(home, client_name).await?;
+    Ok((stopped, client, events))
+}
+
 fn daemon_binary() -> PathBuf {
     if let Some(explicit) = std::env::var_os(DAEMON_BIN_ENV).filter(|v| !v.is_empty()) {
         return PathBuf::from(explicit);
@@ -66,13 +152,17 @@ fn daemon_binary() -> PathBuf {
     } else {
         "urushid"
     };
-    // Next to the running executable (app bundles and cargo target dirs ship it there).
-    if let Some(sibling) = std::env::current_exe()
+    // Next to the running executable (cargo target dirs, and the app's own binary), or
+    // for the CLI inside a macOS bundle (`Contents/Resources/bin`), in `Contents/MacOS`.
+    if let Some(dir) = std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.parent().map(|d| d.join(name)))
-        && sibling.is_file()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
     {
-        return sibling;
+        for candidate in [dir.join(name), dir.join("../../MacOS").join(name)] {
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
     }
     PathBuf::from(name)
 }

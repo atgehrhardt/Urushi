@@ -26,22 +26,59 @@ impl WorkspaceMirror {
         self.workspace.revision
     }
 
-    /// Projects, in sidebar order.
-    pub fn projects(&self) -> &[v1::Project] {
+    /// Repos, in sidebar order. (`v1::Project` is a repo on the wire, ADR 0010.)
+    pub fn repos(&self) -> &[v1::Project] {
         &self.workspace.projects
     }
 
-    /// A project by id.
-    pub fn project(&self, id: &str) -> Option<&v1::Project> {
+    /// A repo by id.
+    pub fn repo(&self, id: &str) -> Option<&v1::Project> {
         self.workspace.projects.iter().find(|p| p.id == id)
     }
 
-    /// A project's threads, oldest first.
-    pub fn threads_of(&self, project_id: &str) -> impl Iterator<Item = &v1::Thread> {
+    /// A repo's threads, oldest first.
+    pub fn threads_of_repo(&self, repo_id: &str) -> impl Iterator<Item = &v1::Thread> {
         self.workspace
             .threads
             .iter()
-            .filter(move |t| t.project_id == project_id)
+            .filter(move |t| t.project_id == repo_id)
+    }
+
+    /// Projects (user-made groups of threads; `v1::Folder` on the wire), in order.
+    pub fn projects(&self) -> &[v1::Folder] {
+        &self.workspace.folders
+    }
+
+    /// A project by id.
+    pub fn project(&self, id: &str) -> Option<&v1::Folder> {
+        self.workspace.folders.iter().find(|f| f.id == id)
+    }
+
+    /// Threads filed under `project_id` (`None`: ungrouped threads), oldest first.
+    pub fn threads_in(&self, project_id: Option<&str>) -> impl Iterator<Item = &v1::Thread> {
+        self.workspace
+            .threads
+            .iter()
+            .filter(move |t| match project_id {
+                Some(id) => t.folder_id == id,
+                // Threads filed under a project this snapshot doesn't have count as ungrouped.
+                None => t.folder_id.is_empty() || self.project(&t.folder_id).is_none(),
+            })
+    }
+
+    /// Every status in use, sorted case-insensitively. Statuses are user-defined: a
+    /// status exists while some thread has it.
+    pub fn statuses(&self) -> Vec<String> {
+        let mut statuses: Vec<String> = self
+            .workspace
+            .threads
+            .iter()
+            .filter(|t| !t.status.is_empty())
+            .map(|t| t.status.clone())
+            .collect();
+        statuses.sort_by_key(|s| s.to_lowercase());
+        statuses.dedup();
+        statuses
     }
 
     /// A thread by id.
@@ -61,6 +98,35 @@ impl WorkspaceMirror {
             .collect()
     }
 
+    /// Task boards, in tab order (protocol 1.5; empty from older daemons).
+    pub fn boards(&self) -> &[v1::Board] {
+        &self.workspace.boards
+    }
+
+    /// A board by id.
+    pub fn board(&self, id: &str) -> Option<&v1::Board> {
+        self.workspace.boards.iter().find(|b| b.id == id)
+    }
+
+    /// A task, with the board and the column holding it.
+    pub fn task(&self, id: &str) -> Option<(&v1::Board, &v1::BoardColumn, &v1::Task)> {
+        self.workspace.boards.iter().find_map(|b| {
+            b.columns
+                .iter()
+                .find_map(|c| c.tasks.iter().find(|t| t.id == id).map(|t| (b, c, t)))
+        })
+    }
+
+    /// A subtask, with the task it belongs to.
+    pub fn subtask(&self, id: &str) -> Option<(&v1::Task, &v1::Subtask)> {
+        self.workspace
+            .boards
+            .iter()
+            .flat_map(|b| &b.columns)
+            .flat_map(|c| &c.tasks)
+            .find_map(|t| t.subtasks.iter().find(|s| s.id == id).map(|s| (t, s)))
+    }
+
     /// A tab, converted to the domain type (for geometry and focus logic).
     pub fn tab(&self, id: &str) -> Option<Tab> {
         let raw = self.workspace.tabs.iter().find(|t| t.id == id)?;
@@ -78,8 +144,31 @@ impl WorkspaceMirror {
         })
     }
 
-    /// Finds an entity id by unique prefix among projects, threads, tabs and panes, e.g.
-    /// so the CLI accepts short ids. `None` if nothing or more than one thing matches.
+    /// How many terminals (panes) are open, and in how many threads: what restarting
+    /// the daemon would close.
+    pub fn open_terminals(&self) -> (usize, usize) {
+        let panes = |t: &v1::Tab| {
+            t.layout
+                .as_ref()
+                .and_then(|l| convert::layout_from_proto(l).ok())
+                .map_or(0, |l| l.panes().len())
+        };
+        let mut threads: Vec<&str> = Vec::new();
+        let mut total = 0;
+        for tab in &self.workspace.tabs {
+            let n = panes(tab);
+            if n > 0 {
+                total += n;
+                if !threads.contains(&tab.thread_id.as_str()) {
+                    threads.push(&tab.thread_id);
+                }
+            }
+        }
+        (total, threads.len())
+    }
+
+    /// Finds an entity id by unique prefix among repos, projects, threads, tabs, panes,
+    /// boards, columns and tasks, e.g. so the CLI accepts short ids. `None` if nothing or more than one thing matches.
     pub fn resolve(&self, prefix: &str) -> Option<String> {
         let panes = self
             .workspace
@@ -101,9 +190,17 @@ impl WorkspaceMirror {
             .projects
             .iter()
             .map(|p| p.id.clone())
+            .chain(self.workspace.folders.iter().map(|f| f.id.clone()))
             .chain(self.workspace.threads.iter().map(|t| t.id.clone()))
             .chain(self.workspace.tabs.iter().map(|t| t.id.clone()))
             .chain(panes)
+            .chain(self.workspace.boards.iter().flat_map(|b| {
+                std::iter::once(b.id.clone()).chain(b.columns.iter().flat_map(|c| {
+                    std::iter::once(c.id.clone()).chain(c.tasks.iter().flat_map(|t| {
+                        std::iter::once(t.id.clone()).chain(t.subtasks.iter().map(|s| s.id.clone()))
+                    }))
+                }))
+            }))
             .collect();
         if let Some(exact) = ids.iter().find(|id| *id == prefix) {
             return Some(exact.clone());
@@ -116,5 +213,45 @@ impl WorkspaceMirror {
             [one] => Some((*one).clone()),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn thread(id: &str, folder: &str, status: &str) -> v1::Thread {
+        v1::Thread {
+            id: id.into(),
+            folder_id: folder.into(),
+            status: status.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn threads_are_grouped_by_project_and_statuses_come_from_threads() {
+        let mirror = WorkspaceMirror::new(v1::Workspace {
+            folders: vec![v1::Folder {
+                id: "f".into(),
+                ..Default::default()
+            }],
+            threads: vec![
+                thread("a", "f", "review"),
+                thread("b", "", "Blocked"),
+                thread("c", "gone", "review"),
+                thread("d", "f", ""),
+            ],
+            ..Default::default()
+        });
+        let ids = |p: Option<&str>| {
+            mirror
+                .threads_in(p)
+                .map(|t| t.id.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(Some("f")), ["a", "d"]);
+        assert_eq!(ids(None), ["b", "c"], "unknown projects count as ungrouped");
+        assert_eq!(mirror.statuses(), ["Blocked", "review"]);
     }
 }

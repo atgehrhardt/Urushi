@@ -7,6 +7,7 @@
 
 pub mod access;
 pub mod color;
+pub mod field;
 pub mod geometry;
 pub mod layout;
 pub mod node;
@@ -17,10 +18,11 @@ pub mod theme;
 pub mod widgets;
 
 pub use color::Color;
+pub use field::{FieldRegion, caret_at};
 pub use geometry::{Insets, Point, Rect, Size};
 pub use layout::{AccessNode, Frame, Hit, ScrollRegion, build};
 pub use node::{Align, CursorIcon, Flow, Key, Length, Node, Role, key};
-pub use scene::{Font, Primitive, Quad, Scene, Text};
+pub use scene::{Font, Image, ImageData, Primitive, Quad, Scene, Text};
 pub use text::{CellMetrics, TextSystem};
 pub use textfield::TextField;
 pub use theme::{TerminalPalette, Theme};

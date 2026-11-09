@@ -4,9 +4,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use urushi_client::{ScreenState, WorkspaceMirror, v1};
-use urushi_ui::{CellMetrics, Rect, TextField};
+use urushi_ui::{CellMetrics, Point, Rect, TextField};
 
 use crate::config::ConnectTarget;
+use crate::organize::{ContextMenu, Prompt, Select, SidebarTab};
 
 /// Connection status.
 #[derive(Clone, Debug, PartialEq)]
@@ -22,6 +23,28 @@ pub enum Connection {
     Disconnected(String),
 }
 
+/// A task on a board, or one of its subtasks, that a thread is started for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TaskLink {
+    /// Task id.
+    pub task: String,
+    /// Subtask id, when the thread is for one subtask.
+    pub subtask: Option<String>,
+}
+
+/// The subtask part of the task editor. An existing task's subtasks change right away
+/// (each check or rename is a request); a new task's are kept here as drafts and
+/// created with it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SubtaskEditor {
+    /// Titles of subtasks for a task not created yet.
+    pub drafts: Vec<String>,
+    /// The "add a subtask" field.
+    pub new: TextField,
+    /// The subtask being renamed, and its title field.
+    pub renaming: Option<(String, TextField)>,
+}
+
 /// A dialog field that can take keyboard focus.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Field {
@@ -29,14 +52,41 @@ pub enum Field {
     ProjectPath,
     /// New thread: title.
     ThreadTitle,
-    /// New thread: base branch.
-    ThreadBase,
+    /// New thread: name of the branch to create.
+    ThreadBranch,
+    /// A one-line prompt (rename, new status, new project).
+    Prompt,
     /// Settings: branch prefix.
     BranchPrefix,
     /// Settings: default shell.
     DefaultShell,
     /// Connect: host.
     Host,
+    /// Task editor: title.
+    TaskTitle,
+    /// Task editor: notes.
+    TaskNotes,
+    /// Task editor: the "add a subtask" field.
+    NewSubtask,
+    /// Task editor: the title of the subtask being renamed.
+    SubtaskTitle,
+}
+
+/// An editing command on the focused text field, from a shortcut or its context menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldCommand {
+    /// Copy the selection to the clipboard and delete it.
+    Cut,
+    /// Copy the selection to the clipboard.
+    Copy,
+    /// Insert the clipboard, replacing the selection.
+    Paste,
+    /// Select all the text.
+    SelectAll,
+    /// Undo the last edit.
+    Undo,
+    /// Redo the last undone edit.
+    Redo,
 }
 
 /// A settings switch.
@@ -46,24 +96,68 @@ pub enum SettingToggle {
     DeleteRemoteBranches,
     /// Serve the daemon on the tailnet.
     ServeTailnet,
+    /// Start an agent with its skip-permissions flag.
+    SkipPermissions(urushi_core::Agent),
+}
+
+/// What a new tab runs: a plain shell, or an agent CLI inside one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Launch {
+    /// Just the shell.
+    Terminal,
+    /// An agent CLI, typed into the shell.
+    Agent(urushi_core::Agent),
+}
+
+impl Launch {
+    /// Label in pickers.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Terminal => "Terminal",
+            Self::Agent(agent) => agent.display_name(),
+        }
+    }
 }
 
 /// The open dialog, if any.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Dialog {
-    /// Add a repository.
+    /// Add a repository: pick a folder (or, where no picker can reach the daemon's
+    /// files, type its path).
     AddProject {
-        /// Path field.
+        /// Path field (remote and mobile only).
         path: TextField,
     },
-    /// Create a thread in `project`.
+    /// Create a thread in a repo, optionally filed under a project.
     NewThread {
-        /// Project id.
-        project: String,
+        /// Repo id.
+        repo: String,
+        /// Project to file it under.
+        project: Option<String>,
         /// Title field.
         title: TextField,
-        /// Base branch field (empty = project default).
-        base: TextField,
+        /// Branch field. Follows the title until the user edits it.
+        branch: TextField,
+        /// The user typed their own branch name, so the title no longer changes it.
+        branch_edited: bool,
+        /// Branch to start from; `None` = the repo's default (its current branch).
+        base: Option<String>,
+        /// The selector that is open, if any.
+        open: Option<Select>,
+        /// The board task (and maybe subtask) the thread is started for.
+        task: Option<TaskLink>,
+    },
+    /// A one-line text prompt.
+    Prompt {
+        /// What it's for.
+        prompt: Prompt,
+        /// The text.
+        field: TextField,
+    },
+    /// Choose what a new tab runs.
+    NewTab {
+        /// The highlighted choice (index into [`AppState::launch_choices`]).
+        highlighted: usize,
     },
     /// The deletion warning. Shows exactly what will be destroyed.
     DeleteThread {
@@ -81,10 +175,44 @@ pub enum Dialog {
         /// Default shell field.
         shell: TextField,
     },
+    /// Confirm restarting the local daemon, which closes every terminal.
+    RestartDaemon {
+        /// Open terminals that will close.
+        terminals: usize,
+        /// Threads they are in.
+        threads: usize,
+        /// The restart is under way.
+        restarting: bool,
+    },
     /// Choose a daemon to connect to.
     Connect {
         /// Host field.
         host: TextField,
+    },
+    /// Create or edit a task on a board.
+    Task {
+        /// Board id.
+        board: String,
+        /// The column it goes in (for an existing task: where it moves on save).
+        column: String,
+        /// The task being edited; `None` creates one.
+        task: Option<String>,
+        /// Title field.
+        title: TextField,
+        /// Notes field.
+        notes: TextField,
+        /// The editor's subtask fields (boxed: they hold two more text fields, and
+        /// would make every dialog as big).
+        subtasks: Box<SubtaskEditor>,
+    },
+    /// Confirm deleting a board and its tasks.
+    DeleteBoard {
+        /// Board id.
+        board: String,
+        /// Its name, for the heading.
+        name: String,
+        /// How many tasks go with it.
+        tasks: usize,
     },
 }
 
@@ -133,6 +261,14 @@ pub enum Drag {
         /// Pane id.
         pane: String,
     },
+    /// A button held over a pane whose application takes the mouse: moves and the
+    /// release are reported to it.
+    Report {
+        /// Pane id.
+        pane: String,
+        /// The button held.
+        button: urushi_client::v1::MouseButton,
+    },
 }
 
 /// The whole application state.
@@ -177,6 +313,36 @@ pub struct AppState {
     pub compact: bool,
     /// In compact mode, whether the thread list is showing (instead of the terminals).
     pub sidebar_open: bool,
+    /// Agent CLIs installed on the daemon's machine, as last reported.
+    pub agents: Vec<urushi_core::Agent>,
+    /// The daemon's protocol minor version (capabilities, see `docs/protocol.md`).
+    pub daemon_minor: u32,
+    /// The daemon's version, as it reported it.
+    pub daemon_version: String,
+    /// Which list the sidebar shows.
+    pub sidebar_tab: SidebarTab,
+    /// Collapsed sidebar sections (see [`crate::organize::section_key`]).
+    pub collapsed: HashSet<String>,
+    /// The open context menu.
+    pub menu: Option<ContextMenu>,
+    /// The thread being dragged, and where the pointer is.
+    pub dragging: Option<(String, Point)>,
+    /// Where the last mouse press was (anchors context menus).
+    pub last_press: Option<Point>,
+    /// Branches of a repo, for the new-thread dialog: `(repo id, branches)`.
+    pub branches: Option<(String, v1::Branches)>,
+    /// Modifier keys currently held.
+    pub mods: crate::keys::Mods,
+    /// The cell last reported as hovered, so movement is reported once per cell.
+    pub hover: Option<(String, (u16, u16))>,
+    /// The task-board panel.
+    pub board: crate::board::BoardPanel,
+    /// Plan usage of the agent in a pane, as last reported: `(pane, usage)`.
+    pub usage: Option<(String, v1::AgentUsage)>,
+    /// A usage request is in flight (one at a time).
+    pub usage_pending: bool,
+    /// Wall-clock time of the last tick (ms since the epoch), for "resets in …".
+    pub now_ms: i64,
 }
 
 impl AppState {
@@ -206,7 +372,67 @@ impl AppState {
             focused_override: HashMap::new(),
             compact: false,
             sidebar_open: true,
+            agents: Vec::new(),
+            daemon_minor: 0,
+            daemon_version: String::new(),
+            sidebar_tab: SidebarTab::default(),
+            collapsed: HashSet::new(),
+            menu: None,
+            dragging: None,
+            last_press: None,
+            branches: None,
+            mods: crate::keys::Mods::default(),
+            hover: None,
+            board: crate::board::BoardPanel::default(),
+            usage: None,
+            usage_pending: false,
+            now_ms: 0,
         }
+    }
+
+    /// What a new tab can run: always a terminal, then each installed agent.
+    pub fn launch_choices(&self) -> Vec<Launch> {
+        std::iter::once(Launch::Terminal)
+            .chain(self.agents.iter().copied().map(Launch::Agent))
+            .collect()
+    }
+
+    /// Whether the daemon speaks an older protocol minor than this app, so some features
+    /// (see `docs/protocol.md`) are missing until it restarts.
+    pub fn daemon_outdated(&self) -> bool {
+        matches!(self.connection, Connection::Connected { .. })
+            && self.daemon_minor < urushi_proto::PROTOCOL_MINOR
+    }
+
+    /// Whether the daemon stores agent settings and starts agents (protocol 1.1).
+    pub fn daemon_supports_agents(&self) -> bool {
+        self.daemon_minor >= 1
+    }
+
+    /// Whether the daemon keeps subtasks and links threads to tasks (protocol 1.6).
+    pub fn daemon_supports_subtasks(&self) -> bool {
+        self.daemon_minor >= crate::board::SUBTASKS_SINCE_MINOR
+    }
+
+    /// Whether `agent` is started with its skip-permissions flag (per the daemon's settings).
+    pub fn skips_permissions(&self, agent: urushi_core::Agent) -> bool {
+        self.settings
+            .as_ref()
+            .and_then(|s| s.agents)
+            .is_some_and(|a| match agent {
+                urushi_core::Agent::Claude => a.claude_skip_permissions,
+                urushi_core::Agent::Codex => a.codex_skip_permissions,
+                urushi_core::Agent::Cursor => a.cursor_skip_permissions,
+            })
+    }
+
+    /// The selected thread, if it exists and has no tabs (so the launcher shows instead).
+    pub fn empty_thread(&self) -> Option<&v1::Thread> {
+        let thread = self.workspace.thread(self.selected_thread.as_ref()?)?;
+        self.workspace
+            .tabs_of(&thread.id)
+            .is_empty()
+            .then_some(thread)
     }
 
     /// The tab shown in the main area.
@@ -229,6 +455,12 @@ impl AppState {
                 .cloned()
                 .unwrap_or_else(|| tab.focused_pane_id.clone()),
         )
+    }
+
+    /// Whether something covers the terminals (a dialog or the board panel), so the
+    /// mouse and keyboard don't reach them.
+    pub fn terminals_covered(&self) -> bool {
+        self.dialog.is_some() || self.board.visible()
     }
 
     /// Panes of the current tab, with their rectangles in the terminal area.

@@ -1,20 +1,41 @@
-//! Dialogs: add project, new thread, the deletion warning, settings, connect.
+//! Dialogs: add repo, the deletion warning, settings, connect, and one-line prompts.
+//! The new-thread dialog is in `new_thread.rs`, the launcher in `launcher.rs`, the task
+//! dialogs in `tasks.rs`.
 
 use urushi_client::v1;
-use urushi_ui::widgets::{ButtonKind, button, modal, text_field, toggle};
+use urushi_ui::widgets::{ButtonKind, button, modal, text_area, text_field, toggle};
 use urushi_ui::{Color, Font, Insets, Length, Node, Role, TextField, Theme, key};
 
 use crate::msg::Msg;
 use crate::state::{AppState, Dialog, Field, SettingToggle};
 
-pub(super) fn view(state: &AppState, theme: &Theme) -> Option<Node<Msg>> {
+pub(super) fn view(
+    state: &AppState,
+    theme: &Theme,
+    scroll: &std::collections::HashMap<urushi_ui::Key, f32>,
+) -> Option<Node<Msg>> {
     Some(match state.dialog.as_ref()? {
         Dialog::AddProject { path } => add_project(state, theme, path),
-        Dialog::NewThread {
-            project,
-            title,
-            base,
-        } => new_thread(state, theme, project, (title, base)),
+        Dialog::NewThread { .. } => super::new_thread::view(state, theme, scroll)?,
+        Dialog::Prompt {
+            prompt,
+            field: text,
+        } => {
+            let (title, placeholder, action) = prompt.texts();
+            let body = field(state, theme, text, Field::Prompt, placeholder);
+            modal(
+                theme,
+                title,
+                420.0,
+                body,
+                vec![
+                    cancel(theme),
+                    button(theme, action, ButtonKind::Primary, Msg::Submit),
+                ],
+                Some(Msg::CloseDialog),
+            )
+        }
+        Dialog::NewTab { highlighted } => super::launcher::dialog(state, theme, *highlighted),
         Dialog::DeleteThread {
             title,
             plan,
@@ -29,10 +50,29 @@ pub(super) fn view(state: &AppState, theme: &Theme) -> Option<Node<Msg>> {
             ),
         ),
         Dialog::Connect { host } => connect(state, theme, host),
+        Dialog::RestartDaemon {
+            terminals,
+            threads,
+            restarting,
+        } => super::daemon::confirm(theme, *terminals, *threads, *restarting),
+        Dialog::Task {
+            board,
+            column,
+            task,
+            title,
+            notes,
+            subtasks,
+        } => super::tasks::editor(
+            state,
+            (theme, scroll),
+            (board, column, task.as_deref()),
+            (title, notes, subtasks),
+        ),
+        Dialog::DeleteBoard { name, tasks, .. } => super::tasks::delete_board(theme, name, *tasks),
     })
 }
 
-fn field(
+pub(super) fn field(
     state: &AppState,
     theme: &Theme,
     f: &TextField,
@@ -43,13 +83,37 @@ fn field(
         theme,
         f,
         state.focus == Some(which),
-        key(&["field", &format!("{which:?}")]),
+        field_key(which),
         placeholder,
         Msg::FocusField(which),
     )
+    .on_secondary_click(Msg::field_menu(which))
 }
 
-fn label(theme: &Theme, text: &str) -> Node<Msg> {
+/// A dialog text field for several lines, `lines` tall (the field must be multiline).
+pub(super) fn area(
+    state: &AppState,
+    theme: &Theme,
+    f: &TextField,
+    which: Field,
+    (placeholder, lines): (&str, u8),
+) -> Node<Msg> {
+    text_area(
+        theme,
+        f,
+        state.focus == Some(which),
+        (field_key(which), placeholder, Msg::FocusField(which)),
+        lines,
+    )
+    .on_secondary_click(Msg::field_menu(which))
+}
+
+/// The key of a dialog field's widget (the runner finds fields by it while selecting).
+pub(crate) fn field_key(which: Field) -> urushi_ui::Key {
+    key(&["field", &format!("{which:?}")])
+}
+
+pub(super) fn label(theme: &Theme, text: &str) -> Node<Msg> {
     Node::text(
         text,
         Font::UiMedium,
@@ -58,99 +122,88 @@ fn label(theme: &Theme, text: &str) -> Node<Msg> {
     )
 }
 
-fn hint(theme: &Theme, text: &str) -> Node<Msg> {
+pub(super) fn hint(theme: &Theme, text: &str) -> Node<Msg> {
     Node::text(text, Font::Ui, theme.font_size_small, theme.text_muted)
 }
 
-fn cancel(theme: &Theme) -> Node<Msg> {
+pub(super) fn cancel(theme: &Theme) -> Node<Msg> {
     button(theme, "Cancel", ButtonKind::Secondary, Msg::CloseDialog)
 }
 
-fn add_project(state: &AppState, theme: &Theme, path: &TextField) -> Node<Msg> {
-    let mut row = Node::row().width(Length::Fill(1.0)).gap(8.0).child(field(
-        state,
-        theme,
-        path,
-        Field::ProjectPath,
-        "/path/to/repository",
-    ));
-    if cfg!(any(
-        target_os = "macos",
-        target_os = "windows",
-        target_os = "linux"
-    )) && is_local(state)
-    {
-        row = row.child(button(
-            theme,
-            "Browse…",
-            ButtonKind::Secondary,
-            Msg::BrowseFolder,
-        ));
-    }
-    let body = Node::column()
+/// One way to add a project: a row with a title and a line of detail. `None` for
+/// `on_click` shows it as not available yet.
+fn source(theme: &Theme, title: &str, detail: &str, on_click: Option<Msg>) -> Node<Msg> {
+    let available = on_click.is_some();
+    let mut row = Node::column()
         .width(Length::Fill(1.0))
-        .gap(8.0)
-        .child(label(theme, "Repository"))
-        .child(row)
-        .child(hint(
-            theme,
-            "Any folder inside a git repository, on the machine the daemon runs on.",
-        ));
-    modal(
-        theme,
-        "Add project",
-        520.0,
-        body,
-        vec![
-            cancel(theme),
-            button(theme, "Add", ButtonKind::Primary, Msg::Submit),
-        ],
-        Some(Msg::CloseDialog),
-    )
+        .padding(Insets::symmetric(12.0, 14.0))
+        .gap(3.0)
+        .radius(theme.radius)
+        .background(theme.surface)
+        .border(1.0, theme.border)
+        .key(key(&["project-source", title]))
+        .child(Node::text(
+            title,
+            Font::UiMedium,
+            theme.font_size,
+            if available {
+                theme.text
+            } else {
+                theme.text_muted
+            },
+        ))
+        .child(hint(theme, detail));
+    if let Some(msg) = on_click {
+        row = row
+            .hover_background(theme.hover)
+            .on_click(msg)
+            .role(Role::Button, title);
+    } else {
+        row = row.role(Role::Label, format!("{title} (coming soon)"));
+    }
+    row
 }
 
-fn new_thread(
-    state: &AppState,
-    theme: &Theme,
-    project: &str,
-    (title, base): (&TextField, &TextField),
-) -> Node<Msg> {
-    let project_name = state
-        .workspace
-        .project(project)
-        .map(|p| p.name.clone())
-        .unwrap_or_default();
-    let body = Node::column()
-        .width(Length::Fill(1.0))
-        .gap(8.0)
-        .child(label(theme, "Title"))
-        .child(field(
-            state,
+/// Adding a project: choose a folder with the system picker. Where the picker can't see
+/// the daemon's files (a remote daemon, mobile), type its path instead.
+fn add_project(state: &AppState, theme: &Theme, path: &TextField) -> Node<Msg> {
+    let mut body = Node::column().width(Length::Fill(1.0)).gap(10.0);
+    let mut actions = vec![cancel(theme)];
+    if state.can_pick_folders() {
+        body = body.child(source(
             theme,
-            title,
-            Field::ThreadTitle,
-            "What is this thread for?",
-        ))
-        .child(label(theme, "Start from"))
-        .child(field(
-            state,
-            theme,
-            base,
-            Field::ThreadBase,
-            "Current branch",
-        ))
-        .child(hint(
-            theme,
-            "Every thread gets its own branch and git worktree, so agents never collide.",
+            "Choose a folder…",
+            "Any folder inside a git repository on this computer.",
+            Some(Msg::BrowseFolder),
         ));
-    let heading = format!("New thread in {project_name}");
-    let actions = vec![
-        cancel(theme),
-        button(theme, "Create thread", ButtonKind::Primary, Msg::Submit),
-    ];
+    } else {
+        body = body
+            .child(label(theme, "Repository on the connected machine"))
+            .child(field(
+                state,
+                theme,
+                path,
+                Field::ProjectPath,
+                "/path/to/repository",
+            ));
+        actions.push(button(theme, "Add", ButtonKind::Primary, Msg::Submit));
+    }
+    body = body
+        .child(source(
+            theme,
+            "Remote over SSH — coming soon",
+            "Work in a repository on another machine.",
+            None,
+        ))
+        .child(source(
+            theme,
+            "Connect from your phone — coming soon",
+            "Pair the mobile app with this workspace.",
+            None,
+        ));
     modal(
         theme,
-        &heading,
+        "Add repo",
         480.0,
         body,
         actions,
@@ -181,10 +234,6 @@ fn connect(state: &AppState, theme: &Theme, host: &TextField) -> Node<Msg> {
     }
     actions.push(button(theme, "Connect", ButtonKind::Primary, Msg::Submit));
     modal(theme, "Connect to a host", 460.0, body, actions, dismiss)
-}
-
-fn is_local(state: &AppState) -> bool {
-    matches!(state.target, crate::config::ConnectTarget::Local(_))
 }
 
 /// The deletion warning. It lists exactly what the daemon will destroy, and the default
@@ -307,9 +356,9 @@ fn settings_dialog(
     } else {
         "Tailscale status unknown".to_owned()
     };
-    let body = Node::column()
-        .width(Length::Fill(1.0))
-        .gap(10.0)
+    let mut body = Node::column().width(Length::Fill(1.0)).gap(10.0);
+    body = body.children(super::daemon::settings_section(state, theme));
+    let body = body
         .child(toggle(
             theme,
             s.delete_remote_branches,
@@ -330,6 +379,29 @@ fn settings_dialog(
                 left: 42.0,
             }),
         )
+        .child(label(theme, "Agents"))
+        .children(urushi_core::Agent::ALL.into_iter().map(|agent| {
+            let mut switch = toggle(
+                theme,
+                state.skips_permissions(agent),
+                &format!(
+                    "{agent}: skip permission prompts ({})",
+                    agent.skip_permissions_flag()
+                ),
+                Msg::Toggle(SettingToggle::SkipPermissions(agent)),
+            );
+            // An older daemon can't store this setting; don't offer a switch that
+            // silently snaps back.
+            if !state.daemon_supports_agents() {
+                switch.on_click = None;
+                switch.cursor = urushi_ui::CursorIcon::Default;
+            }
+            switch
+        }))
+        .child(hint(
+            theme,
+            "Off by default. When on, the agent runs commands and edits files without asking.",
+        ))
         .child(label(theme, "Branch prefix"))
         .child(prefix)
         .child(label(theme, "Default shell"))
@@ -337,7 +409,7 @@ fn settings_dialog(
     modal(
         theme,
         "Settings",
-        520.0,
+        620.0,
         body,
         vec![
             button(theme, "Close", ButtonKind::Secondary, Msg::CloseDialog),

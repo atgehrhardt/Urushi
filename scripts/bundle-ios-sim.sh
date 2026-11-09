@@ -11,6 +11,8 @@ rm -rf "$APP" && mkdir -p "$APP"
 # Keep build outputs out of Spotlight/Launchpad (only /Applications/Urushi.app should show).
 mkdir -p build && touch build/.metadata_never_index
 cp target/aarch64-apple-ios-sim/debug/urushi-ios "$APP/Urushi"
+# Home-screen icons (rendered by scripts/render-icons.swift).
+cp apps/ios/icons/*.png "$APP/"
 cat > "$APP/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -24,6 +26,12 @@ cat > "$APP/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>${VERSION}</string>
   <key>MinimumOSVersion</key><string>16.0</string>
   <key>UILaunchScreen</key><dict/>
+  <key>CFBundleIcons</key><dict><key>CFBundlePrimaryIcon</key><dict>
+    <key>CFBundleIconFiles</key><array><string>AppIcon60x60</string></array>
+  </dict></dict>
+  <key>CFBundleIcons~ipad</key><dict><key>CFBundlePrimaryIcon</key><dict>
+    <key>CFBundleIconFiles</key><array><string>AppIcon60x60</string><string>AppIcon76x76</string><string>AppIcon83.5x83.5</string></array>
+  </dict></dict>
   <key>UIRequiresFullScreen</key><true/>
   <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
   <key>NSLocalNetworkUsageDescription</key><string>Urushi connects to your Urushi host over your tailnet.</string>

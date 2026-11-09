@@ -8,6 +8,7 @@
 
 mod atlas;
 mod gpu;
+mod image;
 mod offscreen;
 mod renderer;
 mod surface;

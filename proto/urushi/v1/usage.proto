@@ -1,0 +1,35 @@
+// Plan usage of the agent CLI running in a pane (e.g. Claude's 5-hour and weekly
+// limits). Since protocol 1.5.
+syntax = "proto3";
+
+package urushi.v1;
+
+import "urushi/v1/workspace.proto";
+
+message GetAgentUsageRequest {
+  string pane_id = 1;
+}
+
+message AgentUsage {
+  // The agent running in the pane, found from its processes. Unspecified when the pane
+  // runs no agent (the rest is then empty).
+  Agent agent = 1;
+  // The subscription, as the agent reports it (e.g. "Max 20x"); empty if unknown.
+  string plan = 2;
+  // Usage windows, most important first.
+  repeated UsageWindow windows = 3;
+  // Why usage isn't shown, for a running agent whose usage can't be read. Empty when
+  // `windows` is the answer.
+  string unavailable = 4;
+  // When the daemon read it (it caches for about a minute).
+  int64 fetched_at_ms = 5;
+}
+
+// One rate-limit window, such as "5h" or "Week".
+message UsageWindow {
+  string label = 1;
+  // 0–100.
+  double used_percent = 2;
+  // When the window resets; 0 if unknown.
+  int64 resets_at_ms = 3;
+}

@@ -16,6 +16,8 @@ cp "$TARGET_DIR/urushi-app" "$APP/Contents/MacOS/Urushi"
 cp "$TARGET_DIR/urushid" "$APP/Contents/MacOS/urushid"
 # Not next to "Urushi": macOS filesystems are usually case-insensitive.
 cp "$TARGET_DIR/urushi" "$APP/Contents/Resources/bin/urushi"
+# App icon (assets/icon/icon.svg, rendered by scripts/render-icons.swift).
+cp assets/icon/Urushi.icns "$APP/Contents/Resources/Urushi.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -25,6 +27,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>Urushi</string>
   <key>CFBundleIdentifier</key><string>app.urushi.Urushi</string>
   <key>CFBundleExecutable</key><string>Urushi</string>
+  <key>CFBundleIconFile</key><string>Urushi</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleVersion</key><string>${VERSION}</string>

@@ -1,0 +1,103 @@
+// Task boards: kanban boards of tasks, kept by the daemon and mirrored to clients as
+// part of the Workspace. Since protocol 1.5.
+syntax = "proto3";
+
+package urushi.v1;
+
+// A kanban board: columns of tasks, in display order.
+message Board {
+  string id = 1;
+  string name = 2;
+  int64 created_at_ms = 3;
+  repeated BoardColumn columns = 4;
+}
+
+// One column of a board (e.g. "To do"), with its tasks top to bottom.
+message BoardColumn {
+  string id = 1;
+  string name = 2;
+  repeated Task tasks = 3;
+}
+
+message Task {
+  string id = 1;
+  string title = 2;
+  // Free-form notes; may be empty.
+  string notes = 3;
+  int64 created_at_ms = 4;
+  // A checklist of smaller steps, in order. Since 1.6.
+  repeated Subtask subtasks = 5;
+  // The thread started for this task; empty if none. It may no longer exist. Since 1.6.
+  string thread_id = 6;
+}
+
+// One step of a task's checklist. Since protocol 1.6.
+message Subtask {
+  string id = 1;
+  string title = 2;
+  bool done = 3;
+  // The thread started for this subtask; empty if none. It may no longer exist.
+  string thread_id = 4;
+}
+
+// Creates a board with the default columns (To do, In progress, Done).
+message CreateBoardRequest {
+  string name = 1;
+}
+
+message RenameBoardRequest {
+  string board_id = 1;
+  string name = 2;
+}
+
+// Deletes a board and every task on it.
+message DeleteBoardRequest {
+  string board_id = 1;
+}
+
+// Adds a task at the bottom of a column. Answered with the Task.
+message CreateTaskRequest {
+  string board_id = 1;
+  string column_id = 2;
+  string title = 3;
+  string notes = 4;
+  // Titles of subtasks to create with it, in order. Since 1.6.
+  repeated string subtasks = 5;
+}
+
+// Changes a task's text. Unset fields are kept.
+message UpdateTaskRequest {
+  string task_id = 1;
+  optional string title = 2;
+  optional string notes = 3;
+}
+
+// Moves a task to `index` in a column of the same board (clamped; past the end means
+// the bottom).
+message MoveTaskRequest {
+  string task_id = 1;
+  string column_id = 2;
+  uint32 index = 3;
+}
+
+message DeleteTaskRequest {
+  string task_id = 1;
+}
+
+// Adds a subtask at the end of a task's checklist. Answered with the Subtask. Since 1.6.
+message CreateSubtaskRequest {
+  string task_id = 1;
+  string title = 2;
+}
+
+// Renames and/or checks off a subtask. Unset fields are kept. Since 1.6.
+message UpdateSubtaskRequest {
+  string subtask_id = 1;
+  optional string title = 2;
+  optional bool done = 3;
+}
+
+// Since 1.6.
+message DeleteSubtaskRequest {
+  string subtask_id = 1;
+}

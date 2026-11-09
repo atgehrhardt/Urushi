@@ -4,7 +4,7 @@ use urushi_proto::v1::{self, notification, request::Body, response::Outcome};
 
 use crate::{Client, ClientError};
 
-fn unexpected(what: &str) -> ClientError {
+pub(crate) fn unexpected(what: &str) -> ClientError {
     ClientError::Protocol(format!("unexpected response to {what}"))
 }
 
@@ -17,12 +17,52 @@ macro_rules! expect {
     };
 }
 
+// On the wire, `Project` is a repo and `Folder` is a project (ADR 0010). These methods
+// use the user-facing names.
 impl Client {
-    async fn ok(&self, body: Body, what: &str) -> Result<(), ClientError> {
+    pub(crate) async fn ok(&self, body: Body, what: &str) -> Result<(), ClientError> {
         match self.request(body).await? {
             Outcome::Ok(_) => Ok(()),
             _ => Err(unexpected(what)),
         }
+    }
+
+    /// Changes a thread's title, pin, status (empty clears) or project (empty ungroups).
+    pub async fn update_thread(&self, request: v1::UpdateThreadRequest) -> Result<(), ClientError> {
+        self.ok(Body::UpdateThread(request), "UpdateThread").await
+    }
+
+    /// Creates an empty project (a `Folder` on the wire).
+    pub async fn create_project(&self, name: &str) -> Result<v1::Folder, ClientError> {
+        let body = Body::CreateFolder(v1::CreateFolderRequest { name: name.into() });
+        expect!(self.request(body).await?, Folder, "CreateFolder")
+    }
+
+    /// Renames a project.
+    pub async fn rename_project(&self, project_id: &str, name: &str) -> Result<(), ClientError> {
+        let body = Body::RenameFolder(v1::RenameFolderRequest {
+            folder_id: project_id.into(),
+            name: name.into(),
+        });
+        self.ok(body, "RenameFolder").await
+    }
+
+    /// Deletes a project; its threads become ungrouped.
+    pub async fn delete_project(&self, project_id: &str) -> Result<(), ClientError> {
+        let body = Body::DeleteFolder(v1::DeleteFolderRequest {
+            folder_id: project_id.into(),
+        });
+        self.ok(body, "DeleteFolder").await
+    }
+
+    /// Stops the daemon (it answers first). Every running terminal closes. Daemons
+    /// before protocol 1.4 don't know this request; see [`crate::stop_local_daemon`].
+    pub async fn shutdown_daemon(&self) -> Result<(), ClientError> {
+        self.ok(
+            Body::ShutdownDaemon(v1::ShutdownDaemonRequest {}),
+            "ShutdownDaemon",
+        )
+        .await
     }
 
     /// The whole workspace. With `subscribe`, `WorkspaceChanged` events follow.
@@ -36,7 +76,7 @@ impl Client {
     }
 
     /// Adds the repository containing `path` (on the daemon's machine).
-    pub async fn add_project(&self, path: &str, name: &str) -> Result<v1::Project, ClientError> {
+    pub async fn add_repo(&self, path: &str, name: &str) -> Result<v1::Project, ClientError> {
         let body = Body::AddProject(v1::AddProjectRequest {
             path: path.into(),
             name: name.into(),
@@ -44,38 +84,52 @@ impl Client {
         expect!(self.request(body).await?, Project, "AddProject")
     }
 
-    /// Removes a project that has no threads.
-    pub async fn remove_project(&self, project_id: &str) -> Result<(), ClientError> {
+    /// Removes a repo that has no threads.
+    pub async fn remove_repo(&self, repo_id: &str) -> Result<(), ClientError> {
         self.ok(
             Body::RemoveProject(v1::RemoveProjectRequest {
-                project_id: project_id.into(),
+                project_id: repo_id.into(),
             }),
             "RemoveProject",
         )
         .await
     }
 
-    /// A project's local branches.
-    pub async fn list_branches(&self, project_id: &str) -> Result<v1::Branches, ClientError> {
+    /// A repo's local branches.
+    pub async fn list_branches(&self, repo_id: &str) -> Result<v1::Branches, ClientError> {
         let body = Body::ListBranches(v1::ListBranchesRequest {
-            project_id: project_id.into(),
+            project_id: repo_id.into(),
         });
         expect!(self.request(body).await?, Branches, "ListBranches")
     }
 
-    /// Creates a thread (and its worktree) from `base_ref` (empty = project default).
+    /// Creates a thread (and its worktree, and a first tab) from `base_ref`
+    /// (empty = repo default), on a generated branch, ungrouped.
     pub async fn create_thread(
         &self,
-        project_id: &str,
+        repo_id: &str,
         title: &str,
         base_ref: &str,
     ) -> Result<v1::Thread, ClientError> {
-        let body = Body::CreateThread(v1::CreateThreadRequest {
-            project_id: project_id.into(),
+        self.create_thread_with(v1::CreateThreadRequest {
+            project_id: repo_id.into(),
             title: title.into(),
             base_ref: base_ref.into(),
-        });
-        expect!(self.request(body).await?, Thread, "CreateThread")
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Creates a thread with every option (named branch, no first tab, …).
+    pub async fn create_thread_with(
+        &self,
+        request: v1::CreateThreadRequest,
+    ) -> Result<v1::Thread, ClientError> {
+        expect!(
+            self.request(Body::CreateThread(request)).await?,
+            Thread,
+            "CreateThread"
+        )
     }
 
     /// Renames a thread.
@@ -117,13 +171,26 @@ impl Client {
         .await
     }
 
-    /// Opens a new tab in a thread.
-    pub async fn create_tab(&self, thread_id: &str, title: &str) -> Result<v1::Tab, ClientError> {
+    /// Opens a new tab in a thread, running `agent` in its shell
+    /// (`v1::Agent::Unspecified` = just the shell).
+    pub async fn create_tab(
+        &self,
+        thread_id: &str,
+        title: &str,
+        agent: v1::Agent,
+    ) -> Result<v1::Tab, ClientError> {
         let body = Body::CreateTab(v1::CreateTabRequest {
             thread_id: thread_id.into(),
             title: title.into(),
+            agent: agent.into(),
         });
         expect!(self.request(body).await?, Tab, "CreateTab")
+    }
+
+    /// The agent CLIs installed on the daemon's machine.
+    pub async fn list_agents(&self) -> Result<Vec<v1::InstalledAgent>, ClientError> {
+        let body = Body::ListAgents(v1::ListAgentsRequest {});
+        expect!(self.request(body).await?, Agents, "ListAgents").map(|a| a.agents)
     }
 
     /// Closes a tab.
@@ -302,14 +369,14 @@ impl Client {
         expect!(self.request(body).await?, Settings, "UpdateSettings")
     }
 
-    /// Replaces a project's setting overrides.
-    pub async fn update_project_settings(
+    /// Replaces a repo's setting overrides.
+    pub async fn update_repo_settings(
         &self,
-        project_id: &str,
+        repo_id: &str,
         settings: v1::ProjectSettings,
     ) -> Result<(), ClientError> {
         let body = Body::UpdateProjectSettings(v1::UpdateProjectSettingsRequest {
-            project_id: project_id.into(),
+            project_id: repo_id.into(),
             settings: Some(settings),
         });
         self.ok(body, "UpdateProjectSettings").await

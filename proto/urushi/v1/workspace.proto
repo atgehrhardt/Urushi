@@ -1,8 +1,14 @@
-// Projects, threads, tabs and layouts.
+// Repos, projects (folders), threads, tabs and layouts.
+//
+// Naming: v1 field names are frozen (buf breaking uses WIRE_JSON). Fields and messages
+// called "project" (`Project`, `projects`, `project_id`, `AddProjectRequest`, ...) are
+// what users now call *repos*: git repositories. What users call *projects*, user-made
+// groups of threads, are `Folder`s on the wire. See ADR 0010.
 syntax = "proto3";
 
 package urushi.v1;
 
+import "urushi/v1/boards.proto";
 import "urushi/v1/settings.proto";
 
 message ListWorkspaceRequest {
@@ -13,9 +19,22 @@ message ListWorkspaceRequest {
 message Workspace {
   // Increases on every change.
   uint64 revision = 1;
+  // Repos (named before the rename; see the note at the top).
   repeated Project projects = 2;
   repeated Thread threads = 3;
   repeated Tab tabs = 4;
+  // Projects, in display order. Since protocol 1.2.
+  repeated Folder folders = 5;
+  // Task boards, in tab order. Since protocol 1.5.
+  repeated Board boards = 6;
+}
+
+// A user-made group of threads, shown to users as a "project". It can hold threads
+// from any repo. Since protocol 1.2.
+message Folder {
+  string id = 1;
+  string name = 2;
+  int64 created_at_ms = 3;
 }
 
 message Project {
@@ -38,6 +57,7 @@ enum ThreadState {
 
 message Thread {
   string id = 1;
+  // The repo (see the note at the top).
   string project_id = 2;
   string title = 3;
   string slug = 4;
@@ -50,6 +70,12 @@ message Thread {
   // Set when state is DELETION_FAILED.
   string failure_reason = 11;
   repeated string tab_ids = 12;
+  // The folder (project) it is filed under; empty means ungrouped. Since 1.2.
+  string folder_id = 13;
+  // Listed first within its group. Since 1.2.
+  bool pinned = 14;
+  // User-chosen status label; empty means none. Since 1.2.
+  string status = 15;
 }
 
 message Tab {
@@ -119,6 +145,44 @@ message CreateThreadRequest {
   string title = 2;
   // Ref to branch from; empty uses the project's default base.
   string base_ref = 3;
+  // Name of the branch to create; empty generates `<prefix><slug>-<short id>`.
+  // Must not exist yet.
+  string branch = 4;
+  // Create the thread with no tabs, so the client can let the user pick what to
+  // run first (see CreateTabRequest.agent). Since protocol 1.1.
+  bool skip_initial_tab = 5;
+  // File the new thread under this folder (project). Empty: ungrouped. Since 1.2.
+  string folder_id = 6;
+  // Link the thread to this task on a board (Task.thread_id), or with subtask_id, to
+  // that subtask of it (Subtask.thread_id). Empty: no link. Since 1.6.
+  string task_id = 7;
+  string subtask_id = 8;
+}
+
+// Changes a thread's organization. Unset fields are left unchanged. Since 1.2.
+message UpdateThreadRequest {
+  string thread_id = 1;
+  optional string title = 2;
+  optional bool pinned = 3;
+  // Empty clears the status.
+  optional string status = 4;
+  // Empty ungroups the thread.
+  optional string folder_id = 5;
+}
+
+// Folders are shown to users as projects. Since protocol 1.2.
+message CreateFolderRequest {
+  string name = 1;
+}
+
+message RenameFolderRequest {
+  string folder_id = 1;
+  string name = 2;
+}
+
+// Deletes a folder. Its threads become ungrouped; nothing on disk changes.
+message DeleteFolderRequest {
+  string folder_id = 1;
 }
 
 message RenameThreadRequest {
@@ -160,7 +224,37 @@ message DeleteThreadRequest {
 
 message CreateTabRequest {
   string thread_id = 1;
+  // Empty uses the agent's name, or "Terminal".
   string title = 2;
+  // Agent CLI to start in the tab's shell. Unspecified opens a plain shell.
+  // Since protocol 1.1; older daemons ignore it.
+  Agent agent = 3;
+}
+
+// Agent CLIs a tab can start. Each runs inside an ordinary shell.
+enum Agent {
+  // No agent: a plain shell.
+  AGENT_UNSPECIFIED = 0;
+  // Claude Code (`claude`).
+  AGENT_CLAUDE = 1;
+  // OpenAI Codex CLI (`codex`).
+  AGENT_CODEX = 2;
+  // Cursor CLI (`cursor-agent`).
+  AGENT_CURSOR = 3;
+}
+
+// Which agent CLIs are installed on the daemon's machine. Since protocol 1.1.
+message ListAgentsRequest {}
+
+message InstalledAgent {
+  Agent agent = 1;
+  // Where the executable was found, on the daemon's machine.
+  string path = 2;
+}
+
+message Agents {
+  // Only installed agents, in display order.
+  repeated InstalledAgent agents = 1;
 }
 
 message CloseTabRequest {

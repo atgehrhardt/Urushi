@@ -37,6 +37,20 @@ impl Daemon {
     pub async fn start_with(home: &Path, tailscale: Arc<dyn TailscaleProvider>) -> Self {
         let mut options = DaemonOptions::new(home);
         options.tailscale = tailscale;
+        Self::start_options(options).await
+    }
+
+    /// A daemon that finds agent CLIs only in `agent_dirs`.
+    pub async fn start_with_agents(home: &Path, agent_dirs: Vec<PathBuf>) -> Self {
+        let mut options = DaemonOptions::new(home);
+        options.tailscale = Arc::new(StaticTailscale::not_installed());
+        options.agents = Arc::new(urushi_daemon::agents::AgentLocator::in_dirs(agent_dirs));
+        Self::start_options(options).await
+    }
+
+    pub async fn start_options(options: DaemonOptions) -> Self {
+        let home = options.home.clone();
+        let home = home.as_path();
         let (stop, stopped) = oneshot::channel::<()>();
         let task = tokio::spawn(urushi_daemon::run(options, async move {
             let _ = stopped.await;

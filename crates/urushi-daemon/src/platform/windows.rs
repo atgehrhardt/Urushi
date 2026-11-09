@@ -40,6 +40,7 @@ pub(crate) async fn serve_local(
             connected,
             Peer {
                 description: "local".into(),
+                local: true,
             },
         ));
     }
@@ -48,4 +49,36 @@ pub(crate) async fn serve_local(
 /// Resolves on Ctrl-C.
 pub(crate) async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
+}
+
+/// Whether `path` is a file (Windows decides executability by extension).
+pub(crate) fn is_executable(path: &Path) -> bool {
+    path.is_file()
+}
+
+/// File names under which `program` may be installed (npm installs `.cmd` shims).
+pub(crate) fn executable_names(program: &str) -> Vec<String> {
+    ["exe", "cmd", "bat"]
+        .iter()
+        .map(|ext| format!("{program}.{ext}"))
+        .collect()
+}
+
+/// Windows shells don't have login profiles that change `PATH`; the daemon's own
+/// environment already has the user's `PATH`.
+pub(crate) fn login_shell_path(
+    _shell: &str,
+    _timeout: std::time::Duration,
+) -> Option<std::ffi::OsString> {
+    None
+}
+
+/// Listing processes isn't supported on Windows yet: no agent is ever detected.
+pub(crate) fn process_table() -> Option<String> {
+    None
+}
+
+/// Claude Code's stored sign-in (JSON), from `%USERPROFILE%\.claude\.credentials.json`.
+pub(crate) fn claude_credentials() -> Result<String, String> {
+    crate::usage::claude_credentials_file()
 }

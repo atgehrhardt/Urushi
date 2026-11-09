@@ -155,7 +155,15 @@ async fn accept_loop(service: Weak<Service>, listener: TcpListener) {
                 Ok(identity) => {
                     let description = format!("{} ({}) at {peer}", identity.login, identity.node);
                     let _ = stream.set_nodelay(true);
-                    connection::serve_boxed(service, stream, Peer { description }).await;
+                    connection::serve_boxed(
+                        service,
+                        stream,
+                        Peer {
+                            description,
+                            local: false,
+                        },
+                    )
+                    .await;
                 }
                 Err(reason) => tracing::warn!(%peer, %reason, "refused tailnet connection"),
             }

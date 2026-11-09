@@ -1,8 +1,8 @@
 //! Pure domain model for Urushi.
 //!
-//! This crate defines *what* a workspace is: projects, threads, tabs, the split-pane
-//! layout tree, and settings. It knows nothing about IO, async, platforms, or rendering.
-//! The daemon persists and changes these types. Clients mirror them.
+//! This crate defines *what* a workspace is: repos, projects, threads, tabs, the split-pane
+//! layout tree, task boards, and settings. It knows nothing about IO, async, platforms, or
+//! rendering. The daemon persists and changes these types. Clients mirror them.
 //!
 //! Rules (see `AGENTS.md`):
 //! - No filesystem, network, process, clock or randomness access. Ids and timestamps
@@ -10,22 +10,31 @@
 //! - No platform `cfg`. This crate must compile for every target, including iOS and Android.
 #![forbid(unsafe_code)]
 
+pub mod agent;
+pub mod board;
 pub mod ids;
 pub mod layout;
 pub mod naming;
 pub mod ownership;
 pub mod project;
+pub mod repo;
 pub mod settings;
+pub mod shell;
+pub mod status;
 pub mod tab;
 pub mod thread;
 pub mod time;
 
-pub use ids::{PaneId, ProjectId, TabId, ThreadId};
+pub use agent::{Agent, AgentSessionId, AgentSettings, InvalidSessionId};
+pub use board::{Board, BoardError, Column, Subtask, Task};
+pub use ids::{BoardId, ColumnId, PaneId, ProjectId, RepoId, SubtaskId, TabId, TaskId, ThreadId};
 pub use layout::{Axis, Direction, Layout, LayoutError};
 pub use naming::{BranchName, BranchPrefix, NamingError, Slug};
 pub use ownership::{OwnershipFacts, owned_branches};
 pub use project::Project;
-pub use settings::{EffectiveSettings, ProjectSettingsOverrides, Settings, TailnetSettings};
+pub use repo::Repo;
+pub use settings::{EffectiveSettings, RepoSettingsOverrides, Settings, TailnetSettings};
+pub use status::{Status, StatusError};
 pub use tab::Tab;
 pub use thread::{NewThread, Thread, ThreadState, ThreadStateError};
 pub use time::Timestamp;

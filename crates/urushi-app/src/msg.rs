@@ -6,7 +6,8 @@ use urushi_ui::Point;
 
 use crate::config::ConnectTarget;
 use crate::keys::KeyPress;
-use crate::state::{Field, SettingToggle};
+use crate::organize::{DropTarget, MenuPage, MenuTarget, Prompt, Select, SidebarTab};
+use crate::state::{Field, FieldCommand, Launch, SettingToggle, TaskLink};
 
 /// Something that happened.
 #[derive(Clone, Debug)]
@@ -40,8 +41,60 @@ pub enum Msg {
     ShowSidebar,
     /// Open the "add project" dialog.
     OpenAddProject,
-    /// Open the "new thread" dialog for a project.
-    OpenNewThread(String),
+    /// Open the "new thread" dialog. `repo: None` picks the first repo; `project` files
+    /// the new thread under that project.
+    OpenNewThread {
+        /// Repo id.
+        repo: Option<String>,
+        /// Project id.
+        project: Option<String>,
+    },
+    /// Show projects or repos in the sidebar.
+    SidebarTab(SidebarTab),
+    /// Collapse or expand a sidebar section.
+    ToggleSection(String),
+    /// Where a mouse press happened (sent by the runner before the click it causes).
+    Pointer(Point),
+    /// Open a context menu at the last press.
+    OpenMenu(MenuTarget),
+    /// Switch the context menu's page.
+    MenuPage(MenuPage),
+    /// Close the context menu.
+    CloseMenu,
+    /// Pin or unpin a thread.
+    TogglePin(String),
+    /// Set (or with `None`, clear) a thread's status.
+    SetStatus {
+        /// Thread id.
+        thread: String,
+        /// Status label.
+        status: Option<String>,
+    },
+    /// File a thread under a project (`None`: ungroup it).
+    MoveThread {
+        /// Thread id.
+        thread: String,
+        /// Project id.
+        project: Option<String>,
+    },
+    /// Ask for a line of text (rename, new status, new project).
+    OpenPrompt(Prompt),
+    /// Delete a project (its threads become ungrouped).
+    DeleteProject(String),
+    /// A thread started being dragged.
+    DragThread(String),
+    /// The pointer moved during a drag.
+    DragMove(Point),
+    /// The drag was released over a drop target.
+    DropThread(DropTarget),
+    /// The drag was released anywhere else.
+    DragCancel,
+    /// Open or close a selector in the new-thread dialog.
+    ToggleSelect(Select),
+    /// Choose the repo in the new-thread dialog.
+    PickRepo(String),
+    /// Choose the branch to start from (`None`: the repo's default).
+    PickBase(Option<String>),
     /// Ask the daemon what deleting a thread would destroy, then show the warning.
     RequestDeleteThread(String),
     /// Open settings.
@@ -49,11 +102,66 @@ pub enum Msg {
     /// Open the "connect to host" dialog.
     OpenConnect,
 
+    // ---- task boards (`update/board.rs`) --------------------------------------------
+    /// Slide the board panel out, or back in.
+    ToggleBoard,
+    /// The panel's slide animation advanced (0 = hidden, 1 = shown).
+    BoardReveal(f32),
+    /// A click on the panel's background (it covers the terminals; nothing happens).
+    BoardBackground,
+    /// Show a board.
+    SelectBoard(String),
+    /// Open the editor for a new task in a column.
+    NewTask {
+        /// Board id.
+        board: String,
+        /// Column id.
+        column: String,
+    },
+    /// A task card was pressed (releasing without dragging opens it).
+    PressTask(String),
+    /// The mouse button came up after a press outside the terminals, without a drag.
+    PressEnded,
+    /// A task card started being dragged.
+    DragTask(String),
+    /// A dragged task was released over a column (`before`: the card it landed on).
+    DropTask {
+        /// Column id.
+        column: String,
+        /// The task it goes above; `None` for the bottom.
+        before: Option<String>,
+    },
+    /// While a task is dragged: what is under the pointer (its `on_drop` message, if
+    /// any), so the board can show where the task would land.
+    DragOver(Option<Box<Msg>>),
+    /// In the task editor: choose the column.
+    PickColumn(String),
+    /// Check or uncheck a subtask.
+    ToggleSubtask(String),
+    /// Start renaming a subtask in the editor.
+    RenameSubtask(String),
+    /// Delete a subtask.
+    DeleteSubtask(String),
+    /// Remove a not-yet-created subtask from a new task.
+    RemoveDraftSubtask(usize),
+    /// Start a thread for a task or subtask, or go to the one already started.
+    StartThread(TaskLink),
+    /// In the task editor: delete the task.
+    DeleteTask,
+    /// Ask to delete a board.
+    OpenDeleteBoard(String),
+    /// Confirmed: delete the board.
+    ConfirmDeleteBoard,
+    /// Time passed (ms since the epoch): refresh the agent usage.
+    Tick(i64),
+
     // ---- tabs and panes --------------------------------------------------------------
     /// Show a tab.
     SelectTab(String),
-    /// Open a tab in the current thread.
+    /// Choose what a new tab in the current thread runs.
     NewTab,
+    /// Open a tab in the current thread running this.
+    Launch(Launch),
     /// Close a tab.
     CloseTab(String),
     /// Split the focused pane.
@@ -68,10 +176,37 @@ pub enum Msg {
     AreaDrag(Point),
     /// Mouse released.
     AreaRelease(Point),
+    /// The pointer moved over the terminal area with no button held.
+    AreaHover(Point),
+    /// The right or middle button went down or up over the terminal area.
+    AreaButton {
+        /// Where.
+        at: Point,
+        /// Which button.
+        button: v1::MouseButton,
+        /// Down (`true`) or up.
+        pressed: bool,
+    },
+    /// The modifier keys held changed (Shift+drag selects even when an app takes the mouse).
+    Modifiers(crate::keys::Mods),
     /// Wheel over the terminal area, in lines (positive = back into history).
     AreaWheel(Point, i32),
 
     // ---- dialogs -----------------------------------------------------------------------
+    /// A press in the focused text field at byte offset `caret`: `clicks` counts quick
+    /// successive clicks (2 selects a word, 3 everything); `extend` is Shift.
+    FieldPress {
+        /// Where in the text.
+        caret: usize,
+        /// Extend the selection (Shift held).
+        extend: bool,
+        /// 1, 2 or 3.
+        clicks: u8,
+    },
+    /// Dragging from a press in a text field reached byte offset `caret`.
+    FieldDrag(usize),
+    /// An editing command on the focused text field (shortcut or context menu).
+    EditField(FieldCommand),
     /// Focus a dialog field.
     FocusField(Field),
     /// Submit the open dialog.
@@ -80,12 +215,27 @@ pub enum Msg {
     CloseDialog,
     /// Confirm deletion in the warning dialog.
     ConfirmDelete,
+    /// Ask to restart the local daemon (shows what will close).
+    OpenRestartDaemon,
+    /// Confirmed: stop the daemon, then reconnect (which starts this app's daemon).
+    ConfirmRestartDaemon,
+    /// The old daemon has stopped (or stopping failed).
+    DaemonStopped(Result<(), String>),
     /// Flip a settings switch.
     Toggle(SettingToggle),
     /// Open the system folder picker (desktop).
     BrowseFolder,
     /// The folder picker returned.
     FolderPicked(Option<String>),
+    /// A file or folder was dropped on the window.
+    FileDropped {
+        /// Its path, on this machine.
+        path: String,
+        /// Whether it's a folder.
+        is_dir: bool,
+        /// Whether it was dropped over the terminal area.
+        over_terminal: bool,
+    },
     /// Hide the error banner.
     DismissError,
 
@@ -119,8 +269,18 @@ pub enum Followup {
     Settings,
     /// Show tailnet status in settings.
     TailnetStatus,
+    /// Remember which agents are installed.
+    Agents,
+    /// Remember a repo's branches (for the new-thread dialog).
+    Branches(String),
+    /// Move this thread into the project just created.
+    ProjectCreated(Option<String>),
     /// Close the dialog that made the request.
     CloseDialog,
+    /// Show the board just created.
+    BoardCreated,
+    /// Remember the usage of the agent in this pane.
+    Usage(String),
 }
 
 /// Something the app needs done.
@@ -143,4 +303,6 @@ pub enum Effect {
     PickFolder,
     /// Drop the connection and connect to another daemon.
     Reconnect(ConnectTarget),
+    /// Drop the connection, stop the local daemon, and deliver [`Msg::DaemonStopped`].
+    StopDaemon,
 }

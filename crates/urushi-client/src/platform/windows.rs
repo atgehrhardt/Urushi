@@ -31,3 +31,21 @@ pub(crate) fn detach(command: &mut Command) {
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
     command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
 }
+
+/// Not available for named pipes yet; daemons there are stopped with `ShutdownDaemon`.
+pub(crate) async fn daemon_pid(_local: &LocalEndpoint) -> Option<u32> {
+    None
+}
+
+/// Not needed on Windows: every Windows daemon understands `ShutdownDaemon`.
+pub(crate) fn terminate(_pid: u32) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "stopping a daemon by signal is not supported on Windows",
+    ))
+}
+
+/// See [`daemon_pid`]: without a pid there is nothing to check.
+pub(crate) fn is_running(_pid: u32) -> bool {
+    false
+}

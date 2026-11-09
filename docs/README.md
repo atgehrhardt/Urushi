@@ -23,6 +23,11 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0006 – All-Rust graphical app (winit + wgpu + in-house toolkit)](adr/0006-all-rust-gpu-gui.md)
 - [0007 – Platform code isolated in `platform/` modules](adr/0007-platform-isolation.md)
 - [0008 – Workspace persisted as one atomically-written JSON document](adr/0008-json-document-store.md)
+- [0009 – Start agent CLIs by typing their command into the pane's shell](adr/0009-agents-typed-into-a-shell.md)
+- [0010 – Rename "projects" to repos, and add projects as groups of threads](adr/0010-repos-and-projects.md)
+- [0011 – Read agent plan usage in the daemon, from each agent's own sign-in and logs](adr/0011-agent-usage-from-the-agents-own-sources.md)
+- [0012 – Keep subtasks as a task's checklist, and let the daemon link threads to tasks](adr/0012-subtasks-as-checklists-and-thread-links.md)
+- [0013 – Bring panes back after a daemon restart from per-pane restore points](adr/0013-restore-points-for-panes.md)
 
 ## Features
 - [_template](features/_template.md)
@@ -31,3 +36,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [Recoverable terminal sessions](features/recoverable-sessions.md)
 - [Remote access over Tailscale](features/remote-access.md)
 - [The workspace GUI](features/gui-workspace.md)
+- [Agent launcher](features/agent-launcher.md)
+- [Organizing threads (projects, pins, statuses)](features/thread-organization.md)
+- [Task boards](features/task-boards.md)
+- [Agent usage in the status bar](features/agent-usage.md)

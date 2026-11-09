@@ -13,6 +13,17 @@ message Settings {
   // Empty means <data dir>/worktrees.
   string worktree_root = 4;
   TailnetSettings tailnet = 5;
+  AgentSettings agents = 6;
+}
+
+// How agent CLIs are started. Every flag defaults to off: agents ask before acting.
+message AgentSettings {
+  // Start Claude with --dangerously-skip-permissions.
+  bool claude_skip_permissions = 1;
+  // Start Codex with --dangerously-bypass-approvals-and-sandbox.
+  bool codex_skip_permissions = 2;
+  // Start Cursor with --force.
+  bool cursor_skip_permissions = 3;
 }
 
 message TailnetSettings {
@@ -35,6 +46,9 @@ message SettingsPatch {
   bool set_allowed_logins = 7;
   repeated string allowed_logins = 8;
   optional bool allow_tagged_nodes = 9;
+  optional bool claude_skip_permissions = 10;
+  optional bool codex_skip_permissions = 11;
+  optional bool cursor_skip_permissions = 12;
 }
 
 message UpdateSettingsRequest {

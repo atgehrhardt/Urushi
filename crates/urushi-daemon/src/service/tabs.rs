@@ -1,14 +1,20 @@
 //! Tabs, panes and layout operations.
 
-use urushi_core::{Axis, Direction, PaneId, Tab, TabId, ThreadId};
+use urushi_core::{Agent, Axis, Direction, PaneId, Tab, TabId, ThreadId};
 use urushi_mux::TermSize;
 
 use super::threads::DEFAULT_TAB_TITLE;
 use super::{Service, ServiceError, ServiceResult, new_uuid};
 
 impl Service {
-    /// Opens a new tab with one shell in the thread's worktree.
-    pub fn create_tab(&self, thread: ThreadId, title: &str) -> ServiceResult<Tab> {
+    /// Opens a new tab with one shell in the thread's worktree. With an `agent`, the
+    /// agent's command is typed into that shell, and the tab is named after it.
+    pub async fn create_tab(
+        &self,
+        thread: ThreadId,
+        title: &str,
+        agent: Option<Agent>,
+    ) -> ServiceResult<Tab> {
         let (record, shell) = self.read(|s| {
             let record = s.thread(thread)?.thread.clone();
             if !record.is_ready() {
@@ -16,16 +22,27 @@ impl Service {
             }
             Ok((
                 record.clone(),
-                s.effective_settings(record.project).default_shell,
+                s.effective_settings(record.repo).default_shell,
             ))
         })?;
+        // Resolve the agent first, so a missing one leaves nothing behind.
+        let command = match agent {
+            Some(agent) => Some(self.agent_command_line(agent, shell.clone()).await?),
+            None => None,
+        };
         let tab_id = TabId::from_uuid(new_uuid());
         let pane = PaneId::from_uuid(new_uuid());
         self.spawn_session(pane, &record, shell, TermSize::DEFAULT)?;
-        let title = if title.trim().is_empty() {
-            DEFAULT_TAB_TITLE
-        } else {
-            title.trim()
+        if let Some(command) = &command
+            && let Err(e) = self.type_command(pane, command).await
+        {
+            self.kill_sessions([pane]);
+            return Err(e);
+        }
+        let title = match (title.trim(), agent) {
+            ("", Some(agent)) => agent.display_name(),
+            ("", None) => DEFAULT_TAB_TITLE,
+            (title, _) => title,
         };
         let tab = Tab::new(tab_id, thread, title, pane);
         let result = self.mutate(|state| {
@@ -65,7 +82,7 @@ impl Service {
                 return Err(ServiceError::NotFound(format!("pane {pane} in tab {tab}")));
             }
             let thread = state.thread(existing.thread())?.thread.clone();
-            let shell = state.effective_settings(thread.project).default_shell;
+            let shell = state.effective_settings(thread.repo).default_shell;
             Ok((thread, shell))
         })?;
         let new = PaneId::from_uuid(new_uuid());

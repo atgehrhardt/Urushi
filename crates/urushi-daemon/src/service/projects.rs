@@ -1,78 +1,131 @@
-//! Adding and removing projects (git repositories).
+//! Projects (user-made groups of threads) and the organization of threads: titles,
+//! pins, statuses and which project a thread is filed under. None of this touches
+//! worktrees or branches.
 
-use std::path::PathBuf;
-use std::sync::Arc;
+use urushi_core::{Project, ProjectId, Status, ThreadId};
 
-use urushi_core::{Project, ProjectId};
+use super::{Service, ServiceError, ServiceResult, new_uuid, now};
 
-use super::{Service, ServiceError, ServiceResult, blocking, new_uuid, now};
+/// Sets or clears an optional value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Assign<T> {
+    /// Clear it.
+    Clear,
+    /// Set it.
+    Set(T),
+}
+
+/// Changes to a thread's organization. `None` fields are left as they are.
+#[derive(Clone, Debug, Default)]
+pub struct ThreadUpdate {
+    /// New title.
+    pub title: Option<String>,
+    /// Pin or unpin.
+    pub pinned: Option<bool>,
+    /// Set or clear the status.
+    pub status: Option<Assign<Status>>,
+    /// File under a project, or ungroup.
+    pub project: Option<Assign<ProjectId>>,
+}
+
+/// Longest project name, in characters.
+const MAX_PROJECT_NAME: usize = 80;
+
+fn project_name(name: &str) -> ServiceResult<String> {
+    let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() {
+        return Err(ServiceError::Invalid(
+            "a project name must not be empty".into(),
+        ));
+    }
+    if name.chars().count() > MAX_PROJECT_NAME {
+        return Err(ServiceError::Invalid(format!(
+            "a project name must be at most {MAX_PROJECT_NAME} characters"
+        )));
+    }
+    Ok(name)
+}
 
 impl Service {
-    /// Adds the repository containing `path`. If it's already added, the existing
-    /// project is returned.
-    pub async fn add_project(
-        self: &Arc<Self>,
-        path: PathBuf,
-        name: Option<String>,
-    ) -> ServiceResult<Project> {
-        if path.as_os_str().is_empty() {
-            return Err(ServiceError::Invalid(
-                "a repository path is required".into(),
-            ));
-        }
-        let git = self.git.clone();
-        let root = blocking(move || Ok(git.repo_root(&path)?)).await?;
-        let canonical = std::fs::canonicalize(&root).unwrap_or(root);
-
+    /// Creates an empty project at the end of the list.
+    pub fn create_project(&self, name: &str) -> ServiceResult<Project> {
+        let project = Project {
+            id: ProjectId::from_uuid(new_uuid()),
+            name: project_name(name)?,
+            created_at: now(),
+        };
         self.mutate(|state| {
-            if let Some(existing) = state.projects.iter().find(|p| p.repo_root == canonical) {
-                return Ok(existing.clone());
-            }
-            let default_name = canonical
-                .file_name()
-                .map_or_else(|| "repository".into(), |n| n.to_string_lossy().into_owned());
-            let project = Project {
-                id: ProjectId::from_uuid(new_uuid()),
-                name: name
-                    .filter(|n| !n.trim().is_empty())
-                    .unwrap_or(default_name),
-                repo_root: canonical.clone(),
-                default_base: None,
-                settings: urushi_core::ProjectSettingsOverrides::default(),
-                added_at: now(),
-            };
             state.projects.push(project.clone());
             Ok(project)
         })
     }
 
-    /// Removes a project. Refused while it still has threads, since removing it would
-    /// orphan their worktrees and branches. Delete the threads first.
-    pub fn remove_project(&self, id: ProjectId) -> ServiceResult<()> {
+    /// Renames a project.
+    pub fn rename_project(&self, id: ProjectId, name: &str) -> ServiceResult<()> {
+        let name = project_name(name)?;
         self.mutate(|state| {
-            state.project(id)?;
-            let threads = state
-                .threads
-                .iter()
-                .filter(|r| r.thread.project == id)
-                .count();
-            if threads > 0 {
-                return Err(ServiceError::Precondition(format!(
-                    "project still has {threads} thread(s); delete them first"
-                )));
-            }
-            state.projects.retain(|p| p.id != id);
+            state.project_mut(id)?.name = name;
             Ok(())
         })
     }
 
-    /// Local branches of a project, plus the one checked out in its main worktree.
-    pub async fn list_branches(
-        &self,
-        id: ProjectId,
-    ) -> ServiceResult<(Vec<String>, Option<String>)> {
-        let repo = self.read(|s| Ok(s.project(id)?.repo_root.clone()))?;
-        let git = self.git.clone();
-        blocking(move || Ok((git.local_branches(&repo)?, git.current_branch(&repo)?))).await
+    /// Deletes a project. Its threads become ungrouped.
+    pub fn delete_project(&self, id: ProjectId) -> ServiceResult<()> {
+        self.mutate(|state| {
+            state.project(id)?;
+            state.projects.retain(|p| p.id != id);
+            for record in &mut state.threads {
+                if record.thread.project == Some(id) {
+                    record.thread.project = None;
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// Applies `update` to a thread, all or nothing.
+    pub fn update_thread(&self, id: ThreadId, update: ThreadUpdate) -> ServiceResult<()> {
+        let title = match update.title.as_deref().map(str::trim) {
+            Some("") => return Err(ServiceError::Invalid("title must not be empty".into())),
+            other => other.map(str::to_owned),
+        };
+        self.mutate(|state| {
+            if let Some(Assign::Set(project)) = update.project {
+                state.project(project)?;
+            }
+            let thread = &mut state.thread_mut(id)?.thread;
+            if let Some(title) = title {
+                thread.title = title;
+            }
+            if let Some(pinned) = update.pinned {
+                thread.pinned = pinned;
+            }
+            match update.status {
+                Some(Assign::Set(status)) => thread.status = Some(status),
+                Some(Assign::Clear) => thread.status = None,
+                None => {}
+            }
+            match update.project {
+                Some(Assign::Set(project)) => thread.project = Some(project),
+                Some(Assign::Clear) => thread.project = None,
+                None => {}
+            }
+            Ok(())
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_names_are_trimmed_and_bounded() {
+        assert_eq!(
+            project_name("  Billing   launch ").unwrap(),
+            "Billing launch"
+        );
+        assert!(project_name("   ").is_err());
+        assert!(project_name(&"x".repeat(81)).is_err());
     }
 }

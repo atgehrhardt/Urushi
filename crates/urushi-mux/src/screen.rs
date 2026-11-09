@@ -135,10 +135,47 @@ pub struct Modes {
     pub app_cursor: bool,
     /// Pastes are wrapped in `ESC [200~ … ESC [201~`.
     pub bracketed_paste: bool,
-    /// The application wants mouse events.
-    pub mouse_reporting: bool,
+    /// Which mouse events the application asked for (DEC modes 1000/1002/1003).
+    pub mouse: MouseMode,
+    /// How mouse reports are encoded (DEC modes 1006 and 1005).
+    pub mouse_encoding: MouseEncoding,
     /// The alternate screen (full-screen apps) is active.
     pub alt_screen: bool,
+    /// DEC 1007: on the alternate screen, the wheel sends arrow keys.
+    pub alternate_scroll: bool,
+}
+
+impl Modes {
+    /// Whether the application wants any mouse events.
+    pub fn mouse_reporting(&self) -> bool {
+        self.mouse != MouseMode::Off
+    }
+}
+
+/// Which mouse events the application receives.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MouseMode {
+    /// None: the terminal handles the mouse itself (selection, scrollback).
+    #[default]
+    Off,
+    /// Presses, releases and the wheel (1000).
+    Click,
+    /// Also movement while a button is held (1002).
+    Drag,
+    /// Also all movement (1003).
+    Motion,
+}
+
+/// How mouse reports are encoded.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MouseEncoding {
+    /// `ESC [ M` plus three bytes; positions above 223 can't be reported.
+    #[default]
+    X10,
+    /// `ESC [ M` plus three UTF-8 characters (1005).
+    Utf8,
+    /// `ESC [ < b ; x ; y M/m` (1006), what modern applications use.
+    Sgr,
 }
 
 /// Changed screen content since some earlier version. See [`crate::SessionHandle::frame_since`].

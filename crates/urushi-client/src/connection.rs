@@ -17,7 +17,9 @@ use crate::platform;
 /// Events buffered for the application. Screen updates are flow-controlled by acks, so
 /// this only needs to absorb bursts.
 const EVENT_QUEUE: usize = 1024;
-const OUTBOUND_QUEUE: usize = 256;
+/// Frames waiting to be written. Absorbs bursts of input (e.g. pointer motion reported to
+/// an application that asked for every movement).
+const OUTBOUND_QUEUE: usize = 1024;
 
 type Pending = Mutex<HashMap<u64, oneshot::Sender<Outcome>>>;
 
@@ -175,6 +177,20 @@ impl Client {
             .send(envelope::notification(body))
             .await
             .map_err(|_| ClientError::Disconnected)
+    }
+
+    /// Queues a notification without waiting. Notifications queued from one thread are
+    /// sent in the order they were queued, which input needs: a mouse release must never
+    /// overtake its press. Fails if the connection is closed or its queue is full.
+    pub fn try_notify(&self, body: notification::Body) -> Result<(), ClientError> {
+        self.out
+            .try_send(envelope::notification(body))
+            .map_err(|e| match e {
+                mpsc::error::TrySendError::Full(_) => {
+                    ClientError::Protocol("outgoing queue is full".into())
+                }
+                mpsc::error::TrySendError::Closed(_) => ClientError::Disconnected,
+            })
     }
 
     /// Whether the connection is still open.

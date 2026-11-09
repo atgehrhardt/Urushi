@@ -66,7 +66,11 @@ macro_rules! define_id {
 }
 
 define_id!(
-    /// Identifies a [`crate::Project`] (a git repository added to the workspace).
+    /// Identifies a [`crate::Repo`] (a git repository added to the workspace).
+    RepoId
+);
+define_id!(
+    /// Identifies a [`crate::Project`] (a user-made group of threads).
     ProjectId
 );
 define_id!(
@@ -80,6 +84,22 @@ define_id!(
 define_id!(
     /// Identifies a pane: one terminal session inside a tab's layout.
     PaneId
+);
+define_id!(
+    /// Identifies a [`crate::Board`] (a kanban board of tasks).
+    BoardId
+);
+define_id!(
+    /// Identifies a column of a [`crate::Board`].
+    ColumnId
+);
+define_id!(
+    /// Identifies a [`crate::Task`] on a board.
+    TaskId
+);
+define_id!(
+    /// Identifies a [`crate::Subtask`] of a task.
+    SubtaskId
 );
 
 #[cfg(test)]

@@ -6,6 +6,7 @@
 //! scripts and emoji the bundled fonts don't cover.
 
 use std::collections::HashMap;
+use std::ops::Range;
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, Weight, fontdb};
 
@@ -132,6 +133,87 @@ impl TextSystem {
         chars[..low].iter().collect::<String>() + "…"
     }
 
+    /// The lines `text` takes up at `width`: it breaks at each `\n`, and between words
+    /// where a line would get wider than `width`. A word too long for a line by itself
+    /// is broken between characters. Each line is a byte range of `text`, without the
+    /// `\n`. Spaces at a soft break stay at the end of the line before, so the ranges of
+    /// one paragraph touch.
+    pub fn wrap(&mut self, text: &str, font: Font, size: f32, width: f32) -> Vec<Range<usize>> {
+        let width = width.max(1.0);
+        let mut lines = Vec::new();
+        let mut base = 0;
+        for paragraph in text.split('\n') {
+            self.wrap_paragraph(paragraph, base, (font, size, width), &mut lines);
+            base += paragraph.len() + 1;
+        }
+        lines
+    }
+
+    fn wrap_paragraph(
+        &mut self,
+        p: &str,
+        base: usize,
+        (font, size, width): (Font, f32, f32),
+        lines: &mut Vec<Range<usize>>,
+    ) {
+        // Each token is a word and the spaces after it.
+        let mut tokens = Vec::new();
+        let (mut token_start, mut after_space) = (0, false);
+        for (i, c) in p.char_indices() {
+            let space = c.is_whitespace();
+            if after_space && !space {
+                tokens.push(token_start..i);
+                token_start = i;
+            }
+            after_space = space;
+        }
+        if !p.is_empty() {
+            tokens.push(token_start..p.len());
+        }
+        let mut start = 0;
+        let mut i = 0;
+        while i < tokens.len() {
+            let token = tokens[i].clone();
+            if self.measure(p[start..token.end].trim_end(), font, size) <= width {
+                i += 1;
+            } else if token.start > start {
+                // The word goes on the next line.
+                lines.push(base + start..base + token.start);
+                start = token.start;
+            } else {
+                // A word wider than the line: as many characters as fit (at least one).
+                let cut = self.longest_fit(&p[start..token.end], font, size, width);
+                if start + cut == token.end {
+                    // One character wider than the line by itself: it ends this line.
+                    i += 1;
+                } else {
+                    lines.push(base + start..base + start + cut);
+                    start += cut;
+                    tokens[i].start = start;
+                }
+            }
+        }
+        lines.push(base + start..base + p.len());
+    }
+
+    /// The byte length of the longest prefix of `s` (at least one character) that fits
+    /// in `width`.
+    fn longest_fit(&mut self, s: &str, font: Font, size: f32, width: f32) -> usize {
+        let bounds: Vec<usize> = s.char_indices().map(|(i, _)| i).skip(1).collect();
+        let first = bounds.first().copied().unwrap_or(s.len());
+        // Prefix widths only grow, so binary search the last boundary that fits.
+        let (mut lo, mut hi) = (0, bounds.len());
+        while lo < hi {
+            let mid = usize::midpoint(lo, hi);
+            if self.measure(&s[..bounds[mid]], font, size) <= width {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if lo == 0 { first } else { bounds[lo - 1] }
+    }
+
     /// Terminal cell size at `size`.
     pub fn cell_metrics(&mut self, size: f32) -> CellMetrics {
         if let Some(m) = self.cells.get(&size.to_bits()) {
@@ -197,5 +279,34 @@ mod tests {
         let i = t.measure("iiii", Font::MONO, 13.0);
         let w = t.measure("WWWW", Font::MONO, 13.0);
         assert!((i - w).abs() < 0.01, "monospace");
+    }
+
+    #[test]
+    fn wraps_at_line_breaks_then_between_words() {
+        let mut t = TextSystem::bundled_only();
+        let lines = |t: &mut TextSystem, s: &str, w: f32| -> Vec<String> {
+            t.wrap(s, Font::Ui, 13.0, w)
+                .into_iter()
+                .map(|r| s[r].to_owned())
+                .collect()
+        };
+        assert_eq!(lines(&mut t, "one\n\ntwo", 500.0), ["one", "", "two"]);
+        assert_eq!(lines(&mut t, "", 500.0), [""]);
+        let three = t.measure("aaa bbb", Font::Ui, 13.0) + 1.0;
+        assert_eq!(
+            lines(&mut t, "aaa bbb ccc ddd", three),
+            ["aaa bbb ", "ccc ddd"],
+            "the space stays on the line before"
+        );
+        let narrow = t.measure("wwww", Font::Ui, 13.0) + 0.5;
+        assert_eq!(
+            lines(&mut t, "wwwwwwwwww x", narrow),
+            ["wwww", "wwww", "ww x"],
+            "a long word breaks between characters"
+        );
+        // Ranges of one paragraph touch; a `\n` sits between paragraphs.
+        let r = t.wrap("aaa bbb ccc\nd", Font::Ui, 13.0, three);
+        assert_eq!((r[0].end, r[1].start, r[1].end, r[2].start), (8, 8, 11, 12));
+        assert_eq!(lines(&mut t, "wide", 0.0), ["w", "i", "d", "e"]);
     }
 }

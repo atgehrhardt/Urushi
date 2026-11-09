@@ -25,7 +25,9 @@ mkdir -p build && touch build/.metadata_never_index
 PROFILE_DIR="$PROFILE"; [[ "$PROFILE" == "dev" ]] && PROFILE_DIR=debug
 cp "target/aarch64-linux-android/$PROFILE_DIR/liburushi.so" "$OUT/lib/arm64-v8a/"
 "$BIN/llvm-strip" "$OUT/lib/arm64-v8a/liburushi.so"
-"$TOOLS/aapt2" link -o "$OUT/unsigned.apk" --manifest apps/android/AndroidManifest.xml -I "$PLATFORM/android.jar"
+# The launcher icon (apps/android/res, from scripts/render-icons.swift).
+"$TOOLS/aapt2" compile --dir apps/android/res -o "$OUT/res.zip"
+"$TOOLS/aapt2" link -o "$OUT/unsigned.apk" --manifest apps/android/AndroidManifest.xml -I "$PLATFORM/android.jar" "$OUT/res.zip"
 (cd "$OUT" && zip -q -r unsigned.apk lib)
 "$TOOLS/zipalign" -f -p 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
 KEY="build/android-debug.keystore"
@@ -34,5 +36,5 @@ if [[ ! -f "$KEY" ]]; then
     -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Urushi Debug" >/dev/null 2>&1
 fi
 "$TOOLS/apksigner" sign --ks "$KEY" --ks-pass pass:android --key-pass pass:android --out "$OUT/urushi.apk" "$OUT/aligned.apk"
-rm -f "$OUT/unsigned.apk" "$OUT/aligned.apk"
+rm -f "$OUT/unsigned.apk" "$OUT/aligned.apk" "$OUT/res.zip"
 echo "built $OUT/urushi.apk"

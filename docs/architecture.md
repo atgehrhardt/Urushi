@@ -4,8 +4,9 @@
 
 Urushi is a **graphical application that contains terminals**. The GUI has:
 
-- a sidebar of **Projects → Threads**
-- a tab bar
+- a sidebar of **Projects → Threads** (projects group threads from any repo), and a **Repos** tab
+- a tab bar, and a status bar under the terminals (branch, and the running agent's plan usage)
+- a **Tasks** panel: kanban boards that slide out over the terminals
 - draggable split dividers
 - buttons, menus, modal dialogs and a settings window
 
@@ -24,10 +25,13 @@ The multiplexer is **invisible infrastructure**. It exists so terminal sessions 
         │  versioned protobuf frames (docs/protocol.md)
         │  Unix socket (macOS/Linux) | named pipe (Windows) | TCP on tailnet IP (remote)
  urushid (Rust; macOS/Linux/Windows) ← single source of truth
-   workspace model   Project → Thread → Tab → Layout → Pane
+   workspace model   Repo → Thread → Tab → Layout → Pane; Project groups Threads; Boards of Tasks
    mux               per-pane Session actor: PTY ⇄ VT emulator → damage → diffs
    git               worktree + branch lifecycle via the `git` CLI
-   store             JSON document (ADR 0008): projects, threads, layouts, settings
+   agents            finds installed agent CLIs; tabs type their command into a shell (ADR 0009)
+   usage             which agent runs in a pane, and its plan usage (ADR 0011)
+   store             JSON document (ADR 0008): repos, projects, threads, layouts, boards, settings
+   restore           per-pane restore points: output, directory, agent conversation or running program (ADR 0013)
    remote            Tailscale provider (status/whois) + tailnet listener
 ```
 
@@ -58,11 +62,13 @@ urushi-cli ─► urushi-client
 
 | Concept | Meaning |
 |---|---|
-| **Project** | A git repository the user added. |
-| **Thread** | One unit of agent work. **Always** owns exactly one git worktree and its primary branch `urushi/<slug>-<short-id>`. |
+| **Repo** | A git repository the user added. (`Project` on the v1 wire, ADR 0010.) |
+| **Project** | A user-made group of threads, from any repos. Only organization: it never touches git. (`Folder` on the wire.) |
+| **Thread** | One unit of agent work. **Always** owns exactly one git worktree and its primary branch (named by the user, or `urushi/<slug>-<short-id>`). |
 | **Tab** | A layout tree of panes inside a thread. |
 | **Layout** | An n-ary tree. Leaves are panes. Splits have an axis and child ratios that sum to 1. |
-| **Pane** | One terminal session. Its shell starts in the thread's worktree, with `URUSHI_THREAD_ID` and `URUSHI_WORKTREE` set in its environment. |
+| **Board** | A kanban board of **tasks** in columns (To do, In progress, Done). A task has a checklist of **subtasks**, and a task or subtask can name the thread started for it (ADR 0012). Only organization: it never touches git or terminals. |
+| **Pane** | One terminal session. Its shell starts in the thread's worktree, with `URUSHI_THREAD_ID` and `URUSHI_WORKTREE` set in its environment. A tab opened for an agent (Claude, Codex, Cursor) is the same, with the agent's command typed into the shell. |
 
 The pure model lives in `urushi-core`. The daemon persists it and applies changes.
 
@@ -78,9 +84,9 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
 
 - **Create** (all-or-nothing):
   1. Snapshot the existing branches.
-  2. `git worktree add -b <branch> <data>/worktrees/<project>/<thread> <base>`
+  2. `git worktree add -b <branch> <data>/worktrees/<repo>/<thread> <base>`
   3. Persist the thread.
-  4. Spawn the first tab.
+  4. Spawn the first tab, unless the client asked for none (the GUI then shows the agent launcher).
 
   If any step fails, everything is rolled back.
 - **Ownership:** a thread owns its primary branch, plus branches that did not exist at creation and were checked out in its worktree (read from the worktree's own HEAD reflog). It never owns the base branch, the default branch, branches that existed before it, or branches checked out in other worktrees.
@@ -109,5 +115,5 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
 
 ## Dependencies on external programs
 
-- `git` and `tailscale` are run as separate processes, never linked.
+- `git` and `tailscale` are run as separate processes, never linked. So are `ps` (which agent runs in a pane), `curl` (Claude's usage endpoint) and, on macOS, `security` (Claude's keychain sign-in); see ADR 0011.
 - Their absence is reported in the UI with a clear explanation.

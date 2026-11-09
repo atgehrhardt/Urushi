@@ -15,7 +15,10 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{BranchName, BranchPrefix, NamingError, ProjectId, Slug, TabId, ThreadId, Timestamp};
+use crate::{
+    BranchName, BranchPrefix, NamingError, ProjectId, RepoId, Slug, Status, TabId, ThreadId,
+    Timestamp,
+};
 
 /// Where a thread is in its lifecycle.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,8 +53,10 @@ pub struct ThreadStateError {
 pub struct NewThread {
     /// Id for the new thread.
     pub id: ThreadId,
-    /// The project it belongs to.
-    pub project: ProjectId,
+    /// The repo it is a worktree of.
+    pub repo: RepoId,
+    /// The project to file it under, if any.
+    pub project: Option<ProjectId>,
     /// Title entered by the user.
     pub title: String,
     /// Where the worktree will be created.
@@ -62,6 +67,9 @@ pub struct NewThread {
     pub base_commit: String,
     /// Creation time.
     pub created_at: Timestamp,
+    /// The branch to create, if the user named one. `None` generates
+    /// `<prefix><slug>-<short id>`.
+    pub branch: Option<BranchName>,
 }
 
 /// A thread. It owns one worktree and the tabs shown for it.
@@ -69,8 +77,19 @@ pub struct NewThread {
 pub struct Thread {
     /// Identity.
     pub id: ThreadId,
-    /// The project it belongs to.
-    pub project: ProjectId,
+    /// The repo it is a worktree of. (Stored as `project` before repos were renamed.)
+    #[serde(alias = "project")]
+    pub repo: RepoId,
+    /// The project it is filed under. `None`: ungrouped. Stored as `folder`, since the
+    /// old name `project` now belongs to `repo`.
+    #[serde(rename = "folder", default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<ProjectId>,
+    /// Pinned threads are listed first within their group.
+    #[serde(default)]
+    pub pinned: bool,
+    /// A user-chosen status. Threads with a status are grouped under it in the sidebar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<Status>,
     /// Display title.
     pub title: String,
     /// Slug made from the title when the thread was created. Used in the branch name.
@@ -92,14 +111,20 @@ pub struct Thread {
 }
 
 impl Thread {
-    /// A new thread in the `Creating` state. Its primary branch is
-    /// `<prefix><slug>-<short id>`.
+    /// A new thread in the `Creating` state. Its primary branch is the one the user named,
+    /// or `<prefix><slug>-<short id>`.
     pub fn new(spec: NewThread, prefix: &BranchPrefix) -> Result<Self, NamingError> {
         let slug = Slug::from_title(&spec.title);
-        let primary_branch = BranchName::for_thread(prefix, &slug, spec.id)?;
+        let primary_branch = match spec.branch {
+            Some(branch) => branch,
+            None => BranchName::for_thread(prefix, &slug, spec.id)?,
+        };
         Ok(Self {
             id: spec.id,
+            repo: spec.repo,
             project: spec.project,
+            pinned: false,
+            status: None,
             title: spec.title,
             slug,
             worktree_path: spec.worktree_path,
@@ -168,20 +193,53 @@ impl Thread {
 mod tests {
     use super::*;
 
+    fn thread_spec() -> NewThread {
+        NewThread {
+            id: ThreadId::from_u128(0xabcd_1234),
+            repo: RepoId::from_u128(1),
+            project: None,
+            title: "Refactor auth".into(),
+            worktree_path: PathBuf::from("/data/worktrees/p/t"),
+            base_ref: "main".into(),
+            base_commit: "0123abcd".into(),
+            created_at: Timestamp::from_unix_millis(0),
+            branch: None,
+        }
+    }
+
     fn thread() -> Thread {
-        Thread::new(
-            NewThread {
-                id: ThreadId::from_u128(0xabcd_1234),
-                project: ProjectId::from_u128(1),
-                title: "Refactor auth".into(),
-                worktree_path: PathBuf::from("/data/worktrees/p/t"),
-                base_ref: "main".into(),
-                base_commit: "0123abcd".into(),
-                created_at: Timestamp::from_unix_millis(0),
-            },
-            &BranchPrefix::default(),
-        )
-        .unwrap()
+        Thread::new(thread_spec(), &BranchPrefix::default()).unwrap()
+    }
+
+    #[test]
+    fn a_named_branch_is_used_as_is() {
+        let spec = NewThread {
+            branch: Some(BranchName::new("Primary").unwrap()),
+            ..thread_spec()
+        };
+        let t = Thread::new(spec, &BranchPrefix::default()).unwrap();
+        assert_eq!(t.primary_branch.as_str(), "Primary");
+        assert_eq!(t.slug.as_str(), "refactor-auth");
+    }
+
+    #[test]
+    fn threads_saved_before_the_repo_rename_still_load() {
+        let mut json = serde_json::to_value(thread()).unwrap();
+        let map = json.as_object_mut().unwrap();
+        let repo = map.remove("repo").unwrap();
+        map.insert("project".into(), repo);
+        assert!(!map.contains_key("folder") && !map.contains_key("status"));
+        let loaded: Thread = serde_json::from_value(json).unwrap();
+        assert_eq!(loaded.repo, RepoId::from_u128(1));
+        assert_eq!(loaded.project, None);
+        assert!(!loaded.pinned);
+
+        let mut filed = thread();
+        filed.project = Some(ProjectId::from_u128(7));
+        filed.status = Some(Status::new("Blocked").unwrap());
+        let json = serde_json::to_string(&filed).unwrap();
+        assert!(json.contains("\"folder\""), "{json}");
+        assert_eq!(serde_json::from_str::<Thread>(&json).unwrap(), filed);
     }
 
     #[test]

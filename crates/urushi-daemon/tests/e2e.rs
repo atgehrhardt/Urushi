@@ -26,12 +26,12 @@ async fn thread_lifecycle_with_worktree_and_safe_deletion() {
 
     // Projects are deduplicated by repository root.
     let project = client
-        .add_project(fixture.repo.to_str().unwrap(), "")
+        .add_repo(fixture.repo.to_str().unwrap(), "")
         .await
         .unwrap();
     assert_eq!(project.name, "repo");
     let again = client
-        .add_project(fixture.repo.join(".").to_str().unwrap(), "")
+        .add_repo(fixture.repo.join(".").to_str().unwrap(), "")
         .await
         .unwrap();
     assert_eq!(again.id, project.id);
@@ -143,7 +143,7 @@ async fn remote_deletion_can_be_disabled() {
         .unwrap();
 
     let project = client
-        .add_project(fixture.repo.to_str().unwrap(), "")
+        .add_repo(fixture.repo.to_str().unwrap(), "")
         .await
         .unwrap();
     let thread = client
@@ -174,7 +174,7 @@ async fn sessions_survive_client_disconnect_and_stream_with_acks() {
     let daemon = Daemon::start(&home.path().join("home")).await;
     let (client, _events) = daemon.connect().await;
     let project = client
-        .add_project(fixture.repo.to_str().unwrap(), "")
+        .add_repo(fixture.repo.to_str().unwrap(), "")
         .await
         .unwrap();
     let thread = client.create_thread(&project.id, "t", "").await.unwrap();
@@ -227,7 +227,7 @@ async fn exited_processes_close_their_pane() {
     let daemon = Daemon::start(&home.path().join("home")).await;
     let (client, mut events) = daemon.connect().await;
     let project = client
-        .add_project(fixture.repo.to_str().unwrap(), "")
+        .add_repo(fixture.repo.to_str().unwrap(), "")
         .await
         .unwrap();
     let thread = client.create_thread(&project.id, "t", "").await.unwrap();
@@ -282,7 +282,7 @@ async fn restart_restores_layout_and_respawns_shells() {
     let daemon = Daemon::start(&daemon_home).await;
     let (client, _events) = daemon.connect().await;
     let project = client
-        .add_project(fixture.repo.to_str().unwrap(), "")
+        .add_repo(fixture.repo.to_str().unwrap(), "")
         .await
         .unwrap();
     let thread = client.create_thread(&project.id, "t", "").await.unwrap();
@@ -338,18 +338,18 @@ async fn guard_rails() {
 
     // Not a repository.
     let err = client
-        .add_project(home.path().to_str().unwrap(), "")
+        .add_repo(home.path().to_str().unwrap(), "")
         .await
         .unwrap_err();
     assert_eq!(err.code(), Some(v1::ErrorCode::GitFailed));
 
     // A project with threads can't be removed.
     let project = client
-        .add_project(fixture.repo.to_str().unwrap(), "")
+        .add_repo(fixture.repo.to_str().unwrap(), "")
         .await
         .unwrap();
     client.create_thread(&project.id, "t", "").await.unwrap();
-    let err = client.remove_project(&project.id).await.unwrap_err();
+    let err = client.remove_repo(&project.id).await.unwrap_err();
     assert_eq!(err.code(), Some(v1::ErrorCode::FailedPrecondition));
 
     // Unknown base refs fail cleanly and leave nothing behind.
@@ -421,6 +421,10 @@ async fn tailnet_serving_admits_the_owner() {
     };
     let (remote_client, _events) = Client::connect(&remote, "phone").await.unwrap();
     assert!(remote_client.list_workspace(false).await.is_ok());
+    // Even the owner can't stop the daemon over the tailnet.
+    let err = remote_client.shutdown_daemon().await.unwrap_err();
+    assert_eq!(err.code(), Some(v1::ErrorCode::PermissionDenied));
+    assert!(client.list_workspace(false).await.is_ok(), "still running");
 
     let off = client.set_tailnet_serve(false).await.unwrap();
     assert!(!off.serving);

@@ -2,10 +2,13 @@
 //! [`connection::serve`], which translates frames into calls on the service.
 
 pub(crate) mod attach;
+mod boards;
 pub(crate) mod connection;
 pub(crate) mod handlers;
+mod organize;
 pub(crate) mod remote;
 pub(crate) mod screen;
+mod usage;
 
 use std::sync::OnceLock;
 

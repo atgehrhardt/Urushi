@@ -80,6 +80,11 @@ fn all_request_kinds() {
             project_id: "x".into(),
             title: "t".into(),
             base_ref: "main".into(),
+            branch: "Primary".into(),
+            skip_initial_tab: true,
+            folder_id: "f".into(),
+            task_id: "task".into(),
+            subtask_id: "sub".into(),
         }),
         B::RenameThread(v1::RenameThreadRequest {
             thread_id: "t".into(),
@@ -95,6 +100,7 @@ fn all_request_kinds() {
         B::CreateTab(v1::CreateTabRequest {
             thread_id: "t".into(),
             title: String::new(),
+            agent: v1::Agent::Claude.into(),
         }),
         B::CloseTab(v1::CloseTabRequest { tab_id: "t".into() }),
         B::RenameTab(v1::RenameTabRequest {
@@ -145,6 +151,8 @@ fn all_request_kinds() {
             patch: Some(v1::SettingsPatch {
                 delete_remote_branches: Some(false),
                 set_allowed_logins: true,
+                claude_skip_permissions: Some(true),
+                codex_skip_permissions: Some(false),
                 ..Default::default()
             }),
         }),
@@ -156,6 +164,24 @@ fn all_request_kinds() {
         B::SetTailnetServe(v1::SetTailnetServeRequest { serve: true }),
         B::ReadScreenText(v1::ReadScreenTextRequest {
             pane_id: "p".into(),
+        }),
+        B::ListAgents(v1::ListAgentsRequest {}),
+        B::UpdateThread(v1::UpdateThreadRequest {
+            thread_id: "t".into(),
+            title: None,
+            pinned: Some(true),
+            status: Some(String::new()),
+            folder_id: Some("f".into()),
+        }),
+        B::CreateFolder(v1::CreateFolderRequest {
+            name: "Billing".into(),
+        }),
+        B::RenameFolder(v1::RenameFolderRequest {
+            folder_id: "f".into(),
+            name: "Billing v2".into(),
+        }),
+        B::DeleteFolder(v1::DeleteFolderRequest {
+            folder_id: "f".into(),
         }),
     ];
     for (i, body) in bodies.into_iter().enumerate() {
@@ -203,7 +229,13 @@ fn all_response_kinds() {
             pane_id: "p".into(),
         }),
         O::Screen(screen()),
-        O::Settings(v1::Settings::default()),
+        O::Settings(v1::Settings {
+            agents: Some(v1::AgentSettings {
+                cursor_skip_permissions: true,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
         O::TailnetStatus(v1::TailnetStatus {
             running: true,
             peers: vec![v1::TailnetPeer::default()],
@@ -211,6 +243,27 @@ fn all_response_kinds() {
         }),
         O::ScreenText(v1::ScreenText {
             lines: vec!["$ ls".into()],
+        }),
+        O::Folder(v1::Folder {
+            id: "f".into(),
+            name: "Billing".into(),
+            created_at_ms: 1,
+        }),
+        O::Workspace(v1::Workspace {
+            folders: vec![v1::Folder::default()],
+            threads: vec![v1::Thread {
+                folder_id: "f".into(),
+                pinned: true,
+                status: "Blocked".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        O::Agents(v1::Agents {
+            agents: vec![v1::InstalledAgent {
+                agent: v1::Agent::Codex.into(),
+                path: "/usr/local/bin/codex".into(),
+            }],
         }),
     ];
     for (i, outcome) in outcomes.into_iter().enumerate() {
@@ -245,6 +298,26 @@ fn all_event_and_notification_kinds() {
         notification::Body::Input(v1::Input {
             pane_id: "p".into(),
             kind: Some(v1::input::Kind::Paste("multi\nline".into())),
+        }),
+        notification::Body::Input(v1::Input {
+            pane_id: "p".into(),
+            kind: Some(v1::input::Kind::Mouse(v1::MouseInput {
+                button: v1::MouseButton::Left.into(),
+                action: v1::MouseAction::Release.into(),
+                col: 3,
+                row: 4,
+                modifiers: 1,
+            })),
+        }),
+        notification::Body::Input(v1::Input {
+            pane_id: "p".into(),
+            kind: Some(v1::input::Kind::Wheel(v1::WheelInput {
+                up: true,
+                lines: 3,
+                col: 1,
+                row: 2,
+                modifiers: 0,
+            })),
         }),
         notification::Body::AckScreen(v1::AckScreen {
             pane_id: "p".into(),

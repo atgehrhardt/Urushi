@@ -1,0 +1,207 @@
+//! The new-thread dialog: repo and start-from branch are chosen from lists (the daemon
+//! reports the repo's branches), title and branch name are typed. The branch name
+//! follows the title until edited (see `update/intake.rs`).
+
+use std::collections::HashMap;
+
+use urushi_ui::widgets::{ButtonKind, SelectOption, button, modal, select_button, select_options};
+use urushi_ui::{Key, Length, Node, Theme, key};
+
+use super::dialogs::{cancel, field, hint, label};
+use crate::msg::Msg;
+use crate::organize::Select;
+use crate::state::{AppState, Dialog, Field};
+
+/// Rows a selector shows before it scrolls.
+const VISIBLE_OPTIONS: usize = 6;
+
+pub(super) fn view(
+    state: &AppState,
+    theme: &Theme,
+    scroll: &HashMap<Key, f32>,
+) -> Option<Node<Msg>> {
+    let Some(Dialog::NewThread {
+        repo,
+        project,
+        title,
+        branch,
+        base,
+        open,
+        task,
+        ..
+    }) = &state.dialog
+    else {
+        return None;
+    };
+    let repo_name = state
+        .workspace
+        .repo(repo)
+        .map_or("Choose a repo", |r| r.name.as_str());
+    let for_task = task.as_ref().and_then(|link| {
+        let (_, _, t) = state.workspace.task(&link.task)?;
+        Some(match &link.subtask {
+            Some(s) => format!(
+                "For subtask “{}” of “{}”",
+                t.subtasks.iter().find(|x| x.id == *s)?.title,
+                t.title
+            ),
+            None => format!("For task “{}”", t.title),
+        })
+    });
+    let mut body = Node::column()
+        .width(Length::Fill(1.0))
+        .gap(8.0)
+        .children(for_task.map(|text| hint(theme, &text)))
+        .child(label(theme, "Repo"))
+        .children(repo_selector(state, theme, scroll, repo, repo_name, *open))
+        .child(label(theme, "Title"))
+        .child(field(
+            state,
+            theme,
+            title,
+            Field::ThreadTitle,
+            "What is this thread for?",
+        ))
+        .child(label(theme, "Branch"))
+        .child(field(
+            state,
+            theme,
+            branch,
+            Field::ThreadBranch,
+            "Generated from the title",
+        ))
+        .child(label(theme, "Start from"))
+        .children(base_selector(
+            state,
+            theme,
+            scroll,
+            repo,
+            base.as_deref(),
+            *open,
+        ));
+    body = body.child(hint(
+        theme,
+        "A new branch off “Start from”, in its own worktree, so agents never collide.",
+    ));
+    let heading = match project.as_ref().and_then(|p| state.workspace.project(p)) {
+        Some(p) => format!("New thread in {}", p.name),
+        None => "New thread".to_owned(),
+    };
+    Some(modal(
+        theme,
+        &heading,
+        480.0,
+        body,
+        vec![
+            cancel(theme),
+            button(theme, "Create thread", ButtonKind::Primary, Msg::Submit),
+        ],
+        Some(Msg::CloseDialog),
+    ))
+}
+
+fn options_list(
+    theme: &Theme,
+    scroll: &HashMap<Key, f32>,
+    name: &str,
+    options: Vec<SelectOption<Msg>>,
+) -> Node<Msg> {
+    let list_key = key(&["select-list", name]);
+    select_options(
+        theme,
+        options,
+        (list_key, scroll.get(&list_key).copied().unwrap_or(0.0)),
+        VISIBLE_OPTIONS,
+    )
+}
+
+/// The repo selector, and its options while open.
+fn repo_selector(
+    state: &AppState,
+    theme: &Theme,
+    scroll: &HashMap<Key, f32>,
+    repo: &str,
+    repo_name: &str,
+    open: Option<Select>,
+) -> Vec<Node<Msg>> {
+    let is_open = open == Some(Select::Repo);
+    let mut out = vec![select_button(
+        theme,
+        repo_name,
+        is_open,
+        key(&["select", "repo"]),
+        Msg::ToggleSelect(Select::Repo),
+    )];
+    if is_open {
+        let options = state
+            .workspace
+            .repos()
+            .iter()
+            .map(|r| SelectOption {
+                label: r.name.clone(),
+                selected: r.id == repo,
+                on_pick: Msg::PickRepo(r.id.clone()),
+            })
+            .collect();
+        out.push(options_list(theme, scroll, "repo", options));
+    }
+    out
+}
+
+/// The start-from selector: the repo's current branch (the default), then its other
+/// branches as the daemon reported them.
+fn base_selector(
+    state: &AppState,
+    theme: &Theme,
+    scroll: &HashMap<Key, f32>,
+    repo: &str,
+    base: Option<&str>,
+    open: Option<Select>,
+) -> Vec<Node<Msg>> {
+    let branches = state
+        .branches
+        .as_ref()
+        .filter(|(r, _)| r == repo)
+        .map(|(_, b)| b);
+    let current = branches
+        .map(|b| b.current.as_str())
+        .filter(|c| !c.is_empty());
+    let default_label =
+        current.map_or_else(|| "Repo default".to_owned(), |c| format!("{c} (current)"));
+    let is_open = open == Some(Select::Base);
+    let mut out = vec![select_button(
+        theme,
+        base.unwrap_or(&default_label),
+        is_open,
+        key(&["select", "base"]),
+        Msg::ToggleSelect(Select::Base),
+    )];
+    if !is_open {
+        return out;
+    }
+    let mut options = vec![SelectOption {
+        label: default_label.clone(),
+        selected: base.is_none(),
+        on_pick: Msg::PickBase(None),
+    }];
+    match branches {
+        // The current branch is the default choice above.
+        Some(b) => options.extend(
+            b.branches
+                .iter()
+                .filter(|n| Some(n.as_str()) != current)
+                .map(|name| SelectOption {
+                    label: name.clone(),
+                    selected: base == Some(name.as_str()),
+                    on_pick: Msg::PickBase(Some(name.clone())),
+                }),
+        ),
+        None => options.push(SelectOption {
+            label: "Loading branches…".to_owned(),
+            selected: false,
+            on_pick: Msg::ToggleSelect(Select::Base),
+        }),
+    }
+    out.push(options_list(theme, scroll, "base", options));
+    out
+}

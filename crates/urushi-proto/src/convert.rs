@@ -9,8 +9,9 @@ use std::str::FromStr;
 use thiserror::Error;
 use urushi_core::layout::{Child, Node};
 use urushi_core::{
-    Axis, BranchName, BranchPrefix, Direction, Layout, PaneId, Project, ProjectSettingsOverrides,
-    Settings, Slug, Tab, TabId, TailnetSettings, Thread, ThreadState, Timestamp,
+    Agent, AgentSettings, Axis, BranchName, BranchPrefix, Direction, Layout, PaneId, Project, Repo,
+    RepoSettingsOverrides, Settings, Slug, Status, Tab, TabId, TailnetSettings, Thread,
+    ThreadState, Timestamp,
 };
 
 use crate::v1;
@@ -177,31 +178,34 @@ pub fn tab_from_proto(tab: &v1::Tab) -> Result<Tab, ConvertError> {
     .map_err(|e| ConvertError::new("tab.focused_pane_id", e))
 }
 
-// ---- projects & threads -----------------------------------------------------------
+// ---- repos, projects & threads -----------------------------------------------------
+//
+// v1 names are frozen (ADR 0010): wire `Project` = core `Repo`, wire `Folder` = core
+// `Project`.
 
-fn millis_to_proto(t: Timestamp) -> i64 {
+pub(crate) fn millis_to_proto(t: Timestamp) -> i64 {
     i64::try_from(t.unix_millis()).unwrap_or(i64::MAX)
 }
 
-fn millis_from_proto(ms: i64) -> Timestamp {
+pub(crate) fn millis_from_proto(ms: i64) -> Timestamp {
     Timestamp::from_unix_millis(u64::try_from(ms).unwrap_or(0))
 }
 
-/// Core project → wire.
-pub fn project_to_proto(p: &Project) -> v1::Project {
+/// Core repo → wire (`v1::Project`).
+pub fn repo_to_proto(p: &Repo) -> v1::Project {
     v1::Project {
         id: p.id.to_string(),
         name: p.name.clone(),
         repo_root: p.repo_root.to_string_lossy().into_owned(),
         default_base: p.default_base.clone().unwrap_or_default(),
-        settings: Some(project_settings_to_proto(&p.settings)),
+        settings: Some(repo_settings_to_proto(&p.settings)),
         added_at_ms: millis_to_proto(p.added_at),
     }
 }
 
-/// Wire project → core.
-pub fn project_from_proto(p: &v1::Project) -> Result<Project, ConvertError> {
-    Ok(Project {
+/// Wire repo (`v1::Project`) → core.
+pub fn repo_from_proto(p: &v1::Project) -> Result<Repo, ConvertError> {
+    Ok(Repo {
         id: parse_id(&p.id, "project.id")?,
         name: p.name.clone(),
         repo_root: PathBuf::from(&p.repo_root),
@@ -209,11 +213,39 @@ pub fn project_from_proto(p: &v1::Project) -> Result<Project, ConvertError> {
         settings: p
             .settings
             .as_ref()
-            .map(project_settings_from_proto)
+            .map(repo_settings_from_proto)
             .transpose()?
             .unwrap_or_default(),
         added_at: millis_from_proto(p.added_at_ms),
     })
+}
+
+/// Core project → wire (`v1::Folder`).
+pub fn project_to_proto(p: &Project) -> v1::Folder {
+    v1::Folder {
+        id: p.id.to_string(),
+        name: p.name.clone(),
+        created_at_ms: millis_to_proto(p.created_at),
+    }
+}
+
+/// Wire project (`v1::Folder`) → core.
+pub fn project_from_proto(f: &v1::Folder) -> Result<Project, ConvertError> {
+    Ok(Project {
+        id: parse_id(&f.id, "folder.id")?,
+        name: f.name.clone(),
+        created_at: millis_from_proto(f.created_at_ms),
+    })
+}
+
+/// A wire status: empty means none.
+pub fn status_from_proto(status: &str) -> Result<Option<Status>, ConvertError> {
+    if status.trim().is_empty() {
+        return Ok(None);
+    }
+    Status::new(status)
+        .map(Some)
+        .map_err(|e| ConvertError::new("status", e))
 }
 
 /// Core thread → wire.
@@ -226,7 +258,7 @@ pub fn thread_to_proto(t: &Thread) -> v1::Thread {
     };
     v1::Thread {
         id: t.id.to_string(),
-        project_id: t.project.to_string(),
+        project_id: t.repo.to_string(),
         title: t.title.clone(),
         slug: t.slug.to_string(),
         worktree_path: t.worktree_path.to_string_lossy().into_owned(),
@@ -237,6 +269,13 @@ pub fn thread_to_proto(t: &Thread) -> v1::Thread {
         state: state.into(),
         failure_reason,
         tab_ids: t.tabs.iter().map(ToString::to_string).collect(),
+        folder_id: t.project.map(|p| p.to_string()).unwrap_or_default(),
+        pinned: t.pinned,
+        status: t
+            .status
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default(),
     }
 }
 
@@ -258,7 +297,12 @@ pub fn thread_from_proto(t: &v1::Thread) -> Result<Thread, ConvertError> {
     };
     Ok(Thread {
         id: parse_id(&t.id, "thread.id")?,
-        project: parse_id(&t.project_id, "thread.project_id")?,
+        repo: parse_id(&t.project_id, "thread.project_id")?,
+        project: non_empty(&t.folder_id)
+            .map(|id| parse_id(&id, "thread.folder_id"))
+            .transpose()?,
+        pinned: t.pinned,
+        status: status_from_proto(&t.status)?,
         title: t.title.clone(),
         slug: Slug::from_title(&t.slug),
         worktree_path: PathBuf::from(&t.worktree_path),
@@ -295,6 +339,11 @@ pub fn settings_to_proto(s: &Settings) -> v1::Settings {
             allowed_logins: s.tailnet.allowed_logins.clone(),
             allow_tagged_nodes: s.tailnet.allow_tagged_nodes,
         }),
+        agents: Some(v1::AgentSettings {
+            claude_skip_permissions: s.agents.skips_permissions(Agent::Claude),
+            codex_skip_permissions: s.agents.skips_permissions(Agent::Codex),
+            cursor_skip_permissions: s.agents.skips_permissions(Agent::Cursor),
+        }),
     }
 }
 
@@ -313,7 +362,38 @@ pub fn settings_from_proto(s: &v1::Settings) -> Result<Settings, ConvertError> {
             allowed_logins: tailnet.allowed_logins,
             allow_tagged_nodes: tailnet.allow_tagged_nodes,
         },
+        agents: agent_settings_from_proto(s.agents.unwrap_or_default()),
     })
+}
+
+fn agent_settings_from_proto(a: v1::AgentSettings) -> AgentSettings {
+    let mut settings = AgentSettings::default();
+    settings.set_skip_permissions(Agent::Claude, a.claude_skip_permissions);
+    settings.set_skip_permissions(Agent::Codex, a.codex_skip_permissions);
+    settings.set_skip_permissions(Agent::Cursor, a.cursor_skip_permissions);
+    settings
+}
+
+// ---- agents -------------------------------------------------------------------------
+
+/// Core agent → wire.
+pub fn agent_to_proto(agent: Agent) -> v1::Agent {
+    match agent {
+        Agent::Claude => v1::Agent::Claude,
+        Agent::Codex => v1::Agent::Codex,
+        Agent::Cursor => v1::Agent::Cursor,
+    }
+}
+
+/// Wire agent → core. `AGENT_UNSPECIFIED` means a plain shell, so it is `None`, and so
+/// is any value from a newer peer that this build doesn't know.
+pub fn agent_from_proto(agent: i32) -> Option<Agent> {
+    match v1::Agent::try_from(agent).ok()? {
+        v1::Agent::Unspecified => None,
+        v1::Agent::Claude => Some(Agent::Claude),
+        v1::Agent::Codex => Some(Agent::Codex),
+        v1::Agent::Cursor => Some(Agent::Cursor),
+    }
 }
 
 /// Validates a wire port number. Zero means the default port.
@@ -324,8 +404,8 @@ pub fn port_from_proto(port: u32) -> Result<u16, ConvertError> {
     u16::try_from(port).map_err(|_| ConvertError::new("port", format!("{port} is out of range")))
 }
 
-/// Core project overrides → wire.
-pub fn project_settings_to_proto(o: &ProjectSettingsOverrides) -> v1::ProjectSettings {
+/// Core repo overrides → wire.
+pub fn repo_settings_to_proto(o: &RepoSettingsOverrides) -> v1::ProjectSettings {
     v1::ProjectSettings {
         delete_remote_branches: o.delete_remote_branches,
         branch_prefix: o.branch_prefix.as_ref().map(|p| p.as_str().to_owned()),
@@ -333,11 +413,11 @@ pub fn project_settings_to_proto(o: &ProjectSettingsOverrides) -> v1::ProjectSet
     }
 }
 
-/// Wire project overrides → core.
-pub fn project_settings_from_proto(
+/// Wire repo overrides → core.
+pub fn repo_settings_from_proto(
     o: &v1::ProjectSettings,
-) -> Result<ProjectSettingsOverrides, ConvertError> {
-    Ok(ProjectSettingsOverrides {
+) -> Result<RepoSettingsOverrides, ConvertError> {
+    Ok(RepoSettingsOverrides {
         delete_remote_branches: o.delete_remote_branches,
         branch_prefix: o
             .branch_prefix
@@ -352,6 +432,9 @@ pub fn project_settings_from_proto(
 fn non_empty(s: &str) -> Option<String> {
     (!s.is_empty()).then(|| s.to_owned())
 }
+
+mod boards;
+pub use boards::{board_from_proto, board_to_proto, subtask_to_proto, task_to_proto};
 
 #[cfg(test)]
 mod tests;

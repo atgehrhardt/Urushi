@@ -4,9 +4,11 @@ syntax = "proto3";
 
 package urushi.v1;
 
+import "urushi/v1/boards.proto";
 import "urushi/v1/remote.proto";
 import "urushi/v1/settings.proto";
 import "urushi/v1/terminal.proto";
+import "urushi/v1/usage.proto";
 import "urushi/v1/workspace.proto";
 
 message Envelope {
@@ -67,6 +69,25 @@ message Request {
     TailnetStatusRequest tailnet_status = 26;
     SetTailnetServeRequest set_tailnet_serve = 27;
     ReadScreenTextRequest read_screen_text = 28;
+    ListAgentsRequest list_agents = 29;
+    UpdateThreadRequest update_thread = 30;
+    CreateFolderRequest create_folder = 31;
+    RenameFolderRequest rename_folder = 32;
+    DeleteFolderRequest delete_folder = 33;
+    ShutdownDaemonRequest shutdown_daemon = 34;
+    // Since 1.5.
+    GetAgentUsageRequest get_agent_usage = 35;
+    CreateBoardRequest create_board = 36;
+    RenameBoardRequest rename_board = 37;
+    DeleteBoardRequest delete_board = 38;
+    CreateTaskRequest create_task = 39;
+    UpdateTaskRequest update_task = 40;
+    MoveTaskRequest move_task = 41;
+    DeleteTaskRequest delete_task = 42;
+    // Since 1.6.
+    CreateSubtaskRequest create_subtask = 43;
+    UpdateSubtaskRequest update_subtask = 44;
+    DeleteSubtaskRequest delete_subtask = 45;
   }
 }
 
@@ -87,6 +108,14 @@ message Response {
     Settings settings = 13;
     TailnetStatus tailnet_status = 14;
     ScreenText screen_text = 15;
+    Agents agents = 16;
+    Folder folder = 17;
+    // Since 1.5.
+    AgentUsage agent_usage = 18;
+    Board board = 19;
+    Task task = 20;
+    // Since 1.6.
+    Subtask subtask = 21;
   }
 }
 
@@ -111,6 +140,12 @@ message Notification {
 
 // An empty successful result.
 message Empty {}
+
+// Stops the daemon (after answering Ok), e.g. to switch to a newly installed version.
+// Every running terminal closes; threads, tabs and layouts are restored with fresh
+// shells by the next daemon. Only local connections may ask (PERMISSION_DENIED over the
+// tailnet). Since protocol 1.4; older daemons are stopped with a signal instead.
+message ShutdownDaemonRequest {}
 
 message Error {
   ErrorCode code = 1;

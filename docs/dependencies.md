@@ -35,6 +35,7 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | `portable-pty` | MIT | mux | PTYs on Unix and Windows ConPTY. Behind the `Pty` trait. |
 | `alacritty_terminal` | Apache-2.0 | mux | VT emulation. Behind the `Emulator` trait (ADR 0001). |
 | `serde_json` | MIT/Apache-2.0 | daemon | Store document (ADR 0008) and the Tailscale CLI's JSON. |
+| `sysinfo` | MIT | daemon | Exact arguments and working directories of pane processes, for restore points (ADR 0013). Reading them ourselves needs `unsafe` FFI on macOS (`KERN_PROCARGS2`) and Windows; `ps` loses argument boundaries. Only the `system` feature; its dependencies (`libc`, `objc2-*`, `windows`, `ntapi`, `memchr`) were already in the tree. |
 | `tempfile` *(dev)* | MIT/Apache-2.0 | tests | Temp dirs for git and daemon tests. |
 | `winit` | Apache-2.0 | app | Windowing and input on all five platforms. |
 | `wgpu` | MIT/Apache-2.0 | render | One GPU API over Metal, Vulkan, DX12 and GLES. |
@@ -59,6 +60,7 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | `buf` | Apache-2.0 | Protobuf lint and breaking-change checks |
 | `XcodeGen` | MIT | iOS project generation (no committed `.xcodeproj`) |
 | `cargo-ndk` | MIT/Apache-2.0 | Android builds |
+| `swift` + AppKit, `iconutil` | Apple system tools | `scripts/render-icons.swift` draws the app icon SVG (AppKit reads SVG on macOS 13+) and builds the `.icns`. Chosen over `rsvg-convert` (librsvg is LGPL) and `resvg` (MPL-2.0). The outputs are committed, so builds don't run it. |
 
 ## Assets
 
@@ -66,6 +68,7 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 |---|---|---|
 | JetBrains Mono (Regular, Bold, Italic, Bold Italic) | OFL-1.1 (`assets/fonts/JetBrainsMono-OFL.txt`) | Terminal font |
 | Inter (Regular, Medium, SemiBold) | OFL-1.1 (`assets/fonts/Inter-OFL.txt`) | UI font |
+| App icon and logo (`assets/icon/`) | Ours | Designed for Urushi; see `docs/platforms.md`. |
 
 ## Written in-house instead of depending on a crate
 

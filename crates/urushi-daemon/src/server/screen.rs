@@ -2,7 +2,9 @@
 
 use urushi_core::PaneId;
 use urushi_mux::screen::{Color, CursorShape, ScreenFrame};
-use urushi_mux::{Input, Key, KeyEvent, Modifiers};
+use urushi_mux::{
+    Input, Key, KeyEvent, Modifiers, MouseAction, MouseButton, MouseEvent, WheelEvent,
+};
 use urushi_proto::convert;
 use urushi_proto::v1;
 
@@ -47,7 +49,7 @@ pub(crate) fn to_proto(pane: PaneId, seq: u64, frame: &ScreenFrame) -> v1::Scree
         modes: Some(v1::TerminalModes {
             app_cursor: frame.modes.app_cursor,
             bracketed_paste: frame.modes.bracketed_paste,
-            mouse_reporting: frame.modes.mouse_reporting,
+            mouse_reporting: frame.modes.mouse_reporting(),
             alt_screen: frame.modes.alt_screen,
         }),
         title: frame.title.clone(),
@@ -80,8 +82,44 @@ pub(crate) fn input_from_proto(input: v1::Input) -> Option<(PaneId, Input)> {
             key: key_from_proto(&key)?,
             modifiers: Modifiers::from_bits(key.modifiers),
         }),
+        v1::input::Kind::Mouse(m) => Input::Mouse(mouse_from_proto(&m)?),
+        v1::input::Kind::Wheel(w) => Input::Wheel(WheelEvent {
+            up: w.up,
+            lines: u16::try_from(w.lines.clamp(1, MAX_WHEEL_LINES)).ok()?,
+            col: cell(w.col),
+            row: cell(w.row),
+            modifiers: Modifiers::from_bits(w.modifiers),
+        }),
     };
     Some((pane, converted))
+}
+
+/// More lines per wheel event than this is a client bug, not a fast scroll.
+const MAX_WHEEL_LINES: u32 = 100;
+
+fn cell(v: u32) -> u16 {
+    u16::try_from(v).unwrap_or(u16::MAX)
+}
+
+fn mouse_from_proto(m: &v1::MouseInput) -> Option<MouseEvent> {
+    Some(MouseEvent {
+        button: match v1::MouseButton::try_from(m.button).ok()? {
+            v1::MouseButton::Left => MouseButton::Left,
+            v1::MouseButton::Middle => MouseButton::Middle,
+            v1::MouseButton::Right => MouseButton::Right,
+            v1::MouseButton::None => MouseButton::None,
+            v1::MouseButton::Unspecified => return None,
+        },
+        action: match v1::MouseAction::try_from(m.action).ok()? {
+            v1::MouseAction::Press => MouseAction::Press,
+            v1::MouseAction::Release => MouseAction::Release,
+            v1::MouseAction::Move => MouseAction::Move,
+            v1::MouseAction::Unspecified => return None,
+        },
+        col: cell(m.col),
+        row: cell(m.row),
+        modifiers: Modifiers::from_bits(m.modifiers),
+    })
 }
 
 fn key_from_proto(key: &v1::KeyInput) -> Option<Key> {

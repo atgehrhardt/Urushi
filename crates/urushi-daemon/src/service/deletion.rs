@@ -83,9 +83,9 @@ impl Service {
     pub async fn plan_thread_deletion(&self, thread: ThreadId) -> ServiceResult<DeletionPlan> {
         let inputs = self.read(|s| {
             let record = s.thread(thread)?.clone();
-            let repo = s.project(record.thread.project)?.repo_root.clone();
+            let repo = s.repo(record.thread.repo)?.repo_root.clone();
             let delete_remote = s
-                .effective_settings(record.thread.project)
+                .effective_settings(record.thread.repo)
                 .delete_remote_branches;
             let running = {
                 let sessions = super::lock(&self.sessions);
@@ -119,11 +119,7 @@ impl Service {
                 "the thread changed since the deletion warning was shown; review it again".into(),
             ));
         }
-        let repo = self.read(|s| {
-            Ok(s.project(s.thread(thread)?.thread.project)?
-                .repo_root
-                .clone())
-        })?;
+        let repo = self.read(|s| Ok(s.repo(s.thread(thread)?.thread.repo)?.repo_root.clone()))?;
 
         let panes = self.mutate(|state| {
             state
@@ -150,6 +146,10 @@ impl Service {
         self.mutate(|state| {
             if failures.is_empty() {
                 state.threads.retain(|r| r.thread.id != thread);
+                // Tasks started as this thread can be started again.
+                for board in &mut state.boards {
+                    board.unlink_thread(thread);
+                }
             } else {
                 let reason = failures.join("; ");
                 state

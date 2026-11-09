@@ -33,6 +33,22 @@ const APP_TITLE: &str = if cfg!(debug_assertions) {
 const LINES_PER_NOTCH: f32 = 3.0;
 /// Windows narrower than this (logical pixels) use the one-column phone layout.
 const COMPACT_WIDTH: f32 = 700.0;
+/// How far (logical pixels) a press must move before it becomes a drag.
+const DRAG_THRESHOLD: f32 = 5.0;
+/// Longest gap between clicks of a double or triple click.
+const MULTI_CLICK: std::time::Duration = std::time::Duration::from_millis(450);
+/// How far apart (logical pixels) clicks of a double or triple click may be.
+const MULTI_CLICK_SLOP: f32 = 4.0;
+
+/// A left press outside the terminal area that may turn into a drag.
+pub(crate) struct Press {
+    /// Where it started.
+    at: Point,
+    /// What to send if it becomes a drag (the source's `on_drag`).
+    drag: Option<Msg>,
+    /// Whether it already became one.
+    dragging: bool,
+}
 
 pub(crate) struct Runner {
     pub(crate) state: AppState,
@@ -47,10 +63,19 @@ pub(crate) struct Runner {
     pub(crate) pointer: Option<Point>,
     pub(crate) mods: Mods,
     pub(crate) pressed_in_area: bool,
+    pub(crate) press: Option<Press>,
     pub(crate) wheel_remainder: f32,
     pub(crate) scroll: HashMap<Key, f32>,
     pub(crate) clipboard: Clipboard,
     pub(crate) safe_area: Option<crate::config::SafeAreaFn>,
+    /// When the board panel's slide last advanced (`None`: not sliding).
+    pub(crate) animated_at: Option<std::time::Instant>,
+    /// The text field a press started in, while the button is held (drag selects).
+    pub(crate) field_press: Option<Key>,
+    /// The last left click: when, where, and how many quick clicks it made.
+    pub(crate) last_click: Option<(std::time::Instant, Point, u8)>,
+    /// Where the selection is remembered across launches, and what was last saved.
+    pub(crate) ui_state: (Option<std::path::PathBuf>, crate::ui_state::UiState),
 }
 
 impl Runner {
@@ -82,9 +107,31 @@ impl Runner {
                     self.dispatch(Msg::FolderPicked(picked));
                 }
                 Effect::Reconnect(target) => self.backend.connect(target),
+                Effect::StopDaemon => {
+                    if let crate::config::ConnectTarget::Local(home) = &self.state.target {
+                        self.backend.stop_daemon(home.clone());
+                    }
+                }
             }
         }
+        self.remember_selection();
         self.request_redraw();
+    }
+
+    /// Saves the selected thread and tabs when they change, for the next launch.
+    fn remember_selection(&mut self) {
+        // The file is the local daemon's; a window switched to a remote one keeps it.
+        let (Some(path), saved) = &self.ui_state else {
+            return;
+        };
+        if !matches!(self.state.target, crate::config::ConnectTarget::Local(_)) {
+            return;
+        }
+        let now = crate::ui_state::UiState::of(&self.state);
+        if now != *saved {
+            now.save(path);
+            self.ui_state.1 = now;
+        }
     }
 
     fn create_renderer(&mut self) {
@@ -133,10 +180,37 @@ impl Runner {
         Rect::new(0.0, 0.0, w, h)
     }
 
+    /// Moves the board panel's slide one frame towards open or closed, and keeps
+    /// redrawing until it gets there.
+    fn animate(&mut self) {
+        let target = if self.state.board.open { 1.0 } else { 0.0 };
+        let current = self.state.board.reveal;
+        if (current - target).abs() < f32::EPSILON {
+            self.animated_at = None;
+            return;
+        }
+        let now = std::time::Instant::now();
+        // The first frame of a slide moves one 60 Hz step; later ones by elapsed time.
+        let elapsed = self
+            .animated_at
+            .map_or(1.0 / 60.0, |at| now.duration_since(at).as_secs_f32())
+            .min(0.05);
+        self.animated_at = Some(now);
+        let step = elapsed / crate::board::SLIDE_SECONDS;
+        let next = if target > current {
+            (current + step).min(target)
+        } else {
+            (current - step).max(target)
+        };
+        self.state.update(Msg::BoardReveal(next));
+        self.request_redraw();
+    }
+
     fn redraw(&mut self) {
         let Some(window) = self.window.clone() else {
             return;
         };
+        self.animate();
         let scale = self.scale();
         let size = window.inner_size();
         let bounds = self.content_rect(&window, scale);
@@ -214,27 +288,133 @@ impl Runner {
 
     fn mouse_button(&mut self, state: ElementState, button: MouseButton) {
         let Some(p) = self.pointer else { return };
+        let in_area =
+            self.state.area.is_some_and(|a| a.contains(p)) && !self.state.terminals_covered();
+        // A secondary click is a right click, or a two-finger click on a trackpad
+        // (macOS reports both as the right button). Over a terminal it goes to the app.
+        if matches!(button, MouseButton::Right | MouseButton::Middle) {
+            let pressed = state == ElementState::Pressed;
+            let menu = (button == MouseButton::Right && pressed)
+                .then(|| self.frame.as_ref().and_then(|f| f.secondary_click(p)))
+                .flatten();
+            if let Some(msg) = menu {
+                self.dispatch(Msg::Pointer(p));
+                self.dispatch(msg);
+            } else if in_area {
+                let button = if button == MouseButton::Right {
+                    urushi_client::v1::MouseButton::Right
+                } else {
+                    urushi_client::v1::MouseButton::Middle
+                };
+                self.dispatch(Msg::AreaButton {
+                    at: p,
+                    button,
+                    pressed,
+                });
+            }
+            return;
+        }
         if button != MouseButton::Left {
             return;
         }
         match state {
             ElementState::Pressed => {
-                let click = self.frame.as_ref().and_then(|f| f.click(p));
+                self.dispatch(Msg::Pointer(p));
+                let clicks = self.count_click(p);
+                let (click, drag, field) = self.frame.as_ref().map_or((None, None, None), |f| {
+                    (f.click(p), f.drag_source(p), f.field_at(p).cloned())
+                });
                 if let Some(msg) = click {
+                    self.press = Some(Press {
+                        at: p,
+                        drag,
+                        dragging: false,
+                    });
                     self.dispatch(msg);
+                    // A press in a text field (now focused) places the caret there.
+                    if let Some(field) = field {
+                        let caret = urushi_ui::caret_at(&mut self.text, &field, p);
+                        self.field_press = field.key;
+                        self.dispatch(Msg::FieldPress {
+                            caret,
+                            extend: self.mods.shift,
+                            clicks,
+                        });
+                    }
                 } else if self.state.area.is_some_and(|a| a.contains(p))
-                    && self.state.dialog.is_none()
+                    && !self.state.terminals_covered()
                 {
                     self.pressed_in_area = true;
                     self.dispatch(Msg::AreaPress(p));
                 }
             }
             ElementState::Released => {
+                self.field_press = None;
                 if std::mem::take(&mut self.pressed_in_area) {
                     self.dispatch(Msg::AreaRelease(p));
                 }
+                if let Some(press) = self.press.take() {
+                    if press.dragging {
+                        let drop = self.frame.as_ref().and_then(|f| f.drop_target(p));
+                        self.dispatch(drop.unwrap_or(Msg::DragCancel));
+                    } else {
+                        // A click that didn't become a drag (opens a pressed task card).
+                        self.dispatch(Msg::PressEnded);
+                    }
+                }
             }
         }
+    }
+
+    /// How many quick clicks in one spot this press makes (1, 2 or 3; a fourth starts
+    /// over).
+    fn count_click(&mut self, p: Point) -> u8 {
+        let now = std::time::Instant::now();
+        let clicks = match self.last_click {
+            Some((at, where_, n))
+                if now.duration_since(at) <= MULTI_CLICK
+                    && (p.x - where_.x).hypot(p.y - where_.y) <= MULTI_CLICK_SLOP =>
+            {
+                n % 3 + 1
+            }
+            _ => 1,
+        };
+        self.last_click = Some((now, p, clicks));
+        clicks
+    }
+
+    /// The pointer moved with the left button down outside the terminal area: select
+    /// text in a field, or start or continue a drag.
+    fn drag_to(&mut self, p: Point) {
+        if let Some(key) = self.field_press {
+            let field = self.frame.as_ref().and_then(|f| f.field(key)).cloned();
+            if let Some(field) = field {
+                let caret = urushi_ui::caret_at(&mut self.text, &field, p);
+                self.dispatch(Msg::FieldDrag(caret));
+            }
+            return;
+        }
+        let Some(press) = &mut self.press else { return };
+        if press.dragging {
+            self.dispatch(Msg::DragMove(p));
+            self.drag_over(p);
+            return;
+        }
+        let moved = (p.x - press.at.x).hypot(p.y - press.at.y);
+        if moved >= DRAG_THRESHOLD
+            && let Some(start) = press.drag.take()
+        {
+            press.dragging = true;
+            self.dispatch(start);
+            self.dispatch(Msg::DragMove(p));
+            self.drag_over(p);
+        }
+    }
+
+    /// Tells the app what a drag is over, so it can show where a drop would land.
+    fn drag_over(&mut self, p: Point) {
+        let target = self.frame.as_ref().and_then(|f| f.drop_target(p));
+        self.dispatch(Msg::DragOver(target.map(Box::new)));
     }
 
     fn wheel(&mut self, delta: MouseScrollDelta) {
@@ -250,7 +430,7 @@ impl Runner {
                 (px / self.state.cell.height, px)
             }
         };
-        if self.state.area.is_some_and(|a| a.contains(p)) && self.state.dialog.is_none() {
+        if self.state.area.is_some_and(|a| a.contains(p)) && !self.state.terminals_covered() {
             self.wheel_remainder += lines;
             let whole = self.wheel_remainder.trunc();
             self.wheel_remainder -= whole;
@@ -284,6 +464,7 @@ impl ApplicationHandler<UserEvent> for Runner {
         }
         let mut attributes = Window::default_attributes()
             .with_title(APP_TITLE)
+            .with_window_icon(platform::window_icon())
             .with_visible(false);
         // Mobile windows are always full screen; a requested size would be taken literally.
         if !cfg!(any(target_os = "ios", target_os = "android")) {
@@ -347,7 +528,13 @@ impl ApplicationHandler<UserEvent> for Runner {
                 self.pointer = Some(p);
                 if self.pressed_in_area {
                     self.dispatch(Msg::AreaDrag(p));
+                } else if self.press.is_none()
+                    && !self.state.terminals_covered()
+                    && self.state.area.is_some_and(|a| a.contains(p))
+                {
+                    self.dispatch(Msg::AreaHover(p));
                 }
+                self.drag_to(p);
                 self.update_cursor(p);
                 self.request_redraw();
             }
@@ -372,6 +559,7 @@ impl ApplicationHandler<UserEvent> for Runner {
                         if self.pressed_in_area {
                             self.dispatch(Msg::AreaDrag(p));
                         }
+                        self.drag_to(p);
                     }
                     winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled => {
                         self.mouse_button(ElementState::Released, MouseButton::Left);
@@ -381,7 +569,10 @@ impl ApplicationHandler<UserEvent> for Runner {
                 self.request_redraw();
             }
             WindowEvent::MouseWheel { delta, .. } => self.wheel(delta),
-            WindowEvent::ModifiersChanged(m) => self.mods = Mods::from(m.state()),
+            WindowEvent::ModifiersChanged(m) => {
+                self.mods = Mods::from(m.state());
+                self.dispatch(Msg::Modifiers(self.mods));
+            }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let Some(key) = KeyPress::from_winit(&event, self.mods) {
                     self.dispatch(Msg::Key(key));
@@ -389,8 +580,16 @@ impl ApplicationHandler<UserEvent> for Runner {
             }
             WindowEvent::Ime(winit::event::Ime::Commit(text)) => self.dispatch(Msg::Text(text)),
             WindowEvent::DroppedFile(path) => {
-                self.dispatch(Msg::OpenAddProject);
-                self.dispatch(Msg::FolderPicked(Some(path.to_string_lossy().into_owned())));
+                // The pointer may be stale during a drag; `update` decides what to do.
+                let over_terminal = self
+                    .pointer
+                    .zip(self.state.area)
+                    .is_some_and(|(p, area)| area.contains(p));
+                self.dispatch(Msg::FileDropped {
+                    is_dir: path.is_dir(),
+                    path: path.to_string_lossy().into_owned(),
+                    over_terminal,
+                });
             }
             _ => {}
         }
@@ -398,7 +597,7 @@ impl ApplicationHandler<UserEvent> for Runner {
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
-            UserEvent::App(msg) => self.dispatch(msg),
+            UserEvent::App(msg) => self.dispatch(*msg),
             UserEvent::Access(event) => match event.window_event {
                 accesskit_winit::WindowEvent::InitialTreeRequested => self.request_redraw(),
                 accesskit_winit::WindowEvent::ActionRequested(request)

@@ -292,3 +292,124 @@ fn stack_layers_children_and_topmost_wins() {
     assert_eq!(frame.click(Point::new(50.0, 50.0)), Some(Msg::B));
     assert_eq!(frame.hits[0].rect, frame.hits[1].rect);
 }
+
+#[test]
+fn positioned_stack_children_stay_on_screen_and_receive_secondary_clicks() {
+    let mut text = TextSystem::bundled_only();
+    let menu = |at| {
+        Node::column()
+            .width(Length::Fixed(40.0))
+            .height(Length::Fixed(30.0))
+            .on_click(Msg::A)
+            .at(at)
+    };
+    let ui = Node::stack()
+        .width(Length::Fill(1.0))
+        .height(Length::Fill(1.0))
+        .child(
+            Node::new()
+                .width(Length::Fill(1.0))
+                .height(Length::Fill(1.0))
+                .on_secondary_click(Msg::B),
+        )
+        .child(menu(Point::new(10.0, 20.0)))
+        .child(menu(Point::new(90.0, 95.0)));
+    let frame = build(&ui, Rect::new(0.0, 0.0, 100.0, 100.0), &mut text, None);
+    assert_eq!(frame.hits[1].rect, Rect::new(10.0, 20.0, 40.0, 30.0));
+    assert_eq!(
+        frame.hits[2].rect,
+        Rect::new(60.0, 70.0, 40.0, 30.0),
+        "moved back inside the window"
+    );
+    assert_eq!(frame.secondary_click(Point::new(5.0, 5.0)), Some(Msg::B));
+    assert_eq!(frame.click(Point::new(15.0, 25.0)), Some(Msg::A));
+    assert_eq!(
+        frame.secondary_click(Point::new(15.0, 25.0)),
+        Some(Msg::B),
+        "falls through"
+    );
+}
+
+#[test]
+fn drag_sources_and_drop_targets_are_found_by_position() {
+    let mut text = TextSystem::bundled_only();
+    let ui = Node::column()
+        .width(Length::Fill(1.0))
+        .child(
+            Node::new()
+                .width(Length::Fill(1.0))
+                .height(Length::Fixed(20.0))
+                .on_click(Msg::A)
+                .on_drag(Msg::Focus),
+        )
+        .child(
+            Node::new()
+                .width(Length::Fill(1.0))
+                .height(Length::Fixed(20.0))
+                .background(Color::hex(0x000000))
+                .hover_background(Color::hex(0xffffff))
+                .on_drop(Msg::Backdrop),
+        );
+    let frame = build(
+        &ui,
+        Rect::new(0.0, 0.0, 100.0, 100.0),
+        &mut text,
+        Some(Point::new(5.0, 30.0)),
+    );
+    assert_eq!(frame.drag_source(Point::new(5.0, 5.0)), Some(Msg::Focus));
+    assert_eq!(frame.drag_source(Point::new(5.0, 30.0)), None);
+    assert_eq!(
+        frame.drop_target(Point::new(5.0, 30.0)),
+        Some(Msg::Backdrop)
+    );
+    // A drop target under the pointer is highlighted.
+    let dump = frame.scene.dump();
+    assert!(dump.contains("#ffffff"), "{dump}");
+}
+
+#[test]
+fn a_sliding_panel_moves_with_its_children_and_is_clipped() {
+    let mut text = TextSystem::bundled_only();
+    let ui = |slide: f32| {
+        Node::stack()
+            .width(Length::Fill(1.0))
+            .height(Length::Fill(1.0))
+            .clip()
+            .child(
+                Node::new()
+                    .width(Length::Fill(1.0))
+                    .height(Length::Fill(1.0))
+                    .on_click(Msg::A),
+            )
+            .child(
+                Node::row()
+                    .width(Length::Fill(1.0))
+                    .height(Length::Fill(1.0))
+                    .background(Color::rgb8(1, 2, 3))
+                    .on_click(Msg::Backdrop)
+                    .slide_x(slide)
+                    .child(
+                        Node::new()
+                            .width(Length::Fixed(20.0))
+                            .height(Length::Fixed(20.0))
+                            .on_click(Msg::B),
+                    ),
+            )
+    };
+    let bounds = Rect::new(100.0, 0.0, 200.0, 100.0);
+    // Half out: the panel and its button move left by half the width, and only the
+    // visible part takes clicks.
+    let frame = build(&ui(0.5), bounds, &mut text, None);
+    assert_eq!(quads(&frame.scene)[0], Rect::new(0.0, 0.0, 200.0, 100.0));
+    assert_eq!(frame.click(Point::new(250.0, 50.0)), Some(Msg::A));
+    assert_eq!(frame.click(Point::new(150.0, 50.0)), Some(Msg::Backdrop));
+    assert_eq!(frame.hits[1].rect, Rect::new(100.0, 0.0, 100.0, 100.0));
+    assert_eq!(
+        frame.click(Point::new(10.0, 10.0)),
+        None,
+        "outside the clip"
+    );
+    // In place: the button is at the left edge (rows centre their children).
+    let frame = build(&ui(0.0), bounds, &mut text, None);
+    assert_eq!(frame.click(Point::new(105.0, 45.0)), Some(Msg::B));
+}

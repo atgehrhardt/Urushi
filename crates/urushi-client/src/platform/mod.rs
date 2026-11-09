@@ -20,7 +20,7 @@ mod windows;
 #[cfg(windows)]
 use windows as imp;
 
-pub(crate) use imp::detach;
+pub(crate) use imp::{daemon_pid, detach, is_running, terminate};
 
 /// Opens a stream to `endpoint`.
 pub(crate) async fn connect(endpoint: &Endpoint) -> Result<Box<dyn Stream>, ClientError> {

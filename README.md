@@ -1,8 +1,15 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/icon/mark-dark.svg">
+    <img src="assets/icon/mark-light.svg" width="120" alt="Urushi logo: code brackets around a lacquer-tree sprig">
+  </picture>
+</p>
+
 # Urushi
 
 A cross-platform graphical workspace for working with AI agents.
 
-- **Projects → Threads:** every thread is its own git worktree and branch.
+- **Projects → Threads:** projects group threads from any repo; every thread is its own git worktree and branch.
 - **Tabs of split terminals:** sessions are *recoverable*. They keep running in the `urushid` daemon when the window closes, the app crashes or a client disconnects.
 - **Safe deletion:** deleting a thread removes its worktree and every branch it owns, local and (by default) remote, after a warning that lists exactly what will go.
 - **Remote access over Tailscale:** your phone (iOS and Android apps) or another computer can attach to the same live sessions. Only your tailnet identity is admitted.

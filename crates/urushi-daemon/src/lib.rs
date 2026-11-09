@@ -4,17 +4,22 @@
 //! - the workspace: projects, threads, tabs and layouts (persisted by [`store`]),
 //! - every terminal session (via `urushi-mux`), alive independently of any client,
 //! - git worktrees and branches ([`git`]),
+//! - finding installed agent CLIs ([`agents`]),
+//! - restore points, so panes come back as they were after a restart ([`restore`]),
 //! - remote access over Tailscale ([`tailscale`]).
 //!
 //! It is a library as well as a binary, so tests (and future embedders) can run a daemon
 //! in-process with fakes injected through [`DaemonOptions`].
 
+pub mod agents;
 pub mod git;
 mod platform;
+pub mod restore;
 mod server;
 pub mod service;
 pub mod store;
 pub mod tailscale;
+pub mod usage;
 
 use std::fs::{File, TryLockError};
 use std::future::Future;
@@ -25,10 +30,12 @@ use thiserror::Error;
 use urushi_mux::{NativePty, Pty};
 use urushi_proto::endpoint::{LocalEndpoint, local_endpoint};
 
+use crate::agents::AgentLocator;
 use crate::git::{CliGit, Git};
 use crate::service::{Service, ServiceConfig, ServiceError};
 use crate::store::JsonFileStore;
 use crate::tailscale::{CliTailscale, TailscaleProvider};
+use crate::usage::{SystemUsage, UsageMonitor, UsageSource};
 
 /// Daemon startup failures.
 #[derive(Debug, Error)]
@@ -54,19 +61,28 @@ pub struct DaemonOptions {
     pub pty: Arc<dyn Pty>,
     /// Tailscale access.
     pub tailscale: Arc<dyn TailscaleProvider>,
+    /// Finds installed agent CLIs.
+    pub agents: Arc<AgentLocator>,
+    /// Lists processes and reads agents' plan usage.
+    pub usage: Arc<dyn UsageSource>,
 }
 
 impl DaemonOptions {
-    /// Real git, real PTYs, and the installed Tailscale.
+    /// Real git, real PTYs, the installed Tailscale, and agents found on this machine.
     pub fn new(home: impl Into<PathBuf>) -> Self {
         Self {
             home: home.into(),
             git: Arc::new(CliGit::default()),
             pty: Arc::new(NativePty),
             tailscale: Arc::new(CliTailscale::default()),
+            agents: Arc::new(AgentLocator::system()),
+            usage: Arc::new(SystemUsage),
         }
     }
 }
+
+/// Longest a shutdown waits for restore points to be saved.
+const RESTORE_SAVE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Runs a daemon until `shutdown` resolves (or the local listener fails).
 pub async fn run(
@@ -93,6 +109,8 @@ pub async fn run(
         git: options.git,
         pty: options.pty,
         tailscale: options.tailscale,
+        agents: options.agents,
+        usage: Arc::new(UsageMonitor::new(options.usage)),
     })?;
 
     server::remote::reconcile(&service).await;
@@ -102,10 +120,20 @@ pub async fn run(
     let result = tokio::select! {
         result = platform::serve_local(service.clone(), &endpoint) => result.map_err(DaemonError::from),
         () = shutdown => Ok(()),
+        () = service.shutdown_requested() => Ok(()),
     };
 
     tracing::info!("shutting down");
     watchdog.abort();
+    // Save what every pane is doing before its process ends, so the next daemon can
+    // bring it back.
+    let save = service.save_restore_points();
+    if tokio::time::timeout(RESTORE_SAVE_TIMEOUT, save)
+        .await
+        .is_err()
+    {
+        tracing::warn!("saving restore points timed out");
+    }
     service.shutdown();
     if let LocalEndpoint::UnixSocket(path) = &endpoint {
         let _ = std::fs::remove_file(path);

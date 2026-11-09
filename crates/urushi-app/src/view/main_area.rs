@@ -1,4 +1,4 @@
-//! The main area: tab bar, terminal panes, and the error banner.
+//! The main area: tab bar, terminal panes, the status bar, and the error banner.
 
 use std::sync::Arc;
 
@@ -16,16 +16,22 @@ pub(super) fn view(state: &AppState, theme: &Theme) -> Node<Msg> {
     let mut column = Node::column()
         .width(Length::Fill(1.0))
         .height(Length::Fill(1.0));
-    match state.current_tab() {
-        Some(_) => {
-            column = column
-                .child(tab_bar(state, theme))
-                .child(terminal_area(state, theme));
-            if cfg!(any(target_os = "ios", target_os = "android")) {
-                column = column.child(key_bar(theme));
-            }
+    if state.current_tab().is_some() {
+        column = column
+            .child(tab_bar(state, theme))
+            .child(terminal_area(state, theme))
+            .child(super::status_bar::view(state, theme));
+        if cfg!(any(target_os = "ios", target_os = "android")) {
+            column = column.child(key_bar(theme));
         }
-        None => column = column.child(empty_state(state, theme)),
+    } else if let Some(thread) = state.empty_thread() {
+        // A new thread, or one whose last tab was closed: keep the tab bar (and its "+")
+        // and offer what to run.
+        column = column
+            .child(tab_bar(state, theme))
+            .child(super::launcher::inline(state, theme, &thread.title));
+    } else {
+        column = column.child(empty_state(state, theme));
     }
     if let Some(error) = &state.error {
         column = column.child(
@@ -53,7 +59,7 @@ fn empty_state(state: &AppState, theme: &Theme) -> Node<Msg> {
     let (title, detail) = match &state.connection {
         Connection::Disconnected(reason) => ("Not connected to the Urushi daemon", reason.clone()),
         Connection::Connecting => ("Connecting…", String::new()),
-        Connection::Connected { .. } if state.workspace.projects().is_empty() => (
+        Connection::Connected { .. } if state.workspace.repos().is_empty() => (
             "Add a repository to get started",
             "Each thread gets its own git worktree and branch.".to_owned(),
         ),
@@ -66,16 +72,19 @@ fn empty_state(state: &AppState, theme: &Theme) -> Node<Msg> {
     if matches!(state.connection, Connection::Connected { .. }) {
         actions = actions.child(button(
             theme,
-            "Add project",
+            "Add repo",
             ButtonKind::Secondary,
             Msg::OpenAddProject,
         ));
-        if let Some(project) = state.workspace.projects().first() {
+        if !state.workspace.repos().is_empty() {
             actions = actions.child(button(
                 theme,
                 "New thread",
                 ButtonKind::Primary,
-                Msg::OpenNewThread(project.id.clone()),
+                Msg::OpenNewThread {
+                    repo: None,
+                    project: None,
+                },
             ));
         }
     } else {
@@ -152,12 +161,7 @@ fn tab_bar(state: &AppState, theme: &Theme) -> Node<Msg> {
                 Msg::CloseTab(tab.id.clone()),
             ))
     });
-    let title = state
-        .selected_thread
-        .as_ref()
-        .and_then(|t| state.workspace.thread(t))
-        .map(|t| t.title.clone())
-        .unwrap_or_default();
+    // No thread title here: the sidebar already shows which thread is selected.
     let mut bar = Node::row()
         .width(Length::Fill(1.0))
         .height(Length::Fixed(36.0))
@@ -170,23 +174,17 @@ fn tab_bar(state: &AppState, theme: &Theme) -> Node<Msg> {
                 .child(icon_button(theme, "‹", "Back to threads", Msg::ShowSidebar)),
         );
     }
-    // Phones have no room for the thread title next to the tabs.
-    let title = if state.compact { String::new() } else { title };
     bar.children(tabs)
         .child(
             Node::row()
                 .padding(Insets::symmetric(0.0, 6.0))
-                .child(icon_button(theme, "+", "New tab", Msg::NewTab)),
+                .child(icon_button(theme, "+", "New tab…", Msg::NewTab)),
         )
         .child(Node::spacer())
         .child(
             Node::row()
                 .padding(Insets::symmetric(0.0, 10.0))
                 .gap(4.0)
-                .child(
-                    Node::text(title, Font::Ui, theme.font_size_small, theme.text_muted)
-                        .width(Length::Fixed(if state.compact { 0.0 } else { 180.0 })),
-                )
                 .child(icon_button(
                     theme,
                     "→",

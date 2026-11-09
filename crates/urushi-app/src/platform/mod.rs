@@ -4,9 +4,9 @@
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod desktop;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-pub(crate) use desktop::{Clipboard, pick_folder};
+pub(crate) use desktop::{Clipboard, HAS_FOLDER_PICKER, pick_folder, window_icon};
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 mod mobile;
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-pub(crate) use mobile::{Clipboard, pick_folder};
+pub(crate) use mobile::{Clipboard, HAS_FOLDER_PICKER, pick_folder, window_icon};
