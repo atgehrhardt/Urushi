@@ -48,7 +48,8 @@ impl AppState {
             | Msg::DragCancel
             | Msg::ToggleSelect(_)
             | Msg::PickRepo(_)
-            | Msg::PickBase(_)) => self.organize(msg, &mut fx),
+            | Msg::PickBase(_)
+            | Msg::PickProject(_)) => self.organize(msg, &mut fx),
             Msg::Connected { welcome, workspace } => self.on_connected(welcome, workspace, &mut fx),
             Msg::Disconnected(reason) => {
                 self.connection = Connection::Disconnected(reason);

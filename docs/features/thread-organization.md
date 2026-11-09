@@ -12,7 +12,7 @@
 - **Right-click** (two-finger click on a trackpad) a thread for: Rename…, Pin/Unpin, Status ›, Move to project ›, Delete thread…. Right-click a project for: New thread…, Rename…, Delete project. Deleting a project keeps its threads, which become ungrouped.
 - **Statuses are user-defined**: the Status page lists every status in use, plus "New status…" and "Clear status". A status (and its sidebar section) exists while some thread has it.
 - **Drag** a thread onto a project, or onto "No project", to move it.
-- **New thread** (from a project's **+**, a repo's **+**, or Cmd+N): the repo and the **Start from** branch are chosen from lists, and the thread is filed under the project it was started from.
+- **New thread** (from a project's **+**, a repo's **+**, Cmd+N, or a task's Start thread): the repo, the **Project** and the **Start from** branch are chosen from lists. The project defaults to the one it was started from (none from a repo or Cmd+N); **None** leaves the thread ungrouped. The project selector is hidden while there are no projects.
 
 ## How it works
 - Wire (ADR 0010: projects are `Folder`s): `CreateFolder`, `RenameFolder`, `DeleteFolder`, `UpdateThread{title?, pinned?, status?, folder_id?}` (empty status / folder clears), `CreateThread.folder_id`, `Workspace.folders`, `Thread.{folder_id, pinned, status}`. Protocol 1.2.
@@ -32,7 +32,7 @@
 - `crates/urushi-client/src/workspace.rs`: grouping and the status list.
 - `crates/urushi-ui/tests/layout.rs`: positioned children, secondary clicks, drag sources and drop targets.
 - `crates/urushi-app/src/update/tests/organize.rs` and `view/mod.rs`: menus, prompts, drag and drop, selectors, sidebar order and collapsing.
-- Snapshot scenarios `menu`, `menu-status`, `drag`, `repos`, `new-thread-base` (see the GUI doc).
+- Snapshot scenarios `menu`, `menu-status`, `drag`, `repos`, `new-thread-base`, `new-thread-project` (see the GUI doc).
 
 ## Limitations and follow-ups
 - Projects and statuses can't be reordered; projects keep creation order, statuses sort alphabetically.

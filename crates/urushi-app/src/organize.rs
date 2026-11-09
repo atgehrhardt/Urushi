@@ -112,6 +112,8 @@ pub enum Select {
     Repo,
     /// The branch to start from.
     Base,
+    /// The project to file the thread under.
+    Project,
 }
 
 /// Key of a collapsible sidebar section. Collapsed sections are remembered per client.

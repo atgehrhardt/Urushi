@@ -249,3 +249,21 @@ fn cards_show_when_an_agent_on_their_threads_finished_or_waits() {
         assert!(board.contains(text), "{text} missing: {board}");
     }
 }
+
+#[test]
+fn the_new_thread_dialog_offers_every_project_or_none() {
+    let closed = dump("new-thread", 1280.0);
+    for text in ["\"Project\"", "\"Billing launch\""] {
+        assert!(closed.contains(text), "{text} missing: {closed}");
+    }
+    let open = dump("new-thread-project", 1280.0);
+    for text in ["\"None\"", "\"Onboarding\""] {
+        assert!(open.contains(text), "{text} missing: {open}");
+    }
+    // The sidebar behind the dialog lists it too; the open list adds one more.
+    assert_eq!(
+        open.matches("\"Onboarding\"").count(),
+        closed.matches("\"Onboarding\"").count() + 1,
+        "{open}"
+    );
+}

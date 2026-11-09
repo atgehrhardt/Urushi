@@ -13,7 +13,7 @@ A graphical workspace:
 - **Status bar:** under the terminals: the thread's branch, and the [plan usage](agent-usage.md) of the agent running in the focused pane.
 - **Dialogs:**
   - *Add repo:* **Choose a folder…** opens the system picker and adds the repository straight away. Against a remote daemon (or on mobile) there is no picker, so a path is typed. "Remote over SSH" and "Connect from your phone" are shown as coming soon.
-  - *New thread:* **repo** and **start from** (chosen from the repo's branches) are selectors; title and **branch** are typed. The branch follows the title as `<prefix><title in lower-case-with-dashes>` until edited, and clearing it makes it follow again. Started from a project, the thread is filed under it.
+  - *New thread:* **repo**, **project** (or None) and **start from** (chosen from the repo's branches) are selectors; title and **branch** are typed. The branch follows the title as `<prefix><title in lower-case-with-dashes>` until edited, and clearing it makes it follow again. Started from a project (or a task near one), the project is preselected.
   - *Prompts:* rename a thread or project, new status, new project.
   - *New tab:* the launcher picker.
   - The thread-deletion warning, settings (remote branch deletion, tailnet serving, per-agent skip-permissions, branch prefix, shell), and connect to a remote host.
@@ -62,7 +62,7 @@ A graphical workspace:
 - `crates/urushi-app/src/update/tests.rs`: connect, attach, resize, screen updates, typing vs shortcuts, the deletion flow, dialog editing, connect-required mode, selection and copy. `update/tests/fields.rs`: field shortcuts, mouse selection and the field menu; `urushi-ui/tests/fields.rs`: pointer → caret, scrolling, selection painting.
 - `crates/urushi-app/src/update/tests/daemon.rs`: the restart confirmation and reconnecting.
 - `crates/urushi-app/src/update/tests/flows.rs`: launcher, branch name following the title, adding repos, dropped files, agent settings. `update/tests/organize.rs`: menus, prompts, drag and drop, selectors. `update/tests/panes.rs`: the pane menu and focus after a pane closes.
-- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `settings`, `menu`, `menu-status`, `drag`, `repos`, `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `setup`, `setup-mode`) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
+- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `new-thread-project`, `settings`, `menu`, `menu-status`, `drag`, `repos`, `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `setup`, `setup-mode`) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
 - `crates/urushi-app/src/terminal.rs`: pane geometry, dividers, selection text, painting.
 - `crates/urushi-ui/tests/layout.rs` and `crates/urushi-render/tests/pixels.rs`: toolkit and GPU.
 

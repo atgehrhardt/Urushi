@@ -54,10 +54,11 @@ it back.
     last column arrives checked off.
   - Right-clicking a subtask row opens the same menu as a card, over the editor.
 - **Start thread** (on a task, or on any subtask row) opens the new-thread dialog with
-  the title filled in, in the repo of the parent task's thread or else the thread on
-  screen. The new thread is linked to the task or subtask: the button then reads **Go to
-  thread**, and the card shows a "→ thread" chip that goes there. Deleting the thread
-  clears the link. With a task agent chosen (setup wizard or Settings), the thread starts
+  the title filled in, in the repo and project of the parent task's thread or else the
+  thread on screen. Its **Project** selector files the thread under any project, or
+  **None** to leave it ungrouped (`Msg::PickProject`). The new thread is linked to the
+  task or subtask: the button then reads **Go to thread**, and the card shows a
+  "→ thread" chip that goes there. Deleting the thread clears the link. With a task agent chosen (setup wizard or Settings), the thread starts
   it with the task, its notes and its subtasks as the first prompt; otherwise it opens on
   the launcher. See [task agent](task-agent.md).
 - **Start in an existing thread:** the same dialog has a **New thread | Existing thread**

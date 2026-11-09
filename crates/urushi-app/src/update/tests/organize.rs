@@ -230,3 +230,49 @@ fn a_new_thread_without_repos_asks_to_add_one() {
     assert!(matches!(s.dialog, Some(Dialog::AddProject { .. })));
     assert_eq!(s.sidebar_tab, SidebarTab::Repos);
 }
+
+#[test]
+fn the_new_thread_dialog_picks_the_project_or_none() {
+    let mut s = with_project();
+    s.update(Msg::OpenNewThread {
+        repo: None,
+        project: None,
+    });
+    s.update(Msg::ToggleSelect(Select::Project));
+    assert!(matches!(
+        &s.dialog,
+        Some(Dialog::NewThread {
+            open: Some(Select::Project),
+            ..
+        })
+    ));
+    s.update(Msg::PickProject(Some("f1".into())));
+    assert!(
+        matches!(&s.dialog, Some(Dialog::NewThread { open: None, project: Some(p), .. }) if p == "f1")
+    );
+    let fx = s.update(Msg::Submit);
+    assert!(
+        matches!(bodies(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { folder_id, .. })] if folder_id == "f1"),
+        "{fx:?}"
+    );
+
+    // None: the thread is ungrouped.
+    s.update(Msg::OpenNewThread {
+        repo: None,
+        project: Some("f1".into()),
+    });
+    s.update(Msg::PickProject(None));
+    assert!(matches!(
+        &s.dialog,
+        Some(Dialog::NewThread {
+            project: None,
+            open: None,
+            ..
+        })
+    ));
+    let fx = s.update(Msg::Submit);
+    assert!(
+        matches!(bodies(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { folder_id, .. })] if folder_id.is_empty()),
+        "{fx:?}"
+    );
+}

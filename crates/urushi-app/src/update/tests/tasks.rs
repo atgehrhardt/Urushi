@@ -191,6 +191,40 @@ fn a_task_can_start_a_thread_titled_after_it() {
 }
 
 #[test]
+fn a_thread_started_from_a_task_can_be_filed_under_another_project_or_none() {
+    let mut s = attached();
+    let mut workspace = super::workspace();
+    workspace.threads[0].folder_id = "f1".into();
+    for (id, name) in [("f1", "Billing"), ("f2", "Search")] {
+        workspace.folders.push(v1::Folder {
+            id: id.into(),
+            name: name.into(),
+            ..Default::default()
+        });
+    }
+    workspace.boards = vec![board()];
+    s.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(workspace)));
+    let link = TaskLink {
+        task: "a".into(),
+        subtask: None,
+    };
+    let folder = |s: &mut AppState| match bodies(&s.update(Msg::Submit))[..] {
+        [Body::CreateThread(r)] => r.folder_id.clone(),
+        ref other => panic!("{other:?}"),
+    };
+
+    // By default it goes where the thread near the task is.
+    s.update(Msg::StartThread(link.clone()));
+    assert!(matches!(&s.dialog, Some(Dialog::NewThread { project: Some(p), .. }) if p == "f1"));
+    s.update(Msg::PickProject(Some("f2".into())));
+    assert_eq!(folder(&mut s), "f2");
+
+    s.update(Msg::StartThread(link));
+    s.update(Msg::PickProject(None));
+    assert_eq!(folder(&mut s), "");
+}
+
+#[test]
 fn the_drop_line_shows_only_where_a_task_would_move() {
     let mut s = with_subtasks();
     s.update(Msg::DragTask("a".into()));

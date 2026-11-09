@@ -28,7 +28,7 @@ pub fn scene(
 
 /// Named screens for [`scenario`]: a thread with no tabs (`launcher`), the new-tab
 /// `picker`, the `add-repo` and `new-thread` dialogs (`new-thread-base` with the branch
-/// list open), `settings`, the thread `menu` and its `menu-status` page, a thread being
+/// list open, `new-thread-project` with the project list open), `settings`, the thread `menu` and its `menu-status` page, a thread being
 /// dragged (`drag`), the `repos` tab, the task `board` (a task being dragged across it in
 /// `board-drag`, a `task` with subtasks being edited, and a card's context menu in
 /// `task-menu`, a column's in `column-menu`, a subtask opened as a task in
@@ -42,6 +42,7 @@ pub const SCENARIOS: &[&str] = &[
     "add-repo",
     "new-thread",
     "new-thread-base",
+    "new-thread-project",
     "settings",
     "menu",
     "menu-status",
@@ -340,25 +341,13 @@ fn scenario_frame(
     state.daemon_minor = urushi_proto::PROTOCOL_MINOR;
     state.agents = vec![urushi_core::Agent::Claude, urushi_core::Agent::Codex];
     state.settings = Some(sample_settings());
-    let branches = v1::Branches {
-        branches: vec!["main".into(), "dev".into(), "release/1.2".into()],
-        current: "main".into(),
-    };
     match name {
         // Phones show the thread list first; open the thread like a tap would.
         "launcher" => drop(state.update(Msg::SelectThread("t".into()))),
         "picker" => drop(state.update(Msg::NewTab)),
         "add-repo" => drop(state.update(Msg::OpenAddProject)),
-        "new-thread" | "new-thread-base" => {
-            state.update(Msg::OpenNewThread {
-                repo: Some("p".into()),
-                project: Some("f1".into()),
-            });
-            state.branches = Some(("p".into(), branches));
-            state.update(Msg::Paste("Fix Login Bug".into()));
-            if name == "new-thread-base" {
-                state.update(Msg::ToggleSelect(Select::Base));
-            }
+        "new-thread" | "new-thread-base" | "new-thread-project" => {
+            open_new_thread(&mut state, name);
         }
         "settings" => drop(state.update(Msg::OpenSettings)),
         "setup" | "setup-mode" => state.dialog = Some(setup_wizard(name)),
@@ -390,6 +379,28 @@ fn scenario_frame(
 }
 
 /// The `board`, `task`, `status` and `pane-menu` scenarios.
+/// The new-thread dialog with a title typed, and (by scenario) a selector open.
+fn open_new_thread(state: &mut AppState, name: &str) {
+    state.update(Msg::OpenNewThread {
+        repo: Some("p".into()),
+        project: Some("f1".into()),
+    });
+    let branches = v1::Branches {
+        branches: vec!["main".into(), "dev".into(), "release/1.2".into()],
+        current: "main".into(),
+    };
+    state.branches = Some(("p".into(), branches));
+    state.update(Msg::Paste("Fix Login Bug".into()));
+    let open = match name {
+        "new-thread-base" => Some(Select::Base),
+        "new-thread-project" => Some(Select::Project),
+        _ => None,
+    };
+    if let Some(which) = open {
+        state.update(Msg::ToggleSelect(which));
+    }
+}
+
 fn show_board_or_usage(state: &mut AppState, name: &str) {
     match name {
         name if BOARD_SCENARIOS.contains(&name) => {

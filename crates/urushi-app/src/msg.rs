@@ -101,6 +101,8 @@ pub enum Msg {
     PickRepo(String),
     /// Choose the branch to start from (`None`: the repo's default).
     PickBase(Option<String>),
+    /// Choose the project to file the new thread under (`None`: no project).
+    PickProject(Option<String>),
     /// Ask the daemon what deleting a thread would destroy, then show the warning.
     RequestDeleteThread(String),
     /// Open settings.

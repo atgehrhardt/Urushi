@@ -1,5 +1,5 @@
-//! The new-thread dialog: repo and start-from branch are chosen from lists (the daemon
-//! reports the repo's branches), title and branch name are typed. The branch name
+//! The new-thread dialog: repo, project and start-from branch are chosen from lists (the
+//! daemon reports the repo's branches), title and branch name are typed. The branch name
 //! follows the title until edited (see `update/intake.rs`). Opened from a board task, it
 //! can instead start the task in an existing thread (`task_in_thread.rs`).
 
@@ -15,6 +15,9 @@ use crate::state::{AppState, Dialog, Field, TaskLink, ThreadTarget};
 
 /// Rows a selector shows before it scrolls.
 const VISIBLE_OPTIONS: usize = 6;
+
+/// The project choice that leaves the thread ungrouped.
+const NO_PROJECT: &str = "None";
 
 pub(super) fn view(
     state: &AppState,
@@ -59,6 +62,13 @@ pub(super) fn view(
     body = body
         .child(label(theme, "Repo"))
         .children(repo_selector(state, theme, scroll, repo, repo_name, *open))
+        .children(project_selector(
+            state,
+            theme,
+            scroll,
+            project.as_deref(),
+            *open,
+        ))
         .child(label(theme, "Title"))
         .child(field(
             state,
@@ -189,6 +199,51 @@ fn repo_selector(
             })
             .collect();
         out.push(options_list(theme, scroll, "repo", options));
+    }
+    out
+}
+
+/// The project selector (labelled), and its options while open: "None" leaves the
+/// thread ungrouped. Hidden while there are no projects to choose.
+fn project_selector(
+    state: &AppState,
+    theme: &Theme,
+    scroll: &HashMap<Key, f32>,
+    project: Option<&str>,
+    open: Option<Select>,
+) -> Vec<Node<Msg>> {
+    let projects = state.workspace.projects();
+    if projects.is_empty() {
+        return Vec::new();
+    }
+    let current = project
+        .and_then(|p| state.workspace.project(p))
+        .map_or(NO_PROJECT, |p| p.name.as_str());
+    let is_open = open == Some(Select::Project);
+    let mut out = vec![
+        label(theme, "Project"),
+        select_button(
+            theme,
+            current,
+            is_open,
+            key(&["select", "project"]),
+            Msg::ToggleSelect(Select::Project),
+        ),
+    ];
+    if is_open {
+        let none = SelectOption {
+            label: NO_PROJECT.to_owned(),
+            selected: project.is_none(),
+            on_pick: Msg::PickProject(None),
+        };
+        let options = std::iter::once(none)
+            .chain(projects.iter().map(|p| SelectOption {
+                label: p.name.clone(),
+                selected: project == Some(p.id.as_str()),
+                on_pick: Msg::PickProject(Some(p.id.clone())),
+            }))
+            .collect();
+        out.push(options_list(theme, scroll, "project", options));
     }
     out
 }

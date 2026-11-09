@@ -102,6 +102,12 @@ impl AppState {
                     *open = None;
                 }
             }
+            Msg::PickProject(pick) => {
+                if let Some(Dialog::NewThread { project, open, .. }) = &mut self.dialog {
+                    *project = pick;
+                    *open = None;
+                }
+            }
             _ => {}
         }
     }
