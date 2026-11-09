@@ -21,7 +21,7 @@ Codex's primary and secondary windows.
    pane's shell pid. It lists processes (`ps`, cached 2 s) and walks the shell's
    descendants for an agent command line (`usage::process::agent_under`). It recognises
    `claude …`, `/path/codex …`, `node …/codex.js` and Cursor's `…/cursor-agent/…`.
-3. For a found agent, it reads usage (cached 60 s, failures 30 s):
+3. For a found agent, it reads usage (cached 5 min, failures 30 s; rate limits below):
    - **Claude** (`usage/claude.rs`): reads the sign-in from the keychain
      (`security find-generic-password -s "Claude Code-credentials" -w`) or from
      `~/.claude/.credentials.json`, then calls `curl … --header @- https://api.anthropic.com/api/oauth/usage`
@@ -30,6 +30,14 @@ Codex's primary and secondary windows.
      `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl`. A window that has reset since it
      was logged shows 0%.
    - **Cursor:** "Cursor doesn't report its plan usage".
+
+   Claude's endpoint is rate-limited per sign-in, and every running Claude Code uses the
+   same budget. An HTTP 429 comes back as `Failure::RateLimited` with its `Retry-After`,
+   which curl prints through `--write-out` (`usage/claude.rs::answer`). `usage/cache.rs`
+   then waits as long as asked, kept between 1 min and 1 h. With no header it waits
+   5 min and doubles the wait on each refusal in a row, up to 1 h. While it waits, the bar
+   shows the last good reading with its own `fetched_at`. If there is none, it says
+   "Claude's usage service is busy; trying again in 4m".
 4. The reply is `AgentUsage{agent, plan, windows[label, used_percent, resets_at_ms],
    unavailable, fetched_at_ms}`. An agent of `UNSPECIFIED` means a plain shell. The bar
    shows usage only if it is about the focused pane (`AppState::shown_usage`).
@@ -43,11 +51,14 @@ Codex's primary and secondary windows.
   doesn't count (`process::tests::the_nearest_agent_under_the_shell_is_found`).
 - A failed read never raises the error banner. The bar shows the reason, or nothing
   (`update/tests/board.rs::ticks_ask_for_the_focused_panes_agent_usage_one_at_a_time`).
+- A rate-limited service isn't asked again before its wait is over, however often clients
+  poll (`usage::tests::a_rate_limited_service_is_left_alone_and_the_last_reading_stays`).
 
 ## Tests
 - `crates/urushi-daemon/src/usage/`: parsing `ps`, agent detection, Claude credentials
-  and both answer shapes, Codex records and reset handling, RFC 3339 times, caching
-  with a fake `UsageSource`, and running helpers with a timeout.
+  and both answer shapes, the status and `Retry-After` lines from curl, Codex records and
+  reset handling, RFC 3339 times, caching and rate-limit waits (`cache.rs`, and with a
+  fake `UsageSource`), and running helpers with a timeout.
 - `crates/urushi-daemon/tests/boards_and_usage.rs::usage_follows_the_agent_running_in_the_pane`:
   a stand-in `claude` script in a real pane is detected, with a fake usage source.
 - `crates/urushi-app/src/update/tests/board.rs`: polling and its answers.

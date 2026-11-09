@@ -16,7 +16,7 @@ use urushi_client::{ClientError, v1};
 use urushi_core::Agent;
 use urushi_daemon::DaemonOptions;
 use urushi_daemon::tailscale::StaticTailscale;
-use urushi_daemon::usage::{Process, SystemUsage, Usage, UsageSource, Window};
+use urushi_daemon::usage::{Failure, Process, SystemUsage, Usage, UsageSource, Window};
 
 fn titles(column: &v1::BoardColumn) -> Vec<&str> {
     column.tasks.iter().map(|t| t.title.as_str()).collect()
@@ -261,7 +261,7 @@ impl UsageSource for FakeUsage {
         SystemUsage.processes()
     }
 
-    fn usage(&self, agent: Agent) -> Result<Usage, String> {
+    fn usage(&self, agent: Agent) -> Result<Usage, Failure> {
         match agent {
             Agent::Claude => Ok(Usage {
                 plan: "Max 5x".into(),

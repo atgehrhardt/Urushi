@@ -9,9 +9,11 @@
 //!    limits in its session files ([`codex`]). Cursor exposes nothing.
 //!
 //! Both are cached ([`UsageMonitor`]): the process table for a couple of seconds, usage
-//! for a minute, so clients can poll cheaply. The slow parts sit behind [`UsageSource`]
+//! for minutes, and a rate-limited service is left alone for as long as it asks
+//! ([`cache`]), so clients can poll cheaply. The slow parts sit behind [`UsageSource`]
 //! so tests never touch the real keychain, network or home directory.
 
+mod cache;
 pub mod claude;
 pub mod codex;
 mod exec;
@@ -24,6 +26,7 @@ use std::time::{Duration, Instant};
 
 use urushi_core::{Agent, Timestamp};
 
+pub use cache::Failure;
 pub(crate) use exec::run as exec_run;
 pub use process::Process;
 
@@ -31,10 +34,6 @@ use crate::service::{blocking, lock};
 
 /// How long the process table is reused.
 const PROCESS_TTL: Duration = Duration::from_secs(2);
-/// How long a successful usage reading is reused.
-const USAGE_TTL: Duration = Duration::from_secs(60);
-/// How long a failed reading is reused before trying again.
-const ERROR_TTL: Duration = Duration::from_secs(30);
 
 /// One rate-limit window, e.g. Claude's 5-hour or weekly limit.
 #[derive(Clone, Debug, PartialEq)]
@@ -86,8 +85,8 @@ pub trait UsageSource: Send + Sync {
         crate::restore::Conversation::Unknown
     }
     /// Reads `agent`'s plan usage. Slow (network or files); called off the async
-    /// runtime. Errors are short, user-facing sentences.
-    fn usage(&self, agent: Agent) -> Result<Usage, String>;
+    /// runtime. Failures carry short, user-facing sentences.
+    fn usage(&self, agent: Agent) -> Result<Usage, Failure>;
 }
 
 /// The real machine.
@@ -112,25 +111,22 @@ impl UsageSource for SystemUsage {
         }
     }
 
-    fn usage(&self, agent: Agent) -> Result<Usage, String> {
+    fn usage(&self, agent: Agent) -> Result<Usage, Failure> {
         match agent {
             Agent::Claude => claude::read(),
-            Agent::Codex => codex::read(&codex::home().ok_or("no home directory")?),
+            Agent::Codex => Ok(codex::read(&codex::home().ok_or("no home directory")?)?),
             Agent::Cursor => Err("Cursor doesn't report its plan usage".into()),
         }
     }
 }
 
 type Cached<T> = Option<(Instant, T)>;
-/// A usage reading: when it was read (for the cache), the result, and when it was read
-/// (for clients).
-type Reading = (Instant, Result<Usage, String>, Timestamp);
 
 /// Answers "what agent runs in this pane, and how much of its plan is used", with caching.
 pub struct UsageMonitor {
     source: Arc<dyn UsageSource>,
     processes: Mutex<Cached<Arc<Vec<Process>>>>,
-    usage: Mutex<HashMap<Agent, Reading>>,
+    usage: Mutex<HashMap<Agent, cache::Entry>>,
 }
 
 impl UsageMonitor {
@@ -214,23 +210,36 @@ impl UsageMonitor {
     }
 
     async fn usage(&self, agent: Agent) -> (Result<Usage, String>, Timestamp) {
-        if let Some((at, usage, fetched)) = lock(&self.usage).get(&agent) {
-            let ttl = if usage.is_ok() { USAGE_TTL } else { ERROR_TTL };
-            if at.elapsed() < ttl {
-                return (usage.clone(), *fetched);
+        if let Some(entry) = lock(&self.usage).get(&agent) {
+            let now = Instant::now();
+            if now < entry.next_read {
+                return entry.shown(now);
             }
         }
         // Two clients asking at once may both read; that's harmless and rare.
         let source = self.source.clone();
-        let usage = blocking(move || Ok(source.usage(agent)))
+        let result = blocking(move || Ok(source.usage(agent)))
             .await
-            .unwrap_or_else(|e| Err(e.to_string()));
-        let fetched = crate::service::now();
-        if let Err(error) = &usage {
+            .unwrap_or_else(|e| Err(Failure::Unavailable(e.to_string())));
+        if let Err(error) = &result {
             tracing::debug!(?agent, %error, "agent usage unavailable");
         }
-        lock(&self.usage).insert(agent, (Instant::now(), usage.clone(), fetched));
-        (usage, fetched)
+        let fetched = crate::service::now();
+        let now = Instant::now();
+        let mut cached = lock(&self.usage);
+        let entry = cache::record(cached.remove(&agent), result, now, fetched);
+        let shown = entry.shown(now);
+        cached.insert(agent, entry);
+        shown
+    }
+
+    /// Makes every cached usage reading due, as if its wait had passed.
+    #[cfg(test)]
+    fn expire(&self) {
+        let now = Instant::now();
+        for entry in lock(&self.usage).values_mut() {
+            entry.next_read = now;
+        }
     }
 }
 

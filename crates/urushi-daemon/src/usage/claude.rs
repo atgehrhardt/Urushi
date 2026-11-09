@@ -6,12 +6,16 @@
 //! endpoint isn't a published API, so parsing is lenient and an unexpected answer is
 //! reported as "unavailable" rather than an error. The request goes through `curl`, with
 //! the token passed on stdin so it never shows in a process listing (ADR 0011).
+//!
+//! The endpoint is rate-limited per sign-in, a budget Claude Code itself shares. A 429
+//! comes back as [`Failure::RateLimited`] with its `Retry-After`, so the monitor can wait
+//! as long as asked instead of keeping the budget exhausted.
 
 use std::time::Duration;
 
 use serde_json::Value;
 
-use super::{Usage, Window, exec, plan_label, time::rfc3339_ms};
+use super::{Failure, Usage, Window, exec, plan_label, time::rfc3339_ms};
 
 const URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const BETA: &str = "oauth-2025-04-20";
@@ -26,7 +30,7 @@ pub(crate) struct Credentials {
 }
 
 /// Reads the sign-in and asks for usage.
-pub(crate) fn read() -> Result<Usage, String> {
+pub(crate) fn read() -> Result<Usage, Failure> {
     let json = crate::platform::claude_credentials()?;
     let credentials = parse_credentials(&json)?;
     if credentials.expires_at_ms.is_some_and(|at| at <= now_ms()) {
@@ -46,26 +50,37 @@ pub(crate) fn read() -> Result<Usage, String> {
             "--header",
             "@-",
             "--write-out",
-            "\n%{http_code}",
+            "\n%header{retry-after}\n%{http_code}",
             URL,
         ],
         Some(headers.as_bytes()),
         TIMEOUT,
     )?;
-    let text = String::from_utf8_lossy(&out);
-    let (body, status) = text.rsplit_once('\n').unwrap_or(("", &text));
-    match status.trim() {
-        "200" => {}
+    answer(&String::from_utf8_lossy(&out), credentials.plan)
+}
+
+/// Usage from curl's output: the body, then the `Retry-After` header and the HTTP status
+/// on a line each (see the `--write-out` in [`read`]).
+pub(crate) fn answer(curl_output: &str, plan: String) -> Result<Usage, Failure> {
+    let mut lines = curl_output.rsplitn(3, '\n');
+    let status = lines.next().unwrap_or_default().trim();
+    let retry_after = lines.next().unwrap_or_default().trim();
+    let body = lines.next().unwrap_or_default();
+    match status {
+        "200" => Ok(Usage {
+            plan,
+            windows: parse_usage(body)?,
+        }),
         "401" | "403" => {
-            return Err("Claude didn't accept its stored sign-in; run /login in Claude".into());
+            Err("Claude didn't accept its stored sign-in; run /login in Claude".into())
         }
-        "429" => return Err("Claude's usage service is busy; retrying shortly".into()),
-        other => return Err(format!("Claude's usage service answered HTTP {other}")),
+        "429" => Err(Failure::RateLimited {
+            message: "Claude's usage service is busy".into(),
+            // Seconds; the HTTP-date form is rare and falls back to the default wait.
+            retry_after: retry_after.parse().ok().map(Duration::from_secs),
+        }),
+        other => Err(format!("Claude's usage service answered HTTP {other}").into()),
     }
-    Ok(Usage {
-        plan: credentials.plan,
-        windows: parse_usage(body)?,
-    })
 }
 
 fn now_ms() -> i64 {
@@ -207,6 +222,39 @@ mod tests {
         assert!((windows[0].used_percent - 41.5).abs() < f64::EPSILON);
         assert_eq!(windows[1].resets_at_ms, rfc3339_ms("2026-11-13T05:59:59Z"));
         assert_eq!(windows[2].resets_at_ms, None);
+    }
+
+    #[test]
+    fn answers_are_split_from_the_status_and_retry_after() {
+        let ok = "{\"seven_day\":\n{\"utilization\":5}}\n\n200";
+        let usage = answer(ok, "Pro".into()).unwrap();
+        assert_eq!(usage.plan, "Pro");
+        assert_eq!(usage.windows[0].label, "Week");
+
+        let busy = "{\"error\":{\"type\":\"rate_limit_error\"}}\n120\n429";
+        assert_eq!(
+            answer(busy, String::new()),
+            Err(Failure::RateLimited {
+                message: "Claude's usage service is busy".into(),
+                retry_after: Some(Duration::from_secs(120)),
+            })
+        );
+        let dated = "{}\nWed, 21 Oct 2026 07:28:00 GMT\n429";
+        assert!(matches!(
+            answer(dated, String::new()),
+            Err(Failure::RateLimited {
+                retry_after: None,
+                ..
+            })
+        ));
+        assert!(matches!(
+            answer("{}\n\n401", String::new()),
+            Err(Failure::Unavailable(m)) if m.contains("/login")
+        ));
+        assert_eq!(
+            answer("<html>\n\n502", String::new()),
+            Err("Claude's usage service answered HTTP 502".into())
+        );
     }
 
     #[test]

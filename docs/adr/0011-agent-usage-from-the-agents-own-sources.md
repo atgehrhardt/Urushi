@@ -32,9 +32,15 @@ start `claude` by hand in a terminal tab, so the tab's launch choice isn't enoug
   objects, and an unexpected answer is shown as "usage unavailable" rather than an
   error.
 - **Codex:** read the newest `rate_limits` record from the most recent session files.
-- **Caching:** the process table for 2 s, usage for 60 s, failures for 30 s. Clients poll
-  every 3 s. Each read is behind the `UsageSource` trait, so tests never touch the real
-  keychain, network or home directory.
+- **Caching:** the process table for 2 s, usage for 5 min, failures for 30 s. Clients
+  poll every 3 s. Each read is behind the `UsageSource` trait, so tests never touch the
+  real keychain, network or home directory.
+- **Rate limits:** Claude's endpoint is rate-limited per sign-in, and every running Claude
+  Code uses the same budget. After an HTTP 429 the daemon waits as long as `Retry-After`
+  says, kept between 1 min and 1 h. With no header it waits 5 min and doubles the wait on
+  each refusal in a row, up to 1 h, like Claude Code does. While it waits, the bar shows
+  the last good reading (`usage/cache.rs`). Retrying every 30 s kept the budget used up,
+  so the bar never recovered.
 
 ## Alternatives considered
 - **Read usage in the client:** this is the wrong machine for remote and mobile clients.
@@ -50,7 +56,9 @@ start `claude` by hand in a terminal tab, so the tab's launch choice isn't enoug
   by hand and agents that have exited.
 
 ## Consequences
-- Usage appears for agents started any way, within one poll of starting them.
+- Usage appears for agents started any way, within one poll of starting them. The
+  numbers can be up to 5 minutes old (longer while Claude's service is refusing). Reset
+  countdowns stay current because clients compute them from `resets_at`.
 - The Claude endpoint is not a published API. If it changes, the bar says "usage
   unavailable" until `usage/claude.rs` is updated, and nothing else breaks.
 - The daemon reads the user's Claude sign-in. It is used only for this request, never

@@ -23,7 +23,7 @@ use urushi_daemon::DaemonOptions;
 use urushi_daemon::restore::Conversation;
 use urushi_daemon::tailscale::StaticTailscale;
 use urushi_daemon::usage::process::Details;
-use urushi_daemon::usage::{Process, SystemUsage, Usage, UsageSource};
+use urushi_daemon::usage::{Failure, Process, SystemUsage, Usage, UsageSource};
 
 /// The real machine, except that every Claude has session `restored-session-1` open.
 struct Machine;
@@ -43,7 +43,7 @@ impl UsageSource for Machine {
             _ => Conversation::Unknown,
         }
     }
-    fn usage(&self, _agent: Agent) -> Result<Usage, String> {
+    fn usage(&self, _agent: Agent) -> Result<Usage, Failure> {
         Err("not here".into())
     }
 }
