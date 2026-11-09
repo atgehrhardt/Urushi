@@ -235,6 +235,14 @@ enum TabCmd {
         /// Agent CLI to start in the tab's shell.
         #[arg(long, value_enum)]
         agent: Option<AgentArg>,
+        /// Hand this board task or subtask to the thread: links them (moving the link
+        /// from any other thread) and opens the tab for it.
+        #[arg(long, conflicts_with_all = ["agent", "title"])]
+        task: Option<String>,
+        /// With --task: start the task agent (settings task-agent / task-mode) with the
+        /// task as its prompt.
+        #[arg(long, requires = "task")]
+        start_agent: bool,
     },
     /// Close a tab.
     Close {

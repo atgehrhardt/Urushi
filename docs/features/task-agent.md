@@ -1,8 +1,8 @@
 # Feature: Task agent and first-run setup
 
 - **Status:** Shipped
-- **Owners (crates):** `urushi-core` (`agent/mode.rs`, `board/prompt.rs`, `AgentSettings`), `urushi-daemon` (`service/task_agent.rs`, `service/threads.rs`, `service/settings.rs`), `urushi-proto` (`agents.proto`, `convert::agent_mode_*`), `urushi-app` (`task_agent.rs`, `update/setup.rs`, `view/setup.rs`, `view/new_thread.rs`), `urushi-cli`
-- **Related ADRs:** [0014](../adr/0014-task-prompt-via-pane-environment.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Owners (crates):** `urushi-core` (`agent/mode.rs`, `board/prompt.rs`, `AgentSettings`), `urushi-daemon` (`service/task_agent.rs`, `service/threads.rs`, `service/settings.rs`), `urushi-proto` (`agents.proto`, `convert::agent_mode_*`), `urushi-app` (`task_agent.rs`, `update/setup.rs`, `view/setup.rs`, `view/new_thread.rs`, `update/task_threads.rs`, `view/task_in_thread.rs`), `urushi-cli`
+- **Related ADRs:** [0018](../adr/0018-start-tasks-in-existing-threads.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 **Start thread** on a task or subtask opens a thread that runs the user's **task agent**
@@ -10,6 +10,10 @@
 notes and checklist are the agent's first prompt. The new-thread dialog still opens
 first, prefilled, and says what will start, e.g. "Starts Claude in plan mode with this
 task as its prompt."
+
+The dialog can also send the task to an **existing thread** ("New thread | Existing
+thread", 1.10 daemons). A new tab in the picked thread runs the task agent the same way,
+and the task is linked there.
 
 When the app connects to a daemon on which no task agent is chosen yet, a **setup
 wizard** asks for one:
@@ -37,6 +41,11 @@ choice under **Tasks start with**.
      environment (`spawn_session_with_env`) and names the tab after the agent.
   3. After the thread is recorded, `start_task_agent` types
      `Agent::task_command_line(program, skip, mode)`.
+- **In an existing thread:** `CreateTab{thread_id, task_id, subtask_id,
+  start_task_agent: true}` (`service/task_tabs.rs::create_task_tab`). It resolves the
+  same `TaskAgent` before spawning, starts the pane with `URUSHI_TASK_PROMPT`, records the
+  tab and the link in one `mutate`, and then types the command. CLI: `urushi tab new
+  <thread> --task <id> --start-agent`.
 - **Command lines:**
 
   | Agent | Normal | Plan |
@@ -51,6 +60,9 @@ choice under **Tasks start with**.
   - `AppState::task_agent()` reads the choice; it is `None` on daemons older than 1.7.
   - `submit` sends `start_task_agent` only for a dialog opened from a task, when a task
     agent is chosen. Otherwise the thread opens on the launcher, as before.
+  - `Dialog::NewThread.target` (`ThreadTarget::{New, Existing(thread)}`) is the switch.
+    `daemon_supports_task_in_thread` (≥ 1.10) shows it. Existing mode sends `CreateTab`
+    with `Followup::TaskTabCreated`, which closes the board and selects the new tab.
   - `AppState::setup_due` opens `Dialog::Setup` once both the settings and the installed
     agents (`SetupGate::agents_loaded`) have arrived, if nothing else is open.
   - `SetupGate::dismissed` keeps it closed for the rest of the run.
@@ -59,7 +71,9 @@ choice under **Tasks start with**.
 - A refused start leaves no thread, worktree, branch, tab or link: no task agent chosen
   or the agent not installed is `FAILED_PRECONDITION`, and `start_task_agent` without a
   task is `INVALID_ARGUMENT`
-  (`tests/task_agents.rs::a_task_agent_that_cant_start_leaves_nothing_behind`).
+  (`tests/task_agents.rs::a_task_agent_that_cant_start_leaves_nothing_behind`). The same
+  holds in an existing thread: no tab and no link
+  (`a_task_that_cant_start_in_a_thread_leaves_nothing_behind`).
 - The whole prompt reaches the agent as one argument
   (`tests/task_agents.rs::a_task_starts_the_task_agent_in_its_mode_with_the_task_as_prompt`).
 - A mode the agent lacks is never passed to it (`Agent::effective_mode`; `agent/mode.rs`
@@ -76,11 +90,14 @@ choice under **Tasks start with**.
   `tests/round_trip.rs`.
 - **Daemon:**
   - `service/settings.rs` (choose and clear).
-  - `tests/task_agents.rs`, with a fake `claude` that prints each argument.
+  - `tests/task_agents.rs`, with a fake `claude` that prints each argument, for both a new
+    thread and an existing one (`a_task_starts_in_an_existing_thread_in_a_new_tab`).
 - **App:**
   - `update/tests/setup.rs`: the wizard, the Settings choices, and Start thread with and
     without a task agent or a 1.7 daemon.
-  - `snapshot.rs`: the `setup` and `setup-mode` scenarios.
+  - `update/tests/task_in_thread.rs`: the switch, picking, the `CreateTab` request, and
+    older daemons.
+  - `snapshot.rs`: the `setup`, `setup-mode` and `task-in-thread` scenarios.
 
 ## Limitations and follow-ups
 - The prompt is fixed text. There is no per-repo or per-board template yet.

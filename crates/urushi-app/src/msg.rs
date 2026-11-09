@@ -150,6 +150,11 @@ pub enum Msg {
     RemoveDraftSubtask(usize),
     /// Start a thread for a task or subtask, or go to the one already started.
     StartThread(TaskLink),
+    /// In the new-thread dialog for a task: start it in an existing thread (`true`) or
+    /// a new one.
+    UseExistingThread(bool),
+    /// In the new-thread dialog for a task: the existing thread to start it in.
+    PickExistingThread(String),
     /// In the task editor: delete the task.
     DeleteTask,
     /// A card acted on from outside the editor (its context menu).
@@ -279,6 +284,8 @@ pub enum Followup {
     DeletionPlan,
     /// Select the new tab.
     TabCreated,
+    /// A task was started in an existing thread: go to its new tab.
+    TaskTabCreated,
     /// Focus the new pane.
     PaneCreated,
     /// Show settings.

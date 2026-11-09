@@ -197,6 +197,22 @@ fn the_board_status_bar_and_task_editor_show_their_content() {
 }
 
 #[test]
+fn a_task_can_start_in_an_existing_thread() {
+    let dump = dump("task-in-thread", 1280.0);
+    for text in [
+        "\"Start in a thread\"",
+        "\"New thread\"",
+        "\"Existing thread\"",
+        "\"Start in thread\"",
+        "\"A new tab there starts Claude in plan mode with this task as its prompt.\"",
+    ] {
+        assert!(dump.contains(text), "{text} missing: {dump}");
+    }
+    assert!(dump.contains(" › "), "threads are listed by repo: {dump}");
+    assert!(!dump.contains("\"Branch\""), "no new-thread fields: {dump}");
+}
+
+#[test]
 fn panes_split_and_close_from_their_context_menu_not_buttons() {
     let menu = dump("pane-menu", 1280.0);
     for text in [

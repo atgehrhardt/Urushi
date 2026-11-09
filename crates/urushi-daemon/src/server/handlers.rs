@@ -152,10 +152,19 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             ok()
         }
         Body::CreateTab(r) => {
-            let agent = convert::agent_from_proto(r.agent);
-            let tab = service
-                .create_tab(parse(&r.thread_id, "thread_id")?, &r.title, agent)
-                .await?;
+            let thread = parse(&r.thread_id, "thread_id")?;
+            let task = match optional_id(&r.task_id, "task_id")? {
+                Some(task) => Some((task, optional_id(&r.subtask_id, "subtask_id")?)),
+                None => None,
+            };
+            let tab = if task.is_some() || r.start_task_agent {
+                service
+                    .create_task_tab(thread, task, r.start_task_agent)
+                    .await?
+            } else {
+                let agent = convert::agent_from_proto(r.agent);
+                service.create_tab(thread, &r.title, agent).await?
+            };
             Outcome::Tab(convert::tab_to_proto(&tab))
         }
         Body::ListAgents(_) => Outcome::Agents(v1::Agents {

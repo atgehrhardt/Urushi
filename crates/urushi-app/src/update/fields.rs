@@ -14,7 +14,7 @@ use urushi_ui::TextField;
 
 use crate::keys::{KeyPress, Named};
 use crate::msg::{Effect, Msg};
-use crate::state::{AppState, Dialog, Field, FieldCommand};
+use crate::state::{AppState, Dialog, Field, FieldCommand, ThreadTarget};
 
 const APPLE: bool = cfg!(any(target_os = "macos", target_os = "ios"));
 
@@ -56,6 +56,10 @@ impl AppState {
         match &self.dialog {
             Some(Dialog::AddProject { .. }) if self.can_pick_folders() => Vec::new(),
             Some(Dialog::AddProject { .. }) => vec![Field::ProjectPath],
+            Some(Dialog::NewThread {
+                target: ThreadTarget::Existing(_),
+                ..
+            }) => Vec::new(),
             Some(Dialog::NewThread { .. }) => vec![Field::ThreadTitle, Field::ThreadBranch],
             Some(Dialog::Settings { .. }) => vec![Field::BranchPrefix, Field::DefaultShell],
             Some(Dialog::Connect { .. }) => vec![Field::Host],

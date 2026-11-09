@@ -9,7 +9,7 @@ use urushi_ui::TextField;
 use super::request;
 use crate::msg::{Effect, Followup, Msg};
 use crate::organize::{ContextMenu, DropTarget, MenuPage, Prompt};
-use crate::state::{AppState, Dialog, Field};
+use crate::state::{AppState, Dialog, Field, ThreadTarget};
 
 impl AppState {
     /// Handles the organizing messages (see `route_organize`).
@@ -251,6 +251,7 @@ impl AppState {
             base: None,
             open: None,
             task: None,
+            target: ThreadTarget::New,
         });
         self.focus = Some(Field::ThreadTitle);
         Self::request_branches(repo, fx);

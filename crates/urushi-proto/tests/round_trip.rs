@@ -102,6 +102,9 @@ fn all_request_kinds() {
             thread_id: "t".into(),
             title: String::new(),
             agent: v1::Agent::Claude.into(),
+            task_id: "task".into(),
+            subtask_id: "sub".into(),
+            start_task_agent: true,
         }),
         B::CloseTab(v1::CloseTabRequest { tab_id: "t".into() }),
         B::RenameTab(v1::RenameTabRequest {

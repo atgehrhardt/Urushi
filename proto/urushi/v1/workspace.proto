@@ -262,6 +262,15 @@ message CreateTabRequest {
   // Agent CLI to start in the tab's shell. Unspecified opens a plain shell.
   // Since protocol 1.1; older daemons ignore it.
   Agent agent = 3;
+  // Link the thread to this task on a board, or with subtask_id, to that subtask of it
+  // (at any depth under task_id), as CreateThreadRequest does. A task linked to another
+  // thread moves to this one. Empty: no link. Since 1.10.
+  string task_id = 4;
+  string subtask_id = 5;
+  // Run the user's task agent in its task mode in the new tab, with the linked task or
+  // subtask as its first prompt; overrides `agent`. Requires task_id. Fails before any
+  // terminal starts if no task agent is chosen or it isn't installed. Since 1.10.
+  bool start_task_agent = 6;
 }
 
 // Which agent CLIs are installed on the daemon's machine. Since protocol 1.1.

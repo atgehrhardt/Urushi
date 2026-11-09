@@ -57,6 +57,8 @@ impl AppState {
                 }
             }
             Msg::StartThread(link) => self.start_thread(link, fx),
+            Msg::UseExistingThread(existing) => self.use_existing_thread(existing),
+            Msg::PickExistingThread(thread) => self.pick_existing_thread(thread),
             _ => {}
         }
     }

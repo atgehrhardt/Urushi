@@ -213,3 +213,136 @@ async fn a_task_agent_that_cant_start_leaves_nothing_behind() {
     assert_eq!(branches(&fixture.repo), branches_before);
     daemon.stop().await;
 }
+
+/// The tabs of `thread`, in order.
+async fn tabs_of(client: &Client, thread: &str) -> Vec<v1::Tab> {
+    let w = client.list_workspace(false).await.unwrap();
+    w.tabs
+        .into_iter()
+        .filter(|t| t.thread_id == thread)
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_task_starts_in_an_existing_thread_in_a_new_tab() {
+    let home = temp_home();
+    let fixture = repo(home.path());
+    let agents = home.path().join("agents bin");
+    std::fs::create_dir_all(&agents).unwrap();
+    fake_agent(&agents, "claude");
+    let daemon = Daemon::start_with_agents(&home.path().join("home"), vec![agents]).await;
+    let (client, _events) = daemon.connect().await;
+    let repo_id = client
+        .add_repo(fixture.repo.to_str().unwrap(), "")
+        .await
+        .unwrap()
+        .id;
+    let (task, docs) = task(&client).await;
+    let thread = client.create_thread(&repo_id, "busy", "").await.unwrap();
+    let other = client.create_thread(&repo_id, "other", "").await.unwrap();
+    assert_eq!(tabs_of(&client, &thread.id).await.len(), 1);
+
+    choose(&client, v1::Agent::Claude, v1::AgentMode::Plan).await;
+    let tab = client
+        .create_task_tab(&thread.id, &task.id, "", true)
+        .await
+        .unwrap();
+    assert_eq!(tab.thread_id, thread.id);
+    assert_eq!(tab.title, "Claude");
+    let tabs = tabs_of(&client, &thread.id).await;
+    assert_eq!(tabs.len(), 2, "the thread keeps its tab: {tabs:#?}");
+    let pane = panes_of(&tab)[0].clone();
+    let screen = wait_for_text(&client, &pane, "AGENT-DONE").await;
+    let text = screen.join("\n");
+    for expected in ["ARG[plan]", "Task: Ship search", "- [ ] docs]"] {
+        assert!(text.contains(expected), "{expected:?} missing from {text}");
+    }
+    assert_eq!(
+        screen.iter().filter(|l| l.starts_with("ARG[")).count(),
+        3,
+        "the whole prompt is one argument: {text}"
+    );
+    let w = client.list_workspace(false).await.unwrap();
+    assert_eq!(w.boards[0].columns[0].tasks[0].thread_id, thread.id);
+
+    // A subtask gets its step and its own link.
+    let tab = client
+        .create_task_tab(&thread.id, &task.id, &docs.id, true)
+        .await
+        .unwrap();
+    let pane = panes_of(&tab)[0].clone();
+    let text = wait_for_text(&client, &pane, "AGENT-DONE").await.join("\n");
+    assert!(text.contains("Step: docs"), "{text}");
+    let w = urushi_client::WorkspaceMirror::new(client.list_workspace(false).await.unwrap());
+    assert_eq!(w.find_task(&docs.id).unwrap().task().thread_id(), thread.id);
+
+    // Without the task agent: linked (moving the link), with a plain shell.
+    let tab = client
+        .create_task_tab(&other.id, &task.id, &docs.id, false)
+        .await
+        .unwrap();
+    assert_eq!(tab.title, "Terminal");
+    let w = urushi_client::WorkspaceMirror::new(client.list_workspace(false).await.unwrap());
+    assert_eq!(w.find_task(&docs.id).unwrap().task().thread_id(), other.id);
+    daemon.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_task_that_cant_start_in_a_thread_leaves_nothing_behind() {
+    let home = temp_home();
+    let fixture = repo(home.path());
+    let agents = home.path().join("agents bin");
+    std::fs::create_dir_all(&agents).unwrap();
+    fake_agent(&agents, "claude");
+    let daemon = Daemon::start_with_agents(&home.path().join("home"), vec![agents]).await;
+    let (client, _events) = daemon.connect().await;
+    let repo_id = client
+        .add_repo(fixture.repo.to_str().unwrap(), "")
+        .await
+        .unwrap()
+        .id;
+    let (task, _) = task(&client).await;
+    let thread = client.create_thread(&repo_id, "busy", "").await.unwrap();
+
+    // No task agent chosen yet.
+    let err = client
+        .create_task_tab(&thread.id, &task.id, "", true)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), Some(v1::ErrorCode::FailedPrecondition), "{err}");
+
+    // The chosen agent isn't installed.
+    choose(&client, v1::Agent::Codex, v1::AgentMode::Normal).await;
+    let err = client
+        .create_task_tab(&thread.id, &task.id, "", true)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), Some(v1::ErrorCode::FailedPrecondition), "{err}");
+    assert!(err.to_string().contains("Codex is not installed"), "{err}");
+
+    // The task agent without a task.
+    choose(&client, v1::Agent::Claude, v1::AgentMode::Plan).await;
+    let err = client
+        .create_task_tab(&thread.id, "", "", true)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), Some(v1::ErrorCode::InvalidArgument), "{err}");
+
+    // A task that's gone.
+    let w = client.list_workspace(false).await.unwrap();
+    let gone = client
+        .create_task(&w.boards[0].id, &w.boards[0].columns[0].id, "gone", "")
+        .await
+        .unwrap();
+    client.delete_task(&gone.id).await.unwrap();
+    let err = client
+        .create_task_tab(&thread.id, &gone.id, "", true)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), Some(v1::ErrorCode::NotFound), "{err}");
+
+    assert_eq!(tabs_of(&client, &thread.id).await.len(), 1);
+    let w = client.list_workspace(false).await.unwrap();
+    assert_eq!(w.boards[0].columns[0].tasks[0].thread_id, "");
+    daemon.stop().await;
+}

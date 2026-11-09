@@ -1,8 +1,8 @@
 # Feature: Task boards
 
 - **Status:** Shipped (manual boards, columns, colors, tags, nested subtasks, attachments, threads started from tasks)
-- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,prompt}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/`, `view/tasks/`, `view/labels.rs`, `view/menu/tasks.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`)
-- **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md)
+- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,prompt}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/`, `view/tasks/`, `view/labels.rs`, `view/menu/tasks.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
+- **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
 
 ## What it does
 A **Tasks** button sits under the sidebar's Projects | Repos tabs. It shows the number of
@@ -60,6 +60,11 @@ it back.
   clears the link. With a task agent chosen (setup wizard or Settings), the thread starts
   it with the task, its notes and its subtasks as the first prompt; otherwise it opens on
   the launcher. See [task agent](task-agent.md).
+- **Start in an existing thread:** the same dialog has a **New thread | Existing thread**
+  switch (1.10 daemons). Existing lists the ready threads ("repo › title") with the
+  card's or on-screen thread picked first. **Start in thread** opens a new tab there,
+  running the task agent with the task as its prompt (a plain terminal without one), and
+  links the task to that thread (ADR 0018).
 - **Agent attention on cards:** when an agent in a thread linked to the task, or to any
   of its subtasks at any depth, finishes or waits for the user, the card gets a
   **Finished** (green) or **Needs input** (amber) badge by its title and a border in that
@@ -122,8 +127,11 @@ restarts. Jira boards are planned as further tabs in the same panel.
 - **Linking threads:** `CreateThread{task_id, subtask_id}` checks the task exists (and
   that `subtask_id`, if set, is somewhere under it) before making the worktree, then links it in the same `mutate` that records the thread
   (`threads.rs::finish_thread_creation`). If the task was deleted meanwhile, the thread
-  is kept unlinked. Deleting a thread unlinks it from every board (`deletion.rs`). See
-  ADR 0012 for why the link lives on the task and is made by the daemon.
+  is kept unlinked. `CreateTab{task_id, subtask_id}` links the task to an existing thread
+  in the same `mutate` that records the new tab (`task_tabs.rs::create_task_tab`), moving
+  the link from any earlier thread. Deleting a thread unlinks it from every board
+  (`deletion.rs`). See ADR 0012 for why the link lives on the task and is made by the
+  daemon, and ADR 0018 for linking through `CreateTab`.
 - **Wire (1.5, 1.6):** `Workspace.boards`, plus `CreateBoard` → `Board`, `RenameBoard`,
   `DeleteBoard`, `CreateTask{subtasks}` → `Task`, `UpdateTask{optional title, optional
   notes}`, `MoveTask{column_id, index}`, `DeleteTask`, and since 1.6 `CreateSubtask` →

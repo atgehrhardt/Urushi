@@ -183,6 +183,27 @@ impl Client {
             thread_id: thread_id.into(),
             title: title.into(),
             agent: agent.into(),
+            ..Default::default()
+        });
+        expect!(self.request(body).await?, Tab, "CreateTab")
+    }
+
+    /// Hands a board task (or a subtask of it, at any depth) to an existing thread: links
+    /// it there and opens a new tab, running the task agent with the task as its prompt
+    /// when `start_task_agent` is set. Needs a 1.10 daemon; older ones ignore the task.
+    pub async fn create_task_tab(
+        &self,
+        thread_id: &str,
+        task_id: &str,
+        subtask_id: &str,
+        start_task_agent: bool,
+    ) -> Result<v1::Tab, ClientError> {
+        let body = Body::CreateTab(v1::CreateTabRequest {
+            thread_id: thread_id.into(),
+            task_id: task_id.into(),
+            subtask_id: subtask_id.into(),
+            start_task_agent,
+            ..Default::default()
         });
         expect!(self.request(body).await?, Tab, "CreateTab")
     }

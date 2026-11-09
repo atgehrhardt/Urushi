@@ -54,7 +54,9 @@ impl AppState {
             | Msg::ToggleSubtask(_)
             | Msg::DeleteSubtask(_)
             | Msg::RemoveDraftSubtask(_)
-            | Msg::StartThread(_)) => self.task_msg(msg, fx),
+            | Msg::StartThread(_)
+            | Msg::UseExistingThread(_)
+            | Msg::PickExistingThread(_)) => self.task_msg(msg, fx),
             Msg::Board(action) => self.card_action(action, fx),
             Msg::OpenDeleteBoard(board) => {
                 if let Some(b) = self.workspace.board(&board) {

@@ -49,6 +49,17 @@ impl TaskLink {
     }
 }
 
+/// Where the new-thread dialog sends a board task: a new thread (the only choice
+/// without a task), or a new tab in an existing thread (ADR 0018).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum ThreadTarget {
+    /// Create a thread.
+    #[default]
+    New,
+    /// Start in this existing thread; `None` until one is picked.
+    Existing(Option<String>),
+}
+
 /// The subtask part of the task editor. An existing task's subtasks change right away
 /// (each check, add or delete is a request); a new task's are kept here as drafts and
 /// created with it.
@@ -163,6 +174,8 @@ pub enum Dialog {
         open: Option<Select>,
         /// The board task (and maybe subtask) the thread is started for.
         task: Option<TaskLink>,
+        /// For a task: a new thread, or a new tab in one that exists.
+        target: ThreadTarget,
     },
     /// A one-line text prompt.
     Prompt {

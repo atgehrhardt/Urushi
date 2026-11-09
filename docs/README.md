@@ -32,6 +32,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0015 – Make subtasks full tasks nested inside their parent](adr/0015-subtasks-are-nested-tasks.md)
 - [0016 – Keep attachments in the daemon, send their bytes over the protocol, and decode images there](adr/0016-daemon-stores-attachments.md)
 - [0017 – Learn when an agent finished or waits from what it writes to its pane's terminal](adr/0017-agent-attention-through-the-pane-terminal.md)
+- [0018 – Start a task in an existing thread through `CreateTab`, linking it there](adr/0018-start-tasks-in-existing-threads.md)
 
 ## Features
 - [_template](features/_template.md)

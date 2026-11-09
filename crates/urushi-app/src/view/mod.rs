@@ -13,6 +13,7 @@ mod projects;
 mod setup;
 mod sidebar;
 mod status_bar;
+mod task_in_thread;
 mod tasks;
 
 use std::collections::HashMap;

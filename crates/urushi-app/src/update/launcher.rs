@@ -63,6 +63,7 @@ impl AppState {
                 thread_id,
                 title: String::new(),
                 agent: agent.into(),
+                ..Default::default()
             }),
             Followup::TabCreated,
         ));

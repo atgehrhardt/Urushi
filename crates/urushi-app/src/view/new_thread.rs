@@ -1,6 +1,7 @@
 //! The new-thread dialog: repo and start-from branch are chosen from lists (the daemon
 //! reports the repo's branches), title and branch name are typed. The branch name
-//! follows the title until edited (see `update/intake.rs`).
+//! follows the title until edited (see `update/intake.rs`). Opened from a board task, it
+//! can instead start the task in an existing thread (`task_in_thread.rs`).
 
 use std::collections::HashMap;
 
@@ -10,7 +11,7 @@ use urushi_ui::{Key, Length, Node, Theme, key};
 use super::dialogs::{cancel, field, hint, label};
 use crate::msg::Msg;
 use crate::organize::Select;
-use crate::state::{AppState, Dialog, Field};
+use crate::state::{AppState, Dialog, Field, TaskLink, ThreadTarget};
 
 /// Rows a selector shows before it scrolls.
 const VISIBLE_OPTIONS: usize = 6;
@@ -28,6 +29,7 @@ pub(super) fn view(
         base,
         open,
         task,
+        target,
         ..
     }) = &state.dialog
     else {
@@ -37,21 +39,24 @@ pub(super) fn view(
         .workspace
         .repo(repo)
         .map_or("Choose a repo", |r| r.name.as_str());
-    let for_task = task.as_ref().and_then(|link| {
-        let (_, _, t) = state.workspace.task(&link.task)?;
-        Some(match &link.subtask {
-            Some(s) => format!(
-                "For subtask “{}” of “{}”",
-                t.subtasks.iter().find(|x| x.id == *s)?.title,
-                t.title
-            ),
-            None => format!("For task “{}”", t.title),
-        })
-    });
     let mut body = Node::column()
         .width(Length::Fill(1.0))
         .gap(8.0)
-        .children(for_task.map(|text| hint(theme, &text)))
+        .children(for_task(state, theme, task.as_ref()));
+    if task.is_some() && state.daemon_supports_task_in_thread() {
+        let existing = matches!(target, ThreadTarget::Existing(_));
+        body = body.child(super::task_in_thread::switch(theme, existing));
+    }
+    if let ThreadTarget::Existing(picked) = target {
+        return Some(super::task_in_thread::dialog(
+            state,
+            theme,
+            scroll,
+            body,
+            picked.as_deref(),
+        ));
+    }
+    body = body
         .child(label(theme, "Repo"))
         .children(repo_selector(state, theme, scroll, repo, repo_name, *open))
         .child(label(theme, "Title"))
@@ -103,6 +108,21 @@ pub(super) fn view(
     ))
 }
 
+/// Which task the dialog is for, if any.
+fn for_task(state: &AppState, theme: &Theme, task: Option<&TaskLink>) -> Option<Node<Msg>> {
+    let link = task?;
+    let (_, _, t) = state.workspace.task(&link.task)?;
+    let text = match &link.subtask {
+        Some(s) => format!(
+            "For subtask “{}” of “{}”",
+            t.subtasks.iter().find(|x| x.id == *s)?.title,
+            t.title
+        ),
+        None => format!("For task “{}”", t.title),
+    };
+    Some(hint(theme, &text))
+}
+
 /// What a thread started from a task will run: the task agent with the task as its
 /// prompt, or (none chosen) the launcher.
 fn task_agent_hint(state: &AppState, theme: &Theme) -> Option<Node<Msg>> {
@@ -124,7 +144,8 @@ fn task_agent_hint(state: &AppState, theme: &Theme) -> Option<Node<Msg>> {
     })
 }
 
-fn options_list(
+/// A selector's open option list, scrolling past [`VISIBLE_OPTIONS`] rows.
+pub(super) fn options_list(
     theme: &Theme,
     scroll: &HashMap<Key, f32>,
     name: &str,

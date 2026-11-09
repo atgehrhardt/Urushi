@@ -32,7 +32,8 @@ pub fn scene(
 /// dragged (`drag`), the `repos` tab, the task `board` (a task being dragged across it in
 /// `board-drag`, a `task` with subtasks being edited, and a card's context menu in
 /// `task-menu`, a column's in `column-menu`, a subtask opened as a task in
-/// `task-nested`, and "Make subtask of…" in `nest`), a terminal with an agent's plan
+/// `task-nested`, "Make subtask of…" in `nest`, and Start thread switched to an existing
+/// thread in `task-in-thread`), a terminal with an agent's plan
 /// usage in the `status` bar (and its pane's context menu in `pane-menu`), and the
 /// first-run `setup` wizard (its mode step in `setup-mode`).
 pub const SCENARIOS: &[&str] = &[
@@ -53,6 +54,7 @@ pub const SCENARIOS: &[&str] = &[
     "column-menu",
     "task-nested",
     "nest",
+    "task-in-thread",
     "status",
     "pane-menu",
     "setup",
@@ -98,6 +100,7 @@ const BOARD_SCENARIOS: &[&str] = &[
     "column-menu",
     "task-nested",
     "nest",
+    "task-in-thread",
 ];
 
 /// Settings with Claude in plan mode as the task agent.
@@ -404,6 +407,13 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
             }
             if name == "nest" {
                 state.update(Msg::Board(crate::msg::BoardMsg::OpenNest("k1".into())));
+            }
+            if name == "task-in-thread" {
+                state.update(Msg::StartThread(crate::state::TaskLink {
+                    task: "k2".into(),
+                    subtask: None,
+                }));
+                state.update(Msg::UseExistingThread(true));
             }
             if name == "column-menu" {
                 state.update(Msg::Pointer(urushi_ui::Point::new(760.0, 110.0)));

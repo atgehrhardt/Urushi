@@ -393,4 +393,5 @@ mod organize;
 mod panes;
 mod pointer;
 mod setup;
+mod task_in_thread;
 mod tasks;

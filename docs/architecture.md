@@ -90,6 +90,8 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
   3. Persist the thread.
   4. Spawn the first tab, unless the client asked for none (the GUI then shows the agent launcher). A thread started from a task with `start_task_agent` runs the user's task agent there, with the task as its prompt in `URUSHI_TASK_PROMPT` (ADR 0014); that agent and prompt are resolved before step 2.
 
+  A task can also start in an existing thread: `CreateTab{task_id, start_task_agent}` opens a tab running the task agent there and links the task in the same mutation (ADR 0018).
+
   If any step fails, everything is rolled back.
 - **Ownership:** a thread owns its primary branch, plus branches that did not exist at creation and were checked out in its worktree (read from the worktree's own HEAD reflog). It never owns the base branch, the default branch, branches that existed before it, or branches checked out in other worktrees.
 - **Delete** (two steps, enforced by the protocol):

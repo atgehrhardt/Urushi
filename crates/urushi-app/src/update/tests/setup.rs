@@ -10,7 +10,7 @@ use crate::msg::{Followup, Msg};
 use crate::state::{AppState, Dialog, TaskLink};
 use crate::task_agent::{SetupMsg, SetupStep};
 
-fn settings(task_agent: v1::Agent, task_mode: v1::AgentMode) -> Msg {
+pub(super) fn settings(task_agent: v1::Agent, task_mode: v1::AgentMode) -> Msg {
     Msg::Response {
         followup: Followup::Settings,
         result: Ok(Outcome::Settings(v1::Settings {
@@ -40,7 +40,7 @@ fn agents(installed: &[v1::Agent]) -> Msg {
 }
 
 /// Connected to a daemon of protocol `minor`.
-fn on(minor: u32) -> AppState {
+pub(super) fn on(minor: u32) -> AppState {
     let mut s = attached();
     s.daemon_minor = minor;
     s

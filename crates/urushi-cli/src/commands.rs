@@ -19,6 +19,20 @@ pub(crate) async fn resolve(client: &Client, id: &str) -> Result<String> {
     })
 }
 
+/// The `(task_id, subtask_id)` to link for an abbreviated task or subtask id: a subtask
+/// (at any depth) is linked as `subtask_id` under its card. Empty strings for none.
+async fn task_link(client: &Client, task: Option<String>) -> Result<(String, String)> {
+    let Some(id) = task else {
+        return Ok((String::new(), String::new()));
+    };
+    let id = resolve(client, &id).await?;
+    let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
+    Ok(match mirror.find_task(&id) {
+        Some(found) if !found.task().is_card() => (found.card.id.clone(), id),
+        _ => (id, String::new()),
+    })
+}
+
 pub(crate) fn out(text: &str) -> Result<()> {
     let mut stdout = std::io::stdout().lock();
     writeln!(stdout, "{text}")?;
@@ -41,25 +55,7 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
         Command::Repo(cmd) => repo(client, cmd).await,
         Command::Project(cmd) => project(client, cmd).await,
         Command::Thread(cmd) => thread(client, cmd).await,
-        Command::Tab(TabCmd::New {
-            thread,
-            title,
-            agent,
-        }) => {
-            let agent = match agent {
-                None => v1::Agent::Unspecified,
-                Some(AgentArg::Claude) => v1::Agent::Claude,
-                Some(AgentArg::Codex) => v1::Agent::Codex,
-                Some(AgentArg::Cursor) => v1::Agent::Cursor,
-            };
-            let tab = client
-                .create_tab(&resolve(client, &thread).await?, &title, agent)
-                .await?;
-            out(&format!("tab {}", short(&tab.id)))
-        }
-        Command::Tab(TabCmd::Close { tab }) => {
-            Ok(client.close_tab(&resolve(client, &tab).await?).await?)
-        }
+        Command::Tab(cmd) => tab(client, cmd).await,
         Command::Pane(cmd) => pane(client, cmd).await,
         Command::Board(cmd) => crate::boards::run(client, cmd).await,
         Command::Usage { pane } => {
@@ -172,6 +168,42 @@ async fn update_thread(
     Ok(client.update_thread(request).await?)
 }
 
+async fn tab(client: &Client, cmd: TabCmd) -> Result<()> {
+    match cmd {
+        TabCmd::New {
+            thread,
+            task: Some(task),
+            start_agent,
+            ..
+        } => {
+            let thread = resolve(client, &thread).await?;
+            let (task_id, subtask_id) = task_link(client, Some(task)).await?;
+            let tab = client
+                .create_task_tab(&thread, &task_id, &subtask_id, start_agent)
+                .await?;
+            out(&format!("tab {}", short(&tab.id)))
+        }
+        TabCmd::New {
+            thread,
+            title,
+            agent,
+            ..
+        } => {
+            let agent = match agent {
+                None => v1::Agent::Unspecified,
+                Some(AgentArg::Claude) => v1::Agent::Claude,
+                Some(AgentArg::Codex) => v1::Agent::Codex,
+                Some(AgentArg::Cursor) => v1::Agent::Cursor,
+            };
+            let tab = client
+                .create_tab(&resolve(client, &thread).await?, &title, agent)
+                .await?;
+            out(&format!("tab {}", short(&tab.id)))
+        }
+        TabCmd::Close { tab } => Ok(client.close_tab(&resolve(client, &tab).await?).await?),
+    }
+}
+
 async fn thread(client: &Client, cmd: ThreadCmd) -> Result<()> {
     match cmd {
         ThreadCmd::New {
@@ -189,18 +221,7 @@ async fn thread(client: &Client, cmd: ThreadCmd) -> Result<()> {
             } else {
                 resolve(client, &project).await?
             };
-            let (task_id, subtask_id) = match task {
-                None => (String::new(), String::new()),
-                Some(id) => {
-                    let id = resolve(client, &id).await?;
-                    let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
-                    // A subtask (at any depth) is linked as `subtask_id` under its card.
-                    match mirror.find_task(&id) {
-                        Some(found) if !found.task().is_card() => (found.card.id.clone(), id),
-                        _ => (id, String::new()),
-                    }
-                }
-            };
+            let (task_id, subtask_id) = task_link(client, task).await?;
             let t = client
                 .create_thread_with(v1::CreateThreadRequest {
                     project_id: resolve(client, &repo).await?,

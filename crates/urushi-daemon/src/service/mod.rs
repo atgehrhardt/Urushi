@@ -24,6 +24,7 @@ mod settings;
 mod state;
 mod tabs;
 mod task_agent;
+mod task_tabs;
 mod threads;
 
 use std::collections::HashMap;

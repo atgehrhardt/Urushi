@@ -10,7 +10,7 @@ use urushi_ui::TextField;
 use crate::config::ConnectTarget;
 use crate::keys::{KeyPress, Named};
 use crate::msg::{Effect, Followup, Msg};
-use crate::state::{AppState, Connection, Dialog, Field, SettingToggle};
+use crate::state::{AppState, Connection, Dialog, Field, SettingToggle, ThreadTarget};
 use crate::terminal;
 
 fn request(body: Body, followup: Followup) -> Effect {
@@ -116,6 +116,8 @@ impl AppState {
             | Msg::DeleteSubtask(_)
             | Msg::RemoveDraftSubtask(_)
             | Msg::StartThread(_)
+            | Msg::UseExistingThread(_)
+            | Msg::PickExistingThread(_)
             | Msg::DeleteTask
             | Msg::Board(_)
             | Msg::OpenDeleteBoard(_)
@@ -452,17 +454,7 @@ impl AppState {
                     )));
                 }
             }
-            (Followup::ThreadCreated, Outcome::Thread(thread)) => {
-                // Started from a task: the board makes way for the new thread.
-                if matches!(self.dialog, Some(Dialog::NewThread { task: Some(_), .. })) {
-                    self.board.open = false;
-                }
-                self.selected_thread = Some(thread.id);
-                self.close_dialog();
-                self.sync_panes(fx);
-                // The new thread shows the launcher; make sure it lists what's installed.
-                self.request_agents(fx);
-            }
+            (Followup::ThreadCreated, Outcome::Thread(thread)) => self.thread_created(thread, fx),
             (Followup::Agents, Outcome::Agents(agents)) => {
                 self.set_agents(&agents);
                 self.maybe_open_setup();
@@ -488,6 +480,7 @@ impl AppState {
                     None,
                 );
             }
+            (Followup::TaskTabCreated, Outcome::Tab(tab)) => self.task_tab_created(tab, fx),
             (Followup::TabCreated, Outcome::Tab(tab)) => {
                 self.selected_tab.insert(tab.thread_id, tab.id);
                 self.sync_panes(fx);
@@ -519,6 +512,19 @@ impl AppState {
         }
     }
 
+    /// The new thread exists: show it.
+    fn thread_created(&mut self, thread: v1::Thread, fx: &mut Vec<Effect>) {
+        // Started from a task: the board makes way for the new thread.
+        if matches!(self.dialog, Some(Dialog::NewThread { task: Some(_), .. })) {
+            self.board.open = false;
+        }
+        self.selected_thread = Some(thread.id);
+        self.close_dialog();
+        self.sync_panes(fx);
+        // The new thread shows the launcher; make sure it lists what's installed.
+        self.request_agents(fx);
+    }
+
     fn submit(&mut self, fx: &mut Vec<Effect>) {
         match &self.dialog {
             Some(Dialog::AddProject { path }) if !path.text().trim().is_empty() => {
@@ -527,6 +533,10 @@ impl AppState {
             Some(Dialog::AddProject { .. }) if self.can_pick_folders() => {
                 fx.push(Effect::PickFolder);
             }
+            Some(Dialog::NewThread {
+                target: ThreadTarget::Existing(_),
+                ..
+            }) => self.submit_task_in_thread(fx),
             Some(Dialog::NewThread {
                 repo,
                 project,

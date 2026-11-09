@@ -14,6 +14,10 @@ use crate::state::AppState;
 /// `AgentSettings.task_agent` / `task_mode`).
 pub const TASK_AGENT_SINCE_MINOR: u32 = 7;
 
+/// First protocol minor version that starts a task in an existing thread
+/// (`CreateTab.{task_id, subtask_id, start_task_agent}`, ADR 0018).
+pub const TASK_IN_THREAD_SINCE_MINOR: u32 = 10;
+
 /// A step of the setup wizard.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SetupStep {
@@ -54,6 +58,11 @@ impl AppState {
     /// Whether the daemon can start the task agent (protocol 1.7).
     pub fn daemon_supports_task_agent(&self) -> bool {
         self.daemon_minor >= TASK_AGENT_SINCE_MINOR
+    }
+
+    /// Whether the daemon can start a task in an existing thread (protocol 1.10).
+    pub fn daemon_supports_task_in_thread(&self) -> bool {
+        self.daemon_minor >= TASK_IN_THREAD_SINCE_MINOR
     }
 
     /// The task agent and the mode it actually starts in, if the user chose one and the
