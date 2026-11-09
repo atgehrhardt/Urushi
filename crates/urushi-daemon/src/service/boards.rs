@@ -13,6 +13,7 @@ impl From<BoardError> for ServiceError {
         match e {
             BoardError::NoSuchColumn(id) => Self::NotFound(format!("column {id}")),
             BoardError::NoSuchTask(id) => Self::NotFound(format!("task {id}")),
+            BoardError::NoSuchAttachment(id) => Self::NotFound(format!("attachment {id}")),
             BoardError::LastColumn => Self::Precondition(e.to_string()),
             _ => Self::Invalid(e.to_string()),
         }
@@ -43,7 +44,7 @@ impl State {
     }
 
     /// The board holding `task`.
-    fn board_of_task(&mut self, task: TaskId) -> ServiceResult<&mut Board> {
+    pub(super) fn board_of_task(&mut self, task: TaskId) -> ServiceResult<&mut Board> {
         self.boards
             .iter_mut()
             .find(|b| b.task(task).is_some())
@@ -107,11 +108,14 @@ impl Service {
 
     /// Deletes a board and all its tasks.
     pub fn delete_board(&self, id: BoardId) -> ServiceResult<()> {
-        self.mutate(|state| {
-            state.board_mut(id)?;
+        let gone: Vec<_> = self.mutate(|state| {
+            let board = state.board_mut(id)?;
+            let gone = board.all_attachments().cloned().collect();
             state.boards.retain(|b| b.id != id);
-            Ok(())
-        })
+            Ok(gone)
+        })?;
+        self.forget_attachments(&gone);
+        Ok(())
     }
 
     /// Adds a task at the bottom of a column.
@@ -150,10 +154,9 @@ impl Service {
 
     /// Deletes a task.
     pub fn delete_task(&self, task: TaskId) -> ServiceResult<()> {
-        self.mutate(|state| {
-            state.board_of_task(task)?.remove_task(task)?;
-            Ok(())
-        })
+        let removed = self.mutate(|state| Ok(state.board_of_task(task)?.remove_task(task)?))?;
+        self.forget_attachments(&super::attachments::of_task(&removed));
+        Ok(())
     }
 
     /// Moves a task (a card or a subtask) under another task of its board.

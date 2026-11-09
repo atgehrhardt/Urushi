@@ -57,6 +57,8 @@ message Task {
   LabelColor color = 7;
   // Free-text tags; a tag's color comes from its name. Since 1.8.
   repeated string tags = 8;
+  // Files attached to it. Since 1.8.
+  repeated Attachment attachments = 9;
 }
 
 // A task nested in another (ADR 0015). Since protocol 1.6 (as a checklist item: id,
@@ -75,6 +77,23 @@ message Subtask {
   repeated string tags = 8;
   // Its own subtasks, in order.
   repeated Subtask subtasks = 9;
+  repeated Attachment attachments = 10;
+}
+
+// A file attached to a task (ADR 0016). The bytes stay in the daemon; fetch them with
+// GetAttachment. Since 1.8.
+message Attachment {
+  string id = 1;
+  // The file's name as attached (no directories).
+  string name = 2;
+  // From the contents: image/png, image/jpeg, image/gif, image/webp, application/pdf,
+  // text/plain or application/octet-stream.
+  string media_type = 3;
+  uint64 size = 4;
+  int64 created_at_ms = 5;
+  // For an image, its size in pixels; 0 otherwise.
+  uint32 width = 6;
+  uint32 height = 7;
 }
 
 // Creates a board with the default columns (To do, In progress, Done).
@@ -187,4 +206,36 @@ message NestTaskRequest {
   string task_id = 1;
   string parent_id = 2;
   uint32 index = 3;
+}
+
+// Attaches a file to a task (at any depth). At most 6 MiB, and 20 files per task
+// (INVALID_ARGUMENT). An image the daemon can't decode is refused. Answered with the
+// Attachment. Since 1.8.
+message AddAttachmentRequest {
+  string task_id = 1;
+  string name = 2;
+  bytes data = 3;
+}
+
+// Fetches an attachment: the file itself, or with `thumbnail`, an image scaled to fit
+// 320 pixels as raw RGBA (FAILED_PRECONDITION for files that aren't images). Answered
+// with AttachmentData. Since 1.8.
+message GetAttachmentRequest {
+  string attachment_id = 1;
+  bool thumbnail = 2;
+}
+
+message AttachmentData {
+  string attachment_id = 1;
+  // The file's media type, or "image/x-rgba" for a thumbnail.
+  string media_type = 2;
+  bytes data = 3;
+  // A thumbnail's size in pixels (data is width × height × 4 bytes); 0 for a file.
+  uint32 width = 4;
+  uint32 height = 5;
+}
+
+// Since 1.8.
+message DeleteAttachmentRequest {
+  string attachment_id = 1;
 }

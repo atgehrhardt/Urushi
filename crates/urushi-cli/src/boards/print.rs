@@ -49,6 +49,7 @@ pub(super) fn print_boards(mirror: &WorkspaceMirror) -> Result<()> {
                 for line in task.notes.lines() {
                     out(&format!("        {line}"))?;
                 }
+                print_attachments(&task.attachments, "        ")?;
                 print_subtasks(mirror, &task.subtasks, 2)?;
             }
         }
@@ -77,7 +78,26 @@ fn print_subtasks(mirror: &WorkspaceMirror, subtasks: &[v1::Subtask], level: usi
         for line in s.notes.lines() {
             out(&format!("{indent}    {line}"))?;
         }
+        print_attachments(&s.attachments, &format!("{indent}    "))?;
         print_subtasks(mirror, &s.subtasks, level + 1)?;
+    }
+    Ok(())
+}
+
+/// "📎 name (type, size)  [id]" for each attachment.
+fn print_attachments(attachments: &[v1::Attachment], indent: &str) -> Result<()> {
+    for a in attachments {
+        let size = if a.width > 0 {
+            format!("{}×{}, {} bytes", a.width, a.height, a.size)
+        } else {
+            format!("{} bytes", a.size)
+        };
+        out(&format!(
+            "{indent}📎 {} ({}, {size})  [{}]",
+            a.name,
+            a.media_type,
+            short(&a.id)
+        ))?;
     }
     Ok(())
 }

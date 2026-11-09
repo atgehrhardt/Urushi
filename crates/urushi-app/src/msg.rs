@@ -291,6 +291,15 @@ pub enum Followup {
     BoardCreated,
     /// Remember the usage of the agent in this pane.
     Usage(String),
+    /// Keep this attachment's thumbnail.
+    Thumbnail(String),
+    /// Open the attachment (its id and file name) with the system's app for it.
+    OpenAttachment {
+        /// Attachment id.
+        id: String,
+        /// File name.
+        name: String,
+    },
 }
 
 /// Something the app needs done.
@@ -315,4 +324,26 @@ pub enum Effect {
     Reconnect(ConnectTarget),
     /// Drop the connection, stop the local daemon, and deliver [`Msg::DaemonStopped`].
     StopDaemon,
+    /// Show the system file picker, then read the chosen files and deliver each as
+    /// [`BoardMsg::Attach`] for `task`.
+    PickFiles {
+        /// Task id.
+        task: String,
+    },
+    /// Read these files and deliver each as [`BoardMsg::Attach`] for `task`.
+    ReadFiles {
+        /// Task id.
+        task: String,
+        /// Paths on this machine.
+        paths: Vec<String>,
+    },
+    /// Save an attachment's bytes to a temporary file and open it with the system's app.
+    OpenFile {
+        /// Attachment id (keeps files of the same name apart).
+        id: String,
+        /// File name.
+        name: String,
+        /// Contents.
+        bytes: Vec<u8>,
+    },
 }

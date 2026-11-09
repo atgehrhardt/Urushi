@@ -27,3 +27,19 @@ pub(crate) const HAS_FOLDER_PICKER: bool = false;
 pub(crate) fn window_icon() -> Option<winit::window::Icon> {
     None
 }
+
+/// Mobile has no file picker yet.
+pub(crate) fn pick_files() -> Vec<String> {
+    Vec::new()
+}
+
+/// Mobile has no file picker yet.
+pub(crate) const HAS_FILE_PICKER: bool = false;
+
+/// Opening attachments isn't supported on mobile yet.
+pub(crate) fn open_path(_path: &std::path::Path) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "opening attachments isn't supported on this device yet",
+    ))
+}

@@ -167,7 +167,7 @@ impl WorkspaceMirror {
     }
 
     /// Finds an entity id by unique prefix among repos, projects, threads, tabs, panes,
-    /// boards, columns and tasks (subtasks at any depth too), e.g. so the CLI accepts short ids. `None` if nothing or more than one thing matches.
+    /// boards, columns, tasks (subtasks at any depth too) and attachments, e.g. so the CLI accepts short ids. `None` if nothing or more than one thing matches.
     pub fn resolve(&self, prefix: &str) -> Option<String> {
         let panes = self
             .workspace
@@ -203,6 +203,11 @@ impl WorkspaceMirror {
                     }))
                 }))
             }))
+            .chain(
+                self.all_tasks()
+                    .flat_map(crate::TaskRef::attachments)
+                    .map(|a| a.id.clone()),
+            )
             .collect();
         if let Some(exact) = ids.iter().find(|id| *id == prefix) {
             return Some(exact.clone());

@@ -44,7 +44,8 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | `bytemuck` | MIT/Apache-2.0/Zlib | render | Safe casts of vertex data to bytes. |
 | `pollster` | MIT/Apache-2.0 | render | Blocks on wgpu's async setup calls. |
 | `arboard` | MIT/Apache-2.0 | app (desktop) | System clipboard. Its Windows backend pulls in `clipboard-win` (BSL-1.0, Boost). |
-| `rfd` | MIT | app (desktop) | Native folder picker. Built with `xdg-portal` and `wayland` only; never enable `gtk3` (LGPL). |
+| `image` | MIT/Apache-2.0 | daemon | Decoding attached PNG, JPEG, GIF and WebP images into thumbnails (ADR 0016). Image codecs are large and security-sensitive; not ours to write. Only the `png`, `jpeg`, `gif` and `webp` features, under `image::Limits`. Pulls in `png`, `fdeflate`, `flate2`/`miniz_oxide`, `zune-jpeg`/`zune-core`, `gif`/`weezl`, `image-webp`, `moxcms`/`pxfm` (all MIT, Apache-2.0, Zlib or BSD-3-Clause). |
+| `rfd` | MIT | app (desktop) | Native folder and file pickers (adding repos, attaching files). Built with `xdg-portal` and `wayland` only; never enable `gtk3` (LGPL). |
 
 ### Planned (approve when first added)
 

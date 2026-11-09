@@ -12,6 +12,7 @@
 //! in-process with fakes injected through [`DaemonOptions`].
 
 pub mod agents;
+mod attachments;
 pub mod git;
 mod platform;
 pub mod restore;

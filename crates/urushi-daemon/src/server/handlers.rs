@@ -278,6 +278,9 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         | Body::MoveColumn(_)
         | Body::DeleteColumn(_)
         | Body::NestTask(_)) => super::boards::route(service, body)?,
+        body @ (Body::AddAttachment(_) | Body::GetAttachment(_) | Body::DeleteAttachment(_)) => {
+            super::boards::route_attachments(service, body).await?
+        }
         Body::ShutdownDaemon(_) => {
             if !connection.local {
                 return Err(ServiceError::Forbidden(

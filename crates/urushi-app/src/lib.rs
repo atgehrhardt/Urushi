@@ -14,6 +14,7 @@
 mod backend;
 pub mod board;
 pub mod config;
+mod files;
 pub mod keys;
 pub mod msg;
 pub mod organize;

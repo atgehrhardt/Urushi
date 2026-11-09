@@ -12,6 +12,7 @@
 //! channel.
 
 mod agents;
+mod attachments;
 mod boards;
 mod columns;
 mod deletion;
@@ -35,6 +36,7 @@ use urushi_core::{PaneId, Thread, Timestamp};
 use urushi_mux::{AlacrittyEmulator, MuxError, Pty, SessionHandle, SpawnSpec, TermSize};
 use urushi_proto::v1;
 
+pub use attachments::AttachmentData;
 pub use boards::NewTask;
 pub use deletion::DeletionPlan;
 pub use projects::{Assign, ThreadUpdate};
@@ -118,6 +120,8 @@ pub struct Service {
     pub(crate) remote: Mutex<RemoteState>,
     /// Restore points on disk (`<home>/restore`).
     restore: RestoreStore,
+    /// Attached files on disk (`<home>/attachments`).
+    attachments: crate::attachments::AttachmentStore,
     /// The last restore point saved for each pane, and the screen version its output
     /// was taken at (so unchanged output isn't read again).
     restore_points: Mutex<HashMap<PaneId, (u64, PaneRecord)>>,
@@ -179,6 +183,7 @@ impl Service {
             usage: config.usage,
             remote: Mutex::new(RemoteState::default()),
             restore: RestoreStore::new(config.home.join("restore")),
+            attachments: crate::attachments::AttachmentStore::new(config.home.join("attachments")),
             restore_points: Mutex::new(HashMap::new()),
             home: config.home,
             changes: watch::channel(revision).0,
@@ -186,6 +191,7 @@ impl Service {
             me: me.clone(),
         });
         service.restore_sessions();
+        service.sweep_attachments();
         service.persist()?;
         service.keep_restore_points();
         Ok(service)

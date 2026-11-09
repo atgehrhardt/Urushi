@@ -30,9 +30,10 @@ impl AppState {
         fx.push(request(body, Followup::CloseDialog));
     }
 
-    /// A file or folder dropped on the window. Folders become projects; files (say, a
-    /// screenshot for an agent) are pasted into the focused terminal as a shell-escaped
-    /// path, the way other terminals do it.
+    /// A file or folder dropped on the window. A file dropped on an open task's editor is
+    /// attached to the task. Folders become projects; other files (say, a screenshot for
+    /// an agent) are pasted into the focused terminal as a shell-escaped path, the way
+    /// other terminals do it.
     pub(super) fn file_dropped(
         &mut self,
         path: &str,
@@ -40,6 +41,9 @@ impl AppState {
         over_terminal: bool,
         fx: &mut Vec<Effect>,
     ) {
+        if self.drop_onto_task(path, is_dir, fx) {
+            return;
+        }
         match &self.dialog {
             Some(Dialog::AddProject { .. }) if is_dir => return Self::add_project(path, fx),
             Some(_) => return,

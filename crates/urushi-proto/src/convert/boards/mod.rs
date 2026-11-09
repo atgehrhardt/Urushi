@@ -1,10 +1,14 @@
 //! Task boards: core ⇄ wire (`v1::Board`, since protocol 1.5; subtasks and thread links
-//! since 1.6; colors, tags, column changes and subtasks as full nested tasks since 1.8).
+//! since 1.6; colors, tags, column changes, subtasks as full nested tasks and
+//! attachments since 1.8).
 
 use urushi_core::{Board, Column, Task, ThreadId};
 
+mod attachments;
 mod labels;
 
+use attachments::attachment_from_proto;
+pub use attachments::attachment_to_proto;
 pub use labels::{color_from_proto, color_to_proto};
 
 use super::{ConvertError, millis_from_proto, millis_to_proto, parse_id};
@@ -42,6 +46,7 @@ pub fn task_to_proto(t: &Task) -> v1::Task {
         thread_id: link_to_proto(t.thread),
         color: color_to_proto(t.color),
         tags: t.tags.clone(),
+        attachments: t.attachments.iter().map(attachment_to_proto).collect(),
     }
 }
 
@@ -57,6 +62,7 @@ pub fn subtask_to_proto(s: &Task) -> v1::Subtask {
         color: color_to_proto(s.color),
         tags: s.tags.clone(),
         subtasks: s.subtasks.iter().map(subtask_to_proto).collect(),
+        attachments: s.attachments.iter().map(attachment_to_proto).collect(),
     }
 }
 
@@ -72,6 +78,12 @@ fn link_from_proto(id: &str, field: &'static str) -> Result<Option<ThreadId>, Co
     }
 }
 
+fn attachments_from_proto(
+    attachments: &[v1::Attachment],
+) -> Result<Vec<urushi_core::board::Attachment>, ConvertError> {
+    attachments.iter().map(attachment_from_proto).collect()
+}
+
 fn subtasks_from_proto(subtasks: &[v1::Subtask]) -> Result<Vec<Task>, ConvertError> {
     subtasks.iter().map(subtask_from_proto).collect()
 }
@@ -85,6 +97,7 @@ fn subtask_from_proto(s: &v1::Subtask) -> Result<Task, ConvertError> {
         done: s.done,
         color: color_from_proto(s.color),
         tags: s.tags.clone(),
+        attachments: attachments_from_proto(&s.attachments)?,
         subtasks: subtasks_from_proto(&s.subtasks)?,
         thread: link_from_proto(&s.thread_id, "board.task.subtask.thread_id")?,
     })
@@ -99,6 +112,7 @@ fn task_from_proto(t: &v1::Task) -> Result<Task, ConvertError> {
         done: false,
         color: color_from_proto(t.color),
         tags: t.tags.clone(),
+        attachments: attachments_from_proto(&t.attachments)?,
         subtasks: subtasks_from_proto(&t.subtasks)?,
         thread: link_from_proto(&t.thread_id, "board.task.thread_id")?,
     })

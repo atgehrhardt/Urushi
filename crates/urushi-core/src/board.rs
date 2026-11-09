@@ -5,21 +5,27 @@
 //! a parent task; moving or nesting it is the only way it changes place, and no
 //! operation can lose or duplicate a task
 //! (`tests/board_props.rs`). A task's subtasks are tasks too, nested inside it
-//! (`tree.rs`, ADR 0015); a task has a color and tags (`labels.rs`), and can name the
-//! thread that was started for it. Columns can be added, recolored, reordered and removed
+//! (`tree.rs`, ADR 0015); a task has a color and tags (`labels.rs`) and attached files
+//! (`attachments.rs`, ADR 0016), and can name the thread that was started for it. Columns can be added, recolored, reordered and removed
 //! (`columns.rs`); new boards start with [`DEFAULT_COLUMNS`]. Boards are
-//! organization only: they never touch git or terminals. Ids and timestamps are passed
+//! organization only: they never touch git, terminals or files (the daemon stores
+//! attachments' bytes). Ids and timestamps are passed
 //! in by the daemon.
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BoardId, ColumnId, TaskId, ThreadId, Timestamp};
+use crate::{AttachmentId, BoardId, ColumnId, TaskId, ThreadId, Timestamp};
 
+mod attachments;
 mod columns;
 mod labels;
 mod prompt;
 mod tree;
 
+pub use attachments::{
+    Attachment, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS, MAX_FILE_NAME, file_name, is_image,
+    media_type,
+};
 pub use columns::MAX_COLUMNS;
 pub use labels::{LabelColor, MAX_TAG, MAX_TAGS, tag_color, task_tags};
 pub use prompt::{MAX_PROMPT_BYTES, task_prompt};
@@ -76,6 +82,15 @@ pub enum BoardError {
     /// The board's only column can't be removed.
     #[error("a board needs at least one column")]
     LastColumn,
+    /// The attachment isn't on this board.
+    #[error("no attachment {0} on this board")]
+    NoSuchAttachment(AttachmentId),
+    /// The task already has [`MAX_ATTACHMENTS`] attachments.
+    #[error("a task can have at most {MAX_ATTACHMENTS} attachments")]
+    TooManyAttachments,
+    /// A file name was blank.
+    #[error("an attachment needs a file name")]
+    EmptyFileName,
     /// More than [`MAX_TAGS`] tags.
     #[error("a task can have at most {MAX_TAGS} tags")]
     TooManyTags,
@@ -131,6 +146,9 @@ pub struct Task {
     /// Free-text tags, cleaned up by [`task_tags`].
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Files attached to it, in the order they were added.
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
     /// Smaller steps, in order: tasks nested inside this one.
     #[serde(default)]
     pub subtasks: Vec<Task>,
@@ -155,6 +173,7 @@ impl Task {
             done: false,
             color: None,
             tags: Vec::new(),
+            attachments: Vec::new(),
             subtasks: Vec::new(),
             thread: None,
         })

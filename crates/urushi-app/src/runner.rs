@@ -107,6 +107,19 @@ impl Runner {
                     self.dispatch(Msg::FolderPicked(picked));
                 }
                 Effect::Reconnect(target) => self.backend.connect(target),
+                Effect::PickFiles { task } => {
+                    let paths = platform::pick_files();
+                    self.read_files(&task, &paths);
+                }
+                Effect::ReadFiles { task, paths } => self.read_files(&task, &paths),
+                Effect::OpenFile { id, name, bytes } => {
+                    let opened = crate::files::save_for_opening(&id, &name, &bytes)
+                        .and_then(|path| platform::open_path(&path));
+                    if let Err(e) = opened {
+                        let reason = format!("Can't open {name}: {e}");
+                        self.dispatch(Msg::Board(crate::msg::BoardMsg::AttachFailed(reason)));
+                    }
+                }
                 Effect::StopDaemon => {
                     if let crate::config::ConnectTarget::Local(home) = &self.state.target {
                         self.backend.stop_daemon(home.clone());
@@ -116,6 +129,22 @@ impl Runner {
         }
         self.remember_selection();
         self.request_redraw();
+    }
+
+    /// Reads files to attach to `task`, delivering each (or why it can't be attached).
+    fn read_files(&mut self, task: &str, paths: &[String]) {
+        use crate::msg::BoardMsg;
+        for path in paths {
+            let msg = match crate::files::read_attachment(path) {
+                Ok((name, bytes)) => BoardMsg::Attach {
+                    task: task.to_owned(),
+                    name,
+                    bytes,
+                },
+                Err(reason) => BoardMsg::AttachFailed(reason),
+            };
+            self.dispatch(Msg::Board(msg));
+        }
     }
 
     /// Saves the selected thread and tabs when they change, for the next launch.

@@ -1,6 +1,6 @@
 //! Messages for acting on a board's cards and columns from outside the task editor
 //! (their context menus, opened with a secondary click, i.e. a right or two-finger
-//! click), the tag filter, and the editor's colors and tags.
+//! click), the tag filter, the editor's colors and tags, and attachments.
 
 /// Something done to a card on the board.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,4 +61,21 @@ pub enum BoardMsg {
     AddTag(String),
     /// In the task editor: remove a tag.
     RemoveTag(String),
+    /// Choose files to attach to a task (the system file picker).
+    AddFiles(String),
+    /// A file read from disk, to attach to a task.
+    Attach {
+        /// Task id.
+        task: String,
+        /// The file's name.
+        name: String,
+        /// Its contents.
+        bytes: Vec<u8>,
+    },
+    /// A file couldn't be attached (too big, unreadable); the reason is shown.
+    AttachFailed(String),
+    /// Open an attachment with the system's app for it.
+    OpenAttachment(String),
+    /// Delete an attachment.
+    DeleteAttachment(String),
 }

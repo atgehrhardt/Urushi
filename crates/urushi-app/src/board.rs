@@ -35,6 +35,51 @@ pub struct BoardPanel {
     pub over: Option<(String, Option<String>)>,
     /// Show only the tasks with this tag (compared ignoring case); `None` shows all.
     pub tag_filter: Option<String>,
+    /// Image attachments' thumbnails, fetched from the daemon as they come into view.
+    pub thumbnails: Thumbnails,
+}
+
+/// Most thumbnails kept at once; ones out of view go first.
+pub const MAX_THUMBNAILS: usize = 64;
+
+/// Thumbnails of image attachments, by attachment id. The daemon decodes images and
+/// sends raw RGBA (ADR 0016); each is asked for once.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Thumbnails {
+    /// The ones received.
+    pub images: std::collections::HashMap<String, std::sync::Arc<urushi_ui::ImageData>>,
+    /// Every one asked for (received, failed or on its way), so none is asked twice.
+    pub requested: std::collections::HashSet<String>,
+}
+
+impl Thumbnails {
+    /// The thumbnail of an attachment, if it has arrived.
+    pub fn get(&self, id: &str) -> Option<&std::sync::Arc<urushi_ui::ImageData>> {
+        self.images.get(id)
+    }
+}
+
+/// The image attachments whose thumbnails are on screen: the first image of each card
+/// on the shown board, and every image of the task open in the editor.
+pub fn wanted_thumbnails(
+    workspace: &WorkspaceMirror,
+    board: Option<&v1::Board>,
+    editing: Option<&str>,
+) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for card in board.iter().flat_map(|b| &b.columns).flat_map(|c| &c.tasks) {
+        if let Some(a) = card.attachments.iter().find(|a| a.width > 0) {
+            out.push(a.id.clone());
+        }
+    }
+    if let Some(found) = editing.and_then(|t| workspace.find_task(t)) {
+        for a in found.task().attachments().iter().filter(|a| a.width > 0) {
+            if !out.contains(&a.id) {
+                out.push(a.id.clone());
+            }
+        }
+    }
+    out
 }
 
 /// The color and tags part of the task editor, kept as drafts and sent with Save.

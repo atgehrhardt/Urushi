@@ -68,6 +68,32 @@ fn sample() -> Board {
             Some(Some(urushi_core::LabelColor::Green)),
         )
         .unwrap();
+    board
+        .add_attachment(
+            TaskId::from_u128(11),
+            urushi_core::board::Attachment {
+                id: urushi_core::AttachmentId::from_u128(40),
+                name: "shot.png".into(),
+                media_type: "image/png".into(),
+                size: 1234,
+                created_at: Timestamp::from_unix_millis(50),
+                image: Some((640, 480)),
+            },
+        )
+        .unwrap();
+    board
+        .add_attachment(
+            parent,
+            urushi_core::board::Attachment {
+                id: urushi_core::AttachmentId::from_u128(41),
+                name: "notes.txt".into(),
+                media_type: "text/plain".into(),
+                size: 3,
+                created_at: Timestamp::from_unix_millis(50),
+                image: None,
+            },
+        )
+        .unwrap();
     board.link_thread(parent, ThreadId::from_u128(8)).unwrap();
     board.link_thread(sub, ThreadId::from_u128(9)).unwrap();
     board
@@ -93,6 +119,18 @@ fn subtasks_carry_every_task_field_at_any_depth() {
     assert_eq!(two.notes, "its notes");
     assert_eq!(two.subtasks[0].title, "deeper");
     assert!(!two.subtasks[0].thread_id.is_empty());
+}
+
+#[test]
+fn attachments_keep_their_image_size_at_any_depth() {
+    let wire = board_to_proto(&sample());
+    let task = &wire.columns[1].tasks[0];
+    assert_eq!(task.attachments[0].height, 0, "not an image");
+    let deep = &task.subtasks[1].subtasks[0].attachments[0];
+    assert_eq!(
+        (deep.width, deep.height, deep.name.as_str()),
+        (640, 480, "shot.png")
+    );
 }
 
 #[test]
@@ -177,6 +215,14 @@ fn messages_round_trip_on_the_wire() {
         Outcome::Task(board_to_proto(&sample()).columns[1].tasks[0].clone()),
         Outcome::Subtask(board_to_proto(&sample()).columns[1].tasks[0].subtasks[0].clone()),
         Outcome::Column(board_to_proto(&sample()).columns[1].clone()),
+        Outcome::Attachment(board_to_proto(&sample()).columns[1].tasks[0].attachments[0].clone()),
+        Outcome::AttachmentData(v1::AttachmentData {
+            attachment_id: "9".into(),
+            media_type: "image/x-rgba".into(),
+            data: vec![1, 2, 3, 4],
+            width: 1,
+            height: 1,
+        }),
         Outcome::AgentUsage(v1::AgentUsage {
             agent: v1::Agent::Claude.into(),
             plan: "Max 20x".into(),
@@ -264,10 +310,39 @@ fn column_requests_round_trip_on_the_wire() {
         Body::DeleteColumn(v1::DeleteColumnRequest {
             column_id: "2".into(),
         }),
+        Body::AddAttachment(v1::AddAttachmentRequest {
+            task_id: "3".into(),
+            name: "a.png".into(),
+            data: vec![0x89, b'P', b'N', b'G', 0, 255],
+        }),
+        Body::GetAttachment(v1::GetAttachmentRequest {
+            attachment_id: "9".into(),
+            thumbnail: true,
+        }),
+        Body::DeleteAttachment(v1::DeleteAttachmentRequest {
+            attachment_id: "9".into(),
+        }),
         Body::NestTask(v1::NestTaskRequest {
             task_id: "3".into(),
             parent_id: "5".into(),
             index: 1,
         }),
     ]);
+}
+
+/// The largest attachment, and a thumbnail, each fit in one frame with room to spare.
+#[test]
+fn the_largest_attachment_fits_in_a_frame() {
+    let request = v1::Envelope {
+        kind: Some(v1::envelope::Kind::Request(v1::Request {
+            id: u64::MAX,
+            body: Some(Body::AddAttachment(v1::AddAttachmentRequest {
+                task_id: "00000000-0000-0000-0000-000000000001".into(),
+                name: "x".repeat(urushi_core::board::MAX_FILE_NAME),
+                data: vec![0xff; urushi_core::board::MAX_ATTACHMENT_BYTES],
+            })),
+        })),
+    };
+    assert!(request.encoded_len() < crate::codec::MAX_FRAME_LEN);
+    assert!(crate::codec::encode_frame(&request).is_ok());
 }

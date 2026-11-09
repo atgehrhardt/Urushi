@@ -94,6 +94,9 @@ message Request {
     MoveColumnRequest move_column = 48;
     DeleteColumnRequest delete_column = 49;
     NestTaskRequest nest_task = 50;
+    AddAttachmentRequest add_attachment = 51;
+    GetAttachmentRequest get_attachment = 52;
+    DeleteAttachmentRequest delete_attachment = 53;
   }
 }
 
@@ -124,6 +127,8 @@ message Response {
     Subtask subtask = 21;
     // Since 1.8.
     BoardColumn column = 22;
+    Attachment attachment = 23;
+    AttachmentData attachment_data = 24;
   }
 }
 

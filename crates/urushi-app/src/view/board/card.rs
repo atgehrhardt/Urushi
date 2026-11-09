@@ -95,12 +95,7 @@ fn card_body(
             theme.font_size,
             fade(theme.text),
         ))
-        .child(widgets::wrapped_text(
-            &notes.join("\n"),
-            Font::Ui,
-            theme.font_size_small,
-            fade(theme.text_muted),
-        ))
+        .child(notes_row(state, theme, task, (&notes.join("\n"), fade)))
         .child(card_footer(state, theme, task, dragged, interactive));
     let mut row = Node::row()
         .width(Length::Fill(1.0))
@@ -117,6 +112,34 @@ fn card_body(
         );
     }
     row.child(content)
+}
+
+/// The notes, wrapped to fit, with the first attached image's thumbnail beside them.
+fn notes_row(
+    state: &AppState,
+    theme: &Theme,
+    task: &v1::Task,
+    (notes, fade): (&str, impl Fn(Color) -> Color),
+) -> Node<Msg> {
+    let mut row = Node::row()
+        .width(Length::Fill(1.0))
+        .height(Length::Fill(1.0))
+        .gap(8.0)
+        .child(widgets::wrapped_text(
+            notes,
+            Font::Ui,
+            theme.font_size_small,
+            fade(theme.text_muted),
+        ));
+    if let Some(image) = task.attachments.iter().find(|a| a.width > 0) {
+        let side = NOTES_LINES * TextSystem::line_height(theme.font_size_small);
+        row = row.child(labels::thumbnail_box(
+            theme,
+            state.board.thumbnails.get(&image.id),
+            side,
+        ));
+    }
+    row
 }
 
 /// The card's background: the surface, tinted with the task's color if it has one.
@@ -195,6 +218,14 @@ fn card_footer(
                 theme.font_size_small,
                 muted,
             ));
+    }
+    if !task.attachments.is_empty() {
+        row = row.child(Node::text(
+            labels::files_label(task.attachments.len()),
+            Font::UiMedium,
+            theme.font_size_small,
+            muted,
+        ));
     }
     if let Some(thread) = thread {
         let mut chip = Node::row()

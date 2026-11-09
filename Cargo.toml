@@ -34,6 +34,8 @@ clap = { version = "4.5", features = ["derive", "env"] }
 serde_json = "1"
 # Exact command lines and working directories of pane processes (daemon restore points).
 sysinfo = { version = "0.38", default-features = false, features = ["system"] }
+# Decoding attached images into thumbnails (daemon only; ADR 0016).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 
 # GUI
 winit = "0.30"

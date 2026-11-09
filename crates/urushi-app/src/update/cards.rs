@@ -18,6 +18,11 @@ impl AppState {
             BoardMsg::PickColor(_) | BoardMsg::AddTag(_) | BoardMsg::RemoveTag(_) => {
                 self.edit_labels(msg);
             }
+            BoardMsg::AddFiles(_)
+            | BoardMsg::Attach { .. }
+            | BoardMsg::AttachFailed(_)
+            | BoardMsg::OpenAttachment(_)
+            | BoardMsg::DeleteAttachment(_) => self.attachment_action(msg, fx),
             BoardMsg::ColorTask { task, color } => {
                 let body = Body::UpdateTask(v1::UpdateTaskRequest {
                     task_id: task,

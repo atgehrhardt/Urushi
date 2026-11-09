@@ -109,6 +109,48 @@ impl Client {
         self.ok(body, "NestTask").await
     }
 
+    /// Attaches a file to a task or subtask (protocol 1.8).
+    pub async fn add_attachment(
+        &self,
+        task_id: &str,
+        name: &str,
+        data: Vec<u8>,
+    ) -> Result<v1::Attachment, ClientError> {
+        let body = Body::AddAttachment(v1::AddAttachmentRequest {
+            task_id: task_id.into(),
+            name: name.into(),
+            data,
+        });
+        match self.request(body).await? {
+            Outcome::Attachment(a) => Ok(a),
+            _ => Err(unexpected("AddAttachment")),
+        }
+    }
+
+    /// An attachment's file, or with `thumbnail`, an image's thumbnail as raw RGBA.
+    pub async fn get_attachment(
+        &self,
+        attachment_id: &str,
+        thumbnail: bool,
+    ) -> Result<v1::AttachmentData, ClientError> {
+        let body = Body::GetAttachment(v1::GetAttachmentRequest {
+            attachment_id: attachment_id.into(),
+            thumbnail,
+        });
+        match self.request(body).await? {
+            Outcome::AttachmentData(d) => Ok(d),
+            _ => Err(unexpected("GetAttachment")),
+        }
+    }
+
+    /// Deletes an attachment.
+    pub async fn delete_attachment(&self, attachment_id: &str) -> Result<(), ClientError> {
+        let body = Body::DeleteAttachment(v1::DeleteAttachmentRequest {
+            attachment_id: attachment_id.into(),
+        });
+        self.ok(body, "DeleteAttachment").await
+    }
+
     /// Deletes a subtask.
     pub async fn delete_subtask(&self, subtask_id: &str) -> Result<(), ClientError> {
         let body = Body::DeleteSubtask(v1::DeleteSubtaskRequest {

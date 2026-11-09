@@ -97,6 +97,10 @@ define_id!(
     /// Identifies a [`crate::Task`] on a board, a card or a subtask at any depth.
     TaskId
 );
+define_id!(
+    /// Identifies a file attached to a task ([`crate::board::Attachment`]).
+    AttachmentId
+);
 
 #[cfg(test)]
 mod tests {

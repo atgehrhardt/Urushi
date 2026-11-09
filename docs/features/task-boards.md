@@ -1,8 +1,8 @@
 # Feature: Task boards
 
-- **Status:** Shipped (manual boards, subtasks, threads started from tasks)
-- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,prompt}.rs`), `urushi-daemon` (`service/{boards,columns}.rs`, `server/boards.rs`, the link in `service/threads.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_threads.rs`, `view/board/`, `view/tasks/`, `view/labels.rs`, `view/menu/tasks.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`)
-- **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0014](../adr/0014-task-prompt-via-pane-environment.md)
+- **Status:** Shipped (manual boards, columns, colors, tags, nested subtasks, attachments, threads started from tasks)
+- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,prompt}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/`, `view/tasks/`, `view/labels.rs`, `view/menu/tasks.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`)
+- **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md)
 
 ## What it does
 A **Tasks** button sits under the sidebar's Projects | Repos tabs. It shows the number of
@@ -60,6 +60,13 @@ it back.
   clears the link. With a task agent chosen (setup wizard or Settings), the thread starts
   it with the task, its notes and its subtasks as the first prompt; otherwise it opens on
   the launcher. See [task agent](task-agent.md).
+- **Attachments:** the editor's **Attachments** list shows each file (an image's
+  thumbnail, or the file's type), its name and size, and × to delete it; clicking one
+  opens it with the system's app. **Add files…** opens the file picker, and files
+  dropped on the window while a task is open are attached to it. Files are at most
+  6 MiB, 20 per task. A card shows its first image as a small thumbnail beside the notes,
+  and "n files" in its footer. A new task gets attachments once it is added. Phones
+  show attachments but can't attach or open them yet.
 - **Right-click or two-finger click** a card for its menu: **Open**, **Move to ›** (a
   column), **Make subtask of…**, **Color ›**, **Start thread…** / **Go to thread**, and
   **Delete task**, which deletes it
@@ -77,7 +84,7 @@ restarts. Jira boards are planned as further tabs in the same panel.
 
 ## How it works
 - **Model** (`urushi_core::board`): `Board{columns[Column{color, tasks[Task{done, color,
-  tags, subtasks[Task], thread}]}]}`, a forest (`tree.rs`): `task`, `path_to`,
+  tags, attachments[Attachment], subtasks[Task], thread}]}]}`, a forest (`tree.rs`): `task`, `path_to`,
   `column_of`, `remove_task` and `link_thread` work at any depth; `move_task` takes any
   task into a column (clearing `done`); `nest_task` puts one under a parent, refusing its
   own subtree (`Cycle`), more than `MAX_DEPTH` levels (`TooDeep`) or `MAX_SUBTASKS`
@@ -98,6 +105,15 @@ restarts. Jira boards are planned as further tabs in the same panel.
   delete_column}` (`service/columns.rs`) change `State.boards` through `mutate`. That persists the change
   in the JSON document (`Document.boards`; older files have none, and older tasks no
   subtasks or link) and wakes `WorkspaceChanged` subscribers.
+- **Attachments** (ADR 0016): `Service::{add_attachment, get_attachment,
+  delete_attachment}` (`service/attachments.rs`) over the store in `attachments.rs`
+  (`<home>/attachments/<id>`, thumbnails in `<id>.thumb`). Adding checks the size and
+  name (`board::file_name` keeps the last path component), takes the media type from
+  the contents (`board::media_type`), decodes images with `image` under decode limits
+  (refusing broken ones) and writes the file and thumbnail off the runtime, then records
+  the attachment; if recording fails the file is removed. Deleting a task, subtask or
+  board removes its files after the change is saved, and `sweep_attachments` deletes
+  unnamed files at start.
 - **Linking threads:** `CreateThread{task_id, subtask_id}` checks the task exists (and
   that `subtask_id`, if set, is somewhere under it) before making the worktree, then links it in the same `mutate` that records the thread
   (`threads.rs::finish_thread_creation`). If the task was deleted meanwhile, the thread
@@ -145,6 +161,17 @@ restarts. Jira boards are planned as further tabs in the same panel.
   - **Cards** (`view/board/card.rs::card_body`): a fixed `card_height` from the theme's line
     heights; the notes are a `widgets::wrapped_text` filling the room between the title
     and the footer.
+  - **Attachments** (`update/attachments.rs`, `files.rs`): `update` never touches
+    files. **Add files…** asks the runner for `Effect::PickFiles` (`platform::pick_files`,
+    rfd), a drop on an open task's editor for `Effect::ReadFiles`; the runner reads each
+    file (`files::read_attachment`, refusing folders and files over the limit) and
+    sends it back as `BoardMsg::Attach`, which becomes `AddAttachment`. Opening sends
+    `GetAttachment`, and the answer becomes `Effect::OpenFile`: the runner saves it to
+    `<temp>/urushi-attachments/<id>/<name>` and calls `platform::open_path` (`open`,
+    `xdg-open`, Explorer). Thumbnails: after every message, `want_thumbnails` asks for
+    the ones on screen (`board::wanted_thumbnails`: each card's first image, and every
+    image of the open task) that weren't asked for, and keeps at most `MAX_THUMBNAILS`;
+    they arrive as `ImageData` with an id hashed from the attachment's.
   - **Nesting:** `Dialog::NestTask` lists `board::nest_candidates`, and choosing one
     sends `NestTask`; **Make standalone** sends `MoveTask` to the card's column.
     `TaskLink::of` names the card and the subtask for `CreateThread`.
@@ -170,7 +197,8 @@ restarts. Jira boards are planned as further tabs in the same panel.
     colors, tags and column changes a 1.8 one (`daemon_supports_board_extras`).
 - **CLI:** `urushi board ls|new|rename|rm|add|edit|mv|nest|rm-task` (`ls` prints
   subtasks as an indented tree; `mv` takes a subtask out onto the board; `edit`,
-  `rm-task` and `sub add` take subtask ids) (`add --color --tag`,
+  `rm-task` and `sub add` take subtask ids), `urushi board attach <task> <file>`,
+  `urushi board attachment get <id> [--thumbnail] [-o file]|rm <id>` (`add --color --tag`,
   `edit --color <c|none> --tag --untag`), `urushi board col add|rename|color|mv|rm`,
   `urushi board sub add|done|undo|rename|rm`, and `urushi thread new <repo> --task <task or subtask>`.
   Columns can be named, e.g. `urushi board mv <task> done`.
@@ -190,17 +218,23 @@ restarts. Jira boards are planned as further tabs in the same panel.
   (`tests/boards_and_usage.rs::threads_started_from_tasks_are_linked_until_deleted`).
 - Deleting a board needs the confirmation dialog. Enter doesn't confirm
   (`update/tests/board.rs::boards_are_created_selected_and_only_deleted_after_confirming`).
+- A recorded attachment always has its file: the file is written first and removed if
+  recording fails; refused files leave nothing behind, and deleted tasks take their
+  files with them (`tests/board_attachments.rs`).
 - The panel never forwards input to the terminals under it
   (`update/tests/board.rs::the_panel_covers_the_terminals_until_closed`).
 
 ## Tests
 - Core: `board/tests.rs`, `board/tree/tests.rs` (nesting, bounds, links, old
-  documents), `board/prompt.rs` and `tests/board_props.rs`.
+  documents), `board/attachments.rs` (names, media types, bounds), `board/prompt.rs` and `tests/board_props.rs`.
 - Proto: `convert/boards/tests.rs` covers round trips and wire encoding of every 1.5,
-  1.6 and 1.8 board message; `convert/boards/labels.rs` the color mapping.
+  1.6 and 1.8 board message, and that the largest attachment fits in a frame;
+  `convert/boards/labels.rs` the color mapping.
 - Daemon: `tests/board_columns.rs`
   (`columns_colors_and_tags_are_kept_and_survive_a_restart`), `tests/board_nesting.rs`
-  (`cards_and_subtasks_move_into_and_out_of_each_other`), `tests/task_agents.rs` (a
+  (`cards_and_subtasks_move_into_and_out_of_each_other`), `tests/board_attachments.rs`
+  (`attachments_are_stored_fetched_and_deleted_with_their_task`), `attachments.rs`
+  (decoding, thumbnails, the store and its sweep), `tests/task_agents.rs` (a
   deep subtask's link and prompt),
   `tests/boards_and_usage.rs` (`boards_are_kept_mirrored_and_survive_a_restart`,
   `subtasks_are_created_checked_renamed_and_deleted`,
@@ -211,7 +245,9 @@ restarts. Jira boards are planned as further tabs in the same panel.
   keyboard) and `update/tests/tasks.rs` (subtasks,
   drafts, opening subtasks, making them standalone, nesting, starting and going to
   threads, the drop line, older daemons) and
-  `update/tests/labels.rs` (colors, tags, columns, the filter). `snapshot.rs` has
+  `update/tests/labels.rs` (colors, tags, columns, the filter) and
+  `update/tests/attachments.rs` (picking, dropping, opening, deleting, thumbnails);
+  `files.rs` (reading and saving files). `snapshot.rs` has
   the `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested` and
   `nest` scenarios, which render at desktop and
   phone sizes, `task_cards_are_all_the_same_size` and
@@ -222,6 +258,9 @@ restarts. Jira boards are planned as further tabs in the same panel.
   `text.rs::wraps_at_line_breaks_then_between_words`.
 
 ## Limitations and follow-ups
+- Attachments are at most 6 MiB (one frame each); bigger files need chunked transfer.
+  Phones can't attach or open files yet, and images can't be pasted from the clipboard.
+- Thumbnails share the renderer's glyph atlas; many large ones on screen could churn it.
 - Tags are per task; there is no place to rename or recolor a tag across a board.
 - With many columns, columns get narrow: the board doesn't scroll sideways yet.
 - Subtasks can't be reordered by dragging (`NestTask` takes an index, but the editor

@@ -8,9 +8,11 @@ use urushi_client::{Client, WorkspaceMirror, v1};
 use crate::commands::{out, resolve};
 use crate::render::short;
 
+mod attachments;
 mod columns;
 mod print;
 
+use attachments::AttachmentCmd;
 use columns::{ColCmd, color_arg};
 use print::print_boards;
 
@@ -104,6 +106,16 @@ pub(crate) enum BoardCmd {
     /// Manage a board's columns.
     #[command(subcommand)]
     Col(ColCmd),
+    /// Attach a file to a task or subtask (at most 6 MiB).
+    Attach {
+        /// Task or subtask id.
+        task: String,
+        /// The file.
+        file: String,
+    },
+    /// Fetch or delete an attachment.
+    #[command(subcommand)]
+    Attachment(AttachmentCmd),
 }
 
 #[derive(Subcommand)]
@@ -211,6 +223,8 @@ pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
         BoardCmd::RmTask { task } => Ok(client.delete_task(&resolve(client, &task).await?).await?),
         BoardCmd::Sub(cmd) => sub(client, cmd).await,
         BoardCmd::Col(cmd) => columns::run(client, cmd).await,
+        BoardCmd::Attach { task, file } => attachments::attach(client, &task, &file).await,
+        BoardCmd::Attachment(cmd) => attachments::run(client, cmd).await,
     }
 }
 

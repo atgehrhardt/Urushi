@@ -381,6 +381,7 @@ fn compact_layout_navigates_between_threads_and_terminals() {
     assert!(!s.sidebar_open, "choosing a thread shows its terminals");
 }
 
+mod attachments;
 mod board;
 mod daemon;
 mod fields;

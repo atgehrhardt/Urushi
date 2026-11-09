@@ -13,6 +13,7 @@ use crate::board::TaskLabels;
 use crate::msg::{BoardMsg, Msg};
 use crate::state::{AppState, Field, SubtaskEditor, TaskLink};
 
+mod attachments;
 mod labels;
 mod nest;
 mod subtasks;
@@ -94,6 +95,9 @@ pub(super) fn editor(
             (board, side_width(state)),
             labels,
         ));
+    }
+    if state.daemon_supports_board_extras() {
+        organize = organize.children(attachments::section(state, (theme, scroll), current));
     }
     let hint_text = if state.daemon_supports_subtasks() {
         format!(

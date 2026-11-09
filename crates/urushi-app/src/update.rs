@@ -160,6 +160,7 @@ impl AppState {
             Msg::Paste(text) => self.insert_text(text, v1::input::Kind::Paste, &mut fx),
             Msg::Copy => self.copy(&mut fx),
         }
+        self.want_thumbnails(&mut fx);
         fx
     }
 
@@ -419,6 +420,8 @@ impl AppState {
             Err(_) if followup == Followup::Agents => return,
             // Without branches the selector just offers the repo's default.
             Err(_) if matches!(followup, Followup::Branches(_)) => return,
+            // No thumbnail: the attachment shows as a file (it isn't asked for again).
+            Err(_) if matches!(followup, Followup::Thumbnail(_)) => return,
             // The status bar just shows no usage.
             Err(_) if matches!(followup, Followup::Usage(_)) => {
                 if let Followup::Usage(pane) = followup {
@@ -436,6 +439,9 @@ impl AppState {
                 self.error = Some(message);
                 return;
             }
+        };
+        let Some((followup, outcome)) = self.attachment_answered(followup, outcome, fx) else {
+            return;
         };
         match (followup, outcome) {
             (Followup::Attached(pane), Outcome::Screen(update)) => {
@@ -760,6 +766,12 @@ impl AppState {
 impl AppState {
     /// Whether the system folder picker can choose a folder the daemon can open: only on
     /// desktop, connected to the daemon on this machine.
+    /// Whether this device can choose files to attach (desktop; files dropped on the
+    /// window work too).
+    pub(crate) fn can_pick_files() -> bool {
+        crate::platform::HAS_FILE_PICKER
+    }
+
     pub(crate) fn can_pick_folders(&self) -> bool {
         crate::platform::HAS_FOLDER_PICKER && matches!(self.target, ConnectTarget::Local(_))
     }
@@ -772,6 +784,7 @@ fn input(pane_id: String, kind: v1::input::Kind) -> Effect {
     }))
 }
 
+mod attachments;
 mod board;
 mod cards;
 mod daemon;

@@ -55,6 +55,11 @@ impl<'a> TaskRef<'a> {
         field!(self, subtasks)
     }
 
+    /// Files attached to it.
+    pub fn attachments(self) -> &'a [v1::Attachment] {
+        field!(self, attachments)
+    }
+
     /// The thread started for it; empty if none.
     pub fn thread_id(self) -> &'a str {
         field!(self, thread_id)
@@ -90,6 +95,15 @@ impl<'a> TaskRef<'a> {
                 path
             })
         })
+    }
+
+    /// This task and every task under it, parents first.
+    pub fn subtree(self) -> Vec<TaskRef<'a>> {
+        let mut out = vec![self];
+        for s in self.subtasks() {
+            out.extend(TaskRef::Sub(s).subtree());
+        }
+        out
     }
 
     /// This task's id and the ids of every task under it.
@@ -131,6 +145,21 @@ impl<'a> FoundTask<'a> {
 }
 
 impl WorkspaceMirror {
+    /// Every task on every board, cards and subtasks, parents first.
+    pub fn all_tasks(&self) -> impl Iterator<Item = TaskRef<'_>> {
+        self.boards()
+            .iter()
+            .flat_map(|b| &b.columns)
+            .flat_map(|c| &c.tasks)
+            .flat_map(|card| TaskRef::Card(card).subtree())
+    }
+
+    /// An attachment, with the task it is attached to.
+    pub fn attachment(&self, id: &str) -> Option<(TaskRef<'_>, &v1::Attachment)> {
+        self.all_tasks()
+            .find_map(|t| t.attachments().iter().find(|a| a.id == id).map(|a| (t, a)))
+    }
+
     /// A task at any depth, with where it is.
     pub fn find_task(&self, id: &str) -> Option<FoundTask<'_>> {
         self.boards().iter().find_map(|board| {

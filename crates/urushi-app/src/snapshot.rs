@@ -58,6 +58,36 @@ pub const SCENARIOS: &[&str] = &[
     "setup-mode",
 ];
 
+fn sample_attachment(id: &str, name: &str, (width, height): (u32, u32)) -> v1::Attachment {
+    v1::Attachment {
+        id: id.into(),
+        name: name.into(),
+        media_type: if width > 0 {
+            "image/png"
+        } else {
+            "application/pdf"
+        }
+        .into(),
+        size: 48_213,
+        width,
+        height,
+        ..Default::default()
+    }
+}
+
+/// A thumbnail standing in for one the daemon would send: a soft gradient.
+fn sample_thumbnail() -> Option<std::sync::Arc<urushi_ui::ImageData>> {
+    let (w, h) = (96u32, 64u32);
+    let mut rgba = Vec::new();
+    for y in 0..h {
+        for x in 0..w {
+            #[allow(clippy::cast_possible_truncation, reason = "values under 256")]
+            rgba.extend([(60 + x) as u8, (90 + y) as u8, 200, 255]);
+        }
+    }
+    urushi_ui::ImageData::new(1 << 63, w, h, rgba).map(std::sync::Arc::new)
+}
+
 /// The scenarios that show the task board.
 const BOARD_SCENARIOS: &[&str] = &[
     "board",
@@ -119,6 +149,10 @@ fn sample_board() -> v1::Board {
     pricing.thread_id = "t2".into();
     pricing.color = v1::LabelColor::Orange.into();
     pricing.tags = vec!["copy".into(), "legal".into()];
+    pricing.attachments = vec![
+        sample_attachment("a1", "tiers-mockup.png", (1200, 800)),
+        sample_attachment("a2", "legal-notes.pdf", (0, 0)),
+    ];
     let mut invoice = task("k1", "Invoice PDF export", "Use the new template");
     invoice.color = v1::LabelColor::Blue.into();
     invoice.tags = vec!["backend".into()];
@@ -315,6 +349,9 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
         name if BOARD_SCENARIOS.contains(&name) => {
             state.update(Msg::ToggleBoard);
             state.update(Msg::BoardReveal(1.0));
+            if let Some(thumbnail) = sample_thumbnail() {
+                state.board.thumbnails.images.insert("a1".into(), thumbnail);
+            }
             if name == "task-menu" {
                 state.update(Msg::Pointer(urushi_ui::Point::new(700.0, 150.0)));
                 state.update(Msg::OpenMenu(MenuTarget::Task("k3".into())));
@@ -467,11 +504,27 @@ mod tests {
     #[test]
     fn colors_tags_and_column_actions_show() {
         let board = dump("board", 1280.0);
-        for text in ["\"backend\"", "\"copy\"", "\"All tags  ▾\"", "\"+ Column\""] {
+        for text in [
+            "\"backend\"",
+            "\"copy\"",
+            "\"All tags  ▾\"",
+            "\"+ Column\"",
+            "\"2 files\"",
+        ] {
             assert!(board.contains(text), "{text} missing: {board}");
         }
         let task = dump("task", 1280.0);
-        for text in ["\"Color\"", "\"Tags\"", "\"legal\"", "\"+ backend\""] {
+        for text in [
+            "\"Color\"",
+            "\"Tags\"",
+            "\"legal\"",
+            "\"+ backend\"",
+            "\"Attachments\"",
+            "\"tiers-mockup.png\"",
+            "\"PDF\"",
+            "\"47.1 KB\"",
+            "\"Add files…\"",
+        ] {
             assert!(task.contains(text), "{text} missing: {task}");
         }
         let menu = dump("column-menu", 1280.0);

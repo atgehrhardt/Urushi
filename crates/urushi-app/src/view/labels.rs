@@ -140,6 +140,42 @@ pub(super) fn wrap(items: Vec<(f32, Node<Msg>)>, gap: f32, max: f32) -> Node<Msg
     Node::column().gap(gap).children(rows)
 }
 
+/// A thumbnail scaled to fit a `side` × `side` box (keeping its shape), centred in it.
+pub(super) fn thumbnail_box(
+    theme: &Theme,
+    image: Option<&std::sync::Arc<urushi_ui::ImageData>>,
+    side: f32,
+) -> Node<Msg> {
+    let frame = Node::row()
+        .width(Length::Fixed(side))
+        .height(Length::Fixed(side))
+        .radius(4.0)
+        .clip()
+        .justify(Align::Center)
+        .align(Align::Center)
+        .background(theme.background);
+    let Some(image) = image else {
+        return frame;
+    };
+    #[allow(clippy::cast_precision_loss, reason = "thumbnails are small")]
+    let (w, h) = (image.width as f32, image.height as f32);
+    let scale = side / w.max(h);
+    frame.child(Node::image(
+        image.clone(),
+        (w * scale).round(),
+        (h * scale).round(),
+    ))
+}
+
+/// "1 file", "3 files".
+pub(super) fn files_label(n: usize) -> String {
+    if n == 1 {
+        "1 file".to_owned()
+    } else {
+        format!("{n} files")
+    }
+}
+
 /// The approximate width of a [`tag_chip`].
 pub(super) fn tag_chip_width(tag: &str, size: f32, removable: bool) -> f32 {
     text_width(tag, size) + 12.0 + if removable { 4.0 + size } else { 0.0 }

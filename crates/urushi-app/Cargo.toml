@@ -23,5 +23,8 @@ winit = { workspace = true }
 arboard = { workspace = true }
 rfd = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [lints]
 workspace = true
