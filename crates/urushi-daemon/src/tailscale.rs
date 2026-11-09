@@ -4,6 +4,11 @@
 //! identity and addresses, and who is behind a connecting tailnet address. [`CliTailscale`]
 //! reads both from the `tailscale` CLI's JSON output. Methods are synchronous. Call
 //! them from `spawn_blocking`.
+//!
+//! On macOS the CLI is usually the Tailscale.app binary itself. Run without a terminal
+//! (as when Urushi.app starts the daemon), it tries to open its GUI instead and prints an
+//! error with exit code 0. `TAILSCALE_BE_CLI=1` forces CLI mode; other builds of the CLI
+//! ignore it.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -112,6 +117,7 @@ impl CliTailscale {
         let binary = self.binary().ok_or(TailscaleError::NotInstalled)?;
         let out = Command::new(binary)
             .args(args)
+            .env("TAILSCALE_BE_CLI", "1")
             .stdin(Stdio::null())
             .output()
             .map_err(|e| TailscaleError::Cli(e.to_string()))?;
@@ -126,12 +132,29 @@ impl CliTailscale {
 
 impl TailscaleProvider for CliTailscale {
     fn status(&self) -> Result<Status, TailscaleError> {
-        parse_status(&self.json(&["status", "--json"])?)
+        let out = self.json(&["status", "--json"])?;
+        parse_status(&out).map_err(|e| explain(e, &out))
     }
 
     fn whois(&self, addr: IpAddr) -> Result<Identity, TailscaleError> {
-        parse_whois(&self.json(&["whois", "--json", &addr.to_string()])?)
+        let out = self.json(&["whois", "--json", &addr.to_string()])?;
+        parse_whois(&out).map_err(|e| explain(e, &out))
     }
+}
+
+/// Replaces a JSON syntax error with what the CLI actually printed, which is far more
+/// useful to the user (e.g. "The Tailscale GUI failed to start …").
+fn explain(err: TailscaleError, output: &str) -> TailscaleError {
+    let trimmed = output.trim_start();
+    if !matches!(err, TailscaleError::Cli(_)) || trimmed.starts_with('{') {
+        return err;
+    }
+    let first_line = trimmed.lines().next().unwrap_or_default().trim();
+    if first_line.is_empty() {
+        return TailscaleError::Cli("tailscale printed nothing".into());
+    }
+    let line: String = first_line.chars().take(200).collect();
+    TailscaleError::Cli(format!("unexpected output from tailscale: {line}"))
 }
 
 /// Used when remote access isn't configured or in tests: every call fails with `error`,

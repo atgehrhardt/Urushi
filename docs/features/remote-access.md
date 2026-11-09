@@ -9,6 +9,7 @@ With `tailnet.serve` on (`urushi tailnet on`, or the app's toggle), the daemon i
 
 ## How it works
 - `TailscaleProvider` (`CliTailscale`) reads `tailscale status --json` (this machine's addresses, MagicDNS name, owner login, peers) and `tailscale whois --json <ip>`.
+- The CLI runs with `TAILSCALE_BE_CLI=1`. On macOS the CLI is usually the Tailscale.app binary itself. Started without a terminal, as when Urushi.app launches the daemon, it tries to open its GUI and prints an error with exit code 0. If the output still isn't JSON, the error shows what the CLI printed, and `reconcile` logs it to `urushid.log` when it changes.
 - `server::remote::reconcile` binds one TCP listener per tailnet address, never `0.0.0.0`. It runs when settings change, and every 30 s from a watchdog, so changed addresses get re-bound.
 - **Each connection is identified before the handshake** and checked by `authorize`:
   - Tagged devices are refused unless `allow-tagged-nodes`.
@@ -23,6 +24,7 @@ With `tailnet.serve` on (`urushi tailnet on`, or the app's toggle), the daemon i
 ## Tests
 - `server/remote.rs` unit tests: the authorization rules.
 - `tailscale.rs`: JSON parsing.
+- `tests/tailscale_cli.rs`: `CliTailscale` against fake binaries, including one that acts like the macOS app binary without a terminal.
 - `tests/e2e.rs`: serving admits the owner over TCP and refuses another user (using a `StaticTailscale` fake).
 
 ## Limitations and follow-ups

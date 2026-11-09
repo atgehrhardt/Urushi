@@ -84,9 +84,13 @@ pub(crate) async fn reconcile(service: &Arc<Service>) {
     let status = match status {
         Ok(status) => status,
         Err(e) => {
+            let error = e.to_string();
             let mut state = lock(&service.remote);
+            if state.error.as_deref() != Some(error.as_str()) {
+                tracing::warn!(%error, "cannot serve on tailnet");
+            }
             state.stop();
-            state.error = Some(e.to_string());
+            state.error = Some(error);
             return;
         }
     };
