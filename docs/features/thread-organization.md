@@ -1,7 +1,7 @@
 # Feature: Organizing threads (projects, pins, statuses)
 
 - **Status:** Shipped
-- **Owners (crates):** `urushi-core` (`project`, `status`, `thread`), `urushi-daemon` (`service/projects.rs`, `server/organize.rs`, `store.rs`), `urushi-app` (`update/organize.rs`, `view/projects.rs`, `view/menu.rs`, `view/new_thread.rs`), `urushi-ui` (positioned nodes, secondary click, drag and drop, selectors), `urushi-cli`
+- **Owners (crates):** `urushi-core` (`project`, `status`, `thread`), `urushi-daemon` (`service/projects.rs`, `server/organize.rs`, `store.rs`), `urushi-app` (`update/organize.rs`, `view/projects.rs`, `view/menu/`, `view/new_thread.rs`), `urushi-ui` (positioned nodes, secondary click, drag and drop, selectors), `urushi-cli`
 - **Related ADRs:** [0010](../adr/0010-repos-and-projects.md), [0002](../adr/0002-daemon-source-of-truth.md)
 
 ## What it does

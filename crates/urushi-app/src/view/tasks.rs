@@ -250,12 +250,16 @@ fn subtask_row(
             .on_click(Msg::RenameSubtask(s.id.clone()))
             .cursor(urushi_ui::CursorIcon::Text)
             .role(Role::Button, format!("Rename subtask {}", s.title))
-            .child(Node::text(
-                &s.title,
-                Font::Ui,
-                theme.font_size,
-                if s.done { theme.text_muted } else { theme.text },
-            )),
+            .child(
+                Node::text(
+                    &s.title,
+                    Font::Ui,
+                    theme.font_size,
+                    if s.done { theme.text_muted } else { theme.text },
+                )
+                // Fill, so a long title is cut short instead of running over the row.
+                .width(Length::Fill(1.0)),
+            ),
     };
     Node::row()
         .width(Length::Fill(1.0))

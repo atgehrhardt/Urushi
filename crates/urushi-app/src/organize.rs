@@ -24,17 +24,19 @@ pub enum MenuTarget {
     Project(String),
     /// A text field in a dialog: cut, copy, paste, select all.
     Field(crate::state::Field),
+    /// A task card on the board (by task id).
+    Task(String),
 }
 
 /// Which page of the context menu is showing. Sub-pages replace the main page, which
 /// keeps menus simple to draw and to use on touch screens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuPage {
-    /// Rename, pin, status ›, move ›, delete.
+    /// The first page (for a thread: rename, pin, status ›, move ›, delete).
     Main,
     /// Choose a status.
     Status,
-    /// Choose a project.
+    /// Choose a project (for a thread) or a column (for a task).
     Move,
 }
 

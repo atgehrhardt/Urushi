@@ -50,6 +50,7 @@ impl AppState {
             | Msg::DeleteSubtask(_)
             | Msg::RemoveDraftSubtask(_)
             | Msg::StartThread(_)) => self.task_msg(msg, fx),
+            Msg::Board(action) => self.card_action(action, fx),
             Msg::OpenDeleteBoard(board) => {
                 if let Some(b) = self.workspace.board(&board) {
                     let tasks = b.columns.iter().map(|c| c.tasks.len()).sum();

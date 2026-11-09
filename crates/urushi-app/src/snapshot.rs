@@ -30,7 +30,8 @@ pub fn scene(
 /// `picker`, the `add-repo` and `new-thread` dialogs (`new-thread-base` with the branch
 /// list open), `settings`, the thread `menu` and its `menu-status` page, a thread being
 /// dragged (`drag`), the `repos` tab, the task `board` (a task being dragged across it in
-/// `board-drag`, and a `task` with subtasks being edited), and a terminal with an
+/// `board-drag`, a `task` with subtasks being edited, and a card's context menu in
+/// `task-menu`), and a terminal with an
 /// agent's plan usage in the `status` bar, and the first-run `setup` wizard (its mode
 /// step in `setup-mode`).
 pub const SCENARIOS: &[&str] = &[
@@ -47,6 +48,7 @@ pub const SCENARIOS: &[&str] = &[
     "board",
     "board-drag",
     "task",
+    "task-menu",
     "status",
     "setup",
     "setup-mode",
@@ -79,6 +81,10 @@ fn setup_wizard(name: &str) -> crate::state::Dialog {
     }
 }
 
+/// A subtask title far wider than the task editor, which must be cut short to fit.
+const LONG_SUBTASK: &str = "Publish the pricing page to every regional site once legal has \
+     signed off on the tiers table and the translations are back";
+
 /// A board with a few tasks, for the `board` and `task` scenarios.
 fn sample_board() -> v1::Board {
     let task = |id: &str, title: &str, notes: &str| v1::Task {
@@ -98,7 +104,7 @@ fn sample_board() -> v1::Board {
     pricing.subtasks = vec![
         sub("s1", "Draft tiers table", true, ""),
         sub("s2", "Legal review", false, "t6"),
-        sub("s3", "Publish", false, ""),
+        sub("s3", LONG_SUBTASK, false, ""),
     ];
     let column = |id: &str, name: &str, tasks: Vec<v1::Task>| v1::BoardColumn {
         id: id.into(),
@@ -258,7 +264,9 @@ fn scenario_frame(
             state.update(Msg::DragThread("t6".into()));
             state.update(Msg::DragMove(Point::new(140.0, 400.0)));
         }
-        "board" | "board-drag" | "task" | "status" => show_board_or_usage(&mut state, name),
+        "board" | "board-drag" | "task" | "task-menu" | "status" => {
+            show_board_or_usage(&mut state, name);
+        }
         _ => drop(state.update(Msg::SidebarTab(SidebarTab::Repos))),
     }
     let root = crate::view::view(&state, theme, &HashMap::new());
@@ -274,9 +282,13 @@ fn scenario_frame(
 /// The `board`, `task` and `status` scenarios.
 fn show_board_or_usage(state: &mut AppState, name: &str) {
     match name {
-        "board" | "board-drag" | "task" => {
+        "board" | "board-drag" | "task" | "task-menu" => {
             state.update(Msg::ToggleBoard);
             state.update(Msg::BoardReveal(1.0));
+            if name == "task-menu" {
+                state.update(Msg::Pointer(urushi_ui::Point::new(700.0, 150.0)));
+                state.update(Msg::OpenMenu(MenuTarget::Task("k3".into())));
+            }
             if name == "task" {
                 state.update(Msg::PressTask("k3".into()));
                 state.update(Msg::PressEnded);
@@ -395,6 +407,33 @@ mod tests {
         assert!(
             board.contains("\"then ship\""),
             "a second line of notes: {board}"
+        );
+    }
+
+    #[test]
+    fn a_cards_context_menu_offers_open_move_thread_and_delete() {
+        let menu = dump("task-menu", 1280.0);
+        for text in [
+            "\"Open\"",
+            "\"Move to\"",
+            "\"In progress  ›\"",
+            "\"Go to thread\"",
+            "\"Delete task\"",
+        ] {
+            assert!(menu.contains(text), "{text} missing: {menu}");
+        }
+    }
+
+    #[test]
+    fn long_subtask_titles_are_cut_short_inside_the_editor() {
+        let task = dump("task", 1280.0);
+        assert!(
+            !task.contains(LONG_SUBTASK),
+            "the whole title overflows the editor: {task}"
+        );
+        assert!(
+            task.contains("\"Publish the pricing page"),
+            "the start of the title shows: {task}"
         );
     }
 

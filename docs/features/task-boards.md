@@ -1,7 +1,7 @@
 # Feature: Task boards
 
 - **Status:** Shipped (manual boards, subtasks, threads started from tasks)
-- **Owners (crates):** `urushi-core` (`board`, `board/subtasks.rs`), `urushi-daemon` (`service/boards.rs`, `server/boards.rs`, the link in `service/threads.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards.rs`), `urushi-client` (`boards.rs`, `WorkspaceMirror::{boards, board, task, subtask}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/tasks.rs`, `view/board.rs`, `view/tasks.rs`), `urushi-cli` (`urushi board`, `urushi thread new --task`)
+- **Owners (crates):** `urushi-core` (`board`, `board/subtasks.rs`), `urushi-daemon` (`service/boards.rs`, `server/boards.rs`, the link in `service/threads.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards.rs`), `urushi-client` (`boards.rs`, `WorkspaceMirror::{boards, board, task, subtask}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `view/board/`, `view/tasks.rs`, `view/menu/tasks.rs`), `urushi-cli` (`urushi board`, `urushi thread new --task`)
 - **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0014](../adr/0014-task-prompt-via-pane-environment.md)
 
 ## What it does
@@ -33,6 +33,11 @@ it back.
   clears the link. With a task agent chosen (setup wizard or Settings), the thread starts
   it with the task, its notes and its subtasks as the first prompt; otherwise it opens on
   the launcher. See [task agent](task-agent.md).
+- **Right-click or two-finger click** a card for its menu: **Open**, **Move to ›** (a
+  column), **Start thread…** / **Go to thread**, and **Delete task**, which deletes it
+  right away, as the editor's Delete does.
+- Long names are cut short with an ellipsis instead of running over their neighbours:
+  subtask titles in the editor, column names, board tabs and the card's thread chip.
 - **Drag** a card onto another card to put it above that card, or onto a column to put it
   at the bottom. While dragging, the card's place stays as a faint outline, an accent line
   shows where it would land (only where it would move), the column under the pointer is
@@ -74,7 +79,7 @@ restarts. Jira boards are planned as further tabs in the same panel.
     before}`. `board::drop_position` turns a target into a `MoveTask`, or into nothing
     when the card would land where it already is; `DragOver` uses it to place the line.
   - **No flicker:** each card sits in a slot that includes the gap under it, and the drop
-    line in a slot with the same target (`view/board.rs::slot`), so the pointer is always
+    line in a slot with the same target (`view/board/column.rs::slot`), so the pointer is always
     over a target and the line doesn't jump as it moves the cards.
   - **Editor** (`update/tasks.rs`): an existing task's subtasks change right away (each
     is a request); a new task's are drafts in `SubtaskEditor` until `CreateTask`. Enter
@@ -83,9 +88,12 @@ restarts. Jira boards are planned as further tabs in the same panel.
     elsewhere, or Cmd/Ctrl+Enter anywhere, saves the task (a subtask still typed in the
     field goes with it). Notes are sent only if they differ from the task's notes as the
     editor shows them, so opening and saving changes nothing.
-  - **Cards** (`view/board.rs::card_body`): a fixed `card_height` from the theme's line
+  - **Cards** (`view/board/card.rs::card_body`): a fixed `card_height` from the theme's line
     heights; the notes are a `widgets::wrapped_text` filling the room between the title
     and the footer.
+  - **Card menu:** the card's `on_secondary_click` opens `MenuTarget::Task`
+    (`view/menu/tasks.rs`); its actions are `Msg::Board(BoardMsg::…)`, handled in
+    `update/cards.rs`. Moving there sends `MoveTask` to the bottom of the column.
   - **Shortcut:** `B` in `update.rs::shortcut` sends `Msg::ToggleBoard`, the same message
     as the button.
   - **Input:** while the panel is out, `AppState::terminals_covered` keeps the mouse,
@@ -117,12 +125,14 @@ restarts. Jira boards are planned as further tabs in the same panel.
 - Daemon: `tests/boards_and_usage.rs` (`boards_are_kept_mirrored_and_survive_a_restart`,
   `subtasks_are_created_checked_renamed_and_deleted`,
   `threads_started_from_tasks_are_linked_until_deleted`).
-- App: `board.rs` (drop positions, open-task count), `update/tests/board.rs` (editor,
+- App: `board.rs` (drop positions, open-task count), `update/tests/board.rs` (the card
+  menu, editor,
   multiline notes and Cmd+Enter, the board shortcut, drag and drop, prompts, deletion,
   keyboard) and `update/tests/tasks.rs` (subtasks,
   drafts, starting and going to threads, the drop line, older daemons). `snapshot.rs` has
-  the `board`, `board-drag` and `task` scenarios, which render at desktop and phone sizes,
-  and `task_cards_are_all_the_same_size`.
+  the `board`, `board-drag`, `task` and `task-menu` scenarios, which render at desktop and
+  phone sizes, `task_cards_are_all_the_same_size` and
+  `long_subtask_titles_are_cut_short_inside_the_editor`.
 - Toolkit: `urushi-ui/tests/layout.rs::a_sliding_panel_moves_with_its_children_and_is_clipped`;
   `urushi-ui/tests/fields.rs` (text areas wrapping, clicks on lines, scrolling, and
   `wrapped_text`'s ellipsis); `textfield/tests.rs` (multiline editing and moves);

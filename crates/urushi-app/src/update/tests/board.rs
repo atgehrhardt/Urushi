@@ -319,3 +319,50 @@ fn older_daemons_are_not_asked_for_usage() {
     let mut s = connected();
     assert!(s.update(Msg::Tick(1)).is_empty());
 }
+
+#[test]
+fn a_cards_context_menu_opens_moves_and_deletes_it_without_the_editor() {
+    use crate::msg::BoardMsg;
+    use crate::organize::{MenuPage, MenuTarget};
+    let mut s = with_board();
+    s.update(Msg::Pointer(Point::new(300.0, 120.0)));
+    s.update(Msg::OpenMenu(MenuTarget::Task("a".into())));
+    let menu = s
+        .menu
+        .as_ref()
+        .expect("a secondary click opens the card's menu");
+    assert_eq!(menu.at, Point::new(300.0, 120.0));
+    assert!(s.board.pressed.is_none() && s.board.dragging.is_none());
+
+    // Delete goes straight to the daemon; no editor, no dialog.
+    let fx = s.update(Msg::Board(BoardMsg::DeleteTask("a".into())));
+    assert!(matches!(
+        bodies(&fx)[..],
+        [Body::DeleteTask(v1::DeleteTaskRequest { task_id })] if task_id == "a"
+    ));
+    assert!(s.menu.is_none() && s.dialog.is_none());
+
+    // Move to another column: to its bottom. Its own column does nothing.
+    s.update(Msg::OpenMenu(MenuTarget::Task("b".into())));
+    s.update(Msg::MenuPage(MenuPage::Move));
+    let fx = s.update(Msg::Board(BoardMsg::MoveTask {
+        task: "b".into(),
+        column: "done".into(),
+    }));
+    assert!(matches!(
+        bodies(&fx)[..],
+        [Body::MoveTask(v1::MoveTaskRequest { task_id, column_id, index: u32::MAX })]
+            if task_id == "b" && column_id == "done"
+    ));
+    let fx = s.update(Msg::Board(BoardMsg::MoveTask {
+        task: "b".into(),
+        column: "todo".into(),
+    }));
+    assert!(fx.is_empty());
+
+    // Open shows the editor.
+    s.update(Msg::OpenMenu(MenuTarget::Task("b".into())));
+    s.update(Msg::Board(BoardMsg::OpenTask("b".into())));
+    assert!(s.menu.is_none());
+    assert!(matches!(&s.dialog, Some(Dialog::Task { task: Some(t), .. }) if t == "b"));
+}

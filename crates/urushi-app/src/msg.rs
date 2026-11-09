@@ -9,6 +9,10 @@ use crate::keys::KeyPress;
 use crate::organize::{DropTarget, MenuPage, MenuTarget, Prompt, Select, SidebarTab};
 use crate::state::{Field, FieldCommand, Launch, SettingToggle, TaskLink};
 
+mod board;
+
+pub use board::BoardMsg;
+
 /// Something that happened.
 #[derive(Clone, Debug)]
 pub enum Msg {
@@ -148,6 +152,8 @@ pub enum Msg {
     StartThread(TaskLink),
     /// In the task editor: delete the task.
     DeleteTask,
+    /// A card acted on from outside the editor (its context menu).
+    Board(BoardMsg),
     /// Ask to delete a board.
     OpenDeleteBoard(String),
     /// Confirmed: delete the board.

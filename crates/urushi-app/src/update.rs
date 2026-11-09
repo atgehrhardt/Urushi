@@ -108,6 +108,7 @@ impl AppState {
             | Msg::RemoveDraftSubtask(_)
             | Msg::StartThread(_)
             | Msg::DeleteTask
+            | Msg::Board(_)
             | Msg::OpenDeleteBoard(_)
             | Msg::ConfirmDeleteBoard) => self.board_msg(msg, &mut fx),
             Msg::Tick(now_ms) => self.tick(now_ms, &mut fx),
@@ -764,6 +765,7 @@ fn input(pane_id: String, kind: v1::input::Kind) -> Effect {
 }
 
 mod board;
+mod cards;
 mod daemon;
 mod fields;
 mod intake;

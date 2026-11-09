@@ -1,5 +1,5 @@
 //! Overlays drawn above everything: the context menu (opened by a secondary click on a
-//! thread, a project or a text field) and the label that follows the pointer while dragging a thread.
+//! thread, a project, a text field or a task card) and the label that follows the pointer while dragging a thread.
 
 use urushi_client::v1;
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Point, Role, Theme, key};
@@ -7,6 +7,8 @@ use urushi_ui::{Align, Color, Font, Insets, Length, Node, Point, Role, Theme, ke
 use crate::msg::Msg;
 use crate::organize::{ContextMenu, MenuPage, MenuTarget, Prompt};
 use crate::state::{AppState, FieldCommand};
+
+mod tasks;
 
 const MENU_WIDTH: f32 = 230.0;
 
@@ -19,6 +21,7 @@ pub(super) fn overlay(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
         MenuTarget::Thread(id) => thread_items(state, theme, menu, id),
         MenuTarget::Project(id) => project_items(theme, id),
         MenuTarget::Field(_) => field_items(state, theme),
+        MenuTarget::Task(id) => tasks::task_items(state, theme, menu, id),
     };
     let backdrop = Node::new()
         .width(Length::Fill(1.0))

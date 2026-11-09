@@ -232,6 +232,7 @@ impl AppState {
     /// dialog for it: titled after it, in the repo (and project) of the parent task's
     /// thread or else the thread on screen.
     fn start_thread(&mut self, link: TaskLink, fx: &mut Vec<Effect>) {
+        self.menu = None;
         if let Some(thread) = self.linked_thread(&link).map(|t| t.id.clone()) {
             self.dialog = None;
             self.focus = None;
