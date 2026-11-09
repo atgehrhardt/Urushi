@@ -38,7 +38,7 @@ impl AppState {
             Msg::PressTask(task) => self.board.pressed = Some(task),
             Msg::PressEnded => {
                 if let Some(task) = self.board.pressed.take() {
-                    self.edit_task(&task);
+                    self.edit_task(&task, fx);
                 }
             }
             Msg::DragTask(task) => {
@@ -52,7 +52,6 @@ impl AppState {
             msg @ (Msg::PickColumn(_)
             | Msg::DeleteTask
             | Msg::ToggleSubtask(_)
-            | Msg::RenameSubtask(_)
             | Msg::DeleteSubtask(_)
             | Msg::RemoveDraftSubtask(_)
             | Msg::StartThread(_)) => self.task_msg(msg, fx),

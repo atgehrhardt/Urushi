@@ -94,12 +94,8 @@ define_id!(
     ColumnId
 );
 define_id!(
-    /// Identifies a [`crate::Task`] on a board.
+    /// Identifies a [`crate::Task`] on a board, a card or a subtask at any depth.
     TaskId
-);
-define_id!(
-    /// Identifies a [`crate::Subtask`] of a task.
-    SubtaskId
 );
 
 #[cfg(test)]

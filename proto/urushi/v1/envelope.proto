@@ -93,6 +93,7 @@ message Request {
     UpdateColumnRequest update_column = 47;
     MoveColumnRequest move_column = 48;
     DeleteColumnRequest delete_column = 49;
+    NestTaskRequest nest_task = 50;
   }
 }
 

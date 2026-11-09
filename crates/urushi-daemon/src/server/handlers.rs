@@ -276,7 +276,8 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         | Body::CreateColumn(_)
         | Body::UpdateColumn(_)
         | Body::MoveColumn(_)
-        | Body::DeleteColumn(_)) => super::boards::route(service, body)?,
+        | Body::DeleteColumn(_)
+        | Body::NestTask(_)) => super::boards::route(service, body)?,
         Body::ShutdownDaemon(_) => {
             if !connection.local {
                 return Err(ServiceError::Forbidden(

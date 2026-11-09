@@ -51,9 +51,39 @@ impl AppState {
                 }
             }
             BoardMsg::FilterTag(tag) => self.board.tag_filter = tag,
-            BoardMsg::OpenTask(task) => self.edit_task(&task),
+            BoardMsg::OpenTask(task) => self.edit_task(&task, fx),
+            BoardMsg::MakeStandalone(task) => {
+                if let Some(found) = self.workspace.find_task(&task) {
+                    let body = Body::MoveTask(v1::MoveTaskRequest {
+                        task_id: task,
+                        column_id: found.column.id.clone(),
+                        index: u32::MAX,
+                    });
+                    fx.push(request(body, Followup::None));
+                }
+            }
+            BoardMsg::OpenNest(task) => {
+                let dialog = Dialog::NestTask {
+                    task,
+                    query: urushi_ui::TextField::default(),
+                };
+                self.open(dialog, Some(crate::state::Field::NestQuery));
+            }
+            BoardMsg::Nest { task, parent } => {
+                let body = Body::NestTask(v1::NestTaskRequest {
+                    task_id: task,
+                    parent_id: parent,
+                    index: u32::MAX,
+                });
+                let followup = if matches!(self.dialog, Some(Dialog::NestTask { .. })) {
+                    Followup::CloseDialog
+                } else {
+                    Followup::None
+                };
+                fx.push(request(body, followup));
+            }
             BoardMsg::DeleteTask(task_id) => {
-                let body = Body::DeleteTask(v1::DeleteTaskRequest { task_id });
+                let body = self.delete_body(task_id);
                 fx.push(request(body, Followup::None));
             }
             BoardMsg::MoveTask { task, column } => {

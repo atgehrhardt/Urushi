@@ -142,8 +142,6 @@ pub enum Msg {
     PickColumn(String),
     /// Check or uncheck a subtask.
     ToggleSubtask(String),
-    /// Start renaming a subtask in the editor.
-    RenameSubtask(String),
     /// Delete a subtask.
     DeleteSubtask(String),
     /// Remove a not-yet-created subtask from a new task.

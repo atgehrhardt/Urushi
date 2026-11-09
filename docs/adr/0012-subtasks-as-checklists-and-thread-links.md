@@ -1,6 +1,6 @@
 # 0012. Keep subtasks as a task's checklist, and let the daemon link threads to tasks
 
-- **Status:** Accepted
+- **Status:** Accepted; the checklist part is superseded by [0015](0015-subtasks-are-nested-tasks.md) (subtasks are now nested tasks). The thread links stand.
 - **Date:** 2026-11-07
 
 ## Context

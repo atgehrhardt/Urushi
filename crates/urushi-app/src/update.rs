@@ -103,7 +103,6 @@ impl AppState {
             | Msg::DragOver(_)
             | Msg::PickColumn(_)
             | Msg::ToggleSubtask(_)
-            | Msg::RenameSubtask(_)
             | Msg::DeleteSubtask(_)
             | Msg::RemoveDraftSubtask(_)
             | Msg::StartThread(_)
@@ -556,6 +555,15 @@ impl AppState {
             }
             Some(Dialog::Prompt { .. }) => self.submit_prompt(fx),
             Some(Dialog::Setup { .. }) => self.setup_enter(fx),
+            Some(Dialog::NestTask { task, query }) => {
+                let first = crate::board::nest_candidates(&self.workspace, task, query.text())
+                    .into_iter()
+                    .next();
+                if let Some((parent, _)) = first {
+                    let task = task.clone();
+                    self.card_action(crate::msg::BoardMsg::Nest { task, parent }, fx);
+                }
+            }
             Some(Dialog::Task { .. }) => self.submit_task(fx),
             Some(Dialog::NewTab { highlighted }) => {
                 let choices = self.launch_choices();
@@ -773,6 +781,7 @@ mod launcher;
 mod organize;
 mod pointer;
 mod setup;
+mod task_threads;
 mod tasks;
 mod usage;
 

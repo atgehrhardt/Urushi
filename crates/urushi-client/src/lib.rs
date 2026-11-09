@@ -13,6 +13,7 @@ mod launcher;
 mod platform;
 mod requests;
 mod screen;
+mod tasks;
 mod workspace;
 
 pub use connection::{Client, Events};
@@ -21,6 +22,7 @@ pub use launcher::{
     restart_local_daemon, stop_local_daemon,
 };
 pub use screen::{Cell, ScreenState};
+pub use tasks::{FoundTask, TaskRef};
 pub use urushi_proto::endpoint::{Endpoint, parse_tcp};
 pub use urushi_proto::v1;
 pub use workspace::WorkspaceMirror;

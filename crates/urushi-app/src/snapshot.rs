@@ -31,7 +31,8 @@ pub fn scene(
 /// list open), `settings`, the thread `menu` and its `menu-status` page, a thread being
 /// dragged (`drag`), the `repos` tab, the task `board` (a task being dragged across it in
 /// `board-drag`, a `task` with subtasks being edited, and a card's context menu in
-/// `task-menu`, and a column's in `column-menu`), and a terminal with an
+/// `task-menu`, a column's in `column-menu`, a subtask opened as a task in
+/// `task-nested`, and "Make subtask of…" in `nest`), and a terminal with an
 /// agent's plan usage in the `status` bar, and the first-run `setup` wizard (its mode
 /// step in `setup-mode`).
 pub const SCENARIOS: &[&str] = &[
@@ -50,9 +51,22 @@ pub const SCENARIOS: &[&str] = &[
     "task",
     "task-menu",
     "column-menu",
+    "task-nested",
+    "nest",
     "status",
     "setup",
     "setup-mode",
+];
+
+/// The scenarios that show the task board.
+const BOARD_SCENARIOS: &[&str] = &[
+    "board",
+    "board-drag",
+    "task",
+    "task-menu",
+    "column-menu",
+    "task-nested",
+    "nest",
 ];
 
 /// Settings with Claude in plan mode as the task agent.
@@ -99,6 +113,7 @@ fn sample_board() -> v1::Board {
         title: title.into(),
         done,
         thread_id: thread.into(),
+        ..Default::default()
     };
     let mut pricing = task("k3", "Pricing page copy", "Waiting on legal\nthen ship");
     pricing.thread_id = "t2".into();
@@ -109,7 +124,15 @@ fn sample_board() -> v1::Board {
     invoice.tags = vec!["backend".into()];
     pricing.subtasks = vec![
         sub("s1", "Draft tiers table", true, ""),
-        sub("s2", "Legal review", false, "t6"),
+        v1::Subtask {
+            notes: "Send the tiers table to legal.".into(),
+            tags: vec!["legal".into()],
+            subtasks: vec![
+                sub("s4", "EU terms", false, ""),
+                sub("s5", "US terms", true, ""),
+            ],
+            ..sub("s2", "Legal review", false, "t6")
+        },
         sub("s3", LONG_SUBTASK, false, ""),
     ];
     let column = |id: &str, name: &str, tasks: Vec<v1::Task>| v1::BoardColumn {
@@ -271,7 +294,7 @@ fn scenario_frame(
             state.update(Msg::DragThread("t6".into()));
             state.update(Msg::DragMove(Point::new(140.0, 400.0)));
         }
-        "board" | "board-drag" | "task" | "task-menu" | "column-menu" | "status" => {
+        name if BOARD_SCENARIOS.contains(&name) || name == "status" => {
             show_board_or_usage(&mut state, name);
         }
         _ => drop(state.update(Msg::SidebarTab(SidebarTab::Repos))),
@@ -289,12 +312,18 @@ fn scenario_frame(
 /// The `board`, `task` and `status` scenarios.
 fn show_board_or_usage(state: &mut AppState, name: &str) {
     match name {
-        "board" | "board-drag" | "task" | "task-menu" | "column-menu" => {
+        name if BOARD_SCENARIOS.contains(&name) => {
             state.update(Msg::ToggleBoard);
             state.update(Msg::BoardReveal(1.0));
             if name == "task-menu" {
                 state.update(Msg::Pointer(urushi_ui::Point::new(700.0, 150.0)));
                 state.update(Msg::OpenMenu(MenuTarget::Task("k3".into())));
+            }
+            if name == "task-nested" {
+                state.update(Msg::Board(crate::msg::BoardMsg::OpenTask("s2".into())));
+            }
+            if name == "nest" {
+                state.update(Msg::Board(crate::msg::BoardMsg::OpenNest("k1".into())));
             }
             if name == "column-menu" {
                 state.update(Msg::Pointer(urushi_ui::Point::new(760.0, 110.0)));
@@ -454,6 +483,31 @@ mod tests {
         ] {
             assert!(menu.contains(text), "{text} missing: {menu}");
         }
+    }
+
+    #[test]
+    fn a_subtask_opens_with_where_it_is_and_its_own_subtasks() {
+        let nested = dump("task-nested", 1280.0);
+        for text in [
+            "\"Edit subtask\"",
+            "\"Pricing page copy\"",
+            "\"Not done\"",
+            "\"Make standalone\"",
+            "\"EU terms\"",
+            "\"Subtasks  1/2\"",
+            "\"Delete subtask\"",
+        ] {
+            assert!(nested.contains(text), "{text} missing: {nested}");
+        }
+        let nest = dump("nest", 1280.0);
+        for text in [
+            "\"Pricing page copy › Legal review › EU terms\"",
+            "\"Stripe sandbox keys\"",
+        ] {
+            assert!(nest.contains(text), "{text} missing: {nest}");
+        }
+        // Once, on its card behind the dialog: it isn't offered as its own parent.
+        assert_eq!(nest.matches("\"Invoice PDF export\"").count(), 1, "{nest}");
     }
 
     #[test]

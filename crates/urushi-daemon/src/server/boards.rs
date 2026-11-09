@@ -1,5 +1,5 @@
-//! Wire → service for task boards (protocol 1.5; subtasks since 1.6; colors, tags and
-//! columns since 1.8).
+//! Wire → service for task boards (protocol 1.5; subtasks since 1.6; colors, tags,
+//! columns and nested tasks since 1.8).
 
 use urushi_proto::convert;
 use urushi_proto::v1::{request::Body, response::Outcome};
@@ -39,16 +39,26 @@ pub(super) fn route(service: &Service, body: Body) -> ServiceResult<Outcome> {
             let subtask = service.create_subtask(parse(&r.task_id, "task_id")?, &r.title)?;
             Outcome::Subtask(convert::subtask_to_proto(&subtask))
         }
+        // Since 1.8 a subtask is a task; these stay for 1.6 clients.
         Body::UpdateSubtask(r) => {
-            service.update_subtask(
-                parse(&r.subtask_id, "subtask_id")?,
-                r.title.as_deref(),
-                r.done,
-            )?;
+            let patch = urushi_core::TaskPatch {
+                title: r.title,
+                done: r.done,
+                ..Default::default()
+            };
+            service.update_task(parse(&r.subtask_id, "subtask_id")?, &patch)?;
             ok()
         }
         Body::DeleteSubtask(r) => {
-            service.delete_subtask(parse(&r.subtask_id, "subtask_id")?)?;
+            service.delete_task(parse(&r.subtask_id, "subtask_id")?)?;
+            ok()
+        }
+        Body::NestTask(r) => {
+            service.nest_task(
+                parse(&r.task_id, "task_id")?,
+                parse(&r.parent_id, "parent_id")?,
+                index(r.index),
+            )?;
             ok()
         }
         Body::UpdateTask(r) => {
@@ -57,6 +67,7 @@ pub(super) fn route(service: &Service, body: Body) -> ServiceResult<Outcome> {
                 notes: r.notes,
                 color: r.color.map(convert::color_from_proto),
                 tags: r.tags.map(|t| t.tags),
+                done: None,
             };
             service.update_task(parse(&r.task_id, "task_id")?, &patch)?;
             ok()

@@ -49,7 +49,7 @@ message Task {
   // Free-form notes; may be empty.
   string notes = 3;
   int64 created_at_ms = 4;
-  // A checklist of smaller steps, in order. Since 1.6.
+  // Smaller steps, in order: tasks nested in this one (ADR 0015). Since 1.6.
   repeated Subtask subtasks = 5;
   // The thread started for this task; empty if none. It may no longer exist. Since 1.6.
   string thread_id = 6;
@@ -59,13 +59,22 @@ message Task {
   repeated string tags = 8;
 }
 
-// One step of a task's checklist. Since protocol 1.6.
+// A task nested in another (ADR 0015). Since protocol 1.6 (as a checklist item: id,
+// title, done, thread); the rest since 1.8. Its id is a task id: every task request
+// takes it, and it keeps it when it moves onto the board.
 message Subtask {
   string id = 1;
   string title = 2;
   bool done = 3;
   // The thread started for this subtask; empty if none. It may no longer exist.
   string thread_id = 4;
+  // Since 1.8.
+  string notes = 5;
+  int64 created_at_ms = 6;
+  LabelColor color = 7;
+  repeated string tags = 8;
+  // Its own subtasks, in order.
+  repeated Subtask subtasks = 9;
 }
 
 // Creates a board with the default columns (To do, In progress, Done).
@@ -96,7 +105,8 @@ message CreateTaskRequest {
   repeated string tags = 7;
 }
 
-// Changes a task's text, color or tags. Unset fields are kept.
+// Changes a task's (or, since 1.8, a subtask's) text, color or tags. Unset fields are
+// kept.
 message UpdateTaskRequest {
   string task_id = 1;
   optional string title = 2;
@@ -108,18 +118,21 @@ message UpdateTaskRequest {
 }
 
 // Moves a task to `index` in a column of the same board (clamped; past the end means
-// the bottom).
+// the bottom). Since 1.8 the task may be a subtask: it comes out of its parent onto the
+// board, unchecked.
 message MoveTaskRequest {
   string task_id = 1;
   string column_id = 2;
   uint32 index = 3;
 }
 
+// Deletes a task (since 1.8 also a subtask of any depth) with its subtasks.
 message DeleteTaskRequest {
   string task_id = 1;
 }
 
-// Adds a subtask at the end of a task's checklist. Answered with the Subtask. Since 1.6.
+// Adds a subtask at the end of a task's subtasks (since 1.8 the task may itself be a
+// subtask). Answered with the Subtask. Since 1.6.
 message CreateSubtaskRequest {
   string task_id = 1;
   string title = 2;
@@ -164,4 +177,14 @@ message MoveColumnRequest {
 // Since 1.8.
 message DeleteColumnRequest {
   string column_id = 1;
+}
+
+// Moves a task (a card, or a subtask of any depth) under another task of the same board,
+// at `index` of its subtasks (clamped). A card from the board's last column arrives
+// checked off. Refused: the task's own subtree (INVALID_ARGUMENT), more than the
+// nesting limits allow (INVALID_ARGUMENT). Since 1.8.
+message NestTaskRequest {
+  string task_id = 1;
+  string parent_id = 2;
+  uint32 index = 3;
 }

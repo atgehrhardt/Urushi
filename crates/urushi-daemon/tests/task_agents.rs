@@ -140,6 +140,26 @@ async fn a_task_starts_the_task_agent_in_its_mode_with_the_task_as_prompt() {
     assert!(text.contains("Step: docs"), "{text}");
     assert!(text.contains("- [ ] docs  <- this step]"), "{text}");
     assert!(!text.contains("--permission-mode"), "{text}");
+
+    // A deeper subtask names every task above it, and gets the link (ADR 0015).
+    let deep = client
+        .create_subtask(&docs.id, "API reference")
+        .await
+        .unwrap();
+    let thread = client
+        .create_thread_with(start(&repo_id, &task.id, &deep.id))
+        .await
+        .unwrap();
+    let pane = panes_of(&first_tab(&client, &thread.id).await)[0].clone();
+    let screen = wait_for_text(&client, &pane, "AGENT-DONE").await;
+    let text = screen.join("\n");
+    assert!(text.contains("Step: API reference"), "{text}");
+    assert!(
+        text.contains("It is part of the task: Ship search › docs"),
+        "{text}"
+    );
+    let w = urushi_client::WorkspaceMirror::new(client.list_workspace(false).await.unwrap());
+    assert_eq!(w.find_task(&deep.id).unwrap().task().thread_id(), thread.id);
     daemon.stop().await;
 }
 

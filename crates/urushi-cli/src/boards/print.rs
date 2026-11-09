@@ -49,17 +49,35 @@ pub(super) fn print_boards(mirror: &WorkspaceMirror) -> Result<()> {
                 for line in task.notes.lines() {
                     out(&format!("        {line}"))?;
                 }
-                for s in &task.subtasks {
-                    let mark = if s.done { "x" } else { " " };
-                    let thread = link(mirror, &s.thread_id);
-                    out(&format!(
-                        "        [{mark}] {}  [{}]{thread}",
-                        s.title,
-                        short(&s.id)
-                    ))?;
-                }
+                print_subtasks(mirror, &task.subtasks, 2)?;
             }
         }
+    }
+    Ok(())
+}
+
+/// Subtasks as a checklist, each level indented further, with their own notes,
+/// colors, tags and subtasks.
+fn print_subtasks(mirror: &WorkspaceMirror, subtasks: &[v1::Subtask], level: usize) -> Result<()> {
+    let indent = "    ".repeat(level);
+    for s in subtasks {
+        let mark = if s.done { "x" } else { " " };
+        let thread = link(mirror, &s.thread_id);
+        let tags: String = s.tags.iter().fold(String::new(), |mut out, t| {
+            out.push_str("  #");
+            out.push_str(t);
+            out
+        });
+        out(&format!(
+            "{indent}[{mark}] {}{}{tags}  [{}]{thread}",
+            s.title,
+            color(s.color),
+            short(&s.id)
+        ))?;
+        for line in s.notes.lines() {
+            out(&format!("{indent}    {line}"))?;
+        }
+        print_subtasks(mirror, &s.subtasks, level + 1)?;
     }
     Ok(())
 }

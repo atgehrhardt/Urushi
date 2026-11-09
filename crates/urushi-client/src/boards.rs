@@ -93,6 +93,22 @@ impl Client {
         self.ok(body, "UpdateSubtask").await
     }
 
+    /// Moves a task (a card or a subtask) under another task of its board, at `index`
+    /// of its subtasks (protocol 1.8).
+    pub async fn nest_task(
+        &self,
+        task_id: &str,
+        parent_id: &str,
+        index: u32,
+    ) -> Result<(), ClientError> {
+        let body = Body::NestTask(v1::NestTaskRequest {
+            task_id: task_id.into(),
+            parent_id: parent_id.into(),
+            index,
+        });
+        self.ok(body, "NestTask").await
+    }
+
     /// Deletes a subtask.
     pub async fn delete_subtask(&self, subtask_id: &str) -> Result<(), ClientError> {
         let body = Body::DeleteSubtask(v1::DeleteSubtaskRequest {

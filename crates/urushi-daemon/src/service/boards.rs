@@ -1,12 +1,10 @@
-//! Task boards: creating, renaming and deleting boards; adding, editing, moving and
-//! deleting their tasks; and the tasks' subtasks. The rules live in
+//! Task boards: creating, renaming and deleting boards; adding, editing, moving,
+//! nesting and deleting their tasks, which may be subtasks of any depth (ADR 0015). The rules live in
 //! `urushi_core::board`; this module finds the board, applies the change and persists
 //! it. Boards never touch git or terminals (threads link themselves to tasks when they
 //! are created, in `threads.rs`).
 
-use urushi_core::{
-    Board, BoardError, BoardId, ColumnId, LabelColor, Subtask, SubtaskId, Task, TaskId, TaskPatch,
-};
+use urushi_core::{Board, BoardError, BoardId, ColumnId, LabelColor, Task, TaskId, TaskPatch};
 
 use super::{Service, ServiceError, ServiceResult, State, new_uuid, now};
 
@@ -15,7 +13,6 @@ impl From<BoardError> for ServiceError {
         match e {
             BoardError::NoSuchColumn(id) => Self::NotFound(format!("column {id}")),
             BoardError::NoSuchTask(id) => Self::NotFound(format!("task {id}")),
-            BoardError::NoSuchSubtask(id) => Self::NotFound(format!("subtask {id}")),
             BoardError::LastColumn => Self::Precondition(e.to_string()),
             _ => Self::Invalid(e.to_string()),
         }
@@ -53,43 +50,38 @@ impl State {
             .ok_or_else(|| ServiceError::NotFound(format!("task {task}")))
     }
 
-    /// The board holding `subtask`.
-    fn board_of_subtask(&mut self, subtask: SubtaskId) -> ServiceResult<&mut Board> {
-        self.boards
-            .iter_mut()
-            .find(|b| b.subtask(subtask).is_some())
-            .ok_or_else(|| ServiceError::NotFound(format!("subtask {subtask}")))
-    }
-
-    /// The first prompt for an agent started for this task (or subtask of it).
-    pub(super) fn task_prompt(
-        &self,
-        (task, subtask): (TaskId, Option<SubtaskId>),
-    ) -> ServiceResult<String> {
-        let task = self
-            .boards
-            .iter()
-            .find_map(|b| b.task(task))
-            .ok_or_else(|| ServiceError::NotFound(format!("task {task}")))?;
-        Ok(urushi_core::task_prompt(task, subtask)?)
-    }
-
-    /// Checks that a thread could be linked to this task (and subtask of it).
-    pub(super) fn task_link_target(
-        &self,
-        (task, subtask): (TaskId, Option<SubtaskId>),
-    ) -> ServiceResult<()> {
+    /// The task a thread is linked to: `subtask` if given (it must be under `task`, not
+    /// `task` itself), otherwise `task`.
+    fn link_target(&self, (task, subtask): (TaskId, Option<TaskId>)) -> ServiceResult<TaskId> {
         let parent = self
             .boards
             .iter()
             .find_map(|b| b.task(task))
             .ok_or_else(|| ServiceError::NotFound(format!("task {task}")))?;
         match subtask {
-            Some(id) if !parent.subtasks.iter().any(|s| s.id == id) => Err(ServiceError::NotFound(
+            Some(id) if id == task || parent.find(id).is_none() => Err(ServiceError::NotFound(
                 format!("subtask {id} of task {task}"),
             )),
-            _ => Ok(()),
+            Some(id) => Ok(id),
+            None => Ok(task),
         }
+    }
+
+    /// The first prompt for an agent started for this task (or subtask of it).
+    pub(super) fn task_prompt(&self, link: (TaskId, Option<TaskId>)) -> ServiceResult<String> {
+        let id = self.link_target(link)?;
+        let board = self
+            .boards
+            .iter()
+            .find(|b| b.task(id).is_some())
+            .ok_or_else(|| ServiceError::NotFound(format!("task {id}")))?;
+        Ok(urushi_core::task_prompt(board, id)?)
+    }
+
+    /// Checks that a thread could be linked to this task (and subtask of it), and
+    /// returns the task it would be linked to.
+    pub(super) fn task_link_target(&self, link: (TaskId, Option<TaskId>)) -> ServiceResult<TaskId> {
+        self.link_target(link)
     }
 }
 
@@ -138,7 +130,7 @@ impl Service {
         task.subtasks = new
             .subtasks
             .iter()
-            .map(|t| Subtask::new(SubtaskId::from_uuid(new_uuid()), t))
+            .map(|t| Task::new(TaskId::from_uuid(new_uuid()), t, "", now()))
             .collect::<Result<_, _>>()?;
         self.mutate(|state| {
             state.board_mut(board)?.add_task(column, task.clone())?;
@@ -164,36 +156,19 @@ impl Service {
         })
     }
 
-    /// Adds a subtask at the end of a task's checklist.
-    pub fn create_subtask(&self, task: TaskId, title: &str) -> ServiceResult<Subtask> {
-        let subtask = Subtask::new(SubtaskId::from_uuid(new_uuid()), title)?;
+    /// Moves a task (a card or a subtask) under another task of its board.
+    pub fn nest_task(&self, task: TaskId, parent: TaskId, index: usize) -> ServiceResult<()> {
+        self.mutate(|state| Ok(state.board_of_task(task)?.nest_task(task, parent, index)?))
+    }
+
+    /// Adds a subtask at the end of a task's (at any depth) subtasks.
+    pub fn create_subtask(&self, parent: TaskId, title: &str) -> ServiceResult<Task> {
+        let subtask = Task::new(TaskId::from_uuid(new_uuid()), title, "", now())?;
         self.mutate(|state| {
             state
-                .board_of_task(task)?
-                .add_subtask(task, subtask.clone())?;
+                .board_of_task(parent)?
+                .add_subtask(parent, subtask.clone())?;
             Ok(subtask)
-        })
-    }
-
-    /// Renames and/or checks off a subtask (`None` keeps the value).
-    pub fn update_subtask(
-        &self,
-        subtask: SubtaskId,
-        title: Option<&str>,
-        done: Option<bool>,
-    ) -> ServiceResult<()> {
-        self.mutate(|state| {
-            Ok(state
-                .board_of_subtask(subtask)?
-                .update_subtask(subtask, title, done)?)
-        })
-    }
-
-    /// Deletes a subtask.
-    pub fn delete_subtask(&self, subtask: SubtaskId) -> ServiceResult<()> {
-        self.mutate(|state| {
-            state.board_of_subtask(subtask)?.remove_subtask(subtask)?;
-            Ok(())
         })
     }
 }

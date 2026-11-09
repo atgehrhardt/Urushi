@@ -2,7 +2,7 @@
 #![allow(clippy::unwrap_used, reason = "test code")]
 
 use prost::Message;
-use urushi_core::{BoardId, ColumnId, SubtaskId, TaskId, ThreadId, Timestamp};
+use urushi_core::{BoardId, ColumnId, TaskId, ThreadId, Timestamp};
 
 use super::*;
 use crate::v1::{request::Body, response::Outcome};
@@ -23,17 +23,34 @@ fn sample() -> Board {
     )
     .unwrap();
     board.add_task(ColumnId::from_u128(3), task).unwrap();
-    let (parent, sub) = (TaskId::from_u128(5), SubtaskId::from_u128(6));
+    let (parent, sub) = (TaskId::from_u128(5), TaskId::from_u128(6));
+    let step = |id: u128, title: &str, notes: &str| {
+        Task::new(
+            TaskId::from_u128(id),
+            title,
+            notes,
+            Timestamp::from_unix_millis(30),
+        )
+        .unwrap()
+    };
+    board.add_subtask(parent, step(6, "step one", "")).unwrap();
     board
-        .add_subtask(parent, Subtask::new(sub, "step one").unwrap())
+        .add_subtask(parent, step(7, "two", "its notes"))
         .unwrap();
     board
-        .add_subtask(
-            parent,
-            Subtask::new(SubtaskId::from_u128(7), "two").unwrap(),
+        .add_subtask(TaskId::from_u128(7), step(11, "deeper", ""))
+        .unwrap();
+    board
+        .update_task(
+            sub,
+            &urushi_core::TaskPatch {
+                done: Some(true),
+                color: Some(Some(urushi_core::LabelColor::Pink)),
+                tags: Some(vec!["nested".into()]),
+                ..Default::default()
+            },
         )
         .unwrap();
-    board.update_subtask(sub, None, Some(true)).unwrap();
     board
         .update_task(
             parent,
@@ -51,11 +68,10 @@ fn sample() -> Board {
             Some(Some(urushi_core::LabelColor::Green)),
         )
         .unwrap();
+    board.link_thread(parent, ThreadId::from_u128(8)).unwrap();
+    board.link_thread(sub, ThreadId::from_u128(9)).unwrap();
     board
-        .link_thread(parent, None, ThreadId::from_u128(8))
-        .unwrap();
-    board
-        .link_thread(parent, Some(sub), ThreadId::from_u128(9))
+        .link_thread(TaskId::from_u128(11), ThreadId::from_u128(10))
         .unwrap();
     board
 }
@@ -64,6 +80,19 @@ fn sample() -> Board {
 fn boards_round_trip() {
     let board = sample();
     assert_eq!(board_from_proto(&board_to_proto(&board)).unwrap(), board);
+}
+
+#[test]
+fn subtasks_carry_every_task_field_at_any_depth() {
+    let wire = board_to_proto(&sample());
+    let task = &wire.columns[1].tasks[0];
+    let (one, two) = (&task.subtasks[0], &task.subtasks[1]);
+    assert!(one.done);
+    assert_eq!(one.tags, ["nested"]);
+    assert_eq!(one.color, i32::from(v1::LabelColor::Pink));
+    assert_eq!(two.notes, "its notes");
+    assert_eq!(two.subtasks[0].title, "deeper");
+    assert!(!two.subtasks[0].thread_id.is_empty());
 }
 
 #[test]
@@ -234,6 +263,11 @@ fn column_requests_round_trip_on_the_wire() {
         }),
         Body::DeleteColumn(v1::DeleteColumnRequest {
             column_id: "2".into(),
+        }),
+        Body::NestTask(v1::NestTaskRequest {
+            task_id: "3".into(),
+            parent_id: "5".into(),
+            index: 1,
         }),
     ]);
 }

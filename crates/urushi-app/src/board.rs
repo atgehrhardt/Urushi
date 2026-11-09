@@ -3,7 +3,7 @@
 //! would land). The boards
 //! themselves live in the daemon and arrive with the workspace (`Workspace.boards`).
 
-use urushi_client::{WorkspaceMirror, v1};
+use urushi_client::{TaskRef, WorkspaceMirror, v1};
 use urushi_ui::Point;
 
 /// First protocol minor version with task boards and agent usage.
@@ -63,6 +63,45 @@ impl TaskLabels {
         all.add(self.input.text());
         all.tags
     }
+}
+
+/// Where "Make subtask of…" can put `task`: every other task on its board, at any
+/// depth, except the task itself, its own subtasks and its current parent, whose title
+/// (or path) contains `query` (ignoring case). Each comes as `(id, path)`, the path
+/// reading "Card › Subtask".
+pub fn nest_candidates(
+    workspace: &WorkspaceMirror,
+    task: &str,
+    query: &str,
+) -> Vec<(String, String)> {
+    fn walk(t: TaskRef<'_>, above: &str, skip: &[&str], out: &mut Vec<(String, String)>) {
+        if skip.contains(&t.id()) {
+            return;
+        }
+        let path = if above.is_empty() {
+            t.title().to_owned()
+        } else {
+            format!("{above} › {}", t.title())
+        };
+        for s in t.subtasks() {
+            walk(TaskRef::Sub(s), &path, skip, out);
+        }
+        out.push((t.id().to_owned(), path));
+    }
+    let Some(found) = workspace.find_task(task) else {
+        return Vec::new();
+    };
+    let skip = found.task().subtree_ids();
+    let parent = found.parent().map(TaskRef::id);
+    let mut out = Vec::new();
+    for card in found.board.columns.iter().flat_map(|c| &c.tasks) {
+        walk(TaskRef::Card(card), "", &skip, &mut out);
+    }
+    let query = query.trim().to_lowercase();
+    out.retain(|(id, path)| Some(id.as_str()) != parent && path.to_lowercase().contains(&query));
+    // Cards before their subtasks, in board order.
+    out.sort_by_key(|(_, path)| path.matches(" › ").count());
+    out
 }
 
 /// Whether `task` passes the tag filter.
@@ -238,5 +277,53 @@ mod tests {
         panel.reveal = 0.5;
         assert!(panel.visible());
         assert!(panel.eased() > 0.5);
+    }
+}
+
+#[cfg(test)]
+mod nest_tests {
+    use super::*;
+
+    #[test]
+    fn a_task_can_go_under_any_other_task_but_its_own_subtree() {
+        let sub = |id: &str, subtasks: Vec<v1::Subtask>| v1::Subtask {
+            id: id.into(),
+            title: id.to_uppercase(),
+            subtasks,
+            ..Default::default()
+        };
+        let card = |id: &str, subtasks: Vec<v1::Subtask>| v1::Task {
+            id: id.into(),
+            title: id.to_uppercase(),
+            subtasks,
+            ..Default::default()
+        };
+        let w = WorkspaceMirror::new(v1::Workspace {
+            boards: vec![v1::Board {
+                id: "b".into(),
+                columns: vec![v1::BoardColumn {
+                    id: "c".into(),
+                    tasks: vec![
+                        card("a", vec![sub("a1", vec![sub("a2", vec![])])]),
+                        card("x", vec![sub("x1", vec![])]),
+                    ],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        let ids = |task: &str, q: &str| -> Vec<String> {
+            nest_candidates(&w, task, q)
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect()
+        };
+        // Not itself, not under itself.
+        assert_eq!(ids("a", ""), ["x", "x1"]);
+        // Not its current parent; the path names where each one is.
+        assert_eq!(ids("x1", ""), ["a", "a1", "a2"]);
+        assert_eq!(nest_candidates(&w, "x1", "a2")[0].1, "A › A1 › A2");
+        assert_eq!(ids("a1", "x"), ["x", "x1"]);
     }
 }

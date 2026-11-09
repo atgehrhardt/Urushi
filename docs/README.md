@@ -29,6 +29,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0012 – Keep subtasks as a task's checklist, and let the daemon link threads to tasks](adr/0012-subtasks-as-checklists-and-thread-links.md)
 - [0013 – Bring panes back after a daemon restart from per-pane restore points](adr/0013-restore-points-for-panes.md)
 - [0014 – Start a task's agent with the task as its prompt, passed through the pane's environment](adr/0014-task-prompt-via-pane-environment.md)
+- [0015 – Make subtasks full tasks nested inside their parent](adr/0015-subtasks-are-nested-tasks.md)
 
 ## Features
 - [_template](features/_template.md)

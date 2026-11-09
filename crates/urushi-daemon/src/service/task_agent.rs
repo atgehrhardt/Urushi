@@ -5,7 +5,7 @@
 //! made, so a refused request leaves nothing behind. The prompt travels in the first
 //! pane's environment, and the typed command line refers to it.
 
-use urushi_core::{Agent, PaneId, SubtaskId, TASK_PROMPT_ENV, TaskId, ThreadId};
+use urushi_core::{Agent, PaneId, TASK_PROMPT_ENV, TaskId, ThreadId};
 
 use super::{Service, ServiceError, ServiceResult};
 
@@ -33,7 +33,7 @@ impl Service {
     pub(super) async fn task_agent_for(
         &self,
         start: bool,
-        link: Option<(TaskId, Option<SubtaskId>)>,
+        link: Option<(TaskId, Option<TaskId>)>,
         shell: Option<String>,
     ) -> ServiceResult<Option<TaskAgent>> {
         match (start, link) {
@@ -58,7 +58,7 @@ impl Service {
     /// task agent is chosen, it isn't installed, or the task or subtask doesn't exist.
     pub(super) async fn prepare_task_agent(
         &self,
-        link: (TaskId, Option<SubtaskId>),
+        link: (TaskId, Option<TaskId>),
         shell: Option<String>,
     ) -> ServiceResult<TaskAgent> {
         let (choice, prompt) = self.read(|s| {

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use urushi_core::thread::NewThread;
 use urushi_core::{
-    BranchName, PaneId, ProjectId, RepoId, Slug, SubtaskId, Tab, TabId, TaskId, Thread, ThreadId,
+    BranchName, PaneId, ProjectId, RepoId, Slug, Tab, TabId, TaskId, Thread, ThreadId,
 };
 use urushi_mux::TermSize;
 
@@ -34,7 +34,7 @@ pub struct ThreadRequest {
     pub project: Option<ProjectId>,
     /// The task (and maybe subtask) on a board this thread is for; it gets linked to
     /// the thread when the thread is recorded.
-    pub task: Option<(TaskId, Option<SubtaskId>)>,
+    pub task: Option<(TaskId, Option<TaskId>)>,
     /// Open the first tab running the user's task agent, with `task` as its prompt
     /// (ADR 0014). Needs `task`; wins over `initial_tab`.
     pub start_task_agent: bool,
@@ -199,8 +199,9 @@ impl Service {
             // The task may have been deleted while the worktree was made; the thread
             // stands on its own, so that just leaves it unlinked.
             if let Some((task, subtask)) = first.task
-                && let Some(board) = state.boards.iter_mut().find(|b| b.task(task).is_some())
-                && let Err(e) = board.link_thread(task, subtask, thread.id)
+                && let target = subtask.unwrap_or(task)
+                && let Some(board) = state.boards.iter_mut().find(|b| b.task(target).is_some())
+                && let Err(e) = board.link_thread(target, thread.id)
             {
                 tracing::warn!(thread = %thread.id, error = %e, "thread not linked to its task");
             }
@@ -246,7 +247,7 @@ struct FirstTab {
     open: bool,
     shell: Option<String>,
     /// The board task to link the thread to once it's recorded.
-    task: Option<(TaskId, Option<SubtaskId>)>,
+    task: Option<(TaskId, Option<TaskId>)>,
     /// The task agent the first tab starts, if any.
     agent: Option<TaskAgent>,
 }

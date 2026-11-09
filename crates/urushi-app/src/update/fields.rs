@@ -33,12 +33,7 @@ macro_rules! focused_field {
             (Some(Dialog::Task { notes, .. }), Field::TaskNotes) => Some(notes),
             (Some(Dialog::Task { subtasks, .. }), Field::NewSubtask) => Some($($r)+ subtasks.new),
             (Some(Dialog::Task { labels, .. }), Field::TaskTag) => Some($($r)+ labels.input),
-            (Some(Dialog::Task { subtasks, .. }), Field::SubtaskTitle) => {
-                match $($r)+ subtasks.renaming {
-                    Some((_, f)) => Some(f),
-                    None => None,
-                }
-            }
+            (Some(Dialog::NestTask { query, .. }), Field::NestQuery) => Some(query),
             _ => None,
         }
     };
@@ -65,15 +60,13 @@ impl AppState {
             Some(Dialog::Settings { .. }) => vec![Field::BranchPrefix, Field::DefaultShell],
             Some(Dialog::Connect { .. }) => vec![Field::Host],
             Some(Dialog::Prompt { .. }) => vec![Field::Prompt],
-            Some(Dialog::Task { subtasks, .. }) => {
+            Some(Dialog::NestTask { .. }) => vec![Field::NestQuery],
+            Some(Dialog::Task { .. }) => {
                 let mut fields = vec![Field::TaskTitle, Field::TaskNotes];
                 if self.daemon_supports_board_extras() {
                     fields.push(Field::TaskTag);
                 }
                 if self.daemon_supports_subtasks() {
-                    if subtasks.renaming.is_some() {
-                        fields.push(Field::SubtaskTitle);
-                    }
                     fields.push(Field::NewSubtask);
                 }
                 fields

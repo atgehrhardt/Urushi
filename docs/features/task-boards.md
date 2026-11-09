@@ -1,8 +1,8 @@
 # Feature: Task boards
 
 - **Status:** Shipped (manual boards, subtasks, threads started from tasks)
-- **Owners (crates):** `urushi-core` (`board`, `board/{subtasks,labels,columns}.rs`), `urushi-daemon` (`service/{boards,columns}.rs`, `server/boards.rs`, the link in `service/threads.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `WorkspaceMirror::{boards, board, task, subtask}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `view/board/`, `view/tasks/`, `view/labels.rs`, `view/menu/tasks.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`)
-- **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0014](../adr/0014-task-prompt-via-pane-environment.md)
+- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,prompt}.rs`), `urushi-daemon` (`service/{boards,columns}.rs`, `server/boards.rs`, the link in `service/threads.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_threads.rs`, `view/board/`, `view/tasks/`, `view/labels.rs`, `view/menu/tasks.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`)
+- **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0014](../adr/0014-task-prompt-via-pane-environment.md)
 
 ## What it does
 A **Tasks** button sits under the sidebar's Projects | Repos tabs. It shows the number of
@@ -38,10 +38,21 @@ it back.
   lines of notes (blank lines skipped, an ellipsis when there's more), and a footer row
   for subtask progress and the thread chip. The copy that follows the pointer while
   dragging is the same card.
-- **Subtasks** are a checklist inside a task. In the editor: type in "Add a subtask…"
-  and press Enter; click the box to check one off, its title to rename it, × to delete
-  it. A new task's subtasks are created with it. Cards show progress ("✓ 1/3", green when
-  all are done).
+- **Subtasks** are tasks too, kept inside their parent (ADR 0015). In the editor: type
+  in "Add a subtask…" and press Enter; click the box to check one off, × to delete it. A
+  new task's subtasks are created with it. Cards show progress ("✓ 1/3", green when all
+  are done), and subtask rows their own.
+  - **Clicking a subtask's title opens it** as a task of its own ("Edit subtask"), with
+    notes, color, tags, its own subtasks and thread, saving what changed in the task on
+    screen first. A breadcrumb ("Card › Subtask ›") leads back up. Instead of a column, a
+    subtask has **Done / Not done** and **Make standalone**, which moves it onto the
+    board in its card's column, unchecked, with its subtasks. Subtasks nest up to five
+    levels under a card.
+  - **Make subtask of…** (in a task's menu, card or subtask) lists the board's other
+    tasks at any depth ("Card › Subtask"), minus the task's own subtree and its current
+    parent; type to narrow it, click one or press Enter for the first. A card from the
+    last column arrives checked off.
+  - Right-clicking a subtask row opens the same menu as a card, over the editor.
 - **Start thread** (on a task, or on any subtask row) opens the new-thread dialog with
   the title filled in, in the repo of the parent task's thread or else the thread on
   screen. The new thread is linked to the task or subtask: the button then reads **Go to
@@ -50,7 +61,8 @@ it back.
   it with the task, its notes and its subtasks as the first prompt; otherwise it opens on
   the launcher. See [task agent](task-agent.md).
 - **Right-click or two-finger click** a card for its menu: **Open**, **Move to ›** (a
-  column), **Color ›**, **Start thread…** / **Go to thread**, and **Delete task**, which deletes it
+  column), **Make subtask of…**, **Color ›**, **Start thread…** / **Go to thread**, and
+  **Delete task**, which deletes it
   right away, as the editor's Delete does.
 - Long names are cut short with an ellipsis instead of running over their neighbours:
   subtask titles in the editor, column names, board tabs and the card's thread chip.
@@ -64,8 +76,12 @@ Boards live in the daemon, so every client sees the same boards, and they surviv
 restarts. Jira boards are planned as further tabs in the same panel.
 
 ## How it works
-- **Model** (`urushi_core::board`): `Board{columns[Column{color, tasks[Task{color, tags,
-  subtasks[Subtask], thread}]}]}`. The rules live here: names, titles and tags are
+- **Model** (`urushi_core::board`): `Board{columns[Column{color, tasks[Task{done, color,
+  tags, subtasks[Task], thread}]}]}`, a forest (`tree.rs`): `task`, `path_to`,
+  `column_of`, `remove_task` and `link_thread` work at any depth; `move_task` takes any
+  task into a column (clearing `done`); `nest_task` puts one under a parent, refusing its
+  own subtree (`Cycle`), more than `MAX_DEPTH` levels (`TooDeep`) or `MAX_SUBTASKS`
+  children, and checks room before the task moves. The rules live here: names, titles and tags are
   validated (`labels.rs::task_tags`: whitespace collapsed, repeats ignoring case
   dropped, at most `MAX_TAGS` of `MAX_TAG` characters), `update_task` takes a
   `TaskPatch`, columns are added, recolored, moved and removed in `columns.rs` (at
@@ -74,15 +90,16 @@ restarts. Jira boards are planned as further tabs in the same panel.
   color, `move_task` takes an
   index counted without the moved task, clamped to the bottom, a task has at most
   `MAX_SUBTASKS`, and `link_thread` / `unlink_thread` record and forget threads. Ids and
-  timestamps are passed in.
+  timestamps are passed in. Older documents' checklist items load as tasks (every new
+  field has a serde default; `created_at` reads as 0).
 - **Daemon:** `Service::{create_board, rename_board, delete_board, create_task,
-  update_task, move_task, delete_task, create_subtask, update_subtask, delete_subtask}`
-  (`service/boards.rs`) and `Service::{create_column, update_column, move_column,
+  update_task, move_task, nest_task, delete_task, create_subtask}` (`service/boards.rs`;
+  `UpdateSubtask` and `DeleteSubtask` are served by `update_task` and `delete_task`) and `Service::{create_column, update_column, move_column,
   delete_column}` (`service/columns.rs`) change `State.boards` through `mutate`. That persists the change
   in the JSON document (`Document.boards`; older files have none, and older tasks no
   subtasks or link) and wakes `WorkspaceChanged` subscribers.
-- **Linking threads:** `CreateThread{task_id, subtask_id}` checks the task exists before
-  making the worktree, then links it in the same `mutate` that records the thread
+- **Linking threads:** `CreateThread{task_id, subtask_id}` checks the task exists (and
+  that `subtask_id`, if set, is somewhere under it) before making the worktree, then links it in the same `mutate` that records the thread
   (`threads.rs::finish_thread_creation`). If the task was deleted meanwhile, the thread
   is kept unlinked. Deleting a thread unlinks it from every board (`deletion.rs`). See
   ADR 0012 for why the link lives on the task and is made by the daemon.
@@ -95,7 +112,11 @@ restarts. Jira boards are planned as further tabs in the same panel.
   `Task.{color, tags}`, `CreateTask.{color, tags}`, `UpdateTask.{optional color, TagList
   tags}` (a set `UNSPECIFIED` clears the color; an unset `tags` keeps them), and
   `CreateColumn` → `BoardColumn`, `UpdateColumn{optional name, optional color}`,
-  `MoveColumn`, `DeleteColumn` (the last column is `FAILED_PRECONDITION`).
+  `MoveColumn`, `DeleteColumn` (the last column is `FAILED_PRECONDITION`). Also since
+  1.8, `Subtask.{notes, created_at_ms, color, tags, subtasks}` (a subtask carries every
+  task field, so 1.6 clients still read the first level as a checklist), `NestTask{task_id,
+  parent_id, index}`, and nested ids in `UpdateTask`, `MoveTask` (which takes a subtask
+  out onto the board), `DeleteTask` and `CreateSubtask`.
 - **App:** `AppState.board: BoardPanel` holds what the panel is doing: open, slide
   position, the chosen board, the card pressed or dragged, and where it would land
   (`over`). The runner animates `reveal` over 180 ms (`runner.rs::animate`), and the view
@@ -109,9 +130,14 @@ restarts. Jira boards are planned as further tabs in the same panel.
   - **No flicker:** each card sits in a slot that includes the gap under it, and the drop
     line in a slot with the same target (`view/board/column.rs::slot`), so the pointer is always
     over a target and the line doesn't jump as it moves the cards.
-  - **Editor** (`update/tasks.rs`): an existing task's subtasks change right away (each
-    is a request); a new task's are drafts in `SubtaskEditor` until `CreateTask`. Enter
-    in "Add a subtask…" adds; Enter in the rename field saves; Enter in the notes (a
+  - **Editor** (`update/tasks.rs`): `Dialog::Task` edits a card or a subtask alike; the
+    app reads both through `urushi_client::{TaskRef, FoundTask}`
+    (`WorkspaceMirror::find_task`, which also gives the path for the breadcrumb).
+    `BoardMsg::OpenTask` from the editor first sends what changed (`task_changes`, the
+    same requests Save sends, without closing). A subtask's check mark changes right
+    away; a subtask is deleted with `DeleteSubtask`. An existing task's subtasks change
+    right away (each is a request); a new task's are drafts in `SubtaskEditor` until
+    `CreateTask`. Enter in "Add a subtask…" or "Add a tag…" adds; Enter in the notes (a
     `TextField::multiline`, drawn with the toolkit's `text_area`) adds a line; Enter
     elsewhere, or Cmd/Ctrl+Enter anywhere, saves the task (a subtask still typed in the
     field goes with it). Notes are sent only if they differ from the task's notes as the
@@ -119,7 +145,11 @@ restarts. Jira boards are planned as further tabs in the same panel.
   - **Cards** (`view/board/card.rs::card_body`): a fixed `card_height` from the theme's line
     heights; the notes are a `widgets::wrapped_text` filling the room between the title
     and the footer.
-  - **Menus:** the card's `on_secondary_click` opens `MenuTarget::Task`, a column's
+  - **Nesting:** `Dialog::NestTask` lists `board::nest_candidates`, and choosing one
+    sends `NestTask`; **Make standalone** sends `MoveTask` to the card's column.
+    `TaskLink::of` names the card and the subtask for `CreateThread`.
+  - **Menus:** the card's (or a subtask row's) `on_secondary_click` opens
+    `MenuTarget::Task` (the only menu that opens over a dialog, the task editor), a column's
     header or ⋯ `MenuTarget::Column`, and the header's filter button
     `MenuTarget::TagFilter` (all in `view/menu/tasks.rs`; colors are a `MenuPage::Color`
     page). Their actions are `Msg::Board(BoardMsg::…)`, handled in `update/cards.rs`.
@@ -138,7 +168,9 @@ restarts. Jira boards are planned as further tabs in the same panel.
     wheel and typing away from the terminals.
   - Subtask controls and Start thread need a 1.6 daemon (`daemon_supports_subtasks`);
     colors, tags and column changes a 1.8 one (`daemon_supports_board_extras`).
-- **CLI:** `urushi board ls|new|rename|rm|add|edit|mv|rm-task` (`add --color --tag`,
+- **CLI:** `urushi board ls|new|rename|rm|add|edit|mv|nest|rm-task` (`ls` prints
+  subtasks as an indented tree; `mv` takes a subtask out onto the board; `edit`,
+  `rm-task` and `sub add` take subtask ids) (`add --color --tag`,
   `edit --color <c|none> --tag --untag`), `urushi board col add|rename|color|mv|rm`,
   `urushi board sub add|done|undo|rename|rm`, and `urushi thread new <repo> --task <task or subtask>`.
   Columns can be named, e.g. `urushi board mv <task> done`.
@@ -148,9 +180,11 @@ restarts. Jira boards are planned as further tabs in the same panel.
   moving and removing columns included; a board always keeps a column
   (`crates/urushi-core/tests/board_props.rs`).
 - A failed operation changes nothing (`board/tests.rs::failed_operations_change_nothing`).
-- Subtasks move with their task, and a task holds at most `MAX_SUBTASKS`
-  (`board/tests.rs::subtasks_are_added_checked_renamed_and_removed`,
-  `a_task_holds_a_bounded_number_of_subtasks`).
+- A task is in one place, a column or one parent; nesting, moving and removing never
+  lose, duplicate or cycle a task, and stay within `MAX_DEPTH`
+  (`tests/board_props.rs::nesting_never_loses_duplicates_or_cycles_a_task`). Subtasks
+  move and are deleted with their task, and a task holds at most `MAX_SUBTASKS`
+  (`board/tree/tests.rs`).
 - A link never creates, changes or deletes a thread. A missing task refuses
   `CreateThread` before any worktree exists, and deleting a thread clears its links
   (`tests/boards_and_usage.rs::threads_started_from_tasks_are_linked_until_deleted`).
@@ -160,11 +194,14 @@ restarts. Jira boards are planned as further tabs in the same panel.
   (`update/tests/board.rs::the_panel_covers_the_terminals_until_closed`).
 
 ## Tests
-- Core: `board/tests.rs` and `tests/board_props.rs`.
+- Core: `board/tests.rs`, `board/tree/tests.rs` (nesting, bounds, links, old
+  documents), `board/prompt.rs` and `tests/board_props.rs`.
 - Proto: `convert/boards/tests.rs` covers round trips and wire encoding of every 1.5,
   1.6 and 1.8 board message; `convert/boards/labels.rs` the color mapping.
 - Daemon: `tests/board_columns.rs`
-  (`columns_colors_and_tags_are_kept_and_survive_a_restart`),
+  (`columns_colors_and_tags_are_kept_and_survive_a_restart`), `tests/board_nesting.rs`
+  (`cards_and_subtasks_move_into_and_out_of_each_other`), `tests/task_agents.rs` (a
+  deep subtask's link and prompt),
   `tests/boards_and_usage.rs` (`boards_are_kept_mirrored_and_survive_a_restart`,
   `subtasks_are_created_checked_renamed_and_deleted`,
   `threads_started_from_tasks_are_linked_until_deleted`).
@@ -172,9 +209,11 @@ restarts. Jira boards are planned as further tabs in the same panel.
   menu, editor,
   multiline notes and Cmd+Enter, the board shortcut, drag and drop, prompts, deletion,
   keyboard) and `update/tests/tasks.rs` (subtasks,
-  drafts, starting and going to threads, the drop line, older daemons) and
+  drafts, opening subtasks, making them standalone, nesting, starting and going to
+  threads, the drop line, older daemons) and
   `update/tests/labels.rs` (colors, tags, columns, the filter). `snapshot.rs` has
-  the `board`, `board-drag`, `task`, `task-menu` and `column-menu` scenarios, which render at desktop and
+  the `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested` and
+  `nest` scenarios, which render at desktop and
   phone sizes, `task_cards_are_all_the_same_size` and
   `long_subtask_titles_are_cut_short_inside_the_editor`.
 - Toolkit: `urushi-ui/tests/layout.rs::a_sliding_panel_moves_with_its_children_and_is_clipped`;
@@ -185,7 +224,10 @@ restarts. Jira boards are planned as further tabs in the same panel.
 ## Limitations and follow-ups
 - Tags are per task; there is no place to rename or recolor a tag across a board.
 - With many columns, columns get narrow: the board doesn't scroll sideways yet.
-- Subtasks can't be reordered, and are one level deep (a subtask has no subtasks).
+- Subtasks can't be reordered by dragging (`NestTask` takes an index, but the editor
+  doesn't offer it), and cards can't be dragged onto a task to nest them.
+- On a 1.6 or 1.7 daemon subtasks are a checklist: their titles don't open, and they
+  can't be renamed in the app (rename them with `urushi board sub rename`).
 - In the notes, Up/Down move between lines separated by line breaks, not between the
   wrapped lines of a long paragraph (the editing model doesn't know the layout).
 - A card's title is one line, cut short with an ellipsis.

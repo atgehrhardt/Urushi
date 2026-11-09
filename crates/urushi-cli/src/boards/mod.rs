@@ -73,7 +73,7 @@ pub(crate) enum BoardCmd {
         #[arg(long = "untag")]
         untags: Vec<String>,
     },
-    /// Move a task to a column of its board.
+    /// Move a task (or a subtask, which then becomes a card) to a column of its board.
     Mv {
         /// Task id.
         task: String,
@@ -83,12 +83,22 @@ pub(crate) enum BoardCmd {
         #[arg(long)]
         index: Option<u32>,
     },
-    /// Delete a task.
+    /// Make a task (a card or a subtask) a subtask of another task on its board.
+    Nest {
+        /// Task id.
+        task: String,
+        /// The new parent's task id.
+        parent: String,
+        /// Position among the parent's subtasks (0 = first; default: last).
+        #[arg(long)]
+        index: Option<u32>,
+    },
+    /// Delete a task (or a subtask) with its subtasks.
     RmTask {
         /// Task id.
         task: String,
     },
-    /// Manage a task's subtasks (its checklist).
+    /// Manage a task's subtasks.
     #[command(subcommand)]
     Sub(SubCmd),
     /// Manage a board's columns.
@@ -98,9 +108,9 @@ pub(crate) enum BoardCmd {
 
 #[derive(Subcommand)]
 pub(crate) enum SubCmd {
-    /// Add a subtask at the end of a task's checklist.
+    /// Add a subtask at the end of a task's (or a subtask's) subtasks.
     Add {
-        /// Task id.
+        /// Task or subtask id.
         task: String,
         /// Title.
         title: String,
@@ -168,34 +178,7 @@ pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
                 .await?;
             out(&format!("task {} {}", short(&task.id), task.title))
         }
-        BoardCmd::Edit {
-            task,
-            title,
-            notes,
-            color,
-            tags,
-            untags,
-        } => {
-            let task = resolve(client, &task).await?;
-            let tags = if tags.is_empty() && untags.is_empty() {
-                None
-            } else {
-                let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
-                let mut now = mirror.task(&task).context("no such task")?.2.tags.clone();
-                now.retain(|t| !untags.iter().any(|u| u.trim().eq_ignore_ascii_case(t)));
-                now.extend(tags);
-                Some(v1::TagList { tags: now })
-            };
-            Ok(client
-                .update_task_with(v1::UpdateTaskRequest {
-                    task_id: task,
-                    title,
-                    notes,
-                    color: color.as_deref().map(color_arg).transpose()?.map(Into::into),
-                    tags,
-                })
-                .await?)
-        }
+        cmd @ BoardCmd::Edit { .. } => edit(client, cmd).await,
         BoardCmd::Mv {
             task,
             column,
@@ -203,16 +186,72 @@ pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
         } => {
             let task = resolve(client, &task).await?;
             let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
-            let board = mirror.task(&task).context("no such task")?.0.id.clone();
+            let board = mirror
+                .find_task(&task)
+                .context("no such task")?
+                .board
+                .id
+                .clone();
             let column = column_id(client, &board, &column).await?;
             Ok(client
                 .move_task(&task, &column, index.unwrap_or(u32::MAX))
                 .await?)
         }
+        BoardCmd::Nest {
+            task,
+            parent,
+            index,
+        } => Ok(client
+            .nest_task(
+                &resolve(client, &task).await?,
+                &resolve(client, &parent).await?,
+                index.unwrap_or(u32::MAX),
+            )
+            .await?),
         BoardCmd::RmTask { task } => Ok(client.delete_task(&resolve(client, &task).await?).await?),
         BoardCmd::Sub(cmd) => sub(client, cmd).await,
         BoardCmd::Col(cmd) => columns::run(client, cmd).await,
     }
+}
+
+/// `urushi board edit`: only the given fields change; tags are added and removed
+/// against the task's current ones.
+async fn edit(client: &Client, cmd: BoardCmd) -> Result<()> {
+    let BoardCmd::Edit {
+        task,
+        title,
+        notes,
+        color,
+        tags,
+        untags,
+    } = cmd
+    else {
+        return Ok(());
+    };
+    let task = resolve(client, &task).await?;
+    let tags = if tags.is_empty() && untags.is_empty() {
+        None
+    } else {
+        let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
+        let mut now = mirror
+            .find_task(&task)
+            .context("no such task")?
+            .task()
+            .tags()
+            .to_vec();
+        now.retain(|t| !untags.iter().any(|u| u.trim().eq_ignore_ascii_case(t)));
+        now.extend(tags);
+        Some(v1::TagList { tags: now })
+    };
+    Ok(client
+        .update_task_with(v1::UpdateTaskRequest {
+            task_id: task,
+            title,
+            notes,
+            color: color.as_deref().map(color_arg).transpose()?.map(Into::into),
+            tags,
+        })
+        .await?)
 }
 
 async fn sub(client: &Client, cmd: SubCmd) -> Result<()> {

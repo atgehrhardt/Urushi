@@ -1,14 +1,15 @@
-//! The task editor's subtasks: the checklist of an existing task (checked off and
-//! renamed in place, each change a request) or the drafts of a new one, and the field
-//! that adds one.
+//! The task editor's subtasks: an existing task's (checked off in place, each change
+//! a request, and each opening as a task of its own) or the drafts of a new one, and
+//! the field that adds one.
 
-use urushi_client::v1;
+use urushi_client::{TaskRef, v1};
 use urushi_ui::widgets::icon_button;
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key};
 
 use super::super::dialogs::{field, label};
 use super::subtasks_scroll_key;
-use crate::msg::Msg;
+use crate::msg::{BoardMsg, Msg};
+use crate::organize::MenuTarget;
 use crate::state::{AppState, Field, SubtaskEditor, TaskLink};
 
 /// Subtask rows shown before the list scrolls.
@@ -16,27 +17,27 @@ const VISIBLE_SUBTASKS: usize = 6;
 /// Height of one subtask row.
 const SUBTASK_ROW: f32 = 28.0;
 
-/// The "Subtasks" heading, the list (checked off and renamed in place, or drafts for a
-/// new task), and the field that adds one.
+/// The "Subtasks" heading, the list (an existing task's subtasks, each opening as a
+/// task of its own; or drafts for a new task), and the field that adds one.
 pub(super) fn checklist(
     state: &AppState,
     theme: &Theme,
-    task: Option<&v1::Task>,
+    task: Option<TaskRef<'_>>,
     editor: &SubtaskEditor,
     offset: f32,
 ) -> Vec<Node<Msg>> {
     let mut rows: Vec<Node<Msg>> = Vec::new();
     let heading = match task {
-        Some(t) if !t.subtasks.is_empty() => {
-            let done = t.subtasks.iter().filter(|s| s.done).count();
-            format!("Subtasks  {done}/{}", t.subtasks.len())
+        Some(t) if !t.subtasks().is_empty() => {
+            let (done, all) = t.progress();
+            format!("Subtasks  {done}/{all}")
         }
         _ => "Subtasks".to_owned(),
     };
     match task {
         Some(t) => {
-            for s in &t.subtasks {
-                rows.push(subtask_row(state, theme, t, s, editor));
+            for s in t.subtasks() {
+                rows.push(subtask_row(state, theme, s));
             }
         }
         None => {
@@ -67,85 +68,86 @@ pub(super) fn checklist(
     out
 }
 
-fn subtask_row(
-    state: &AppState,
-    theme: &Theme,
-    task: &v1::Task,
-    s: &v1::Subtask,
-    editor: &SubtaskEditor,
-) -> Node<Msg> {
-    let link = TaskLink {
-        task: task.id.clone(),
-        subtask: Some(s.id.clone()),
-    };
-    let started = state.linked_thread(&link).is_some();
-    let renaming = editor
-        .renaming
+/// One subtask: its check box, its title (which opens it, on a daemon that keeps
+/// subtasks as tasks), its color, its own progress, its thread, and ×. A right-click
+/// opens its menu.
+fn subtask_row(state: &AppState, theme: &Theme, s: &v1::Subtask) -> Node<Msg> {
+    let link = state.workspace.find_task(&s.id).map(|f| TaskLink::of(&f));
+    let started = link
         .as_ref()
-        .filter(|(id, _)| *id == s.id)
-        .map(|(_, f)| f);
-    let title = match renaming {
-        Some(f) => field(state, theme, f, Field::SubtaskTitle, "Subtask title"),
-        None => Node::row()
-            .width(Length::Fill(1.0))
-            .height(Length::Fill(1.0))
+        .is_some_and(|l| state.linked_thread(l).is_some());
+    let openable = state.daemon_supports_board_extras();
+    let mut title = Node::row()
+        .width(Length::Fill(1.0))
+        .height(Length::Fill(1.0))
+        .gap(6.0)
+        .align(Align::Center);
+    if let Some(c) = super::super::labels::color(theme, s.color) {
+        title = title.child(super::super::labels::dot(theme, Some(c), 8.0));
+    }
+    title = title.child(
+        Node::text(
+            &s.title,
+            Font::Ui,
+            theme.font_size,
+            if s.done { theme.text_muted } else { theme.text },
+        )
+        // Fill, so a long title is cut short instead of running over the row.
+        .width(Length::Fill(1.0)),
+    );
+    let sub = TaskRef::Sub(s);
+    if !s.subtasks.is_empty() {
+        let (done, all) = sub.progress();
+        title = title.child(Node::text(
+            format!("✓ {done}/{all}"),
+            Font::UiMedium,
+            theme.font_size_small,
+            theme.text_muted,
+        ));
+    }
+    if openable {
+        title = title
             .key(key(&["subtask-title", &s.id]))
-            .on_click(Msg::RenameSubtask(s.id.clone()))
-            .cursor(urushi_ui::CursorIcon::Text)
-            .role(Role::Button, format!("Rename subtask {}", s.title))
-            .child(
-                Node::text(
-                    &s.title,
-                    Font::Ui,
-                    theme.font_size,
-                    if s.done { theme.text_muted } else { theme.text },
-                )
-                // Fill, so a long title is cut short instead of running over the row.
-                .width(Length::Fill(1.0)),
-            ),
-    };
-    Node::row()
+            .on_click(Msg::Board(BoardMsg::OpenTask(s.id.clone())))
+            .role(Role::Button, format!("Open subtask {}", s.title));
+    }
+    let mut row = Node::row()
         .width(Length::Fill(1.0))
         .height(Length::Fixed(SUBTASK_ROW))
         .padding(Insets::symmetric(0.0, 4.0))
         .gap(8.0)
         .radius(theme.radius)
+        .hover_background(theme.hover)
         .child(checkbox(
             theme,
             s.done,
             &s.title,
             Msg::ToggleSubtask(s.id.clone()),
         ))
-        .child(title)
-        .child(small_action(
+        .child(title);
+    if openable {
+        row = row.on_secondary_click(Msg::OpenMenu(MenuTarget::Task(s.id.clone())));
+    }
+    if let Some(link) = link {
+        let (text, color, what) = if started {
+            ("Go to thread", theme.accent, "Go to thread")
+        } else {
+            ("Start thread", theme.text_muted, "Start a thread")
+        };
+        row = row.child(small_action(
             theme,
-            if started {
-                "Go to thread"
-            } else {
-                "Start thread"
-            },
-            if started {
-                theme.accent
-            } else {
-                theme.text_muted
-            },
-            &format!(
-                "{} for {}",
-                if started {
-                    "Go to thread"
-                } else {
-                    "Start a thread"
-                },
-                s.title
-            ),
+            text,
+            color,
+            &format!("{what} for {}", s.title),
             Msg::StartThread(link),
-        ))
-        .child(icon_button(
-            theme,
-            "×",
-            &format!("Delete subtask {}", s.title),
-            Msg::DeleteSubtask(s.id.clone()),
-        ))
+        ));
+    }
+    row.child(icon_button(
+        theme,
+        "×",
+        &format!("Delete subtask {}", s.title),
+        Msg::DeleteSubtask(s.id.clone()),
+    ))
 }
 
 fn draft_row(theme: &Theme, i: usize, title: &str) -> Node<Msg> {
@@ -175,7 +177,7 @@ fn checkbox(theme: &Theme, on: bool, what: &str, on_click: Msg) -> Node<Msg> {
         )
 }
 
-fn checkbox_shape(theme: &Theme, on: bool) -> Node<Msg> {
+pub(super) fn checkbox_shape(theme: &Theme, on: bool) -> Node<Msg> {
     let mut b = Node::row()
         .width(Length::Fixed(16.0))
         .height(Length::Fixed(16.0))

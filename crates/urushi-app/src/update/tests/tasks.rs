@@ -7,7 +7,8 @@ use urushi_core::{RepoId, ThreadId};
 use super::board::board;
 use super::{attached, bodies, named};
 use crate::keys::Named;
-use crate::msg::{Followup, Msg};
+use crate::msg::{BoardMsg, Effect, Followup, Msg};
+use crate::organize::MenuTarget;
 use crate::state::{AppState, Dialog, Field, TaskLink};
 
 fn thread_id() -> String {
@@ -32,6 +33,7 @@ fn with_subtasks() -> AppState {
             title: "Second".into(),
             done: true,
             thread_id: thread_id(),
+            ..Default::default()
         },
     ];
     workspace.boards = vec![b];
@@ -73,17 +75,6 @@ fn an_existing_tasks_subtasks_change_right_away() {
     assert!(
         matches!(&s.dialog, Some(Dialog::Task { subtasks, .. }) if subtasks.new.text().is_empty())
     );
-    // Renaming: click the title, edit, Enter.
-    s.update(Msg::RenameSubtask("s1".into()));
-    assert_eq!(s.focus, Some(Field::SubtaskTitle));
-    s.update(Msg::Text(" one".into()));
-    let fx = s.update(Msg::Key(named(Named::Enter)));
-    assert!(matches!(
-        bodies(&fx)[..],
-        [Body::UpdateSubtask(v1::UpdateSubtaskRequest { title: Some(t), done: None, .. })]
-            if t == "First one"
-    ));
-    assert_eq!(s.focus, Some(Field::NewSubtask));
     let fx = s.update(Msg::DeleteSubtask("s2".into()));
     assert!(matches!(
         bodies(&fx)[..],
@@ -236,5 +227,109 @@ fn older_daemons_get_no_subtask_fields() {
         s.focus,
         Some(Field::TaskTitle),
         "Tab skips the subtask field"
+    );
+}
+
+/// A 1.8 daemon: "a"'s subtask "s1" has a subtask "s3".
+fn with_nested() -> AppState {
+    let mut s = with_subtasks();
+    s.daemon_minor = 8;
+    let mut w = s.workspace.raw().clone();
+    w.boards[0].columns[0].tasks[0].subtasks[0].subtasks = vec![v1::Subtask {
+        id: "s3".into(),
+        title: "Deeper".into(),
+        ..Default::default()
+    }];
+    s.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(w)));
+    s
+}
+
+#[test]
+fn a_subtask_opens_as_a_task_after_saving_its_parent() {
+    let mut s = with_nested();
+    open_task(&mut s, "a");
+    s.update(Msg::Paste(" edited".into()));
+    // Opening "s1" saves "a" first, without closing anything.
+    let fx = s.update(Msg::Board(BoardMsg::OpenTask("s1".into())));
+    assert!(
+        matches!(
+            &fx[..],
+            [Effect::Request { body: Body::UpdateTask(v1::UpdateTaskRequest { task_id, title: Some(t), .. }), followup: Followup::None }]
+                if task_id == "a" && t == "A edited"
+        ),
+        "{fx:?}"
+    );
+    let Some(Dialog::Task {
+        task: Some(t),
+        title,
+        ..
+    }) = &s.dialog
+    else {
+        panic!("{:?}", s.dialog)
+    };
+    assert_eq!((t.as_str(), title.text()), ("s1", "First"));
+    // Edited like a task; no column move for a subtask.
+    s.update(Msg::Board(BoardMsg::AddTag("deep".into())));
+    s.update(Msg::PickColumn("done".into()));
+    let fx = s.update(Msg::Submit);
+    assert!(
+        matches!(
+            bodies(&fx)[..],
+            [Body::UpdateTask(v1::UpdateTaskRequest { task_id, title: None, tags: Some(_), .. })] if task_id == "s1"
+        ),
+        "{fx:?}"
+    );
+    // Deeper still, and deleting a subtask from its editor.
+    s.update(Msg::Board(BoardMsg::OpenTask("s3".into())));
+    let fx = s.update(Msg::DeleteTask);
+    assert!(matches!(
+        bodies(&fx)[..],
+        [Body::DeleteSubtask(v1::DeleteSubtaskRequest { subtask_id })] if subtask_id == "s3"
+    ));
+}
+
+#[test]
+fn subtasks_are_split_out_and_cards_nested_under_a_chosen_task() {
+    let mut s = with_nested();
+    let fx = s.update(Msg::Board(BoardMsg::MakeStandalone("s3".into())));
+    assert!(matches!(
+        bodies(&fx)[..],
+        [Body::MoveTask(v1::MoveTaskRequest { task_id, column_id, index: u32::MAX })]
+            if task_id == "s3" && column_id == "todo"
+    ));
+    // "Make subtask of…" lists the other tasks; Enter takes the first match.
+    s.update(Msg::OpenMenu(MenuTarget::Task("b".into())));
+    s.update(Msg::Board(BoardMsg::OpenNest("b".into())));
+    assert_eq!(s.focus, Some(Field::NestQuery));
+    s.update(Msg::Paste("deep".into()));
+    let fx = s.update(Msg::Key(named(Named::Enter)));
+    assert!(
+        matches!(
+            &fx[..],
+            [Effect::Request { body: Body::NestTask(v1::NestTaskRequest { task_id, parent_id, .. }), followup: Followup::CloseDialog }]
+                if task_id == "b" && parent_id == "s3"
+        ),
+        "{fx:?}"
+    );
+}
+
+#[test]
+fn a_subtasks_menu_opens_over_its_tasks_editor() {
+    let mut s = with_nested();
+    open_task(&mut s, "a");
+    s.update(Msg::OpenMenu(MenuTarget::Task("s1".into())));
+    assert!(s.menu.is_some());
+    // Other menus still don't open over dialogs.
+    s.update(Msg::CloseMenu);
+    s.update(Msg::OpenMenu(MenuTarget::Column("todo".into())));
+    assert!(s.menu.is_none());
+    // Threads link to the card and the subtask.
+    let found = s.workspace.find_task("s3").unwrap();
+    assert_eq!(
+        TaskLink::of(&found),
+        TaskLink {
+            task: "a".into(),
+            subtask: Some("s3".into())
+        }
     );
 }

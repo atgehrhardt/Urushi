@@ -48,7 +48,7 @@ const TAB_CHARS: usize = 24;
 
 /// `text`, cut to `max` characters with an ellipsis. For labels whose width comes from
 /// their text (tabs, chips), which the layout doesn't shrink.
-pub(super) fn shorten(text: &str, max: usize) -> String {
+pub(in crate::view) fn shorten(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_owned();
     }

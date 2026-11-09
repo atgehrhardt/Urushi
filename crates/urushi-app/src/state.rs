@@ -23,17 +23,34 @@ pub enum Connection {
     Disconnected(String),
 }
 
-/// A task on a board, or one of its subtasks, that a thread is started for.
+/// A task on a board, or one of its subtasks (at any depth), that a thread is started
+/// for. This is the shape of `CreateThread{task_id, subtask_id}`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TaskLink {
-    /// Task id.
+    /// The card's id.
     pub task: String,
-    /// Subtask id, when the thread is for one subtask.
+    /// The subtask's id, when the thread is for a subtask of the card.
     pub subtask: Option<String>,
 }
 
+impl TaskLink {
+    /// The link for a task found on a board: its card, and itself if it is a subtask.
+    pub fn of(found: &urushi_client::FoundTask<'_>) -> Self {
+        let task = found.task();
+        Self {
+            task: found.card.id.clone(),
+            subtask: (!task.is_card()).then(|| task.id().to_owned()),
+        }
+    }
+
+    /// The task the thread is for.
+    pub fn target(&self) -> &str {
+        self.subtask.as_deref().unwrap_or(&self.task)
+    }
+}
+
 /// The subtask part of the task editor. An existing task's subtasks change right away
-/// (each check or rename is a request); a new task's are kept here as drafts and
+/// (each check, add or delete is a request); a new task's are kept here as drafts and
 /// created with it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SubtaskEditor {
@@ -41,8 +58,6 @@ pub struct SubtaskEditor {
     pub drafts: Vec<String>,
     /// The "add a subtask" field.
     pub new: TextField,
-    /// The subtask being renamed, and its title field.
-    pub renaming: Option<(String, TextField)>,
 }
 
 /// A dialog field that can take keyboard focus.
@@ -68,8 +83,8 @@ pub enum Field {
     TaskNotes,
     /// Task editor: the "add a subtask" field.
     NewSubtask,
-    /// Task editor: the title of the subtask being renamed.
-    SubtaskTitle,
+    /// "Make subtask of…": the search field.
+    NestQuery,
     /// Task editor: the "add a tag" field.
     TaskTag,
 }
@@ -217,6 +232,13 @@ pub enum Dialog {
         agent: urushi_core::Agent,
         /// The mode chosen so far.
         mode: urushi_core::AgentMode,
+    },
+    /// "Make subtask of…": choose the task to put a task under.
+    NestTask {
+        /// The task to move.
+        task: String,
+        /// Narrows the list by title.
+        query: TextField,
     },
     /// Confirm removing a column; its tasks move to the column next to it.
     DeleteColumn {

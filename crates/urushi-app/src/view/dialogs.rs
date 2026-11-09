@@ -70,6 +70,9 @@ pub(super) fn view(
             (title, notes, subtasks, labels),
         ),
         Dialog::DeleteBoard { name, tasks, .. } => super::board::delete_board(theme, name, *tasks),
+        Dialog::NestTask { task, query } => {
+            super::tasks::nest_picker(state, (theme, scroll), task, query)
+        }
         Dialog::DeleteColumn {
             name, tasks, into, ..
         } => super::board::delete_column(theme, name, *tasks, into),

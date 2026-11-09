@@ -1,7 +1,7 @@
 //! Task boards: core ⇄ wire (`v1::Board`, since protocol 1.5; subtasks and thread links
-//! since 1.6; colors, tags and column changes since 1.8).
+//! since 1.6; colors, tags, column changes and subtasks as full nested tasks since 1.8).
 
-use urushi_core::{Board, Column, Subtask, Task, ThreadId};
+use urushi_core::{Board, Column, Task, ThreadId};
 
 mod labels;
 
@@ -30,7 +30,8 @@ pub fn column_to_proto(c: &Column) -> v1::BoardColumn {
     }
 }
 
-/// Core task → wire (also the answer to `CreateTask`).
+/// Core task → wire (also the answer to `CreateTask`). Its subtasks become
+/// [`v1::Subtask`]s, which carry the same fields.
 pub fn task_to_proto(t: &Task) -> v1::Task {
     v1::Task {
         id: t.id.to_string(),
@@ -44,13 +45,18 @@ pub fn task_to_proto(t: &Task) -> v1::Task {
     }
 }
 
-/// Core subtask → wire (also the answer to `CreateSubtask`).
-pub fn subtask_to_proto(s: &Subtask) -> v1::Subtask {
+/// A nested core task → wire (also the answer to `CreateSubtask`).
+pub fn subtask_to_proto(s: &Task) -> v1::Subtask {
     v1::Subtask {
         id: s.id.to_string(),
         title: s.title.clone(),
         done: s.done,
         thread_id: link_to_proto(s.thread),
+        notes: s.notes.clone(),
+        created_at_ms: millis_to_proto(s.created_at),
+        color: color_to_proto(s.color),
+        tags: s.tags.clone(),
+        subtasks: s.subtasks.iter().map(subtask_to_proto).collect(),
     }
 }
 
@@ -66,26 +72,34 @@ fn link_from_proto(id: &str, field: &'static str) -> Result<Option<ThreadId>, Co
     }
 }
 
+fn subtasks_from_proto(subtasks: &[v1::Subtask]) -> Result<Vec<Task>, ConvertError> {
+    subtasks.iter().map(subtask_from_proto).collect()
+}
+
+fn subtask_from_proto(s: &v1::Subtask) -> Result<Task, ConvertError> {
+    Ok(Task {
+        id: parse_id(&s.id, "board.task.subtask.id")?,
+        title: s.title.clone(),
+        notes: s.notes.clone(),
+        created_at: millis_from_proto(s.created_at_ms),
+        done: s.done,
+        color: color_from_proto(s.color),
+        tags: s.tags.clone(),
+        subtasks: subtasks_from_proto(&s.subtasks)?,
+        thread: link_from_proto(&s.thread_id, "board.task.subtask.thread_id")?,
+    })
+}
+
 fn task_from_proto(t: &v1::Task) -> Result<Task, ConvertError> {
     Ok(Task {
         id: parse_id(&t.id, "board.task.id")?,
         title: t.title.clone(),
         notes: t.notes.clone(),
         created_at: millis_from_proto(t.created_at_ms),
+        done: false,
         color: color_from_proto(t.color),
         tags: t.tags.clone(),
-        subtasks: t
-            .subtasks
-            .iter()
-            .map(|s| {
-                Ok(Subtask {
-                    id: parse_id(&s.id, "board.task.subtask.id")?,
-                    title: s.title.clone(),
-                    done: s.done,
-                    thread: link_from_proto(&s.thread_id, "board.task.subtask.thread_id")?,
-                })
-            })
-            .collect::<Result<_, ConvertError>>()?,
+        subtasks: subtasks_from_proto(&t.subtasks)?,
         thread: link_from_proto(&t.thread_id, "board.task.thread_id")?,
     })
 }

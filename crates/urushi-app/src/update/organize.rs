@@ -22,15 +22,7 @@ impl AppState {
                 }
             }
             Msg::Pointer(p) => self.last_press = Some(p),
-            Msg::OpenMenu(target) => {
-                if self.dialog.is_none() {
-                    self.menu = Some(ContextMenu {
-                        target,
-                        page: MenuPage::Main,
-                        at: self.last_press.unwrap_or_default(),
-                    });
-                }
-            }
+            Msg::OpenMenu(target) => self.open_menu(target),
             Msg::MenuPage(page) => {
                 if let Some(menu) = &mut self.menu {
                     menu.page = page;
@@ -128,6 +120,26 @@ impl AppState {
         };
         change(&mut r);
         fx.push(request(Body::UpdateThread(r), Followup::None));
+    }
+
+    /// Opens a context menu where the pointer was pressed.
+    fn open_menu(&mut self, target: crate::organize::MenuTarget) {
+        // Menus don't open over dialogs, except a subtask's over its task's
+        // editor.
+        let over_editor = matches!(
+            (&self.dialog, &target),
+            (
+                Some(Dialog::Task { .. }),
+                crate::organize::MenuTarget::Task(_)
+            )
+        );
+        if self.dialog.is_none() || over_editor {
+            self.menu = Some(ContextMenu {
+                target,
+                page: MenuPage::Main,
+                at: self.last_press.unwrap_or_default(),
+            });
+        }
     }
 
     fn open_prompt(&mut self, prompt: Prompt) {

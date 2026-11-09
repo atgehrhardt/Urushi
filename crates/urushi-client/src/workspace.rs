@@ -116,23 +116,14 @@ impl WorkspaceMirror {
             .find_map(|b| b.columns.iter().find(|c| c.id == id).map(|c| (b, c)))
     }
 
-    /// A task, with the board and the column holding it.
+    /// A card (a task on the board, not a subtask), with the board and the column
+    /// holding it. [`Self::find_task`] finds subtasks too.
     pub fn task(&self, id: &str) -> Option<(&v1::Board, &v1::BoardColumn, &v1::Task)> {
         self.workspace.boards.iter().find_map(|b| {
             b.columns
                 .iter()
                 .find_map(|c| c.tasks.iter().find(|t| t.id == id).map(|t| (b, c, t)))
         })
-    }
-
-    /// A subtask, with the task it belongs to.
-    pub fn subtask(&self, id: &str) -> Option<(&v1::Task, &v1::Subtask)> {
-        self.workspace
-            .boards
-            .iter()
-            .flat_map(|b| &b.columns)
-            .flat_map(|c| &c.tasks)
-            .find_map(|t| t.subtasks.iter().find(|s| s.id == id).map(|s| (t, s)))
     }
 
     /// A tab, converted to the domain type (for geometry and focus logic).
@@ -176,7 +167,7 @@ impl WorkspaceMirror {
     }
 
     /// Finds an entity id by unique prefix among repos, projects, threads, tabs, panes,
-    /// boards, columns and tasks, e.g. so the CLI accepts short ids. `None` if nothing or more than one thing matches.
+    /// boards, columns and tasks (subtasks at any depth too), e.g. so the CLI accepts short ids. `None` if nothing or more than one thing matches.
     pub fn resolve(&self, prefix: &str) -> Option<String> {
         let panes = self
             .workspace
@@ -205,7 +196,10 @@ impl WorkspaceMirror {
             .chain(self.workspace.boards.iter().flat_map(|b| {
                 std::iter::once(b.id.clone()).chain(b.columns.iter().flat_map(|c| {
                     std::iter::once(c.id.clone()).chain(c.tasks.iter().flat_map(|t| {
-                        std::iter::once(t.id.clone()).chain(t.subtasks.iter().map(|s| s.id.clone()))
+                        crate::TaskRef::Card(t)
+                            .subtree_ids()
+                            .into_iter()
+                            .map(str::to_owned)
                     }))
                 }))
             }))

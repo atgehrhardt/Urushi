@@ -163,3 +163,98 @@ proptest! {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+enum TreeOp {
+    Add {
+        column: usize,
+    },
+    AddSub {
+        parent: usize,
+    },
+    Nest {
+        task: usize,
+        parent: usize,
+        index: usize,
+    },
+    Move {
+        task: usize,
+        column: usize,
+    },
+    Remove {
+        task: usize,
+    },
+}
+
+fn tree_op() -> impl Strategy<Value = TreeOp> {
+    prop_oneof![
+        (0..3usize).prop_map(|column| TreeOp::Add { column }),
+        (0..30usize).prop_map(|parent| TreeOp::AddSub { parent }),
+        (0..30usize, 0..30usize, 0..4usize).prop_map(|(task, parent, index)| TreeOp::Nest {
+            task,
+            parent,
+            index
+        }),
+        (0..30usize, 0..3usize).prop_map(|(task, column)| TreeOp::Move { task, column }),
+        (0..30usize).prop_map(|task| TreeOp::Remove { task }),
+    ]
+}
+
+fn depth(task: &Task) -> usize {
+    task.height()
+}
+
+proptest! {
+    #[test]
+    fn nesting_never_loses_duplicates_or_cycles_a_task(
+        ops in prop::collection::vec(tree_op(), 0..80)
+    ) {
+        let mut board = Board::new(
+            BoardId::from_u128(1),
+            "b",
+            Timestamp::from_unix_millis(0),
+            [10, 11, 12].map(ColumnId::from_u128),
+        )
+        .unwrap();
+        let mut expected: BTreeSet<TaskId> = BTreeSet::new();
+        let mut next = 100u128;
+        let new = |n: u128| Task::new(TaskId::from_u128(n), "t", "", Timestamp::from_unix_millis(0)).unwrap();
+        for op in ops {
+            let all: Vec<TaskId> = board.all_tasks().map(|t| t.id).collect();
+            let pick = |i: usize| all.get(i).copied().unwrap_or(TaskId::from_u128(9999));
+            let before = board.clone();
+            let result = match op {
+                TreeOp::Add { column } => {
+                    let r = board.add_task(board_column(column), new(next));
+                    if r.is_ok() { expected.insert(TaskId::from_u128(next)); }
+                    r
+                }
+                TreeOp::AddSub { parent } => {
+                    let r = board.add_subtask(pick(parent), new(next));
+                    if r.is_ok() { expected.insert(TaskId::from_u128(next)); }
+                    r
+                }
+                TreeOp::Nest { task, parent, index } => board.nest_task(pick(task), pick(parent), index),
+                TreeOp::Move { task, column } => board.move_task(pick(task), board_column(column), 0),
+                TreeOp::Remove { task } => match board.remove_task(pick(task)) {
+                    Ok(removed) => {
+                        for t in removed.subtree() { expected.remove(&t.id); }
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                },
+            };
+            next += 1;
+            if result.is_err() {
+                prop_assert_eq!(&board, &before, "a refused operation changed the board");
+            }
+            let now: Vec<TaskId> = board.all_tasks().map(|t| t.id).collect();
+            let unique: BTreeSet<TaskId> = now.iter().copied().collect();
+            prop_assert_eq!(unique.len(), now.len(), "a task appears twice");
+            prop_assert_eq!(&unique, &expected);
+            for card in board.columns.iter().flat_map(|c| &c.tasks) {
+                prop_assert!(depth(card) <= urushi_core::board::MAX_DEPTH);
+            }
+        }
+    }
+}

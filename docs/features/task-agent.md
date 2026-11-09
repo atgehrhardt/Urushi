@@ -2,7 +2,7 @@
 
 - **Status:** Shipped
 - **Owners (crates):** `urushi-core` (`agent/mode.rs`, `board/prompt.rs`, `AgentSettings`), `urushi-daemon` (`service/task_agent.rs`, `service/threads.rs`, `service/settings.rs`), `urushi-proto` (`agents.proto`, `convert::agent_mode_*`), `urushi-app` (`task_agent.rs`, `update/setup.rs`, `view/setup.rs`, `view/new_thread.rs`), `urushi-cli`
-- **Related ADRs:** [0014](../adr/0014-task-prompt-via-pane-environment.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md)
+- **Related ADRs:** [0014](../adr/0014-task-prompt-via-pane-environment.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 **Start thread** on a task or subtask opens a thread that runs the user's **task agent**
@@ -24,10 +24,11 @@ choice under **Tasks start with**.
   daemon's document. On the wire, `AgentSettings.task_agent` / `task_mode` and
   `SettingsPatch.task_agent` / `task_mode` (`AGENT_UNSPECIFIED` clears the choice). The
   CLI sets them with `urushi settings set task-agent claude` and `task-mode plan`.
-- **The prompt:** `urushi_core::task_prompt(task, subtask)`.
-  - A task gives `Task:`, its `Notes:` and its `Subtasks:` checklist.
-  - A subtask gives `Step:`, the task it is part of, the task's notes, and the whole
-    checklist with the step marked.
+- **The prompt:** `urushi_core::task_prompt(board, task)`, for a task at any depth.
+  - A card gives `Task:`, its `Notes:` and its `Subtasks:` checklist.
+  - A subtask gives `Step:`, its own notes and subtasks, the tasks it is part of
+    ("Card › Subtask"), its parent's notes, and its parent's subtasks with the step
+    marked.
   - Capped at `MAX_PROMPT_BYTES`.
 - **Starting it:** `CreateThread{task_id, subtask_id, start_task_agent: true}`.
   1. `Service::task_agent_for` resolves the agent (`agent_task_line`) and the prompt
@@ -69,7 +70,7 @@ choice under **Tasks start with**.
 ## Tests
 - **Core:**
   - `agent/mode.rs`: flags per agent × mode × skip.
-  - `board/prompt.rs`: task, subtask, empty notes and truncation.
+  - `board/prompt.rs`: task, subtask, a deeper subtask, empty notes and truncation.
   - `agent.rs`: older settings load.
 - **Proto:** `convert/tests.rs` (modes, unknown values mean Normal) and
   `tests/round_trip.rs`.

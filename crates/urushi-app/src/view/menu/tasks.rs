@@ -1,5 +1,6 @@
-//! The board's menus: a task card's (open, move to a column, color, start or go to its
-//! thread, delete without opening it), a column's (rename, color, move, remove), and the
+//! The board's menus: a task's, card or subtask (open, move to a column or make it
+//! standalone, make it a subtask of another, color, start or go to its thread, delete
+//! without opening it), a column's (rename, color, move, remove), and the
 //! tag filter.
 
 use urushi_ui::{Font, Insets, Key, Length, Node, Role, Theme, key};
@@ -21,20 +22,22 @@ pub(super) fn task_items(
     menu: &ContextMenu,
     id: &str,
 ) -> Vec<Node<Msg>> {
-    let Some((board, column, task)) = state.workspace.task(id) else {
+    let Some(found) = state.workspace.find_task(id) else {
         return Vec::new();
     };
+    let task = found.task();
+    let id = task.id().to_owned();
     match menu.page {
         MenuPage::Move => {
             let mut items = vec![back(theme, "Move to")];
-            items.extend(board.columns.iter().map(|c| {
+            items.extend(found.board.columns.iter().map(|c| {
                 item(
                     theme,
                     &c.name,
-                    check(c.id == column.id),
+                    check(task.is_card() && c.id == found.column.id),
                     theme.text,
                     act(BoardMsg::MoveTask {
-                        task: task.id.clone(),
+                        task: id.clone(),
                         column: c.id.clone(),
                     }),
                 )
@@ -42,43 +45,56 @@ pub(super) fn task_items(
             return items;
         }
         MenuPage::Color => {
-            return color_page(theme, task.color, |c| BoardMsg::ColorTask {
-                task: task.id.clone(),
+            return color_page(theme, task.color(), |c| BoardMsg::ColorTask {
+                task: id.clone(),
                 color: c,
             });
         }
         MenuPage::Main | MenuPage::Status => {}
     }
-    let mut items = vec![
-        item(
-            theme,
-            "Open",
-            "",
-            theme.text,
-            act(BoardMsg::OpenTask(task.id.clone())),
-        ),
-        item(
+    let extras = state.daemon_supports_board_extras();
+    let mut items = vec![item(
+        theme,
+        "Open",
+        "",
+        theme.text,
+        act(BoardMsg::OpenTask(id.clone())),
+    )];
+    if task.is_card() {
+        items.push(item(
             theme,
             "Move to",
-            &format!("{}  ›", column.name),
+            &format!("{}  ›", found.column.name),
             theme.text,
             Msg::MenuPage(MenuPage::Move),
-        ),
-    ];
-    if state.daemon_supports_board_extras() {
+        ));
+    } else {
+        items.push(item(
+            theme,
+            "Make standalone",
+            "",
+            theme.text,
+            act(BoardMsg::MakeStandalone(id.clone())),
+        ));
+    }
+    if extras {
+        items.push(item(
+            theme,
+            "Make subtask of…",
+            "",
+            theme.text,
+            act(BoardMsg::OpenNest(id.clone())),
+        ));
         items.push(item(
             theme,
             "Color",
-            &format!("{}  ›", color_name(task.color)),
+            &format!("{}  ›", color_name(task.color())),
             theme.text,
             Msg::MenuPage(MenuPage::Color),
         ));
     }
     if state.daemon_supports_subtasks() {
-        let link = TaskLink {
-            task: task.id.clone(),
-            subtask: None,
-        };
+        let link = TaskLink::of(&found);
         let label = if state.linked_thread(&link).is_some() {
             "Go to thread"
         } else {
@@ -89,10 +105,14 @@ pub(super) fn task_items(
     items.push(separator(theme));
     items.push(item(
         theme,
-        "Delete task",
+        if task.is_card() {
+            "Delete task"
+        } else {
+            "Delete subtask"
+        },
         "",
         theme.danger,
-        act(BoardMsg::DeleteTask(task.id.clone())),
+        act(BoardMsg::DeleteTask(id)),
     ));
     items
 }

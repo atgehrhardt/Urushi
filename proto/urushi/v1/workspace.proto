@@ -155,7 +155,8 @@ message CreateThreadRequest {
   // File the new thread under this folder (project). Empty: ungrouped. Since 1.2.
   string folder_id = 6;
   // Link the thread to this task on a board (Task.thread_id), or with subtask_id, to
-  // that subtask of it (Subtask.thread_id). Empty: no link. Since 1.6.
+  // that subtask of it (Subtask.thread_id; since 1.8 at any depth under task_id).
+  // Empty: no link. Since 1.6.
   string task_id = 7;
   string subtask_id = 8;
   // Open the first tab running the user's task agent (Settings.agents.task_agent) in

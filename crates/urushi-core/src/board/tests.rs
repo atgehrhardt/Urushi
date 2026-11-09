@@ -1,4 +1,4 @@
-//! Unit tests for boards, tasks and subtasks.
+//! Unit tests for boards, columns and tasks (subtasks are in `tree/tests.rs`).
 
 use super::*;
 
@@ -103,15 +103,18 @@ fn failed_operations_change_nothing() {
             max: MAX_NOTES
         })
     );
-    let missing = SubtaskId::from_u128(77);
+    let missing = TaskId::from_u128(77);
     assert_eq!(
-        b.update_subtask(missing, Some("x"), None),
-        Err(BoardError::NoSuchSubtask(missing))
-    );
-    assert!(b.remove_subtask(missing).is_err());
-    assert_eq!(
-        b.add_subtask(TaskId::from_u128(9), Subtask::new(missing, "x").unwrap()),
+        b.add_subtask(TaskId::from_u128(9), task(77, "x")),
         Err(BoardError::NoSuchTask(TaskId::from_u128(9)))
+    );
+    assert_eq!(
+        b.nest_task(missing, TaskId::from_u128(1), 0),
+        Err(BoardError::NoSuchTask(missing))
+    );
+    assert_eq!(
+        b.nest_task(TaskId::from_u128(1), TaskId::from_u128(1), 0),
+        Err(BoardError::Cycle)
     );
     assert_eq!(b, before);
 }
@@ -227,74 +230,4 @@ fn a_board_holds_a_bounded_number_of_columns() {
         b.add_column(ColumnId::from_u128(999), "c", 0),
         Err(BoardError::TooManyColumns)
     );
-}
-
-#[test]
-fn subtasks_are_added_checked_renamed_and_removed() {
-    let mut b = board();
-    let todo = b.columns[0].id;
-    b.add_task(todo, task(1, "a")).unwrap();
-    let parent = TaskId::from_u128(1);
-    let (s1, s2) = (SubtaskId::from_u128(21), SubtaskId::from_u128(22));
-    assert_eq!(Subtask::new(s1, "  "), Err(BoardError::EmptyTitle));
-    b.add_subtask(parent, Subtask::new(s1, "write  test").unwrap())
-        .unwrap();
-    b.add_subtask(parent, Subtask::new(s2, "fix").unwrap())
-        .unwrap();
-    b.update_subtask(s1, None, Some(true)).unwrap();
-    b.update_subtask(s2, Some("fix it"), None).unwrap();
-    let t = b.task(parent).unwrap();
-    let shown: Vec<_> = t
-        .subtasks
-        .iter()
-        .map(|s| (s.title.as_str(), s.done))
-        .collect();
-    assert_eq!(shown, [("write test", true), ("fix it", false)]);
-    assert_eq!(t.subtasks_done(), (1, 2));
-    assert_eq!(b.subtask(s2).map(|(t, _)| t.id), Some(parent));
-    assert_eq!(b.remove_subtask(s1).unwrap().id, s1);
-    assert_eq!(b.task(parent).unwrap().subtasks.len(), 1);
-    // Moving the task keeps its subtasks.
-    b.move_task(parent, b.columns[2].id, 0).unwrap();
-    assert_eq!(b.task(parent).unwrap().subtasks.len(), 1);
-}
-
-#[test]
-fn a_task_holds_a_bounded_number_of_subtasks() {
-    let mut b = board();
-    let todo = b.columns[0].id;
-    b.add_task(todo, task(1, "a")).unwrap();
-    for n in 0..MAX_SUBTASKS {
-        let id = SubtaskId::from_u128(1000 + n as u128);
-        b.add_subtask(TaskId::from_u128(1), Subtask::new(id, "s").unwrap())
-            .unwrap();
-    }
-    let extra = Subtask::new(SubtaskId::from_u128(5), "one more").unwrap();
-    assert_eq!(
-        b.add_subtask(TaskId::from_u128(1), extra),
-        Err(BoardError::TooManySubtasks)
-    );
-}
-
-#[test]
-fn threads_are_linked_and_unlinked() {
-    let mut b = board();
-    let todo = b.columns[0].id;
-    b.add_task(todo, task(1, "a")).unwrap();
-    let (parent, sub) = (TaskId::from_u128(1), SubtaskId::from_u128(2));
-    b.add_subtask(parent, Subtask::new(sub, "s").unwrap())
-        .unwrap();
-    let (t1, t2) = (ThreadId::from_u128(8), ThreadId::from_u128(9));
-    b.link_thread(parent, None, t1).unwrap();
-    b.link_thread(parent, Some(sub), t2).unwrap();
-    let task = b.task(parent).unwrap();
-    assert_eq!((task.thread, task.subtasks[0].thread), (Some(t1), Some(t2)));
-    assert_eq!(
-        b.link_thread(parent, Some(SubtaskId::from_u128(3)), t1),
-        Err(BoardError::NoSuchSubtask(SubtaskId::from_u128(3)))
-    );
-    assert!(b.unlink_thread(t2));
-    assert!(!b.unlink_thread(t2), "nothing left to unlink");
-    let task = b.task(parent).unwrap();
-    assert_eq!((task.thread, task.subtasks[0].thread), (Some(t1), None));
 }

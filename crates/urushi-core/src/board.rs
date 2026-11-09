@@ -1,28 +1,29 @@
 //! Task boards: kanban boards of tasks, kept in columns.
 //!
 //! A board is a list of columns ("To do", "In progress", "Done"), and each column holds
-//! its tasks top to bottom. A task is in exactly one column of one board; moving it is
-//! the only way it changes column, and no operation can lose or duplicate a task
-//! (`tests/board_props.rs`). A task can have a checklist of subtasks (`subtasks.rs`),
-//! a color and tags (`labels.rs`), and a task or subtask can name the thread that was
-//! started for it. Columns can be added, recolored, reordered and removed
+//! its tasks top to bottom. A task is in exactly one place on one board, a column or
+//! a parent task; moving or nesting it is the only way it changes place, and no
+//! operation can lose or duplicate a task
+//! (`tests/board_props.rs`). A task's subtasks are tasks too, nested inside it
+//! (`tree.rs`, ADR 0015); a task has a color and tags (`labels.rs`), and can name the
+//! thread that was started for it. Columns can be added, recolored, reordered and removed
 //! (`columns.rs`); new boards start with [`DEFAULT_COLUMNS`]. Boards are
 //! organization only: they never touch git or terminals. Ids and timestamps are passed
 //! in by the daemon.
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BoardId, ColumnId, SubtaskId, TaskId, ThreadId, Timestamp};
+use crate::{BoardId, ColumnId, TaskId, ThreadId, Timestamp};
 
 mod columns;
 mod labels;
 mod prompt;
-mod subtasks;
+mod tree;
 
 pub use columns::MAX_COLUMNS;
 pub use labels::{LabelColor, MAX_TAG, MAX_TAGS, tag_color, task_tags};
 pub use prompt::{MAX_PROMPT_BYTES, task_prompt};
-pub use subtasks::{MAX_SUBTASKS, Subtask};
+pub use tree::{MAX_DEPTH, MAX_SUBTASKS};
 
 /// Longest board or column name, in characters.
 pub const MAX_NAME: usize = 80;
@@ -57,9 +58,12 @@ pub enum BoardError {
     /// The task isn't on this board.
     #[error("no task {0} on this board")]
     NoSuchTask(TaskId),
-    /// The subtask isn't on this board.
-    #[error("no subtask {0} on this board")]
-    NoSuchSubtask(SubtaskId),
+    /// A task can't go under itself or one of its own subtasks.
+    #[error("a task can't be a subtask of itself or of its own subtasks")]
+    Cycle,
+    /// Subtasks would be nested more than [`MAX_DEPTH`] levels deep.
+    #[error("subtasks can be nested at most {MAX_DEPTH} levels deep")]
+    TooDeep,
     /// The task already has [`MAX_SUBTASKS`] subtasks.
     #[error("a task can have at most {MAX_SUBTASKS} subtasks")]
     TooManySubtasks,
@@ -115,17 +119,21 @@ pub struct Task {
     /// Free-form details; may be empty.
     #[serde(default)]
     pub notes: String,
-    /// When it was created.
+    /// When it was created. Subtasks from before ADR 0015 have none (0).
+    #[serde(default = "Timestamp::unknown")]
     pub created_at: Timestamp,
+    /// Checked off. Only meaningful for a subtask; a card's progress is its column.
+    #[serde(default)]
+    pub done: bool,
     /// Its color, if one was chosen.
     #[serde(default)]
     pub color: Option<LabelColor>,
     /// Free-text tags, cleaned up by [`task_tags`].
     #[serde(default)]
     pub tags: Vec<String>,
-    /// A checklist of smaller steps, in order.
+    /// Smaller steps, in order: tasks nested inside this one.
     #[serde(default)]
-    pub subtasks: Vec<Subtask>,
+    pub subtasks: Vec<Task>,
     /// The thread started for this task, if any. It may have been deleted since.
     #[serde(default)]
     pub thread: Option<ThreadId>,
@@ -144,6 +152,7 @@ impl Task {
             title: task_title(title)?,
             notes: task_notes(notes)?,
             created_at,
+            done: false,
             color: None,
             tags: Vec::new(),
             subtasks: Vec::new(),
@@ -163,6 +172,8 @@ pub struct TaskPatch {
     pub color: Option<Option<LabelColor>>,
     /// New tags (replacing all of them).
     pub tags: Option<Vec<String>>,
+    /// Check or uncheck it (a subtask).
+    pub done: Option<bool>,
 }
 
 /// A board name, with runs of whitespace collapsed. Blank and over-long names are refused.
@@ -227,15 +238,7 @@ impl Board {
         Ok(())
     }
 
-    /// The task with this id, if it's on this board.
-    pub fn task(&self, id: TaskId) -> Option<&Task> {
-        self.columns
-            .iter()
-            .flat_map(|c| &c.tasks)
-            .find(|t| t.id == id)
-    }
-
-    /// How many tasks the board holds.
+    /// How many cards the board holds (not counting subtasks).
     pub fn task_count(&self) -> usize {
         self.columns.iter().map(|c| c.tasks.len()).sum()
     }
@@ -246,8 +249,8 @@ impl Board {
         Ok(())
     }
 
-    /// Changes a task's title, notes, color and/or tags. Nothing changes unless every
-    /// given value is valid.
+    /// Changes a task's (at any depth) title, notes, color, tags and/or check mark.
+    /// Nothing changes unless every given value is valid.
     pub fn update_task(&mut self, id: TaskId, patch: &TaskPatch) -> Result<(), BoardError> {
         let title = patch.title.as_deref().map(task_title).transpose()?;
         let notes = patch.notes.as_deref().map(task_notes).transpose()?;
@@ -265,11 +268,15 @@ impl Board {
         if let Some(tags) = tags {
             task.tags = tags;
         }
+        if let Some(done) = patch.done {
+            task.done = done;
+        }
         Ok(())
     }
 
     /// Moves a task to position `index` of `column` (counted without the task itself;
-    /// clamped to the bottom).
+    /// clamped to the bottom). A subtask comes out of its parent onto the board, and
+    /// loses its check mark.
     pub fn move_task(
         &mut self,
         id: TaskId,
@@ -278,20 +285,11 @@ impl Board {
     ) -> Result<(), BoardError> {
         // Check the destination first, so a failed move leaves the task where it was.
         self.column_mut(column)?;
-        let task = self.remove_task(id)?;
+        let mut task = self.remove_task(id)?;
+        task.done = false;
         let tasks = &mut self.column_mut(column)?.tasks;
         tasks.insert(index.min(tasks.len()), task);
         Ok(())
-    }
-
-    /// Removes a task and returns it.
-    pub fn remove_task(&mut self, id: TaskId) -> Result<Task, BoardError> {
-        for column in &mut self.columns {
-            if let Some(at) = column.tasks.iter().position(|t| t.id == id) {
-                return Ok(column.tasks.remove(at));
-            }
-        }
-        Err(BoardError::NoSuchTask(id))
     }
 
     pub(crate) fn column_mut(&mut self, id: ColumnId) -> Result<&mut Column, BoardError> {
@@ -299,14 +297,6 @@ impl Board {
             .iter_mut()
             .find(|c| c.id == id)
             .ok_or(BoardError::NoSuchColumn(id))
-    }
-
-    pub(crate) fn task_mut(&mut self, id: TaskId) -> Result<&mut Task, BoardError> {
-        self.columns
-            .iter_mut()
-            .flat_map(|c| &mut c.tasks)
-            .find(|t| t.id == id)
-            .ok_or(BoardError::NoSuchTask(id))
     }
 }
 

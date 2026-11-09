@@ -10,6 +10,11 @@ use serde::{Deserialize, Serialize};
 pub struct Timestamp(u64);
 
 impl Timestamp {
+    /// The epoch, standing in for a time that was never recorded.
+    pub fn unknown() -> Self {
+        Self(0)
+    }
+
     /// Creates a timestamp from milliseconds since the Unix epoch.
     pub const fn from_unix_millis(millis: u64) -> Self {
         Self(millis)

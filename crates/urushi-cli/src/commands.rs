@@ -194,9 +194,10 @@ async fn thread(client: &Client, cmd: ThreadCmd) -> Result<()> {
                 Some(id) => {
                     let id = resolve(client, &id).await?;
                     let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
-                    match mirror.subtask(&id) {
-                        Some((parent, _)) => (parent.id.clone(), id),
-                        None => (id, String::new()),
+                    // A subtask (at any depth) is linked as `subtask_id` under its card.
+                    match mirror.find_task(&id) {
+                        Some(found) if !found.task().is_card() => (found.card.id.clone(), id),
+                        _ => (id, String::new()),
                     }
                 }
             };
