@@ -66,7 +66,14 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
                         } else {
                             " "
                         };
-                        writeln!(o, "     {marker}{} pane", short(&pane))?;
+                        let attention = tab.attention.iter().find(|a| a.pane_id == pane).map_or(
+                            "",
+                            |a| match a.kind() {
+                                v1::AttentionKind::Done => "  [finished]",
+                                _ => "  [needs input]",
+                            },
+                        );
+                        writeln!(o, "     {marker}{} pane{attention}", short(&pane))?;
                     }
                 }
             }

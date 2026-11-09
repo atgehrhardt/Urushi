@@ -194,6 +194,14 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             service.close_pane(parse(&r.tab_id, "tab_id")?, parse(&r.pane_id, "pane_id")?)?;
             ok()
         }
+        Body::ClearAttention(r) => {
+            let panes = r
+                .pane_ids
+                .iter()
+                .filter_map(|id| convert::parse_id::<PaneId>(id, "pane_ids").ok());
+            service.clear_attention(panes);
+            ok()
+        }
         Body::FocusPane(r) => {
             service.focus_pane(parse(&r.tab_id, "tab_id")?, parse(&r.pane_id, "pane_id")?)?;
             ok()

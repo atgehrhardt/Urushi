@@ -85,6 +85,32 @@ message Tab {
   string title = 3;
   LayoutNode layout = 4;
   string focused_pane_id = 5;
+  // Panes whose program finished or is waiting for the user, until someone looks or
+  // types (not stored; lost when the daemon restarts). Since 1.9.
+  repeated PaneAttention attention = 6;
+}
+
+// Why a pane wants the user. Ordered by urgency: WAITING outranks DONE.
+enum AttentionKind {
+  // Unknown (from a newer daemon); treat as WAITING.
+  ATTENTION_KIND_UNSPECIFIED = 0;
+  // An agent finished its response.
+  ATTENTION_KIND_DONE = 1;
+  // An agent (or any program, by bell or OSC 9/777 notification) waits for input.
+  ATTENTION_KIND_WAITING = 2;
+}
+
+message PaneAttention {
+  string pane_id = 1;
+  AttentionKind kind = 2;
+  // When it was raised. A new raise has a new time, so clients can tell it apart.
+  int64 since_ms = 3;
+}
+
+// Clears the attention of these panes (the user is looking at them). Panes without
+// attention, or that no longer exist, are ignored. Since 1.9.
+message ClearAttentionRequest {
+  repeated string pane_ids = 1;
 }
 
 enum Axis {

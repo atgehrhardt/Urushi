@@ -10,7 +10,6 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use super::Agent;
-use crate::shell::quote as shell_quote;
 
 /// Environment variable that holds a task's prompt in the pane its agent starts in.
 pub const TASK_PROMPT_ENV: &str = "URUSHI_TASK_PROMPT";
@@ -76,7 +75,7 @@ impl Agent {
         skip_permissions: bool,
         mode: AgentMode,
     ) -> String {
-        let mut words = vec![shell_quote(program)];
+        let mut words = self.program_words(program);
         match (self, self.effective_mode(mode)) {
             (Self::Claude, AgentMode::Plan) => {
                 words.extend(["--permission-mode".into(), "plan".into()]);
@@ -103,6 +102,7 @@ impl Agent {
 
 #[cfg(test)]
 mod tests {
+    use super::super::tests::hooks;
     use super::*;
 
     #[test]
@@ -121,21 +121,23 @@ mod tests {
     fn task_command_lines_per_agent_mode_and_skip() {
         let line = |a: Agent, skip, mode| a.task_command_line(a.program(), skip, mode);
         let p = "\"$URUSHI_TASK_PROMPT\"";
+        let claude = format!("claude {}", hooks(Agent::Claude));
+        let codex = format!("codex {}", hooks(Agent::Codex));
         assert_eq!(
             line(Agent::Claude, false, AgentMode::Normal),
-            format!("claude {p}")
+            format!("{claude} {p}")
         );
         assert_eq!(
             line(Agent::Claude, true, AgentMode::Normal),
-            format!("claude --dangerously-skip-permissions {p}")
+            format!("{claude} --dangerously-skip-permissions {p}")
         );
         assert_eq!(
             line(Agent::Claude, false, AgentMode::Plan),
-            format!("claude --permission-mode plan {p}")
+            format!("{claude} --permission-mode plan {p}")
         );
         assert_eq!(
             line(Agent::Claude, true, AgentMode::Plan),
-            format!("claude --permission-mode plan --allow-dangerously-skip-permissions {p}")
+            format!("{claude} --permission-mode plan --allow-dangerously-skip-permissions {p}")
         );
         assert_eq!(
             line(Agent::Cursor, true, AgentMode::Plan),
@@ -143,11 +145,11 @@ mod tests {
         );
         assert_eq!(
             line(Agent::Codex, true, AgentMode::Plan),
-            format!("codex --dangerously-bypass-approvals-and-sandbox {p}")
+            format!("{codex} --dangerously-bypass-approvals-and-sandbox {p}")
         );
         assert_eq!(
-            Agent::Claude.task_command_line("/a b/claude", false, AgentMode::Normal),
-            format!("'/a b/claude' {p}")
+            Agent::Cursor.task_command_line("/a b/cursor-agent", false, AgentMode::Normal),
+            format!("'/a b/cursor-agent' {p}")
         );
     }
 

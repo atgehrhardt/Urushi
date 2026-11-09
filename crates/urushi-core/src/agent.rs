@@ -3,12 +3,14 @@
 //! A tab running an agent is still an ordinary terminal. The daemon starts the user's
 //! shell and types the agent's command into it, so the shell is still there when the
 //! agent exits. This module knows each agent's program name and its "skip permission
-//! prompts" flag, how it resumes a conversation (`resume.rs`), and how it starts for a
-//! task (`mode.rs`). Finding the program on disk is the daemon's job.
+//! prompts" flag, how it resumes a conversation (`resume.rs`), how it starts for a task
+//! (`mode.rs`), and the hooks that report when it finished or waits (`hooks.rs`).
+//! Finding the program on disk is the daemon's job.
 
 pub use mode::{AgentMode, TASK_PROMPT_ENV};
 pub use resume::{AgentSessionId, InvalidSessionId};
 
+pub mod hooks;
 mod mode;
 mod resume;
 
@@ -66,12 +68,19 @@ impl Agent {
     /// The command line to type into a shell. `program` is what the shell should run
     /// (the bare name, or a full path when the name isn't on the shell's `PATH`).
     pub fn command_line(self, program: &str, skip_permissions: bool) -> String {
-        let mut line = shell_quote(program);
+        let mut words = self.program_words(program);
         if skip_permissions {
-            line.push(' ');
-            line.push_str(self.skip_permissions_flag());
+            words.push(self.skip_permissions_flag().into());
         }
-        line
+        words.join(" ")
+    }
+
+    /// The program, quoted for a shell, followed by the options that load Urushi's
+    /// hooks ([`hooks`]). Every command line starts with these.
+    fn program_words(self, program: &str) -> Vec<String> {
+        let mut words = vec![shell_quote(program)];
+        words.extend(self.hook_args().iter().map(|arg| (*arg).to_owned()));
+        words
     }
 }
 
@@ -115,16 +124,28 @@ impl AgentSettings {
 mod tests {
     use super::*;
 
+    /// The hook options every command line of `agent` starts with, after the program.
+    pub(super) fn hooks(agent: Agent) -> String {
+        agent.hook_args().join(" ")
+    }
+
     #[test]
     fn default_command_asks_for_permission() {
-        assert_eq!(Agent::Claude.command_line("claude", false), "claude");
+        let claude = hooks(Agent::Claude);
+        assert_eq!(
+            Agent::Claude.command_line("claude", false),
+            format!("claude {claude}")
+        );
         assert_eq!(
             Agent::Claude.command_line("claude", true),
-            "claude --dangerously-skip-permissions"
+            format!("claude {claude} --dangerously-skip-permissions")
         );
         assert_eq!(
             Agent::Codex.command_line("codex", true),
-            "codex --dangerously-bypass-approvals-and-sandbox"
+            format!(
+                "codex {} --dangerously-bypass-approvals-and-sandbox",
+                hooks(Agent::Codex)
+            )
         );
         assert_eq!(
             Agent::Cursor.command_line("cursor-agent", true),
@@ -135,12 +156,12 @@ mod tests {
     #[test]
     fn full_paths_with_spaces_are_quoted() {
         assert_eq!(
-            Agent::Claude.command_line("/Users/a b/bin/claude", false),
-            "'/Users/a b/bin/claude'"
+            Agent::Cursor.command_line("/Users/a b/bin/cursor-agent", false),
+            "'/Users/a b/bin/cursor-agent'"
         );
         assert_eq!(
             Agent::Claude.command_line("/opt/it's/claude", false),
-            r"'/opt/it'\''s/claude'"
+            format!(r"'/opt/it'\''s/claude' {}", hooks(Agent::Claude))
         );
     }
 

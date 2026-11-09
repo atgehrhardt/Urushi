@@ -11,6 +11,7 @@
 //! This crate is platform-neutral. `apps/desktop`, `apps/ios` and `apps/android` are thin
 //! entry points that call [`run`] or [`run_with`].
 
+pub mod attention;
 mod backend;
 pub mod board;
 pub mod config;

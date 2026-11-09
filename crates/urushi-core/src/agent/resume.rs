@@ -11,7 +11,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::{Agent, shell_quote};
+use super::Agent;
 
 /// Longest session id accepted.
 const MAX_LEN: usize = 128;
@@ -79,7 +79,7 @@ impl Agent {
         skip_permissions: bool,
         session: Option<&AgentSessionId>,
     ) -> String {
-        let mut words = vec![shell_quote(program)];
+        let mut words = self.program_words(program);
         // Codex resumes with a subcommand; its options come after it.
         if self == Self::Codex {
             words.push("resume".into());
@@ -99,6 +99,7 @@ impl Agent {
 
 #[cfg(test)]
 mod tests {
+    use super::super::tests::hooks;
     use super::*;
 
     #[test]
@@ -117,15 +118,24 @@ mod tests {
     fn each_agent_resumes_its_own_way() {
         let id = AgentSessionId::new("s-1").unwrap();
         let line = |a: Agent, skip, id| a.resume_command_line(a.program(), skip, id);
-        assert_eq!(line(Agent::Claude, false, Some(&id)), "claude --resume s-1");
+        let claude = format!("claude {}", hooks(Agent::Claude));
+        // Codex's hook options are global, so they come before `resume`.
+        let codex = format!("codex {}", hooks(Agent::Codex));
+        assert_eq!(
+            line(Agent::Claude, false, Some(&id)),
+            format!("{claude} --resume s-1")
+        );
         assert_eq!(
             line(Agent::Claude, true, None),
-            "claude --dangerously-skip-permissions --continue"
+            format!("{claude} --dangerously-skip-permissions --continue")
         );
-        assert_eq!(line(Agent::Codex, false, Some(&id)), "codex resume s-1");
+        assert_eq!(
+            line(Agent::Codex, false, Some(&id)),
+            format!("{codex} resume s-1")
+        );
         assert_eq!(
             line(Agent::Codex, true, None),
-            "codex resume --dangerously-bypass-approvals-and-sandbox --last"
+            format!("{codex} resume --dangerously-bypass-approvals-and-sandbox --last")
         );
         assert_eq!(
             line(Agent::Cursor, true, Some(&id)),
@@ -133,8 +143,8 @@ mod tests {
         );
         assert_eq!(line(Agent::Cursor, false, None), "cursor-agent --continue");
         assert_eq!(
-            Agent::Claude.resume_command_line("/a b/claude", false, None),
-            "'/a b/claude' --continue"
+            Agent::Cursor.resume_command_line("/a b/cursor-agent", false, None),
+            "'/a b/cursor-agent' --continue"
         );
     }
 }

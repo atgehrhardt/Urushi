@@ -195,6 +195,10 @@ async fn notify(connection: &Arc<Connection>, body: notification::Body) {
             let Some((pane, input)) = screen::input_from_proto(input) else {
                 return;
             };
+            // Typing or clicking in a pane means the user has seen it.
+            if is_user_action(&input) {
+                connection.service.clear_attention([pane]);
+            }
             if let Ok(session) = connection.service.session(pane) {
                 let _ = session.input(input).await;
             }
@@ -219,5 +223,16 @@ async fn notify(connection: &Arc<Connection>, body: notification::Body) {
                 let _ = session.scroll(request).await;
             }
         }
+    }
+}
+
+/// Whether `input` is the user acting on the pane (not the pointer passing over it or
+/// the wheel scrolling it).
+fn is_user_action(input: &urushi_mux::Input) -> bool {
+    use urushi_mux::{Input, MouseAction};
+    match input {
+        Input::Key(_) | Input::Text(_) | Input::Paste(_) | Input::Bytes(_) => true,
+        Input::Mouse(m) => m.action == MouseAction::Press,
+        Input::Wheel(_) => false,
     }
 }

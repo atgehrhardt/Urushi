@@ -120,6 +120,7 @@ impl Runner {
                         self.dispatch(Msg::Board(crate::msg::BoardMsg::AttachFailed(reason)));
                     }
                 }
+                Effect::SystemNotification { title, body } => platform::notify(&title, &body),
                 Effect::StopDaemon => {
                     if let crate::config::ConnectTarget::Local(home) = &self.state.target {
                         self.backend.stop_daemon(home.clone());
@@ -532,6 +533,7 @@ impl ApplicationHandler<UserEvent> for Runner {
         }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::Focused(focused) => self.dispatch(Msg::WindowFocused(focused)),
             WindowEvent::RedrawRequested => self.redraw(),
             WindowEvent::Resized(size) => {
                 let scale = self.scale();

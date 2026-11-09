@@ -407,6 +407,17 @@ impl Client {
         .await
     }
 
+    /// Clears the attention of panes (the user has seen them). Needs protocol 1.9.
+    pub async fn clear_attention(&self, pane_ids: &[String]) -> Result<(), ClientError> {
+        self.ok(
+            Body::ClearAttention(v1::ClearAttentionRequest {
+                pane_ids: pane_ids.to_vec(),
+            }),
+            "ClearAttention",
+        )
+        .await
+    }
+
     /// Sends input to a pane.
     pub async fn send_input(
         &self,

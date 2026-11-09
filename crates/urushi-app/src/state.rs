@@ -358,6 +358,9 @@ pub struct AppState {
     pub focused_override: HashMap<String, String>,
     /// Narrow window (phones): one column at a time.
     pub compact: bool,
+    /// Attention already announced or cleared, and whether the window is in the
+    /// background (`attention.rs`).
+    pub attention: crate::attention::AttentionTracker,
     /// In compact mode, whether the thread list is showing (instead of the terminals).
     pub sidebar_open: bool,
     /// Agent CLIs installed on the daemon's machine, as last reported.
@@ -420,6 +423,7 @@ impl AppState {
             tailnet: None,
             focused_override: HashMap::new(),
             compact: false,
+            attention: crate::attention::AttentionTracker::default(),
             sidebar_open: true,
             agents: Vec::new(),
             daemon_minor: 0,

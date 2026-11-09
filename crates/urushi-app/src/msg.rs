@@ -160,6 +160,8 @@ pub enum Msg {
     ConfirmDeleteBoard,
     /// Time passed (ms since the epoch): refresh the agent usage.
     Tick(i64),
+    /// The window gained (`true`) or lost keyboard focus.
+    WindowFocused(bool),
 
     // ---- tabs and panes --------------------------------------------------------------
     /// Show a tab.
@@ -340,6 +342,13 @@ pub enum Effect {
         task: String,
         /// Paths on this machine.
         paths: Vec<String>,
+    },
+    /// Post a system notification (a thread's agent finished or waits, ADR 0017).
+    SystemNotification {
+        /// The thread's title.
+        title: String,
+        /// What happened, e.g. "Claude finished".
+        body: String,
     },
     /// Save an attachment's bytes to a temporary file and open it with the system's app.
     OpenFile {

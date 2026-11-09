@@ -45,6 +45,7 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | `pollster` | MIT/Apache-2.0 | render | Blocks on wgpu's async setup calls. |
 | `arboard` | MIT/Apache-2.0 | app (desktop) | System clipboard. Its Windows backend pulls in `clipboard-win` (BSL-1.0, Boost). |
 | `image` | MIT/Apache-2.0 | daemon | Decoding attached PNG, JPEG, GIF and WebP images into thumbnails (ADR 0016). Image codecs are large and security-sensitive; not ours to write. Only the `png`, `jpeg`, `gif` and `webp` features, under `image::Limits`. Pulls in `png`, `fdeflate`, `flate2`/`miniz_oxide`, `zune-jpeg`/`zune-core`, `gif`/`weezl`, `image-webp`, `moxcms`/`pxfm` (all MIT, Apache-2.0, Zlib or BSD-3-Clause). |
+| `notify-rust` | MIT/Apache-2.0 | app (desktop) | System notifications when an agent finishes or waits (ADR 0017). macOS (`mac-notification-sys`, MIT, compiles a small Objective-C file), Linux (`zbus`, MIT, pure-Rust D-Bus; feature `z`, never `d`/libdbus) and Windows (WinRT toasts) differ entirely; shelling out to `osascript` would show notifications as Script Editor's. Its `zbus` 6 sits next to the `zbus` 5 that `rfd`'s portal uses (a duplicate-version warning, not an error). |
 | `rfd` | MIT | app (desktop) | Native folder and file pickers (adding repos, attaching files). Built with `xdg-portal` and `wayland` only; never enable `gtk3` (LGPL). |
 
 ### Planned (approve when first added)

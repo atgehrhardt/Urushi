@@ -214,3 +214,12 @@ fn panes_split_and_close_from_their_context_menu_not_buttons() {
         assert!(!status.contains(text), "{text} in the tab bar: {status}");
     }
 }
+
+#[test]
+fn threads_show_when_their_agent_finished_or_waits() {
+    // "Pricing page" has a finished agent, "Checkout copy" one waiting for permission.
+    let sidebar = dump("status", 1280.0);
+    for text in ["\"finished\"", "\"needs input\""] {
+        assert!(sidebar.contains(text), "{text} missing: {sidebar}");
+    }
+}

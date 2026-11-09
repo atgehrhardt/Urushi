@@ -16,12 +16,20 @@ use std::path::Path;
 use common::*;
 use urushi_client::v1;
 
-/// Writes an executable `name` into `dir` that prints its arguments.
+/// Shell lines that drop Urushi's hook options (ADR 0017), which come first, setting
+/// `$hooks` to whether there were any.
+const STRIP_HOOKS: &str =
+    "hooks=no; while [ \"$1\" = --settings ] || [ \"$1\" = -c ]; do hooks=yes; shift 2; done";
+
+/// Writes an executable `name` into `dir` that says whether Urushi's hooks were passed,
+/// then prints its other arguments.
 fn fake_agent(dir: &Path, name: &str) {
     let path = dir.join(name);
     std::fs::write(
         &path,
-        format!("#!/bin/sh\necho \"FAKE {name} ARGS:$*:END\"\n"),
+        format!(
+            "#!/bin/sh\n{STRIP_HOOKS}\necho \"FAKE {name} HOOKS:$hooks\"\necho \"FAKE {name} ARGS:$*:END\"\n"
+        ),
     )
     .unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -141,6 +149,7 @@ async fn agent_tabs_type_the_agent_command_into_a_shell() {
     assert_eq!(tab.title, "Claude");
     let pane = panes_of(&tab)[0].clone();
     wait_for_text(&client, &pane, "FAKE claude ARGS::END").await;
+    wait_for_text(&client, &pane, "FAKE claude HOOKS:yes").await;
     // The shell is still there after the agent exits.
     type_line(&client, &pane, "echo still-here").await;
     wait_for_text(&client, &pane, "still-here").await;

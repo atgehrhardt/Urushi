@@ -48,6 +48,8 @@ impl Dimensions for Size {
 pub struct AlacrittyEmulator {
     term: Term<Listener>,
     parser: Processor,
+    /// Notifications alacritty doesn't report (OSC 9 and 777).
+    notices: super::notices::Notices,
     events: mpsc::Receiver<Event>,
     size: TermSize,
 }
@@ -63,6 +65,7 @@ impl AlacrittyEmulator {
         Self {
             term: Term::new(config, &Size(size), Listener(tx)),
             parser: Processor::new(),
+            notices: super::notices::Notices::default(),
             events: rx,
             size,
         }
@@ -95,10 +98,17 @@ impl Emulator for AlacrittyEmulator {
     fn advance(&mut self, bytes: &[u8]) -> Vec<EmulatorEvent> {
         self.parser.advance(&mut self.term, bytes);
         let pending: Vec<Event> = self.events.try_iter().collect();
-        pending
+        let mut events: Vec<EmulatorEvent> = pending
             .into_iter()
             .filter_map(|e| self.translate(e))
-            .collect()
+            .collect();
+        events.extend(
+            self.notices
+                .advance(bytes)
+                .into_iter()
+                .map(EmulatorEvent::Attention),
+        );
+        events
     }
 
     fn resize(&mut self, size: TermSize) {

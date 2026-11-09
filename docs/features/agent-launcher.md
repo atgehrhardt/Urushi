@@ -24,6 +24,8 @@ for the skip-permissions flag.
   the daemon's protocol minor is ≥ 1 (`update/launcher.rs::AGENTS_SINCE_MINOR`).
 - `CreateTab{agent}`: the daemon resolves the agent first (missing → `FAILED_PRECONDITION`,
   nothing opened), spawns the shell, types `Agent::command_line(program, skip)` + Enter,
+  (which starts with `Agent::hook_args`, so the agent reports when it finished or waits:
+  [agent attention](agent-attention.md)),
   and titles the tab after the agent.
 - The GUI creates threads with `CreateThread{skip_initial_tab: true}`, so they open on the
   launcher. The CLI keeps the old default (`--no-tab` to skip).

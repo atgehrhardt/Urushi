@@ -24,6 +24,10 @@ pub struct SpawnSpec {
     pub env: Vec<(String, String)>,
     /// Initial size.
     pub size: Option<TermSize>,
+    /// If set, the environment variable that receives the path of the terminal device
+    /// (e.g. `/dev/ttys004`), so detached helpers such as agent hooks can write to it.
+    /// Not set where the device has no path (Windows).
+    pub tty_env: Option<String>,
 }
 
 /// Control over a spawned process and its terminal.
@@ -81,6 +85,11 @@ impl Pty for NativePty {
         command.env("TERM_PROGRAM", "Urushi");
         for (key, value) in &spec.env {
             command.env(key, value);
+        }
+        if let Some(key) = &spec.tty_env
+            && let Some(path) = pair.master.tty_name()
+        {
+            command.env(key, path);
         }
 
         let child = pair

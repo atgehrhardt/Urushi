@@ -230,8 +230,15 @@ fn card_footer(
     if let Some(thread) = thread {
         let mut chip = Node::row()
             .padding(Insets::symmetric(1.0, 6.0))
+            .gap(4.0)
+            .align(urushi_ui::Align::Center)
             .radius(4.0)
             .background(theme.accent.with_alpha(0.16))
+            .children(
+                state
+                    .thread_attention(&thread.id)
+                    .map(|k| super::super::attention::indicator(theme, k, 6.0)),
+            )
             .child(Node::text(
                 format!("→ {}", shorten(&thread.title, CHIP_CHARS)),
                 Font::UiMedium,

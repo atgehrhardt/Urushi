@@ -13,6 +13,7 @@
 
 mod agents;
 mod attachments;
+mod attention;
 mod boards;
 mod columns;
 mod deletion;
@@ -125,6 +126,8 @@ pub struct Service {
     /// The last restore point saved for each pane, and the screen version its output
     /// was taken at (so unchanged output isn't read again).
     restore_points: Mutex<HashMap<PaneId, (u64, PaneRecord)>>,
+    /// Panes whose program finished or waits for the user. Not stored (`attention.rs`).
+    attention: Mutex<HashMap<PaneId, attention::Attention>>,
     home: PathBuf,
     changes: watch::Sender<u64>,
     /// Woken when a client asks the daemon to stop (`ShutdownDaemon`).
@@ -185,6 +188,7 @@ impl Service {
             restore: RestoreStore::new(config.home.join("restore")),
             attachments: crate::attachments::AttachmentStore::new(config.home.join("attachments")),
             restore_points: Mutex::new(HashMap::new()),
+            attention: Mutex::new(HashMap::new()),
             home: config.home,
             changes: watch::channel(revision).0,
             shutdown: tokio::sync::Notify::new(),
@@ -218,9 +222,12 @@ impl Service {
         self.changes.subscribe()
     }
 
-    /// The whole workspace as a wire message.
+    /// The whole workspace as a wire message, with each tab's attention.
     pub fn workspace(&self) -> v1::Workspace {
-        lock(&self.state).to_proto()
+        let state = lock(&self.state);
+        let mut workspace = state.to_proto();
+        self.add_attention(&mut workspace, &state);
+        workspace
     }
 
     /// Which agent runs in `pane`, and how much of its plan is used.
@@ -327,6 +334,8 @@ impl Service {
                 thread.worktree_path.to_string_lossy().into_owned(),
             ),
         ];
+        // Agents started here report when they finish or wait (ADR 0017).
+        env.extend(urushi_core::agent::hooks::hook_env());
         env.extend(extra_env);
         let spec = SpawnSpec {
             program: shell,
@@ -334,20 +343,30 @@ impl Service {
             cwd,
             env,
             size: Some(size),
+            tty_env: Some(urushi_core::agent::hooks::TTY_ENV.into()),
         };
         let handle = SessionHandle::spawn(&*self.pty, &spec, Box::new(emulator))?;
         lock(&self.sessions).insert(pane, handle.clone());
-        self.watch_exit(pane, handle);
+        self.watch_session(pane, handle);
         Ok(())
     }
 
-    /// When a pane's process exits, its pane closes (and its tab, if it was the last one).
-    fn watch_exit(&self, pane: PaneId, handle: SessionHandle) {
+    /// Raises attention when the pane's program asks for the user, and closes the pane
+    /// (and its tab, if it was the last one) when its process exits.
+    fn watch_session(&self, pane: PaneId, handle: SessionHandle) {
         let me = self.me.clone();
         tokio::spawn(async move {
             let mut status = handle.status();
+            let mut alerts = status.borrow().alerts;
             loop {
-                if status.borrow_and_update().exit_code.is_some() {
+                let now = *status.borrow_and_update();
+                if now.alerts > alerts {
+                    alerts = now.alerts;
+                    if let (Some(kind), Some(service)) = (now.alert, me.upgrade()) {
+                        service.raise_attention(pane, kind);
+                    }
+                }
+                if now.exit_code.is_some() {
                     break;
                 }
                 if status.changed().await.is_err() {
@@ -362,6 +381,7 @@ impl Service {
     }
 
     fn on_pane_exited(&self, pane: PaneId) {
+        self.forget_attention(&[pane]);
         let removed = lock(&self.sessions).remove(&pane);
         if let Some(session) = removed {
             tokio::spawn(async move {
@@ -379,12 +399,11 @@ impl Service {
 
     /// Kills the sessions of `panes` and forgets them.
     fn kill_sessions(&self, panes: impl IntoIterator<Item = PaneId>) {
+        let panes: Vec<PaneId> = panes.into_iter().collect();
+        self.forget_attention(&panes);
         let handles: Vec<SessionHandle> = {
             let mut sessions = lock(&self.sessions);
-            panes
-                .into_iter()
-                .filter_map(|p| sessions.remove(&p))
-                .collect()
+            panes.iter().filter_map(|p| sessions.remove(p)).collect()
         };
         for handle in handles {
             tokio::spawn(async move {

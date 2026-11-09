@@ -47,3 +47,7 @@ pub(crate) fn open_path(_path: &std::path::Path) -> std::io::Result<()> {
         "opening attachments isn't supported on this device yet",
     ))
 }
+
+/// Mobile apps don't post notifications yet (they need the OS's push setup); threads
+/// still show their attention dots.
+pub(crate) fn notify(_title: &str, _body: &str) {}

@@ -31,6 +31,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0014 – Start a task's agent with the task as its prompt, passed through the pane's environment](adr/0014-task-prompt-via-pane-environment.md)
 - [0015 – Make subtasks full tasks nested inside their parent](adr/0015-subtasks-are-nested-tasks.md)
 - [0016 – Keep attachments in the daemon, send their bytes over the protocol, and decode images there](adr/0016-daemon-stores-attachments.md)
+- [0017 – Learn when an agent finished or waits from what it writes to its pane's terminal](adr/0017-agent-attention-through-the-pane-terminal.md)
 
 ## Features
 - [_template](features/_template.md)
@@ -44,3 +45,4 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [Task boards](features/task-boards.md)
 - [Task agent and first-run setup](features/task-agent.md)
 - [Agent usage in the status bar](features/agent-usage.md)
+- [Agent attention (finished / needs input)](features/agent-attention.md)

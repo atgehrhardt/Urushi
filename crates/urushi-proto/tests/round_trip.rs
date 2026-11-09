@@ -186,6 +186,9 @@ fn all_request_kinds() {
         B::DeleteFolder(v1::DeleteFolderRequest {
             folder_id: "f".into(),
         }),
+        B::ClearAttention(v1::ClearAttentionRequest {
+            pane_ids: vec!["p".into(), "q".into()],
+        }),
     ];
     for (i, body) in bodies.into_iter().enumerate() {
         round_trip(&envelope::request(i as u64, body));
@@ -347,4 +350,27 @@ fn unknown_fields_are_ignored() {
     bytes.extend_from_slice(&[0x78, 0x01]);
     let decoded = v1::Envelope::decode(bytes.as_slice()).unwrap();
     assert_eq!(decoded, envelope::ok(1));
+}
+
+#[test]
+fn tabs_carry_pane_attention() {
+    let tab = v1::Tab {
+        id: "t".into(),
+        thread_id: "th".into(),
+        title: "Claude".into(),
+        attention: vec![
+            v1::PaneAttention {
+                pane_id: "p".into(),
+                kind: v1::AttentionKind::Waiting.into(),
+                since_ms: 1_700_000_000_000,
+            },
+            v1::PaneAttention {
+                pane_id: "q".into(),
+                kind: v1::AttentionKind::Done.into(),
+                since_ms: 1_700_000_000_001,
+            },
+        ],
+        ..Default::default()
+    };
+    round_trip(&envelope::response(1, response::Outcome::Tab(tab)));
 }

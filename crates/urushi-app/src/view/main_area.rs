@@ -144,6 +144,11 @@ fn tab_bar(state: &AppState, theme: &Theme) -> Node<Msg> {
             .key(key(&["tab", &tab.id]))
             .on_click(Msg::SelectTab(tab.id.clone()))
             .role(Role::Item, format!("Tab {}", tab.title))
+            .children(
+                state
+                    .tab_attention(&tab.id)
+                    .map(|k| super::attention::indicator(theme, k, super::attention::DOT)),
+            )
             .child(Node::text(
                 &tab.title,
                 Font::UiMedium,

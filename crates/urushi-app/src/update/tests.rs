@@ -42,6 +42,7 @@ pub(super) fn workspace() -> v1::Workspace {
             title: "Terminal".into(),
             layout: Some(layout),
             focused_pane_id: pane.to_string(),
+            attention: Vec::new(),
         }],
         folders: Vec::new(),
         boards: Vec::new(),
@@ -382,6 +383,7 @@ fn compact_layout_navigates_between_threads_and_terminals() {
 }
 
 mod attachments;
+mod attention;
 mod board;
 mod daemon;
 mod fields;

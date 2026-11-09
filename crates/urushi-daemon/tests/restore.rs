@@ -48,13 +48,14 @@ impl UsageSource for Machine {
     }
 }
 
-/// A stand-in `claude` that prints its arguments and keeps running, like the real one.
+/// A stand-in `claude` that prints its arguments (after Urushi's hook options) and keeps
+/// running, like the real one.
 fn fake_claude(dir: &Path) {
     std::fs::create_dir_all(dir).unwrap();
     let path = dir.join("claude");
     std::fs::write(
         &path,
-        "#!/bin/sh\necho \"FAKE claude ARGS:$*:END\"\nsleep 60\n",
+        "#!/bin/sh\nwhile [ \"$1\" = --settings ]; do shift 2; done\necho \"FAKE claude ARGS:$*:END\"\nsleep 60\n",
     )
     .unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();

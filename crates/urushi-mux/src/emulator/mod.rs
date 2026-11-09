@@ -5,6 +5,7 @@
 //! emulator) means implementing this trait. Nothing else changes.
 
 mod alacritty;
+mod notices;
 
 pub use alacritty::AlacrittyEmulator;
 
@@ -19,6 +20,9 @@ pub enum EmulatorEvent {
     Title(Option<String>),
     /// The application rang the bell.
     Bell,
+    /// The application posted a terminal notification (OSC 9 or 777), or Urushi's own
+    /// signal that an agent finished or waits (`urushi_core::attention`).
+    Attention(urushi_core::AttentionKind),
 }
 
 /// Which viewport lines changed since the last [`Emulator::take_damage`].

@@ -17,11 +17,12 @@ use std::path::Path;
 use common::*;
 use urushi_client::{Client, v1};
 
-/// Writes an executable `name` into `dir` that prints each argument as `ARG[<arg>]`.
+/// Writes an executable `name` into `dir` that prints each argument as `ARG[<arg>]`,
+/// after Urushi's hook options.
 fn fake_agent(dir: &Path, name: &str) {
     let path = dir.join(name);
-    let script =
-        "#!/bin/sh\nfor a in \"$@\"; do printf 'ARG[%s]\\n' \"$a\"; done\necho AGENT-DONE\n";
+    // Urushi's hook options come first (ADR 0017); they're dropped here.
+    let script = "#!/bin/sh\nwhile [ \"$1\" = --settings ] || [ \"$1\" = -c ]; do shift 2; done\nfor a in \"$@\"; do printf 'ARG[%s]\\n' \"$a\"; done\necho AGENT-DONE\n";
     std::fs::write(&path, script).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }

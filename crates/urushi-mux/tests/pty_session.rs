@@ -181,6 +181,7 @@ mod unix {
             cwd: Some(dir.clone()),
             env: vec![("URUSHI_TEST".into(), "marker".into())],
             size: Some(TermSize::new(200, 3)),
+            tty_env: None,
         };
         let s = SessionHandle::spawn(
             &NativePty,
@@ -192,6 +193,47 @@ mod unix {
         wait_for_text(&s, &format!("marker:{}", canonical.display())).await;
         s.kill().await.unwrap();
     }
+}
+
+/// An agent hook, which has no controlling terminal, raises attention by writing
+/// Urushi's signal to the terminal device named in the pane's environment.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn hooks_signal_through_the_terminal_device() {
+    use urushi_core::AttentionKind;
+    use urushi_core::agent::hooks::{TTY_ENV, signal_command};
+
+    let size = TermSize::new(80, 4);
+    let script = format!(
+        "{} ; {} ; printf '\\a'; sleep 5",
+        signal_command(AttentionKind::Done),
+        signal_command(AttentionKind::Waiting)
+    );
+    let spec = SpawnSpec {
+        program: Some("/bin/sh".into()),
+        args: vec!["-c".into(), script],
+        size: Some(size),
+        tty_env: Some(TTY_ENV.into()),
+        ..SpawnSpec::default()
+    };
+    let s = SessionHandle::spawn(&NativePty, &spec, Box::new(AlacrittyEmulator::new(size)))
+        .expect("spawn");
+    let mut status = s.status();
+    let seen = tokio::time::timeout(TIMEOUT, async {
+        loop {
+            let now = *status.borrow_and_update();
+            if now.alerts >= 3 {
+                return now;
+            }
+            status.changed().await.expect("session alive");
+        }
+    })
+    .await
+    .expect("signals arrive");
+    assert_eq!(seen.alerts, 3, "done, waiting, then a bell");
+    assert_eq!(seen.bells, 1);
+    assert_eq!(seen.alert, Some(AttentionKind::Waiting));
+    s.kill().await.unwrap();
 }
 
 #[cfg(windows)]

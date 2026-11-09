@@ -121,6 +121,7 @@ impl AppState {
             | Msg::OpenDeleteBoard(_)
             | Msg::ConfirmDeleteBoard) => self.board_msg(msg, &mut fx),
             Msg::Tick(now_ms) => self.tick(now_ms, &mut fx),
+            Msg::WindowFocused(focused) => self.attention.in_background = !focused,
             // The mouse over terminals: `update/pointer.rs`.
             msg @ (Msg::AreaPress(_)
             | Msg::AreaDrag(_)
@@ -171,6 +172,7 @@ impl AppState {
             Msg::Copy => self.copy(&mut fx),
         }
         self.want_thumbnails(&mut fx);
+        self.attend(&mut fx);
         fx
     }
 
@@ -187,6 +189,7 @@ impl AppState {
         };
         self.reset_panes();
         self.on_workspace(workspace, fx);
+        self.seed_attention();
         self.request_agents(fx);
         self.usage = None;
         self.usage_pending = false;
@@ -779,6 +782,7 @@ fn input(pane_id: String, kind: v1::input::Kind) -> Effect {
 }
 
 mod attachments;
+mod attention;
 mod board;
 mod cards;
 mod daemon;

@@ -274,41 +274,26 @@ fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) -> Node<Msg
         Ok(v1::ThreadState::Deleting) => Some(("deleting", theme.warning)),
         _ => Some(("creating", theme.warning)),
     };
-    let repo = state
-        .workspace
-        .repo(&thread.project_id)
-        .map_or("unknown repo", |r| r.name.as_str());
-    // Pinned threads leave their status section, so they show the status here.
-    let mut meta = format!("{repo} · {}", thread.primary_branch);
-    if thread.pinned && !thread.status.is_empty() {
-        meta = format!("{} · {meta}", thread.status);
-    }
-    if thread.pinned {
-        meta = format!("Pinned · {meta}");
-    }
-    let title = Node::row().width(Length::Fill(1.0)).child(
-        Node::text(
-            &thread.title,
-            Font::UiMedium,
-            theme.font_size,
-            if selected {
-                theme.text
-            } else {
-                theme.text.mix(theme.text_muted, 0.3)
-            },
-        )
-        .width(Length::Fill(1.0)),
-    );
+    let attention = state.thread_attention(&thread.id);
     let mut details = Node::column()
         .width(Length::Fill(1.0))
         .gap(1.0)
-        .child(title)
+        .child(thread_title(theme, thread, selected, attention))
         .child(Node::text(
-            meta,
+            thread_meta(state, thread),
             Font::Ui,
             theme.font_size_small,
             theme.text_muted,
         ));
+    // The thread's lifecycle (creating, deleting) matters more than its agent.
+    let badge = badge.or_else(|| {
+        attention.map(|k| {
+            (
+                super::attention::label(k),
+                super::attention::color(theme, k),
+            )
+        })
+    });
     if let Some((label, color)) = badge {
         details = details.child(Node::text(
             label,
@@ -346,9 +331,13 @@ fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) -> Node<Msg
         .role(
             Role::Item,
             format!(
-                "Thread {}{}",
+                "Thread {}{}{}",
                 thread.title,
-                if thread.pinned { ", pinned" } else { "" }
+                if thread.pinned { ", pinned" } else { "" },
+                attention.map_or(String::new(), |k| format!(
+                    ", {}",
+                    super::attention::label(k)
+                )),
             ),
         )
         .child(details)
@@ -358,4 +347,44 @@ fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) -> Node<Msg
             &format!("Delete thread {}", thread.title),
             Msg::RequestDeleteThread(thread.id.clone()),
         ))
+}
+
+/// A thread's title, with a dot when its agent finished or waits (ADR 0017).
+fn thread_title(
+    theme: &Theme,
+    thread: &v1::Thread,
+    selected: bool,
+    attention: Option<v1::AttentionKind>,
+) -> Node<Msg> {
+    let color = if selected {
+        theme.text
+    } else {
+        theme.text.mix(theme.text_muted, 0.3)
+    };
+    Node::row()
+        .width(Length::Fill(1.0))
+        .gap(6.0)
+        .align(Align::Center)
+        .child(
+            Node::text(&thread.title, Font::UiMedium, theme.font_size, color)
+                .width(Length::Fill(1.0)),
+        )
+        .children(attention.map(|k| super::attention::indicator(theme, k, super::attention::DOT)))
+}
+
+/// Which repo and branch a thread is on. Pinned threads leave their status section, so
+/// they show the status here.
+fn thread_meta(state: &AppState, thread: &v1::Thread) -> String {
+    let repo = state
+        .workspace
+        .repo(&thread.project_id)
+        .map_or("unknown repo", |r| r.name.as_str());
+    let mut meta = format!("{repo} · {}", thread.primary_branch);
+    if thread.pinned && !thread.status.is_empty() {
+        meta = format!("{} · {meta}", thread.status);
+    }
+    if thread.pinned {
+        meta = format!("Pinned · {meta}");
+    }
+    meta
 }

@@ -17,6 +17,7 @@ use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot, watch};
+use urushi_core::AttentionKind;
 
 use crate::MuxError;
 use crate::emulator::{Damage, Emulator, EmulatorEvent, Scroll};
@@ -61,6 +62,11 @@ pub struct SessionStatus {
     pub version: u64,
     /// Total bells rung so far.
     pub bells: u64,
+    /// Times the program asked for the user so far: bells, terminal notifications and
+    /// Urushi's agent signals.
+    pub alerts: u64,
+    /// What the latest alert asked for (a bell is [`AttentionKind::Waiting`]).
+    pub alert: Option<AttentionKind>,
     /// Exit code once the process has exited. `-1` if it couldn't be determined.
     pub exit_code: Option<i32>,
 }
@@ -345,16 +351,30 @@ impl Actor {
 
     fn process_output(&mut self, bytes: &[u8]) {
         let mut bells = 0;
+        let mut alerts = 0;
+        let mut alert = None;
         for event in self.emulator.advance(bytes) {
             match event {
                 EmulatorEvent::Reply(reply) => self.write(reply),
                 EmulatorEvent::Title(title) => self.title = title.unwrap_or_default(),
-                EmulatorEvent::Bell => bells += 1,
+                EmulatorEvent::Bell => {
+                    bells += 1;
+                    alerts += 1;
+                    alert = Some(AttentionKind::Waiting);
+                }
+                EmulatorEvent::Attention(kind) => {
+                    alerts += 1;
+                    alert = Some(kind);
+                }
             }
         }
         self.record_damage();
-        if bells > 0 {
-            self.status.send_modify(|s| s.bells += bells);
+        if alerts > 0 {
+            self.status.send_modify(|s| {
+                s.bells += bells;
+                s.alerts += alerts;
+                s.alert = alert;
+            });
         }
     }
 

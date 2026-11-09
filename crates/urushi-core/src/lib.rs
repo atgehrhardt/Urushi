@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 pub mod agent;
+pub mod attention;
 pub mod board;
 pub mod ids;
 pub mod layout;
@@ -28,6 +29,7 @@ pub mod time;
 pub use agent::{
     Agent, AgentMode, AgentSessionId, AgentSettings, InvalidSessionId, TASK_PROMPT_ENV,
 };
+pub use attention::AttentionKind;
 pub use board::{Board, BoardError, Column, LabelColor, Task, TaskPatch, task_prompt};
 pub use ids::{
     AttachmentId, BoardId, ColumnId, PaneId, ProjectId, RepoId, TabId, TaskId, ThreadId,

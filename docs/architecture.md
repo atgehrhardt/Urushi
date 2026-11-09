@@ -44,6 +44,7 @@ Dependencies point downwards only. Lower layers never know about higher ones.
 urushi-app ─► urushi-ui ─► urushi-render          (GUI clients)
      └──────► urushi-client ─► urushi-proto ─► urushi-core
 urushi-daemon ─► urushi-mux, urushi-proto, urushi-core
+urushi-mux ─► urushi-core                           (the attention signal's format)
 urushi-cli ─► urushi-client
 ```
 
@@ -69,7 +70,7 @@ urushi-cli ─► urushi-client
 | **Tab** | A layout tree of panes inside a thread. |
 | **Layout** | An n-ary tree. Leaves are panes. Splits have an axis and child ratios that sum to 1. |
 | **Board** | A kanban board of **tasks** in columns (To do, In progress, Done). A task's **subtasks** are tasks nested inside it (ADR 0015), a task can have files attached (kept by the daemon, ADR 0016), and any task can name the thread started for it (ADR 0012). Only organization: it never touches git or terminals. |
-| **Pane** | One terminal session. Its shell starts in the thread's worktree, with `URUSHI_THREAD_ID` and `URUSHI_WORKTREE` set in its environment. A tab opened for an agent (Claude, Codex, Cursor) is the same, with the agent's command typed into the shell. |
+| **Pane** | One terminal session. Its shell starts in the thread's worktree, with `URUSHI_THREAD_ID`, `URUSHI_PANE_ID`, `URUSHI_WORKTREE`, `URUSHI_TTY` (its terminal device) and the agent hook settings in its environment. A pane whose agent finished or waits for the user carries **attention**, kept in the daemon's memory ([agent attention](features/agent-attention.md)). A tab opened for an agent (Claude, Codex, Cursor) is the same, with the agent's command typed into the shell. |
 
 The pure model lives in `urushi-core`. The daemon persists it and applies changes.
 

@@ -197,6 +197,47 @@ fn sample_board() -> v1::Board {
 
 const TAB: &str = "00000000-0000-0000-0000-0000000000a1";
 const PANE: &str = "00000000-0000-0000-0000-0000000000b1";
+const TAB3: &str = "00000000-0000-0000-0000-0000000000a3";
+const PANE3: &str = "00000000-0000-0000-0000-0000000000b3";
+const TAB4: &str = "00000000-0000-0000-0000-0000000000a4";
+const PANE4: &str = "00000000-0000-0000-0000-0000000000b4";
+
+/// The tabs: Claude in "Invoice API", plus an agent that finished ("Pricing page") and
+/// one waiting for permission ("Checkout copy").
+fn sample_tabs() -> Vec<v1::Tab> {
+    vec![
+        v1::Tab {
+            id: TAB.into(),
+            thread_id: "t2".into(),
+            title: "Claude".into(),
+            layout: Some(v1::LayoutNode {
+                kind: Some(v1::layout_node::Kind::PaneId(PANE.into())),
+            }),
+            focused_pane_id: PANE.into(),
+            attention: Vec::new(),
+        },
+        agent_tab(TAB3, PANE3, "t3", v1::AttentionKind::Done),
+        agent_tab(TAB4, PANE4, "t4", v1::AttentionKind::Waiting),
+    ]
+}
+
+/// A one-pane tab running Claude, whose pane has `kind` of attention.
+fn agent_tab(tab: &str, pane: &str, thread: &str, kind: v1::AttentionKind) -> v1::Tab {
+    v1::Tab {
+        id: tab.into(),
+        thread_id: thread.into(),
+        title: "Claude".into(),
+        layout: Some(v1::LayoutNode {
+            kind: Some(v1::layout_node::Kind::PaneId(pane.into())),
+        }),
+        focused_pane_id: pane.into(),
+        attention: vec![v1::PaneAttention {
+            pane_id: pane.into(),
+            kind: kind.into(),
+            since_ms: 1,
+        }],
+    }
+}
 
 fn sample_thread(
     id: &str,
@@ -268,20 +309,18 @@ fn scenario_frame(
                     tab_ids: vec![TAB.into()],
                     ..sample_thread("t2", "p", "Invoice API", "f1", "In review", false)
                 },
-                sample_thread("t3", "w", "Pricing page", "f1", "In review", false),
-                sample_thread("t4", "w", "Checkout copy", "f1", "Blocked", false),
+                v1::Thread {
+                    tab_ids: vec![TAB3.into()],
+                    ..sample_thread("t3", "w", "Pricing page", "f1", "In review", false)
+                },
+                v1::Thread {
+                    tab_ids: vec![TAB4.into()],
+                    ..sample_thread("t4", "w", "Checkout copy", "f1", "Blocked", false)
+                },
                 sample_thread("t5", "p", "Welcome emails", "f2", "", false),
                 sample_thread("t6", "w", "Fix typo", "", "", false),
             ],
-            tabs: vec![v1::Tab {
-                id: TAB.into(),
-                thread_id: "t2".into(),
-                title: "Claude".into(),
-                layout: Some(v1::LayoutNode {
-                    kind: Some(v1::layout_node::Kind::PaneId(PANE.into())),
-                }),
-                focused_pane_id: PANE.into(),
-            }],
+            tabs: sample_tabs(),
             boards: vec![sample_board(), {
                 let mut b = sample_board();
                 b.id = "b2".into();
