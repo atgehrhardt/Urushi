@@ -46,6 +46,9 @@ pub const SCENARIOS: &[&str] = &[
     "new-thread-base",
     "new-thread-project",
     "settings",
+    "settings-appearance",
+    "settings-custom",
+    "logo-hidden",
     "menu",
     "menu-status",
     "drag",
@@ -308,6 +311,7 @@ fn scenario_frame(
     let cell: CellMetrics = text.cell_metrics(theme.terminal_font_size);
     let mut state = AppState::new(ConnectTarget::Local(None), cell);
     state.compact = width < 700.0;
+    state.window_height = height;
     let repo = |id: &str, name: &str| v1::Project {
         id: id.into(),
         name: name.into(),
@@ -364,6 +368,7 @@ fn scenario_frame(
             open_new_thread(&mut state, name);
         }
         "settings" => drop(state.update(Msg::OpenSettings)),
+        "settings-appearance" | "settings-custom" | "logo-hidden" => show_look(&mut state, name),
         "setup" | "setup-mode" => state.dialog = Some(setup_wizard(name)),
         "menu" | "menu-status" => {
             state.update(Msg::Pointer(Point::new(150.0, 230.0)));
@@ -384,6 +389,11 @@ fn scenario_frame(
         }
         _ => drop(state.update(Msg::SidebarTab(SidebarTab::Repos))),
     }
+    // The look follows the settings (or Settings' preview), as the runner does.
+    let look = state.appearance();
+    let themed =
+        (look != urushi_core::Appearance::default()).then(|| crate::appearance::theme_for(look));
+    let theme = themed.as_ref().unwrap_or(theme);
     let root = crate::view::view(&state, theme, &HashMap::new());
     let pointer = state.dragging.as_ref().map(|(_, p)| *p);
     Some(build(
@@ -392,6 +402,33 @@ fn scenario_frame(
         text,
         pointer,
     ))
+}
+
+/// The `settings-appearance` (Ocean, the logo in the accent), `settings-custom` (Dusk's
+/// colors with a typed accent) and `logo-hidden` (Forest, no logo, saved) scenarios.
+fn show_look(state: &mut AppState, name: &str) {
+    if name == "logo-hidden" {
+        let mut settings = state.settings.clone().unwrap_or_default();
+        settings.appearance = Some(urushi_proto::convert::appearance_to_proto(
+            urushi_core::Appearance {
+                scheme: urushi_core::Scheme::Forest,
+                logo: urushi_core::LogoStyle::Hidden,
+            },
+        ));
+        state.settings = Some(settings);
+        return;
+    }
+    state.update(Msg::OpenSettings);
+    if name == "settings-appearance" {
+        state.update(Msg::LookScheme(Some(urushi_core::Scheme::Ocean)));
+        state.update(Msg::LookLogo(urushi_core::LogoStyle::Accent));
+    } else {
+        state.update(Msg::LookScheme(Some(urushi_core::Scheme::Dusk)));
+        state.update(Msg::LookScheme(None));
+        state.update(Msg::FocusField(crate::state::Field::LookColor(4)));
+        state.update(Msg::EditField(crate::state::FieldCommand::SelectAll));
+        state.update(Msg::Paste("#e0b84c".into()));
+    }
 }
 
 /// The `drag` (a thread) and `drag-project` (a project, over the one above) scenarios.

@@ -172,6 +172,9 @@ pub(crate) fn print_settings(s: &v1::Settings) -> Result<()> {
         v1::AgentMode::Normal | v1::AgentMode::Unspecified => "normal",
     };
     writeln!(o, "task-mode               {task_mode}")?;
+    let (colors, logo) = crate::look::describe(s);
+    writeln!(o, "colors                  {colors}")?;
+    writeln!(o, "logo                    {logo}")?;
     Ok(())
 }
 

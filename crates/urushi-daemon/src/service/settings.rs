@@ -83,6 +83,9 @@ fn apply_patch(settings: &mut Settings, patch: &v1::SettingsPatch) -> ServiceRes
     if let Some(mode) = patch.task_mode {
         settings.agents.task_mode = convert::agent_mode_from_proto(mode);
     }
+    if let Some(appearance) = &patch.appearance {
+        settings.appearance = convert::appearance_from_proto(Some(appearance));
+    }
     Ok(())
 }
 
@@ -131,6 +134,23 @@ mod tests {
         assert_eq!(s.tailnet.port, 9000);
         assert_eq!(s.tailnet.allowed_logins, vec!["me@example.com"]);
         assert_eq!(s.branch_prefix.as_str(), "urushi/", "untouched");
+    }
+
+    #[test]
+    fn the_appearance_is_replaced_when_set() {
+        let mut s = Settings::default();
+        let look = urushi_core::Appearance {
+            scheme: urushi_core::Scheme::Ocean,
+            logo: urushi_core::LogoStyle::Hidden,
+        };
+        let patch = v1::SettingsPatch {
+            appearance: Some(convert::appearance_to_proto(look)),
+            ..Default::default()
+        };
+        apply_patch(&mut s, &patch).unwrap();
+        assert_eq!(s.appearance, look);
+        apply_patch(&mut s, &v1::SettingsPatch::default()).unwrap();
+        assert_eq!(s.appearance, look, "unset: kept");
     }
 
     #[test]

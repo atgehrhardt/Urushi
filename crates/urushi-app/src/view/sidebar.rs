@@ -2,10 +2,8 @@
 //! threads) and a Repos tab, the Tasks button that slides out the task board, plus
 //! connection and tailnet status.
 
-use std::sync::{Arc, LazyLock};
-
 use urushi_ui::widgets::icon_button;
-use urushi_ui::{Align, Color, Font, ImageData, Insets, Length, Node, Role, Theme, key};
+use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key};
 
 use super::sidebar_scroll_key;
 use crate::msg::Msg;
@@ -35,13 +33,6 @@ pub(super) fn view(state: &AppState, theme: &Theme, scroll: f32, width: Length) 
         .child(footer(state, theme))
 }
 
-/// The logo beside the app's name: the mark from the app icon, as raw 128×128 RGBA
-/// rendered by `scripts/render-icons.swift`.
-static LOGO: LazyLock<Option<Arc<ImageData>>> = LazyLock::new(|| {
-    let rgba = include_bytes!("../../../../assets/icon/mark-128.rgba");
-    ImageData::new(1, 128, 128, rgba.to_vec()).map(Arc::new)
-});
-
 /// Logo size in the header, in logical pixels.
 const LOGO_SIZE: f32 = 24.0;
 
@@ -62,7 +53,7 @@ fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
         })
         .gap(8.0)
         .children(
-            LOGO.clone().map(|logo| {
+            crate::appearance::logo(state.appearance().logo, theme).map(|logo| {
                 Node::image(logo, LOGO_SIZE, LOGO_SIZE).role(Role::Label, "Urushi logo")
             }),
         )

@@ -11,6 +11,7 @@
 //! This crate is platform-neutral. `apps/desktop`, `apps/ios` and `apps/android` are thin
 //! entry points that call [`run`] or [`run_with`].
 
+pub mod appearance;
 pub mod attention;
 mod backend;
 pub mod board;
@@ -95,6 +96,7 @@ pub fn run_with(event_loop: EventLoop<UserEvent>, config: AppConfig) -> Result<(
         state,
         ui_state: (ui_state_path, ui_state),
         theme,
+        look: urushi_core::Appearance::default(),
         text,
         backend,
         proxy,

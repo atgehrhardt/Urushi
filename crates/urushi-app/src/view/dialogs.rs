@@ -41,14 +41,11 @@ pub(super) fn view(
             plan,
             deleting,
         } => delete_dialog(theme, title, plan, *deleting),
-        Dialog::Settings { prefix, shell } => settings_dialog(
-            state,
-            theme,
-            (
-                field(state, theme, prefix, Field::BranchPrefix, "urushi/"),
-                field(state, theme, shell, Field::DefaultShell, "Login shell"),
-            ),
-        ),
+        Dialog::Settings {
+            prefix,
+            shell,
+            look,
+        } => settings_dialog(state, (theme, scroll), (prefix, shell), look),
         Dialog::Connect { host } => connect(state, theme, host),
         Dialog::RestartDaemon {
             terminals,
@@ -372,11 +369,19 @@ fn delete_dialog(theme: &Theme, title: &str, plan: &v1::DeletionPlan, deleting: 
     )
 }
 
+/// Key of the Settings dialog's scrolling body.
+pub(crate) fn settings_scroll_key() -> urushi_ui::Key {
+    key(&["settings-body"])
+}
+
 fn settings_dialog(
     state: &AppState,
-    theme: &Theme,
-    (prefix, shell): (Node<Msg>, Node<Msg>),
+    (theme, scroll): (&Theme, &std::collections::HashMap<urushi_ui::Key, f32>),
+    (prefix, shell): (&TextField, &TextField),
+    look: &crate::appearance::LookDraft,
 ) -> Node<Msg> {
+    let prefix = field(state, theme, prefix, Field::BranchPrefix, "urushi/");
+    let shell = field(state, theme, shell, Field::DefaultShell, "Login shell");
     let s = state.settings.clone().unwrap_or_default();
     let tailnet = state.tailnet.clone().unwrap_or_default();
     let status = if tailnet.serving {
@@ -399,6 +404,9 @@ fn settings_dialog(
     };
     let mut body = Node::column().width(Length::Fill(1.0)).gap(10.0);
     body = body.children(super::daemon::settings_section(state, theme));
+    if state.daemon_minor >= crate::issue::ISSUES_SINCE_MINOR {
+        body = body.children(super::appearance::section(state, theme, look));
+    }
     let body = body
         .child(toggle(
             theme,
@@ -449,6 +457,16 @@ fn settings_dialog(
         .child(prefix)
         .child(label(theme, "Default shell"))
         .child(shell);
+    // Taller than a small window: the body scrolls.
+    let body = if state.window_height > 0.0 {
+        let offset = scroll.get(&settings_scroll_key()).copied().unwrap_or(0.0);
+        body.height(Length::Fixed(
+            (state.window_height - 180.0).clamp(300.0, 760.0),
+        ))
+        .scroll(settings_scroll_key(), offset)
+    } else {
+        body
+    };
     modal(
         theme,
         "Settings",

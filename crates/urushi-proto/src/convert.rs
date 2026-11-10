@@ -352,6 +352,7 @@ pub fn settings_to_proto(s: &Settings) -> v1::Settings {
                 .into(),
             task_mode: agent_mode_to_proto(s.agents.task_mode).into(),
         }),
+        appearance: Some(appearance_to_proto(s.appearance)),
     }
 }
 
@@ -371,6 +372,7 @@ pub fn settings_from_proto(s: &v1::Settings) -> Result<Settings, ConvertError> {
             allow_tagged_nodes: tailnet.allow_tagged_nodes,
         },
         agents: agent_settings_from_proto(s.agents.unwrap_or_default()),
+        appearance: appearance_from_proto(s.appearance.as_ref()),
     })
 }
 
@@ -459,6 +461,9 @@ pub fn repo_settings_from_proto(
 fn non_empty(s: &str) -> Option<String> {
     (!s.is_empty()).then(|| s.to_owned())
 }
+
+mod appearance;
+pub use appearance::{appearance_from_proto, appearance_to_proto};
 
 mod boards;
 pub use boards::{

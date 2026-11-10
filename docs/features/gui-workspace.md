@@ -11,6 +11,13 @@ and the main area float over them as translucent, rounded glass panels. Overlays
 (dialogs, menus, selectors, the task board, drag ghosts) blur whatever they cover
 ([ADR 0019](../adr/0019-in-app-frosted-glass.md)), and a dialog's scrim frosts the whole
 window. On phones the panels fill the screen edge to edge.
+- **Appearance** (Settings, 1.13 daemons): six color schemes (Urushi, Ocean, Forest,
+  Dusk, Ember, Mono), each shown as a small preview of its backdrop, or **Custom** with a
+  `#rrggbb` field for the background, the three glows and the accent. The **Logo** is
+  drawn in its own colors, in the accent, in the text color, or hidden. Changes show at
+  once; **Save** keeps them, **Close** puts the old look back. The look is a daemon
+  setting, so every client of that daemon looks the same; the CLI sets it with `urushi
+  settings set colors ocean|#bg,#g1,#g2,#g3,#accent` and `logo original|accent|mono|hidden`.
 - **Hiding and resizing the sidebar** (desktop and tablet widths):
   - The sidebar button (a window outline) in the sidebar's header slides it away; the
     same button then brings it back from wherever it can be seen: the left of the tab
@@ -24,7 +31,7 @@ window. On phones the panels fill the screen edge to edge.
 - **Sidebar:** a Projects tab (projects → pinned threads → status sections → threads, then threads in no project) and a Repos tab. See [organizing threads](thread-organization.md) for the context menu, statuses and drag and drop. A thread whose agent finished shows a green dot and "finished"; one waiting for you shows an amber dot and "needs input", and Urushi posts a system notification while it's in the background ([agent attention](agent-attention.md)). Under the tabs, **Tasks** slides out the [task boards](task-boards.md).
 - **Tab bar:** the tabs of the selected thread. **+** opens the [agent launcher](agent-launcher.md) picker.
 - **Terminal area:** split, recoverable terminal panes. A right or two-finger click on a pane opens its menu: **Split right**, **Split down**, **Copy**, **Paste**, **Close pane** (see [split-pane layouts](split-pane-layouts.md)). Touch screens have no secondary click, so on mobile the tab bar keeps **→ ↓ ×** buttons for the focused pane. A thread with no tabs (new, or its last tab closed) keeps its tab bar and shows the launcher inline.
-- **Header:** the logo (the app icon's mark) and the name, a DEV badge in debug builds, and the connection.
+- **Header:** the logo (the app icon's mark, in the chosen style) and the name, a DEV badge in debug builds, and the connection.
 - **Status bar:** under the terminals: the thread's branch, and the [plan usage](agent-usage.md) of the agent running in the focused pane.
 - **Dialogs:**
   - *Add repo:* **Choose a folder…** opens the system picker and adds the repository straight away. Against a remote daemon (or on mobile) there is no picker, so a path is typed. "Remote over SSH" and "Connect from your phone" are shown as coming soon.
@@ -36,6 +43,15 @@ window. On phones the panels fill the screen edge to edge.
 ## How it works
 - The app connects to the local daemon (starting it if needed) or a remote one. The connection runs on a background tokio runtime (`backend.rs`), which reconnects every 2 s if the connection drops.
 - **Workspace mirror:** the workspace is mirrored from `WorkspaceChanged` events.
+- **Look** (`appearance.rs`): `Settings.appearance` (core `Appearance{scheme, logo}`,
+  presets in `Scheme::colors`) becomes the theme with `theme_for` (`Theme::dark()` with
+  `with_scheme`: the fill, the glows' colors at their places and softness, the accent,
+  and the glass tinted towards the fill). `AppState::appearance` is Settings' draft
+  (`LookDraft`, `Msg::{LookScheme, LookLogo}`, `Field::LookColor`) while it is open, else
+  the daemon's; the runner rebuilds its theme when it changes. `appearance::logo` tints
+  the mark (colored parts in the tint, light strokes kept light, alpha kept) and caches
+  it under an id per look so the renderer's image cache doesn't show an old one. Save
+  sends `SettingsPatch.appearance` only when the look changed.
 - **Reopening:** the app shows the thread and tabs it showed when it was closed, for the local daemon (`ui_state.rs`, see [recoverable sessions](recoverable-sessions.md)).
 - **Attach on view:** panes of the visible tab are attached, sized from their rectangles, and kept up to date with acknowledged `ScreenUpdate`s. Hidden tabs are detached.
 - **Keyboard:**
@@ -80,7 +96,8 @@ window. On phones the panels fill the screen edge to edge.
 - `crates/urushi-app/src/update/tests/daemon.rs`: the restart confirmation and reconnecting.
 - `crates/urushi-app/src/sidebar.rs` and `update/tests/sidebar.rs`: hiding, the shortcut, resizing within limits, snapping shut, phones ignoring both; `view/mod.rs` tests: the edge, its cursor, and a reachable show button while hidden (with a thread, the launcher, the task panel out, and an empty workspace).
 - `crates/urushi-app/src/update/tests/flows.rs`: launcher, branch name following the title, adding repos, dropped files, agent settings. `update/tests/organize.rs`: menus, prompts, drag and drop, selectors. `update/tests/panes.rs`: the pane menu and focus after a pane closes.
-- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `new-thread-project`, `settings`, `menu`, `menu-status`, `drag`, `drag-project`, `repos`, `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `sidebar-collapsed`, `setup`, `setup-mode`) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
+- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `new-thread-project`, `settings`, `settings-appearance`, `settings-custom`, `logo-hidden`, `menu`, `menu-status`, `drag`, `drag-project`, `repos`, `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `sidebar-collapsed`, `setup`, `setup-mode`) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
+- `crates/urushi-app/src/appearance.rs`: themes from schemes, logo styles, drafts; `snapshot/tests.rs`: the look shown at once, reverted on Close, sent only when changed. Core `appearance.rs`, proto `convert/appearance.rs`, daemon `service/settings.rs`, CLI `look.rs`.
 - `crates/urushi-app/src/terminal.rs`: pane geometry, dividers, selection text, painting.
 - `crates/urushi-ui/tests/layout.rs` and `crates/urushi-render/tests/pixels.rs`: toolkit and GPU.
 

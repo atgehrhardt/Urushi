@@ -32,7 +32,7 @@ AppState ──view()──► Node<Msg> tree ──layout::build()──► Fra
 - `Scene::dump()` is a stable text form. Assert on it in tests instead of on pixels.
 
 ## Theme (`theme.rs`)
-- One dark theme: frosted glass. Tokens cover the backdrop (`background`, `glows`), glass (`glass`/`glass_low` for panels, `glass_strong` for overlays, `glass_border`, `well` for inputs, `shadow`, `blur`, `radius_large`), interaction states (translucent `hover`, `selected`, `border`), text, status colours, labels and the terminal palette (its background is translucent; the terminal painter draws it once under all panes).
+- One dark theme: frosted glass. `Theme::with_scheme(background, glows, accent)` recolors its backdrop and accent (the app's color schemes); the glass is tinted towards the background. Tokens cover the backdrop (`background`, `glows`), glass (`glass`/`glass_low` for panels, `glass_strong` for overlays, `glass_border`, `well` for inputs, `shadow`, `blur`, `radius_large`), interaction states (translucent `hover`, `selected`, `border`), text, status colours, labels and the terminal palette (its background is translucent; the terminal painter draws it once under all panes).
 
 ## Text (`text.rs`)
 - `TextSystem` wraps cosmic-text with the bundled fonts: Inter for UI, JetBrains Mono for terminals (OFL-1.1, `assets/fonts/`). System fonts are added as fallbacks. `TextSystem::wrap` breaks text into lines for a width (at `\n`, then between words, then inside a word too long for a line) from its own cached measurements, so fields and `wrapped_text` agree on where lines break.

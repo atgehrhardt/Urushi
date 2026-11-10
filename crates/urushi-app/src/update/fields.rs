@@ -29,6 +29,9 @@ macro_rules! focused_field {
             (Some(Dialog::Prompt { field, .. }), Field::Prompt) => Some(field),
             (Some(Dialog::Settings { prefix, .. }), Field::BranchPrefix) => Some(prefix),
             (Some(Dialog::Settings { shell, .. }), Field::DefaultShell) => Some(shell),
+            (Some(Dialog::Settings { look, .. }), Field::LookColor(i)) => {
+                ($($r)+ look.hex).into_iter().nth(usize::from(i))
+            }
             (Some(Dialog::Connect { host }), Field::Host) => Some(host),
             (Some(Dialog::Task { notes, .. }), Field::TaskNotes) => Some(notes),
             (Some(Dialog::Task { subtasks, .. }), Field::NewSubtask) => Some($($r)+ subtasks.new),
@@ -87,7 +90,13 @@ impl AppState {
                 ..
             }) => Vec::new(),
             Some(Dialog::NewThread { .. }) => vec![Field::ThreadTitle, Field::ThreadBranch],
-            Some(Dialog::Settings { .. }) => vec![Field::BranchPrefix, Field::DefaultShell],
+            Some(Dialog::Settings { look, .. }) => {
+                let mut fields = vec![Field::BranchPrefix, Field::DefaultShell];
+                if look.custom {
+                    fields.extend((0..5).map(Field::LookColor));
+                }
+                fields
+            }
             Some(Dialog::Connect { .. }) => vec![Field::Host],
             Some(Dialog::Prompt { .. }) => vec![Field::Prompt],
             Some(Dialog::NestTask { .. }) => vec![Field::NestQuery],

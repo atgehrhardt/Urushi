@@ -190,6 +190,10 @@ pub enum Msg {
     Issue(IssueMsg),
     /// The window's height changed (logical pixels).
     WindowHeight(f32),
+    /// Settings: choose a color scheme (`None`: custom colors).
+    LookScheme(Option<urushi_core::Scheme>),
+    /// Settings: choose how the logo is drawn.
+    LookLogo(urushi_core::LogoStyle),
     /// Ask to delete a board.
     OpenDeleteBoard(String),
     /// Confirmed: delete the board.

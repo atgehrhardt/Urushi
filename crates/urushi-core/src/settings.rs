@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AgentSettings, BranchPrefix};
+use crate::{AgentSettings, Appearance, BranchPrefix};
 
 /// Global settings.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +26,8 @@ pub struct Settings {
     pub tailnet: TailnetSettings,
     /// How agent CLIs (Claude, Codex, Cursor) are started.
     pub agents: AgentSettings,
+    /// How the app looks: its colors and logo.
+    pub appearance: Appearance,
 }
 
 impl Default for Settings {
@@ -37,6 +39,7 @@ impl Default for Settings {
             worktree_root: None,
             tailnet: TailnetSettings::default(),
             agents: AgentSettings::default(),
+            appearance: Appearance::default(),
         }
     }
 }

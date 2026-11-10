@@ -105,7 +105,11 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
         }
         Command::Settings(SettingsCmd::Get) => print_settings(&client.settings().await?),
         Command::Settings(SettingsCmd::Set { key, value }) => {
-            let settings = client.update_settings(patch(&key, &value)?).await?;
+            let settings = if crate::look::is_look(&key) {
+                crate::look::set(client, &key, &value).await?
+            } else {
+                client.update_settings(patch(&key, &value)?).await?
+            };
             print_settings(&settings)
         }
         Command::Tailnet(TailnetCmd::Status) => print_tailnet(&client.tailnet_status().await?),

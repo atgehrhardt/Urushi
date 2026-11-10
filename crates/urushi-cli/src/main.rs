@@ -8,6 +8,7 @@ mod boards;
 mod commands;
 mod daemon;
 mod jira;
+mod look;
 mod render;
 
 use std::path::PathBuf;
@@ -301,7 +302,9 @@ enum SettingsCmd {
     /// Change one setting: delete-remote-branches, branch-prefix, default-shell,
     /// worktree-root, tailnet-port, allowed-logins (comma-separated), allow-tagged-nodes,
     /// claude-skip-permissions, codex-skip-permissions, cursor-skip-permissions,
-    /// task-agent (claude, codex, cursor or none), task-mode (normal or plan).
+    /// task-agent (claude, codex, cursor or none), task-mode (normal or plan), colors (a
+    /// preset: urushi, ocean, forest, dusk, ember, mono; or five #rrggbb colors:
+    /// background, three glows, accent), logo (original, accent, mono or hidden).
     Set {
         /// Setting name.
         key: String,

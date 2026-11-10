@@ -70,6 +70,16 @@ impl AppState {
             Msg::SelectThread(id) => self.select_thread(id, &mut fx),
             Msg::SetCompact(compact) => self.compact = compact,
             Msg::WindowHeight(height) => self.window_height = height,
+            Msg::LookScheme(scheme) => {
+                if let Some(Dialog::Settings { look, .. }) = &mut self.dialog {
+                    look.choose(scheme);
+                }
+            }
+            Msg::LookLogo(style) => {
+                if let Some(Dialog::Settings { look, .. }) = &mut self.dialog {
+                    look.logo = style;
+                }
+            }
             Msg::Issue(msg) => self.issue_msg(msg, &mut fx),
             Msg::ShowSidebar => self.sidebar_open = true,
             Msg::SelectTab(id) => self.select_tab(id, &mut fx),
@@ -252,6 +262,9 @@ impl AppState {
         let s = self.settings.clone().unwrap_or_default();
         self.open(
             Dialog::Settings {
+                look: Box::new(crate::appearance::LookDraft::of(crate::appearance::saved(
+                    Some(&s),
+                ))),
                 prefix: TextField::new(s.branch_prefix),
                 shell: TextField::new(s.default_shell),
             },
@@ -623,10 +636,18 @@ impl AppState {
                 let choice = choices[(*highlighted).min(choices.len() - 1)];
                 self.launch(choice, fx);
             }
-            Some(Dialog::Settings { prefix, shell }) => {
+            Some(Dialog::Settings {
+                prefix,
+                shell,
+                look,
+            }) => {
+                // Only a changed look is sent: older daemons don't keep one.
+                let look = look.appearance();
+                let changed = look != crate::appearance::saved(self.settings.as_ref());
                 let patch = v1::SettingsPatch {
                     branch_prefix: Some(prefix.text().to_owned()),
                     default_shell: Some(shell.text().trim().to_owned()),
+                    appearance: changed.then(|| urushi_proto::convert::appearance_to_proto(look)),
                     ..Default::default()
                 };
                 fx.push(request(

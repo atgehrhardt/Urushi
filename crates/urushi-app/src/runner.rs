@@ -53,6 +53,8 @@ pub(crate) struct Press {
 pub(crate) struct Runner {
     pub(crate) state: AppState,
     pub(crate) theme: Theme,
+    /// The appearance `theme` was built for.
+    pub(crate) look: urushi_core::Appearance,
     pub(crate) text: TextSystem,
     pub(crate) backend: Backend,
     pub(crate) proxy: EventLoopProxy<UserEvent>,
@@ -287,6 +289,12 @@ impl Runner {
             ?bounds,
             "redraw"
         );
+        // The look is the daemon's setting (or Settings' preview): follow it.
+        let look = self.state.appearance();
+        if look != self.look {
+            self.theme = crate::appearance::theme_for(look);
+            self.look = look;
+        }
         let root = view::view(&self.state, &self.theme, &self.scroll);
         let frame = build(&root, bounds, &mut self.text, self.pointer);
         for region in &frame.scroll_regions {

@@ -205,6 +205,25 @@ impl Theme {
     }
 }
 
+impl Theme {
+    /// This theme with another backdrop and accent: the window's fill, the three glows
+    /// (in their places, as soft as before) and the accent. The glass is tinted towards
+    /// the background so panels sit in the same light.
+    #[must_use]
+    pub fn with_scheme(mut self, background: Color, glows: [Color; 3], accent: Color) -> Self {
+        for (glow, color) in self.glows.iter_mut().zip(glows) {
+            glow.color = color.with_alpha(glow.color.a);
+        }
+        let tint = |base: Color, by: f32| base.mix(background, by).with_alpha(base.a);
+        self.glass = tint(self.glass, 0.25);
+        self.glass_low = tint(self.glass_low, 0.25);
+        self.glass_strong = tint(self.glass_strong, 0.25);
+        self.background = background;
+        self.accent = accent;
+        self
+    }
+}
+
 impl Default for Theme {
     fn default() -> Self {
         Self::dark()

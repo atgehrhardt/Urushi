@@ -1,5 +1,6 @@
 //! `view(state) → Node<Msg>`: the whole UI as a function of state.
 
+mod appearance;
 mod attention;
 mod board;
 mod daemon;

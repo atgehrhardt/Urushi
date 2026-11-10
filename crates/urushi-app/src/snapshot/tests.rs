@@ -439,3 +439,78 @@ fn an_issue_in_full_edits_every_field_and_shows_the_conversation() {
         assert!(picker.contains(text), "{text} missing: {picker}");
     }
 }
+
+#[test]
+fn the_look_is_chosen_in_settings_and_shown_at_once() {
+    let look = dump("settings-appearance", 1280.0);
+    for text in [
+        "\"Appearance\"",
+        "\"Ocean\"",
+        "\"Custom\"",
+        "\"Logo\"",
+        "\"Hidden\"",
+    ] {
+        assert!(look.contains(text), "{text} missing: {look}");
+    }
+    // The preview's accent (Ocean's blue) is on the Save button already.
+    assert!(look.contains("#2f86e0"), "{look}");
+    let custom = dump("settings-custom", 1280.0);
+    for text in ["\"Glow 2\"", "\"#e0b84c\""] {
+        assert!(custom.contains(text), "{text} missing: {custom}");
+    }
+    assert!(
+        custom.contains("#e0b84c"),
+        "the typed accent shows: {custom}"
+    );
+    // A hidden logo is gone from the sidebar; the default one is there.
+    let logo = |name: &str| dump(name, 1280.0).contains("image 20,20 24x24");
+    assert!(logo("launcher"));
+    assert!(!logo("logo-hidden"));
+}
+
+#[test]
+fn saving_the_look_sends_it_only_when_changed() {
+    use crate::msg::Msg;
+    use urushi_client::v1::request::Body;
+    let mut s = crate::state::AppState::new(
+        crate::config::ConnectTarget::Local(None),
+        urushi_ui::TextSystem::bundled_only().cell_metrics(13.0),
+    );
+    s.daemon_minor = urushi_proto::PROTOCOL_MINOR;
+    s.update(Msg::OpenSettings);
+    let patch = |fx: Vec<crate::msg::Effect>| {
+        fx.into_iter()
+            .find_map(|e| match e {
+                crate::msg::Effect::Request {
+                    body: Body::UpdateSettings(r),
+                    ..
+                } => r.patch,
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert!(
+        patch(s.update(Msg::Submit)).appearance.is_none(),
+        "unchanged"
+    );
+    s.update(Msg::OpenSettings);
+    s.update(Msg::LookScheme(Some(urushi_core::Scheme::Ember)));
+    assert_eq!(
+        s.appearance().scheme,
+        urushi_core::Scheme::Ember,
+        "a live preview"
+    );
+    s.update(Msg::CloseDialog);
+    assert_eq!(
+        s.appearance(),
+        urushi_core::Appearance::default(),
+        "Close reverts it"
+    );
+    s.update(Msg::OpenSettings);
+    s.update(Msg::LookScheme(Some(urushi_core::Scheme::Ember)));
+    let sent = patch(s.update(Msg::Submit)).appearance.unwrap();
+    assert_eq!(
+        sent.scheme,
+        i32::from(urushi_client::v1::ColorScheme::Ember)
+    );
+}

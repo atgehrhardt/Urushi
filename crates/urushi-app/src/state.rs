@@ -130,6 +130,8 @@ pub enum Field {
     JiraCommentEdit,
     /// Task editor (Jira): time to log.
     JiraWork,
+    /// Settings: a custom color (`appearance::COLOR_NAMES`), as `#rrggbb`.
+    LookColor(u8),
 }
 
 /// An editing command on the focused text field, from a shortcut or its context menu.
@@ -236,6 +238,8 @@ pub enum Dialog {
         prefix: TextField,
         /// Default shell field.
         shell: TextField,
+        /// The Appearance section's draft, shown live until Save or Cancel.
+        look: Box<crate::appearance::LookDraft>,
     },
     /// Confirm restarting the local daemon, which closes every terminal.
     RestartDaemon {

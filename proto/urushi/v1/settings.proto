@@ -16,6 +16,49 @@ message Settings {
   string worktree_root = 4;
   TailnetSettings tailnet = 5;
   AgentSettings agents = 6;
+  // How the app looks; unset from an older daemon (the original look). Since 1.13.
+  Appearance appearance = 7;
+}
+
+// How the app looks: the backdrop's colors and the accent, and the logo. Since 1.13.
+message Appearance {
+  ColorScheme scheme = 1;
+  // The colors of COLOR_SCHEME_CUSTOM.
+  SchemeColors custom = 2;
+  LogoStyle logo = 3;
+}
+
+// Preset color schemes. Clients show values they don't know as the original.
+enum ColorScheme {
+  // The original (Urushi).
+  COLOR_SCHEME_UNSPECIFIED = 0;
+  COLOR_SCHEME_URUSHI = 1;
+  COLOR_SCHEME_OCEAN = 2;
+  COLOR_SCHEME_FOREST = 3;
+  COLOR_SCHEME_DUSK = 4;
+  COLOR_SCHEME_EMBER = 5;
+  COLOR_SCHEME_MONO = 6;
+  // Appearance.custom.
+  COLOR_SCHEME_CUSTOM = 7;
+}
+
+// Colors as 0xRRGGBB.
+message SchemeColors {
+  uint32 background = 1;
+  // Three glows: top left, bottom right, middle.
+  repeated uint32 glows = 2;
+  uint32 accent = 3;
+}
+
+// How the logo is drawn. Clients draw values they don't know as the original.
+enum LogoStyle {
+  LOGO_STYLE_UNSPECIFIED = 0;
+  LOGO_STYLE_ORIGINAL = 1;
+  // In the scheme's accent.
+  LOGO_STYLE_ACCENT = 2;
+  // In the text color.
+  LOGO_STYLE_MONO = 3;
+  LOGO_STYLE_HIDDEN = 4;
 }
 
 // How agent CLIs are started. Every flag defaults to off: agents ask before acting.
@@ -59,6 +102,8 @@ message SettingsPatch {
   // AGENT_UNSPECIFIED clears the choice. Since 1.7.
   optional Agent task_agent = 13;
   optional AgentMode task_mode = 14;
+  // Replaces the appearance when set. Since 1.13.
+  Appearance appearance = 15;
 }
 
 message UpdateSettingsRequest {
