@@ -244,6 +244,14 @@ message DeleteBoardRequest {
   string board_id = 1;
 }
 
+// Moves a board (manual or Jira) to `index` among the others (counted without it;
+// clamped to the end). `Workspace.boards` is in this order, which is the order of the
+// board tabs. NOT_FOUND for an unknown board. Nothing is sent to Jira. Since 1.17.
+message MoveBoardRequest {
+  string board_id = 1;
+  uint32 index = 2;
+}
+
 // Adds a task at the bottom of a column. Answered with the Task. On a Jira board (1.12)
 // this creates an issue of `kind` (a task when unspecified) in the board's project,
 // moved to the column; subtasks, color and tags apply as usual.

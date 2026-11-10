@@ -1,6 +1,7 @@
 //! Overlays drawn above everything: the context menu (opened by a secondary click on a
-//! thread, a project, a text field, a task card, a board column or a terminal pane, or as
-//! the board's filters) and the label that follows the pointer while dragging a thread.
+//! thread, a project, a text field, a task card, a board column, a board tab or a terminal
+//! pane, or as the board's filters) and the label that follows the pointer while dragging
+//! a thread, a project or a board tab.
 
 use urushi_client::v1;
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Point, Role, Theme, key};
@@ -9,6 +10,7 @@ use crate::msg::Msg;
 use crate::organize::{ContextMenu, Dragged, MenuPage, MenuTarget, Prompt};
 use crate::state::{AppState, FieldCommand};
 
+mod boards;
 mod filter;
 mod jira;
 mod pane;
@@ -31,6 +33,7 @@ pub(super) fn overlay(
         MenuTarget::Field(_) => field_items(state, theme),
         MenuTarget::Task(id) => tasks::task_items(state, theme, menu, id),
         MenuTarget::Column(id) => tasks::column_items(state, theme, menu, id),
+        MenuTarget::Board(id) => boards::board_items(state, theme, id),
         MenuTarget::Filter(board) => filter::filter_items(state, theme, (board, menu.page), scroll),
         MenuTarget::NewBoard => jira::new_board_items(theme),
         MenuTarget::Pane(pane) => pane::pane_items(state, theme, pane),
@@ -57,12 +60,13 @@ pub(super) fn overlay(
     vec![backdrop, card]
 }
 
-/// The dragged thread's title or project's name, next to the pointer.
+/// The dragged thread's title, or project's or board's name, next to the pointer.
 pub(super) fn drag_ghost(state: &AppState, theme: &Theme) -> Option<Node<Msg>> {
     let (dragged, at) = state.dragging.as_ref()?;
     let title = match dragged {
         Dragged::Thread(thread) => state.workspace.thread(thread)?.title.clone(),
         Dragged::Project(project) => state.workspace.project(project)?.name.clone(),
+        Dragged::Board(board) => state.workspace.board(board)?.name.clone(),
     };
     Some(
         urushi_ui::widgets::overlay(

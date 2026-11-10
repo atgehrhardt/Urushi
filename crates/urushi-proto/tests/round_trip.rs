@@ -194,6 +194,10 @@ fn all_request_kinds() {
             folder_id: "f".into(),
             index: 2,
         }),
+        B::MoveBoard(v1::MoveBoardRequest {
+            board_id: "b".into(),
+            index: 3,
+        }),
         B::ClearAttention(v1::ClearAttentionRequest {
             pane_ids: vec!["p".into(), "q".into()],
         }),

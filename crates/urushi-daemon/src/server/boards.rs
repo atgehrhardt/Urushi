@@ -1,5 +1,5 @@
 //! Wire → service for task boards (protocol 1.5; subtasks since 1.6; colors, tags,
-//! columns and nested tasks since 1.8; kinds and Jira boards since 1.12). Task changes
+//! columns and nested tasks since 1.8; kinds and Jira boards since 1.12; reordering boards since 1.17). Task changes
 //! are async: on a Jira board they are written to Jira first.
 
 use urushi_proto::convert;
@@ -20,6 +20,10 @@ pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcom
         }
         Body::DeleteBoard(r) => {
             service.delete_board(parse(&r.board_id, "board_id")?)?;
+            ok()
+        }
+        Body::MoveBoard(r) => {
+            service.move_board(parse(&r.board_id, "board_id")?, index(r.index))?;
             ok()
         }
         Body::CreateTask(r) => create_task(service, r).await?,

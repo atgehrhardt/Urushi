@@ -1,4 +1,4 @@
-//! Task boards: creating, renaming and deleting boards; adding, editing, moving,
+//! Task boards: creating, renaming, reordering and deleting boards; adding, editing, moving,
 //! nesting and deleting their tasks, which may be subtasks of any depth (ADR 0015). The rules live in
 //! `urushi_core::board`; this module finds the board, applies the change and persists
 //! it. Boards never touch git or terminals (threads link themselves to tasks when they
@@ -178,6 +178,17 @@ impl Service {
     /// Renames a board.
     pub fn rename_board(&self, id: BoardId, name: &str) -> ServiceResult<()> {
         self.mutate(|state| Ok(state.board_mut(id)?.rename(name)?))
+    }
+
+    /// Moves a board to `index` among the others (counted without it; clamped to the
+    /// end). Boards are listed, and their tabs shown, in this order. Jira boards move
+    /// like any other; nothing is sent to Jira.
+    pub fn move_board(&self, id: BoardId, index: usize) -> ServiceResult<()> {
+        self.mutate(|state| {
+            state.board_mut(id)?;
+            urushi_core::board::move_board(&mut state.boards, id, index);
+            Ok(())
+        })
     }
 
     /// Deletes a board and all its tasks.

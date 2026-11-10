@@ -25,6 +25,16 @@ impl Client {
         self.ok(body, "RenameBoard").await
     }
 
+    /// Moves a board to `index` among the others (counted without it; clamped to the
+    /// end). Needs a 1.17 daemon.
+    pub async fn move_board(&self, board_id: &str, index: u32) -> Result<(), ClientError> {
+        let body = Body::MoveBoard(v1::MoveBoardRequest {
+            board_id: board_id.into(),
+            index,
+        });
+        self.ok(body, "MoveBoard").await
+    }
+
     /// Deletes a board and its tasks.
     pub async fn delete_board(&self, board_id: &str) -> Result<(), ClientError> {
         let body = Body::DeleteBoard(v1::DeleteBoardRequest {

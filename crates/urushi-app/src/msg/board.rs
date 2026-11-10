@@ -61,6 +61,14 @@ pub enum BoardMsg {
         /// New position.
         index: u32,
     },
+    /// Move a board to `index` among the boards (counted without it), from its tab's
+    /// menu.
+    MoveBoard {
+        /// Board id.
+        board: String,
+        /// New position.
+        index: u32,
+    },
     /// Ask before removing a column.
     OpenDeleteColumn(String),
     /// Confirmed: remove the column (its tasks move next door).

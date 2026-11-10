@@ -294,6 +294,7 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         body @ (Body::CreateBoard(_)
         | Body::RenameBoard(_)
         | Body::DeleteBoard(_)
+        | Body::MoveBoard(_)
         | Body::CreateTask(_)
         | Body::UpdateTask(_)
         | Body::MoveTask(_)

@@ -1,5 +1,5 @@
-//! Acting on cards and columns from their context menus (open, move, color, delete; a
-//! column's rename, order and removal), the tag filter, and the task editor's color and
+//! Acting on cards, columns and board tabs from their context menus (open, move, color,
+//! delete; a column's rename, order and removal; a board's order), the tag filter, and the task editor's color and
 //! tag drafts. Each change to the board is a request to the daemon; the board updates
 //! when the workspace comes back.
 
@@ -39,6 +39,7 @@ impl AppState {
                 });
                 fx.push(request(body, Followup::None));
             }
+            BoardMsg::MoveBoard { board, index } => fx.push(super::board::move_board(board, index)),
             msg @ (BoardMsg::ColorColumn { .. }
             | BoardMsg::MoveColumn { .. }
             | BoardMsg::OpenDeleteColumn(_)

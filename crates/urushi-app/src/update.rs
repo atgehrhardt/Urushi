@@ -132,6 +132,12 @@ impl AppState {
             {
                 self.project_drag_over(target.map(|m| *m));
             }
+            // A dragged board tab shows where it would land: `update/board.rs`.
+            Msg::DragOver(target)
+                if matches!(self.dragging, Some((crate::organize::Dragged::Board(_), _))) =>
+            {
+                self.board_tab_over(target.map(|m| *m));
+            }
             // The task-board panel: `update/board.rs`.
             msg @ (Msg::ToggleBoard
             | Msg::BoardReveal(_)
@@ -142,6 +148,8 @@ impl AppState {
             | Msg::PressEnded
             | Msg::DragTask(_)
             | Msg::DropTask { .. }
+            | Msg::DragBoard(_)
+            | Msg::DropBoard(_)
             | Msg::DragOver(_)
             | Msg::PickColumn(_)
             | Msg::ToggleSubtask(_)

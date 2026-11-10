@@ -1,7 +1,7 @@
 # Feature: Task boards
 
 - **Status:** Shipped (manual boards, columns, colors, tags, kinds, nested subtasks, attachments, threads started from tasks; Jira boards in [jira-boards](jira-boards.md))
-- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,prompt}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_nav.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/`, `view/tasks/`, `view/labels.rs`, `view/menu/tasks.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
+- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,order,prompt}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_nav.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/` (tabs in `tabs.rs`), `view/tasks/`, `view/labels.rs`, `view/menu/{tasks,boards}.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
 - **Related ADRs:** [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
 
 ## What it does
@@ -12,6 +12,14 @@ the terminals, as frosted glass that blurs them. Escape, ×, the button or the s
 it back.
 - Boards are tabs across the top. **+** creates a board, and **Rename** and **Delete**
   act on the board shown. Deleting asks first and says how many tasks go with the board.
+- **Reordering boards** (1.17 daemons): drag a board's tab onto another tab to take its
+  place: it lands right of a tab further right and left of one further left. While
+  dragging, the dragged tab is highlighted, an accent line at the edge of the tab under
+  the pointer shows where it would land (only where it would move), and the board's
+  name follows the pointer; Escape or releasing elsewhere cancels. Right-clicking a tab
+  offers **Move left** / **Move right** where the board can go that way. Jira boards move
+  like any other, and nothing is sent to Jira. New and imported boards go last. The order
+  is the daemon's, so every client shows the same one.
 - A new board has the columns **To do**, **In progress** and **Done**. Columns can be
   changed from their **⋯** button or a right-click on the header: **Rename…**,
   **Color ›**, **Move left/right**, **Add column…** and **Remove column…**. **+ Column**
@@ -132,10 +140,11 @@ restarts.
   go), `tag_color` hashes a tag's name (FNV-1a, stable across releases) to a palette
   color, `move_task` takes an
   index counted without the moved task, clamped to the bottom, a task has at most
-  `MAX_SUBTASKS`, and `link_thread` / `unlink_thread` record and forget threads. Ids and
+  `MAX_SUBTASKS`, and `link_thread` / `unlink_thread` record and forget threads.
+  The list of boards is kept in tab order; `move_board` (`order.rs`) reorders it. Ids and
   timestamps are passed in. Older documents' checklist items load as tasks (every new
   field has a serde default; `created_at` reads as 0).
-- **Daemon:** `Service::{create_board, rename_board, delete_board, create_task,
+- **Daemon:** `Service::{create_board, rename_board, move_board, delete_board, create_task,
   update_task, move_task, nest_task, delete_task, create_subtask}` (`service/boards.rs`;
   `UpdateSubtask` and `DeleteSubtask` are served by `update_task` and `delete_task`) and `Service::{create_column, update_column, move_column,
   delete_column}` (`service/columns.rs`) change `State.boards` through `mutate`. That persists the change
@@ -174,7 +183,10 @@ restarts.
   out onto the board), `DeleteTask` and `CreateSubtask`. Since 1.14 a subtask is
   created with its details: `NewSubtask{title, notes, color, tags, kind, jira_fields}`
   in `CreateTask.subtask_details` (after any `subtasks` titles), and the same fields on
-  `CreateSubtaskRequest` (daemon: `service::NewSubtask`, `server/boards.rs`).
+  `CreateSubtaskRequest` (daemon: `service::NewSubtask`, `server/boards.rs`). Since
+  1.17, `MoveBoard{board_id, index}`: the index counts positions without the board and
+  is clamped to the end, like `MoveColumn` and `MoveFolder`; an unknown board is
+  `NOT_FOUND`. `Workspace.boards` is in tab order.
 - **App:** `AppState.board: BoardPanel` holds what the panel is doing: open, slide
   position, the chosen board, the card pressed or dragged, and where it would land
   (`over`). The runner animates `reveal` over 180 ms (`runner.rs::animate`), and the view
@@ -247,6 +259,18 @@ restarts.
     and tag chips, wrapping chips into rows by their approximate width (the layout
     doesn't wrap). The filter (`BoardPanel.filter`, `filter.rs`) only
     changes what is drawn; drops still use task ids, so they land right.
+  - **Board order** (`view/board/tabs.rs`, `update/board.rs`): a tab's `on_drag` sends
+    `Msg::DragBoard`, which starts `AppState::dragging` as `organize::Dragged::Board`
+    (so the pointer label, `DragMove` and `DragCancel` are shared with the sidebar's
+    drags). While it lasts every tab is an `on_drop` target for `Msg::DropBoard`;
+    `DragOver` keeps `BoardPanel::tab_over` for the line, and a drop goes through
+    `organize::board_drop_index` (the same rule as `project_drop_index`) into
+    `MoveBoard`, or nothing when the board would stay put. Each tab always has a 3 px
+    slot at each end where the line is drawn, so showing it never moves the tabs. The
+    tab's menu is `MenuTarget::Board` (`view/menu/boards.rs`), whose items send
+    `BoardMsg::MoveBoard`. Closing the panel or Escape ends the drag. Older daemons
+    (minor < 17, `daemon_supports_board_order`) get neither, and a single board offers
+    neither.
   - **Shortcut:** `B` in `update.rs::shortcut` sends `Msg::ToggleBoard`, the same message
     as the button.
   - **Input:** while the panel is out, `AppState::terminals_covered` keeps the mouse,
@@ -255,7 +279,8 @@ restarts.
     colors, tags and column changes a 1.8 one (`daemon_supports_board_extras`).
 - **CLI:** `urushi board show <task|KEY>` prints a task in full (where it is, notes,
   subtasks, attachments; a Jira issue's fields, comments, links and files), as agents
-  started from a task read it (ADR 0024). `urushi board ls|new|rename|rm|add|edit|mv|nest|rm-task` (`ls` prints
+  started from a task read it (ADR 0024). `urushi board ls|new|rename|order|rm|add|edit|mv|nest|rm-task` (`order <board> <index>`
+  moves a board's tab; 0 is first) (`ls` prints
   subtasks as an indented tree; `mv` takes a subtask out onto the board; `edit`,
   `rm-task` and `sub add` take subtask ids), `urushi board attach <task> <file>`,
   `urushi board attachment get <id> [--thumbnail] [-o file]|rm <id>` (`add --color --tag`,
@@ -268,6 +293,8 @@ restarts.
   moving and removing columns included; a board always keeps a column
   (`crates/urushi-core/tests/board_props.rs`).
 - A failed operation changes nothing (`board/tests.rs::failed_operations_change_nothing`).
+- Reordering boards never loses or duplicates one, and an unknown board changes nothing
+  (`board/order.rs` tests, `tests/board_order.rs`).
 - A task is in one place, a column or one parent; nesting, moving and removing never
   lose, duplicate or cycle a task, and stay within `MAX_DEPTH`
   (`tests/board_props.rs::nesting_never_loses_duplicates_or_cycles_a_task`). Subtasks
@@ -286,11 +313,12 @@ restarts.
 
 ## Tests
 - Core: `board/tests.rs`, `board/tree/tests.rs` (nesting, bounds, links, old
-  documents), `board/attachments.rs` (names, media types, bounds), `board/prompt.rs` and `tests/board_props.rs`.
+  documents), `board/order.rs` (moving boards), `board/attachments.rs` (names, media types, bounds), `board/prompt.rs` and `tests/board_props.rs`.
 - Proto: `convert/boards/tests.rs` covers round trips and wire encoding of every 1.5,
-  1.6 and 1.8 board message, and that the largest attachment fits in a frame;
+  1.6 and 1.8 board message (`tests/round_trip.rs` covers `MoveBoard`), and that the largest attachment fits in a frame;
   `convert/boards/labels.rs` the color mapping.
-- Daemon: `tests/board_columns.rs`
+- Daemon: `tests/board_order.rs` (`boards_are_reordered_and_keep_their_order`: over
+  the wire, `NOT_FOUND`, and across a restart), `tests/board_columns.rs`
   (`columns_colors_and_tags_are_kept_and_survive_a_restart`), `tests/board_nesting.rs`
   (`cards_and_subtasks_move_into_and_out_of_each_other`), `tests/board_attachments.rs`
   (`attachments_are_stored_fetched_and_deleted_with_their_task`), `attachments.rs`
@@ -309,10 +337,12 @@ restarts.
   threads, the drop line, older daemons), `update/tests/subtask_drafts.rs` (a new
   subtask's own editor: its details, Back keeping it, removing it, Jira's required
   fields, older daemons) and
-  `update/tests/labels.rs` (colors, tags, columns, the filter) and
+  `update/tests/labels.rs` (colors, tags, columns, the filter),
+  `update/tests/board_order.rs` (dragging tabs, the drop line, Move left/right,
+  Escape and closing the panel, a single board, older daemons) and
   `update/tests/attachments.rs` (picking, dropping, opening, deleting, thumbnails);
   `files.rs` (reading and saving files). `snapshot.rs` has
-  the `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested`,
+  the `board`, `board-drag`, `board-tab-drag`, `task`, `task-menu`, `column-menu`, `task-nested`,
   `task-new-subtask` and `nest` scenarios, which render at desktop and
   phone sizes, `task_cards_are_all_the_same_size`,
   `a_new_subtask_has_an_editor_of_its_own`,
@@ -339,4 +369,8 @@ restarts.
   wrapped lines of a long paragraph (the editing model doesn't know the layout).
 - A card's title is one line, cut short with an ellipsis.
 - A dragged card doesn't scroll a column that is taller than the panel.
+- The board tabs don't scroll sideways: with many boards they run past the panel's edge,
+  and a dragged tab can't reach the ones out of view (use the menu or `urushi board
+  order`). On phones, without a secondary click, the menu needs a long press the toolkit
+  doesn't have yet; dragging works.
 - The ⌘ shortcuts (e.g. close pane) still act on the terminals while the panel is out.

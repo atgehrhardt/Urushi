@@ -1,12 +1,12 @@
 //! The task-board panel: frosted glass that slides out from under the sidebar over the
-//! terminals, blurring them. Board tabs across the top, then the board's columns of task
+//! terminals, blurring them. Board tabs across the top (`tabs.rs`), then the board's columns of task
 //! cards, all the same size. Cards open the task editor on click and move between
 //! columns by drag and drop: while a card is dragged, its place stays as a faint outline, a line shows where
 //! it would land, and a raised copy follows the pointer.
 
 use urushi_client::v1;
 use urushi_ui::widgets::{ButtonKind, button, icon_button};
-use urushi_ui::{Align, Color, Font, Insets, Key, Length, Node, Role, Theme, key};
+use urushi_ui::{Align, Font, Insets, Key, Length, Node, Theme, key};
 
 use urushi_core::board::MAX_COLUMNS;
 
@@ -33,6 +33,7 @@ mod column;
 mod dialogs;
 mod filter;
 pub(in crate::view) mod jira;
+mod tabs;
 
 pub(in crate::view) use card::drag_ghost;
 use column::column;
@@ -118,32 +119,9 @@ pub(super) fn panel(
 
 /// Board tabs, "+", and the shown board's actions.
 fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
-    let shown = state.board.board(&state.workspace).map(|b| b.id.clone());
+    let shown = state.board.board(&state.workspace).map(|b| b.id.as_str());
     let compact = state.compact;
-    let tabs = state.workspace.boards().iter().map(|b| {
-        let active = shown.as_deref() == Some(b.id.as_str());
-        Node::row()
-            .padding(Insets::symmetric(4.0, 10.0))
-            .radius(theme.radius)
-            .background(if active {
-                theme.selected
-            } else {
-                Color::TRANSPARENT
-            })
-            .hover_background(if active { theme.selected } else { theme.hover })
-            .key(key(&["board-tab", &b.id]))
-            .on_click(Msg::SelectBoard(b.id.clone()))
-            .role(Role::Item, format!("Board {}", b.name))
-            .gap(6.0)
-            .align(Align::Center)
-            .children(jira::tab_badge(theme, b))
-            .child(Node::text(
-                shorten(&b.name, TAB_CHARS),
-                Font::UiMedium,
-                theme.font_size_small,
-                if active { theme.text } else { theme.text_muted },
-            ))
-    });
+    let tabs = tabs::tabs(state, theme, shown);
     let mut row = Node::row()
         .width(Length::Fill(1.0))
         .height(Length::Fixed(44.0))

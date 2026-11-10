@@ -70,8 +70,9 @@ moves at once and goes back if Jira refuses.
 - **Where an issue is:** a subtask opened from its parent's editor is headed like a Jira
   issue: **‹** back to the parent (edits kept), the epic, `PARENT-1 /`, then its own kind
   and key. The parent's subtask rows show each subtask's kind and key.
-- **Urushi's own:** a card's color and the thread started for it stay here and survive every
-  sync; threads start from Jira cards like any other.
+- **Urushi's own:** where the board's tab sits among the others (drag it, or **Move
+  left/right**; see [task boards](task-boards.md)), a card's color and the thread
+  started for it stay here and survive every sync; threads start from Jira cards like any other.
 - **Linked from code** (ADR 0026): a thread started from an issue (card or subtask) gets
   a branch led by that issue's key, as Jira writes it: the new-thread form suggests
   `urushi/UR-3-invoice-pdfs` (`update/intake.rs::suggested_branch`), and a thread

@@ -32,6 +32,8 @@ pub enum MenuTarget {
     Task(String),
     /// A column of a board (by column id).
     Column(String),
+    /// A board's tab (by board id): move it left or right.
+    Board(String),
     /// The board's filters (by board id).
     Filter(String),
     /// The board panel's "+": a new board, or one imported from Jira.
@@ -67,26 +69,45 @@ pub struct ContextMenu {
     pub at: Point,
 }
 
-/// What is being dragged in the sidebar.
+/// What is being dragged with a label following the pointer: a thread or project in the
+/// sidebar, or a board's tab. (Task cards are dragged as `BoardPanel::dragging`.)
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Dragged {
     /// A thread (by id), to file it under another project.
     Thread(String),
     /// A project (by id), to change the order of projects.
     Project(String),
+    /// A board (by id), to change the order of the board tabs.
+    Board(String),
 }
 
-/// Where project `dragged` goes when it is dropped on project `target`: it takes the
-/// target's place, so it lands below a target further down and above one further up.
-/// The index counts positions without the dragged project, as `MoveFolder` does.
-/// `None` when nothing would move or either project is unknown.
-pub fn project_drop_index(projects: &[v1::Folder], dragged: &str, target: &str) -> Option<u32> {
-    let from = projects.iter().position(|p| p.id == dragged)?;
-    let to = projects.iter().position(|p| p.id == target)?;
+/// Where item `dragged` goes when it is dropped on item `target`, in a list of `ids`: it
+/// takes the target's place, so it lands after a target further on and before one
+/// further back. The index counts positions without the dragged item, as `MoveFolder`
+/// and `MoveBoard` do. `None` when nothing would move or either item is unknown.
+fn drop_index<'a>(
+    mut ids: impl Iterator<Item = &'a str> + Clone,
+    dragged: &str,
+    target: &str,
+) -> Option<u32> {
+    let from = ids.clone().position(|id| id == dragged)?;
+    let to = ids.position(|id| id == target)?;
     if from == to {
         return None;
     }
     u32::try_from(to).ok()
+}
+
+/// Where project `dragged` goes when dropped on project `target` (see [`drop_index`]):
+/// below a target further down, above one further up.
+pub fn project_drop_index(projects: &[v1::Folder], dragged: &str, target: &str) -> Option<u32> {
+    drop_index(projects.iter().map(|p| p.id.as_str()), dragged, target)
+}
+
+/// Where board `dragged` goes when dropped on board `target`'s tab (see
+/// [`drop_index`]): right of a tab further right, left of one further left.
+pub fn board_drop_index(boards: &[v1::Board], dragged: &str, target: &str) -> Option<u32> {
+    drop_index(boards.iter().map(|b| b.id.as_str()), dragged, target)
 }
 
 /// Where a dragged thread can be dropped.
