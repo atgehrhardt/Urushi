@@ -28,8 +28,8 @@ window. On phones the panels fill the screen edge to edge.
     reopens at its last width.
   - The width and whether it's collapsed are remembered across launches, with the
     selection (`ui_state.rs`). Logic: `sidebar.rs`, `update/sidebar.rs`.
-- **Sidebar:** a Projects tab (projects → pinned threads → status sections → threads, then threads in no project) and a Repos tab. See [organizing threads](thread-organization.md) for the context menu, statuses and drag and drop. A thread whose agent finished shows a green dot and "finished"; one waiting for you shows an amber dot and "needs input", and Urushi posts a system notification while it's in the background ([agent attention](agent-attention.md)). Under the tabs, **Tasks** slides out the [task boards](task-boards.md).
-- **Tab bar:** the tabs of the selected thread. **+** opens the [agent launcher](agent-launcher.md) picker.
+- **Sidebar:** a Projects tab (projects → pinned threads → status sections → threads, then threads in no project) and a Repos tab. See [organizing threads](thread-organization.md) for the context menu, statuses and drag and drop. A thread whose agent finished shows a green dot and "finished"; one waiting for you shows an amber dot and "needs input", and Urushi posts a system notification while it's in the background ([agent attention](agent-attention.md)). Under the tabs, **Tasks** slides out the [task boards](task-boards.md), and **>_** drops down the [quick terminal](quick-terminal.md).
+- **Tab bar:** the tabs of the selected thread. **+** opens the [agent launcher](agent-launcher.md) picker; **>_** on the right drops down the [quick terminal](quick-terminal.md).
 - **Terminal area:** split, recoverable terminal panes. A right or two-finger click on a pane opens its menu: **Split right**, **Split down**, **Copy**, **Paste**, **Close pane** (see [split-pane layouts](split-pane-layouts.md)). Touch screens have no secondary click, so on mobile the tab bar keeps **→ ↓ ×** buttons for the focused pane. A thread with no tabs (new, or its last tab closed) keeps its tab bar and shows the launcher inline.
 - **Header:** the logo (the app icon's mark, in the chosen style) and the name, a DEV badge in debug builds, and the connection.
 - **Status bar:** under the terminals: the thread's branch, and the [plan usage](agent-usage.md) of the agent running in the focused pane.
@@ -53,9 +53,9 @@ window. On phones the panels fill the screen edge to edge.
   it under an id per look so the renderer's image cache doesn't show an old one. Save
   sends `SettingsPatch.appearance` only when the look changed.
 - **Reopening:** the app shows the thread and tabs it showed when it was closed, for the local daemon (`ui_state.rs`, see [recoverable sessions](recoverable-sessions.md)).
-- **Attach on view:** panes of the visible tab are attached, sized from their rectangles, and kept up to date with acknowledged `ScreenUpdate`s. Hidden tabs are detached.
+- **Attach on view:** panes of the visible tab (and of the quick terminal while its panel is out) are attached, sized from their rectangles, and kept up to date with acknowledged `ScreenUpdate`s. Hidden tabs are detached. Which surface takes typing and the mouse is decided in `surface.rs`.
 - **Keyboard:**
-  - Typing goes to the focused pane.
+  - Typing goes to the focused pane (of the quick terminal while its panel is down).
   - Shortcuts use Cmd on macOS, Ctrl+Shift elsewhere:
     - T: new tab (opens the launcher picker)
     - W: close pane
@@ -67,6 +67,7 @@ window. On phones the panels fill the screen edge to edge.
     - B: open or close the task board
     - `\`: hide or show the sidebar
     - `[` / `]`: previous and next tab
+    - `` ` ``: drop the quick terminal down, or put it away
     - Alt+arrows: move focus
 - **Mouse** (`update/pointer.rs`):
   - Click to focus a pane, drag dividers to resize.
@@ -75,7 +76,7 @@ window. On phones the panels fill the screen edge to edge.
   - Otherwise, drag to select text.
   - The wheel is sent as `WheelInput`, and the daemon decides what it does (see [recoverable sessions](recoverable-sessions.md)). Daemons before protocol 1.3 get `ScrollPane` instead.
   - Input is queued on the UI thread in order (`Client::try_notify`), so a click's press and release, and a burst of motion, reach the application in the order they happened (`tests/mouse.rs::queued_input_arrives_in_order`).
-  - While the task panel or a dialog covers the terminals (`AppState::terminals_covered`), the mouse, wheel and typing don't reach them.
+  - While the task panel, the quick terminal or a dialog covers the terminals (`AppState::terminals_covered`), the mouse, wheel and typing don't reach them. The quick terminal's own panes take the mouse inside its panel (`AppState::surface_at`).
 - **Older daemon:** the daemon keeps running across app updates. When it speaks an older protocol minor than the app, Settings shows it as older and highlights **Restart daemon…**. The confirmation says how many terminals in how many threads will close; only its red button restarts (Enter doesn't), and a restart under way can't be cancelled. The app then reconnects, which starts its own daemon (`update/daemon.rs`, `backend.rs::stop_daemon`). Until then, agent switches are inert rather than snapping back, and the launcher explains why agents are missing.
 - **Drag and drop:** a dropped file (e.g. a screenshot for Claude) is pasted into the focused pane as a shell-escaped path followed by a space, as macOS Terminal and iTerm2 do. A dropped folder is added as a repo, unless it lands on a terminal. Logic: `update/intake.rs`.
 - **Text fields** (`update/fields.rs`, toolkit `textfield.rs`): every dialog field edits like a native one.
@@ -100,7 +101,7 @@ window. On phones the panels fill the screen edge to edge.
 - `crates/urushi-app/src/update/tests/daemon.rs`: the restart confirmation and reconnecting.
 - `crates/urushi-app/src/sidebar.rs` and `update/tests/sidebar.rs`: hiding, the shortcut, resizing within limits, snapping shut, phones ignoring both; `view/mod.rs` tests: the edge, its cursor, and a reachable show button while hidden (with a thread, the launcher, the task panel out, and an empty workspace).
 - `crates/urushi-app/src/update/tests/flows.rs`: launcher, branch name following the title, adding repos, dropped files, agent settings. `update/tests/organize.rs`: menus, prompts, drag and drop, selectors. `update/tests/panes.rs`: the pane menu and focus after a pane closes.
-- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `new-thread-project`, `settings`, `settings-appearance`, `settings-custom`, `logo-hidden`, `menu`, `menu-status`, `drag`, `drag-project`, `repos`, `board`, `board-drag`, `board-tab-drag`, `task`, `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `sidebar-collapsed`, `setup`, `setup-mode`, `project-base-thread`, `project-settings`, and the Jira screens) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
+- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `new-thread-project`, `settings`, `settings-appearance`, `settings-custom`, `logo-hidden`, `menu`, `menu-status`, `drag`, `drag-project`, `repos`, `board`, `board-drag`, `board-tab-drag`, `task`, `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `sidebar-collapsed`, `quick-terminal`, `setup`, `setup-mode`, `project-base-thread`, `project-settings`, and the Jira screens) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
 - `crates/urushi-app/src/appearance.rs`: themes from schemes, logo styles, drafts; `snapshot/tests.rs`: the look shown at once, reverted on Close, sent only when changed. Core `appearance.rs`, proto `convert/appearance.rs`, daemon `service/settings.rs`, CLI `look.rs`.
 - `crates/urushi-app/src/terminal.rs`: pane geometry, dividers, selection text, painting.
 - `crates/urushi-ui/tests/layout.rs` and `crates/urushi-render/tests/pixels.rs`: toolkit and GPU.

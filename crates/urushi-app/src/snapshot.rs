@@ -38,7 +38,8 @@ pub fn scene(
 /// `task-nested`, a new subtask's own editor in `task-new-subtask`, "Make subtask of…" in `nest`, and Start thread switched to an existing
 /// thread in `task-in-thread`), a terminal with an agent's plan
 /// usage in the `status` bar (and its pane's context menu in `pane-menu`), the same with
-/// the sidebar hidden (`sidebar-collapsed`), and the first-run `setup` wizard (its mode
+/// the sidebar hidden (`sidebar-collapsed`), the quick terminal dropped down over it
+/// (`quick-terminal`, `snapshot/quick.rs`), the first-run `setup` wizard (its mode
 /// step in `setup-mode`), the Jira screens (`snapshot/jira.rs`), and a project's
 /// parent branch (`snapshot/project_base.rs`).
 pub const SCENARIOS: &[&str] = &[
@@ -71,6 +72,7 @@ pub const SCENARIOS: &[&str] = &[
     "status",
     "pane-menu",
     "sidebar-collapsed",
+    "quick-terminal",
     "setup",
     "setup-mode",
     "jira-board",
@@ -405,6 +407,7 @@ fn scenario_frame(
             state.update(Msg::Sidebar(crate::msg::SidebarMsg::Toggle));
             state.update(Msg::Sidebar(crate::msg::SidebarMsg::Reveal(0.0)));
         }
+        "quick-terminal" => quick::show(&mut state),
         name if jira::SCENARIOS.contains(&name) => jira::show(&mut state, name),
         name if project_base::SCENARIOS.contains(&name) => project_base::show(&mut state, name),
         name if BOARD_SCENARIOS.contains(&name) || name == "status" || name == "pane-menu" => {
@@ -584,6 +587,7 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
 mod jira;
 mod jira_issue;
 mod project_base;
+mod quick;
 
 #[cfg(test)]
 mod tests;

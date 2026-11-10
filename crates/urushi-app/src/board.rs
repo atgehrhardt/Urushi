@@ -200,9 +200,14 @@ impl BoardPanel {
 
     /// `reveal` with an ease-out curve, for drawing.
     pub fn eased(&self) -> f32 {
-        let t = self.reveal.clamp(0.0, 1.0);
-        1.0 - (1.0 - t).powi(3)
+        ease_out(self.reveal)
     }
+}
+
+/// A slide's progress (0..1) on a cubic ease-out curve: fast at first, settling gently.
+pub fn ease_out(reveal: f32) -> f32 {
+    let t = reveal.clamp(0.0, 1.0);
+    1.0 - (1.0 - t).powi(3)
 }
 
 /// Where a dropped task goes: `(column, index)` for `MoveTask`, or `None` if it would

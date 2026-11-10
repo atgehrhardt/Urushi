@@ -18,7 +18,7 @@ Each tab is split into any arrangement of terminal panes. Users split right/left
 
 ## In the GUI
 - **Pane menu:** a right or two-finger click on a pane focuses it and opens its context menu: Split right, Split down, Copy, Paste, Close pane. This happens even when the program in the pane takes the mouse; only the middle button still goes to the program. Split and close name the menu's pane (`PaneMsg` in `msg/pane.rs`), so they act on that pane even if focus moves while the menu is open. Logic: `update/panes.rs`, view: `view/menu/pane.rs`.
-- **Keyboard:** Cmd (macOS) / Ctrl+Shift (elsewhere) + D splits right, Shift+D (macOS) / E splits down, W closes the focused pane, and Alt+arrows move focus.
+- **Keyboard:** Cmd (macOS) / Ctrl+Shift (elsewhere) + D splits right, Shift+D (macOS) / E splits down, W closes the focused pane, and Alt+arrows move focus. While the [quick terminal](quick-terminal.md)'s panel is down, all of this acts on its panes instead (`AppState::active_surface`).
 - **Mobile:** touch screens have no secondary click (`platform::HAS_SECONDARY_CLICK`), so the tab bar keeps **→ ↓ ×** buttons that act on the focused pane. Desktop has no such buttons.
 - **Local focus:** a click or a split focuses a pane at once, before the daemon confirms it (`AppState::focused_override`). The override is dropped as soon as the daemon reports the same focus, or when its pane is gone. `focused_pane()` also ignores an override whose pane isn't in the tab. So after a pane closes, focus, typing, splits and closes go to the pane the daemon chose, never to the closed one.
 

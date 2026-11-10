@@ -13,11 +13,13 @@ mod menu;
 mod new_thread;
 mod project_settings;
 mod projects;
+mod quick_terminal;
 mod setup;
 mod sidebar;
 mod status_bar;
 mod task_in_thread;
 mod tasks;
+mod terminal_area;
 mod thread_card;
 
 use std::collections::HashMap;
@@ -36,6 +38,11 @@ pub(crate) const EDGE: f32 = 8.0;
 /// Key of the terminal area. The runner looks it up in the frame to learn its rectangle.
 pub(crate) fn area_key() -> Key {
     key(&["terminal-area"])
+}
+
+/// Key of the quick terminal's terminal area (in its drop-down panel).
+pub(crate) fn quick_area_key() -> Key {
+    key(&["quick-terminal-area"])
 }
 
 /// Key of the sidebar's scrolling list.
@@ -61,15 +68,16 @@ pub(crate) fn view(state: &AppState, theme: &Theme, scroll: &HashMap<Key, f32>) 
             main_area::view(state, theme)
         };
         app = app.child(page.background(theme.glass).gradient(theme.glass_low));
-        // The task board covers the whole screen.
-        app = with_board(state, theme, scroll, app);
+        // The task board and the quick terminal cover the whole screen.
+        app = with_overlays(state, theme, scroll, app);
     } else {
         app = app.padding(Insets::all(PANEL_MARGIN));
         if state.sidebar.visible() {
             app = app.child(sidebar_slot(state, theme, sidebar_scroll));
         }
-        // The task board slides out from under the sidebar, over the terminals.
-        app = app.child(with_board(
+        // The task board slides out from under the sidebar, over the terminals, and the
+        // quick terminal drops down over both.
+        app = app.child(with_overlays(
             state,
             theme,
             scroll,
@@ -170,8 +178,9 @@ pub(super) fn sidebar_toggle(state: &AppState, theme: &Theme) -> Node<Msg> {
     urushi_ui::widgets::sidebar_button(theme, label, Msg::Sidebar(SidebarMsg::Toggle))
 }
 
-/// `content`, with the task-board panel over it while the panel is (partly) out.
-fn with_board(
+/// `content`, with the task-board panel over it while the panel is (partly) out, and
+/// the quick terminal's panel over that while it is (partly) down.
+fn with_overlays(
     state: &AppState,
     theme: &Theme,
     scroll: &HashMap<Key, f32>,
@@ -187,6 +196,12 @@ fn with_board(
                 .board
                 .visible()
                 .then(|| board::panel(state, theme, scroll)),
+        )
+        .children(
+            state
+                .quick
+                .visible()
+                .then(|| quick_terminal::panel(state, theme)),
         )
 }
 

@@ -14,6 +14,7 @@ mod filter;
 mod issue;
 mod jira;
 mod pane;
+mod quick;
 mod sidebar;
 
 pub use board::BoardMsg;
@@ -21,6 +22,7 @@ pub use filter::FilterMsg;
 pub use issue::IssueMsg;
 pub use jira::JiraMsg;
 pub use pane::PaneMsg;
+pub use quick::QuickMsg;
 pub use sidebar::SidebarMsg;
 
 /// Something that happened.
@@ -138,6 +140,10 @@ pub enum Msg {
     OpenSettings,
     /// Open the "connect to host" dialog.
     OpenConnect,
+
+    // ---- the quick terminal (`update/quick.rs`) --------------------------------------
+    /// The quick-terminal panel.
+    Quick(QuickMsg),
 
     // ---- task boards (`update/board.rs`) --------------------------------------------
     /// Slide the board panel out, or back in.
@@ -339,6 +345,8 @@ pub enum Followup {
     TaskTabCreated,
     /// Focus the new pane.
     PaneCreated,
+    /// The daemon opened (or returned) its quick terminal.
+    QuickTerminal,
     /// Show settings.
     Settings,
     /// Show tailnet status in settings.

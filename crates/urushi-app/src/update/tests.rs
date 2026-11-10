@@ -401,6 +401,7 @@ mod panes;
 mod pointer;
 mod project_order;
 mod project_settings;
+mod quick;
 mod setup;
 mod sidebar;
 mod subtask_drafts;

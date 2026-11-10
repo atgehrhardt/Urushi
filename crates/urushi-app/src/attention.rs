@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use urushi_client::v1;
 
 use crate::state::AppState;
+use crate::surface::Surface;
 
 /// One raise of attention: a pane, and when it was raised. A new raise on the same pane
 /// has a new time.
@@ -83,6 +84,16 @@ impl AppState {
             .max_by_key(|k| urgency(*k))
     }
 
+    /// The most urgent attention among the quick terminal's panes.
+    pub fn quick_attention(&self) -> Option<v1::AttentionKind> {
+        self.workspace
+            .quick_terminal_raw()
+            .into_iter()
+            .flat_map(|q| &q.attention)
+            .map(v1::PaneAttention::kind)
+            .max_by_key(|k| urgency(*k))
+    }
+
     /// The most urgent attention among the threads linked to a task and, at any depth,
     /// to its subtasks: a card shows when any of its agents finished or waits.
     pub fn task_attention(&self, task: &v1::Task) -> Option<v1::AttentionKind> {
@@ -108,16 +119,21 @@ impl AppState {
             .max_by_key(|k| urgency(*k))
     }
 
-    /// Panes the user can see right now: the current tab's, while the window has focus
-    /// and nothing covers the terminals.
+    /// Panes the user can see right now, while the window has focus and no dialog
+    /// covers them: the quick terminal's while its panel is down, else the current
+    /// tab's unless something covers them.
     pub fn visible_panes(&self) -> Vec<String> {
-        if self.attention.in_background
-            || self.terminals_covered()
-            || (self.compact && self.sidebar_open)
-        {
+        if self.attention.in_background || self.dialog.is_some() {
             return Vec::new();
         }
-        self.pane_rects()
+        let surface = if self.quick.open {
+            Surface::Quick
+        } else if self.terminals_covered() || (self.compact && self.sidebar_open) {
+            return Vec::new();
+        } else {
+            Surface::Main
+        };
+        self.pane_rects_of(surface)
             .into_iter()
             .map(|(pane, _)| pane)
             .collect()
