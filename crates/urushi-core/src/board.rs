@@ -17,21 +17,24 @@
 //! then comes from Jira, and changes Jira owns are refused here with
 //! [`BoardError::FollowsJira`]. Any task can have a [`TaskKind`] (`kind.rs`). A local
 //! task can link its pull request, and a Jira issue keeps the ones Jira reports
-//! (`pull_request.rs`, ADR 0036).
+//! (`pull_request.rs`, ADR 0036). A board keeps named quick filters (`quick.rs`).
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AttachmentId, BoardId, ColumnId, TaskId, ThreadId, Timestamp};
+use crate::{BoardId, ColumnId, TaskId, ThreadId, Timestamp};
 
 mod attachments;
 mod columns;
+mod error;
 mod jira;
+pub mod jql;
 mod kind;
 mod labels;
 mod message;
 mod order;
 mod prompt;
 mod pull_request;
+mod quick;
 mod sync;
 mod tree;
 
@@ -40,9 +43,10 @@ pub use attachments::{
     media_type,
 };
 pub use columns::MAX_COLUMNS;
+pub use error::BoardError;
 pub use jira::{
-    BoardSource, Epic, Issue, JiraBoard, JiraColumn, Named, Person, QuickFilter, StatusCategory,
-    SyncState, SyncedIssue,
+    BoardSource, Epic, Issue, JiraBoard, JiraColumn, JiraQuickFilter, Named, Person,
+    StatusCategory, SyncState, SyncedIssue,
 };
 pub use kind::TaskKind;
 pub use labels::{LabelColor, MAX_TAG, MAX_TAGS, tag_color, task_tags};
@@ -50,6 +54,10 @@ pub use message::custom_task_prompt;
 pub use order::move_board;
 pub use prompt::{MAX_PROMPT_BYTES, task_prompt, task_reference_prompt};
 pub use pull_request::{MAX_PR_TITLE, MAX_PR_URL, MAX_PULL_REQUESTS, PrStatus, PrUrl, PullRequest};
+pub use quick::{
+    MAX_JQL, MAX_QUICK_FILTERS, MAX_SEARCH, QuickFilter, QuickFilterRef, QuickRule,
+    quick_filter_name,
+};
 pub use sync::{MAX_SYNCED_ISSUES, MergeReport};
 pub use tree::{MAX_DEPTH, MAX_SUBTASKS};
 
@@ -62,67 +70,6 @@ pub const MAX_NOTES: usize = 10_000;
 
 /// Names of the columns a new board starts with.
 pub const DEFAULT_COLUMNS: [&str; 3] = ["To do", "In progress", "Done"];
-
-/// Why a board operation was refused.
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum BoardError {
-    /// A board name was blank.
-    #[error("a board name must not be empty")]
-    EmptyName,
-    /// A name or text was too long.
-    #[error("{what} must be at most {max} characters")]
-    TooLong {
-        /// What was too long.
-        what: &'static str,
-        /// The limit.
-        max: usize,
-    },
-    /// A task title was blank.
-    #[error("a task needs a title")]
-    EmptyTitle,
-    /// The column isn't on this board.
-    #[error("no column {0} on this board")]
-    NoSuchColumn(ColumnId),
-    /// The task isn't on this board.
-    #[error("no task {0} on this board")]
-    NoSuchTask(TaskId),
-    /// A task can't go under itself or one of its own subtasks.
-    #[error("a task can't be a subtask of itself or of its own subtasks")]
-    Cycle,
-    /// Subtasks would be nested more than [`MAX_DEPTH`] levels deep.
-    #[error("subtasks can be nested at most {MAX_DEPTH} levels deep")]
-    TooDeep,
-    /// The task already has [`MAX_SUBTASKS`] subtasks.
-    #[error("a task can have at most {MAX_SUBTASKS} subtasks")]
-    TooManySubtasks,
-    /// A column name was blank.
-    #[error("a column name must not be empty")]
-    EmptyColumnName,
-    /// The board already has [`MAX_COLUMNS`] columns.
-    #[error("a board can have at most {MAX_COLUMNS} columns")]
-    TooManyColumns,
-    /// The board's only column can't be removed.
-    #[error("a board needs at least one column")]
-    LastColumn,
-    /// The attachment isn't on this board.
-    #[error("no attachment {0} on this board")]
-    NoSuchAttachment(AttachmentId),
-    /// The task already has [`MAX_ATTACHMENTS`] attachments.
-    #[error("a task can have at most {MAX_ATTACHMENTS} attachments")]
-    TooManyAttachments,
-    /// A file name was blank.
-    #[error("an attachment needs a file name")]
-    EmptyFileName,
-    /// More than [`MAX_TAGS`] tags.
-    #[error("a task can have at most {MAX_TAGS} tags")]
-    TooManyTags,
-    /// A pull request link wasn't an `https://` URL with a host.
-    #[error("a pull request link must be an https:// URL")]
-    BadPrUrl,
-    /// The board follows Jira, which owns this change.
-    #[error("{0} isn't possible on a Jira board: change it in Jira")]
-    FollowsJira(&'static str),
-}
 
 /// A kanban board.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -142,6 +89,11 @@ pub struct Board {
     /// the epic filter name (epics are cards too, ADR 0027).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub epics: Vec<Epic>,
+    /// Quick filters Urushi keeps for this board (`quick.rs`). A Jira board's own quick
+    /// filters are Jira's, in [`JiraBoard::quick_filters`]; these are only the ones
+    /// Jira wouldn't take.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quick_filters: Vec<QuickFilter>,
 }
 
 /// One column of a board.
@@ -319,6 +271,7 @@ impl Board {
                 .collect(),
             source: None,
             epics: Vec::new(),
+            quick_filters: Vec::new(),
         })
     }
 

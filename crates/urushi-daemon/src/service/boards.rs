@@ -17,6 +17,7 @@ impl From<BoardError> for ServiceError {
             BoardError::NoSuchColumn(id) => Self::NotFound(format!("column {id}")),
             BoardError::NoSuchTask(id) => Self::NotFound(format!("task {id}")),
             BoardError::NoSuchAttachment(id) => Self::NotFound(format!("attachment {id}")),
+            BoardError::NoSuchQuickFilter(id) => Self::NotFound(format!("quick filter {id}")),
             BoardError::LastColumn | BoardError::FollowsJira(_) => {
                 Self::Precondition(e.to_string())
             }

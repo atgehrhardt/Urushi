@@ -1,6 +1,7 @@
 //! Task boards: core ⇄ wire (`v1::Board`, since protocol 1.5; subtasks and thread links
 //! since 1.6; colors, tags, column changes, subtasks as full nested tasks and
-//! attachments since 1.8; task kinds and Jira boards since 1.12).
+//! attachments since 1.8; task kinds and Jira boards since 1.12; quick filters since
+//! 1.23).
 
 use urushi_core::{Board, Column, Task, ThreadId};
 
@@ -8,6 +9,7 @@ mod attachments;
 mod jira;
 mod labels;
 mod pull_requests;
+mod quick_filters;
 
 use attachments::attachment_from_proto;
 pub use attachments::attachment_to_proto;
@@ -18,6 +20,10 @@ pub use jira::{
 pub use labels::{color_from_proto, color_to_proto};
 use pull_requests::{
     pr_url_from_proto, pr_url_to_proto, pull_request_to_proto, pull_requests_from_proto,
+};
+pub use quick_filters::{
+    filter_ref_from_proto, filter_ref_to_proto, quick_filter_from_proto, quick_filter_to_proto,
+    rule_from_proto, rule_to_proto,
 };
 
 use super::{ConvertError, millis_from_proto, millis_to_proto, parse_id};
@@ -37,6 +43,7 @@ pub fn board_to_proto(b: &Board) -> v1::Board {
             .iter()
             .map(|e| epic_to_proto(e, site.unwrap_or_default()))
             .collect(),
+        quick_filters: b.quick_filters.iter().map(quick_filter_to_proto).collect(),
     }
 }
 
@@ -195,6 +202,11 @@ pub fn board_from_proto(b: &v1::Board) -> Result<Board, ConvertError> {
             .collect::<Result<_, ConvertError>>()?,
         source: source_from_proto(b.jira.as_deref()),
         epics: b.epics.iter().map(epic_from_proto).collect(),
+        quick_filters: b
+            .quick_filters
+            .iter()
+            .map(quick_filter_from_proto)
+            .collect::<Result<_, ConvertError>>()?,
     })
 }
 

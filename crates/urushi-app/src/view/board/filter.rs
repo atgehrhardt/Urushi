@@ -1,13 +1,16 @@
-//! The board's filter bar, under its tabs, as Jira's: a search field, then (on a Jira
-//! board, with room) the people issues are assigned to as avatars, "Only my issues",
-//! "Recently updated" and the board's quick filters as chips, then **Filters ▾**
-//! (everything, by field) and "Clear". On a phone: the search and **Filters ▾**.
+//! The board's filter bar, under its tabs, as Jira's: a search field, then (with room)
+//! on a Jira board the people issues are assigned to as avatars, "Only my issues",
+//! "Recently updated" and Jira's quick filters as chips, and on any board the quick
+//! filters it keeps as chips (right-click one to change or delete it), then
+//! **Filters ▾** (everything, by field), "Clear" and "Save filter…". On a phone: the
+//! search and **Filters ▾**.
 
 use urushi_client::v1;
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key};
 
 use super::jira::initials;
 use super::shorten;
+use crate::filter::quick::QuickRef;
 use crate::filter::{Dim, board_values};
 use crate::msg::{FilterMsg, Msg};
 use crate::organize::MenuTarget;
@@ -58,15 +61,22 @@ pub(super) fn bar(state: &AppState, theme: &Theme, board: &v1::Board) -> Node<Ms
             Msg::Filter(FilterMsg::Recent),
         ));
         for q in &jira.quick_filters {
-            row = row.child(
-                chip(
-                    theme,
-                    &shorten(&q.name, CHIP_CHARS),
-                    f.quick.contains(&q.id),
-                    Msg::Filter(FilterMsg::Quick(q.id)),
-                )
-                .key(key(&["quick-filter", &q.id.to_string()])),
-            );
+            row = row.child(quick_chip(
+                state,
+                theme,
+                (board, &q.name, QuickRef::Jira(q.id)),
+                Msg::Filter(FilterMsg::Quick(q.id)),
+            ));
+        }
+    }
+    if !state.compact {
+        for q in &board.quick_filters {
+            row = row.child(quick_chip(
+                state,
+                theme,
+                (board, &q.name, QuickRef::Kept(q.id.clone())),
+                Msg::Filter(FilterMsg::Saved(q.id.clone())),
+            ));
         }
     }
     if !state.compact {
@@ -92,7 +102,46 @@ pub(super) fn bar(state: &AppState, theme: &Theme, board: &v1::Board) -> Node<Ms
             Msg::Filter(FilterMsg::Clear),
         ));
     }
+    if !state.compact && state.can_save_quick_filter(board) {
+        row = row.child(
+            urushi_ui::widgets::button(
+                theme,
+                "Save filter…",
+                urushi_ui::widgets::ButtonKind::Ghost,
+                Msg::Filter(FilterMsg::OpenSave),
+            )
+            .key(key(&["save-quick-filter"])),
+        );
+    }
     row
+}
+
+/// A quick filter's chip: a click turns it on or off, a right-click (on a daemon that
+/// can change quick filters) opens its menu.
+fn quick_chip(
+    state: &AppState,
+    theme: &Theme,
+    (board, name, filter): (&v1::Board, &str, QuickRef),
+    toggle: Msg,
+) -> Node<Msg> {
+    let id = match &filter {
+        QuickRef::Jira(id) => id.to_string(),
+        QuickRef::Kept(id) => id.clone(),
+    };
+    let mut node = chip(
+        theme,
+        &shorten(name, CHIP_CHARS),
+        filter.is_on(&state.board.filter),
+        toggle,
+    )
+    .key(key(&["quick-filter", &id]));
+    if state.daemon_supports_quick_filters() {
+        node = node.on_secondary_click(Msg::OpenMenu(MenuTarget::QuickFilter(
+            board.id.clone(),
+            filter,
+        )));
+    }
+    node
 }
 
 /// The people the board's issues are assigned to, each toggling the filter on them.

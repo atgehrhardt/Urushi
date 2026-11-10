@@ -15,6 +15,7 @@ mod launcher;
 mod platform;
 mod projects;
 mod quick;
+mod quick_filters;
 mod requests;
 mod screen;
 mod tasks;
@@ -27,6 +28,7 @@ pub use launcher::{
     restart_local_daemon, stop_local_daemon,
 };
 pub use quick::QUICK_TERMINAL_SINCE_MINOR;
+pub use quick_filters::{QUICK_FILTERS_SINCE_MINOR, jira_filter, kept_filter};
 pub use screen::{Cell, ScreenState};
 pub use tasks::{FoundTask, TaskRef};
 pub use thread_links::{IssueLink, PrLink, ThreadLinks};

@@ -71,6 +71,8 @@ message SyncBoardRequest {
 message QueryJiraFilterRequest {
   string board_id = 1;
   repeated uint64 quick_filter_ids = 2;
+  // Quick filters Urushi keeps for the board (Board.quick_filters), by id. Since 1.23.
+  repeated string kept_quick_filter_ids = 3;
 }
 
 // Jira issue ids (JiraIssue.id). Since 1.13.

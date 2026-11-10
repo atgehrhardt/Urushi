@@ -321,6 +321,9 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         | Body::ImportJiraBoard(_)
         | Body::SyncBoard(_)
         | Body::QueryJiraFilter(_)) => super::jira::route(service, body).await?,
+        body @ (Body::CreateQuickFilter(_)
+        | Body::UpdateQuickFilter(_)
+        | Body::DeleteQuickFilter(_)) => super::quick_filters::route(service, body).await?,
         body @ (Body::GetJiraIssue(_)
         | Body::GetJiraCreateFields(_)
         | Body::ChangeJiraIssue(_)

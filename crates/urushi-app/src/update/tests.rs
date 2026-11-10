@@ -405,6 +405,7 @@ mod project_order;
 mod project_settings;
 mod pull_requests;
 mod quick;
+mod quick_filters;
 mod setup;
 mod sidebar;
 mod subtask_drafts;

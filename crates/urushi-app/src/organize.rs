@@ -39,6 +39,8 @@ pub enum MenuTarget {
     Board(String),
     /// The board's filters (by board id).
     Filter(String),
+    /// A quick filter's chip (board id, filter): change or delete it.
+    QuickFilter(String, crate::filter::quick::QuickRef),
     /// The board panel's "+": a new board, or one imported from Jira.
     NewBoard,
     /// A terminal pane (by pane id): split, copy, paste, close.

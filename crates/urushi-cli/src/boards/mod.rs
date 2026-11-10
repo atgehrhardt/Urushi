@@ -1,4 +1,4 @@
-//! `urushi board …` (task boards, their columns, tasks and subtasks) and `urushi usage` (an agent's plan
+//! `urushi board …` (task boards, their columns, tasks, subtasks and quick filters) and `urushi usage` (an agent's plan
 //! usage).
 
 use anyhow::{Context, Result, bail};
@@ -11,6 +11,7 @@ use crate::render::short;
 mod attachments;
 mod columns;
 mod print;
+mod quick;
 mod show;
 mod sub;
 
@@ -147,6 +148,9 @@ pub(crate) enum BoardCmd {
     /// Fetch or delete an attachment.
     #[command(subcommand)]
     Attachment(AttachmentCmd),
+    /// Manage a board's quick filters.
+    #[command(subcommand)]
+    Quick(quick::QuickCmd),
     /// Sync a Jira board now, completely.
     Sync {
         /// Board id.
@@ -257,6 +261,7 @@ pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
         BoardCmd::Col(cmd) => columns::run(client, cmd).await,
         BoardCmd::Attach { task, file } => attachments::attach(client, &task, &file).await,
         BoardCmd::Attachment(cmd) => attachments::run(client, cmd).await,
+        BoardCmd::Quick(cmd) => quick::run(client, cmd).await,
         BoardCmd::Sync { board } => {
             client.sync_board(&resolve(client, &board).await?).await?;
             out("synced")

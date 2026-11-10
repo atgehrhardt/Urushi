@@ -1,8 +1,8 @@
 # Feature: Task boards
 
 - **Status:** Shipped (manual boards, columns, colors, tags, kinds, nested subtasks, attachments, threads started from tasks; Jira boards in [jira-boards](jira-boards.md))
-- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,order,prompt}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_nav.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/` (tabs in `tabs.rs`), `view/tasks/`, `view/labels.rs`, `view/menu/{tasks,boards}.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
-- **Related ADRs:** [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
+- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,order,prompt,quick}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_nav.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/` (tabs in `tabs.rs`), `view/tasks/`, `view/labels.rs`, `view/menu/{tasks,boards}.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
+- **Related ADRs:** [0037](../adr/0037-quick-filters-written-to-jira-or-kept-here.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
 
 ## What it does
 A **Tasks** button sits under the sidebar's Projects | Repos tabs. It shows the number of
@@ -38,6 +38,12 @@ it back.
   several can be chosen, and a card shows when it or a subtask passes. The column
   counts then read "shown/all", and **Clear** drops every filter. Choosing another board
   clears them. Jira boards filter by much more ([jira-boards](jira-boards.md)).
+- **Quick filters** (1.23 daemons, ADR 0037): **Save filter…** in the bar (or **Save as
+  quick filter…** in **Filters ▾**) saves the search, types and tags chosen under a name.
+  It becomes a chip after the search field, and an entry in **Filters ▾**, that turns
+  it on and off. Right-click a chip for **Edit…** (rename it, or **Use current filters**)
+  and **Delete…** (asks first). A board keeps up to 20. On a Jira board quick filters
+  are JQL and are saved to Jira ([jira-boards](jira-boards.md)).
 - **+** on a column adds a task. Clicking a card opens the editor: title, notes and
   subtasks on the left; column, color and tags on the right (one scrolling column on
   phones); **Start thread**, and Delete. Color and tags are saved with Save, like the
@@ -152,7 +158,13 @@ restarts.
   `Task::pr_url` is a `PrUrl` (`pull_request.rs`: `https://` with a host, no
   whitespace, at most `MAX_PR_URL`), set through `TaskPatch::pr_url` and refused on a
   Jira board.
-  The list of boards is kept in tab order; `move_board` (`order.rs`) reorders it. Ids and
+  The list of boards is kept in tab order; `move_board` (`order.rs`) reorders it.
+  `Board.quick_filters` (`quick.rs`) holds `QuickFilter{id, name, rule}`, where
+  `QuickRule::Fields{search, kinds, tags}` applies to boards of Urushi's own and
+  `QuickRule::Jql` to Jira boards; `add`/`update`/`remove_quick_filter` validate the name
+  and rule (`checked`) and keep at most `MAX_QUICK_FILTERS`. The daemon's
+  `service/quick_filters.rs` applies them in `mutate`; clients evaluate `Fields` rules
+  (`filter/quick.rs::passes`, through `filter::Context.kept`). Ids and
   timestamps are passed in. Older documents' checklist items load as tasks (every new
   field has a serde default; `created_at` reads as 0).
 - **Daemon:** `Service::{create_board, rename_board, move_board, delete_board, create_task,
@@ -297,7 +309,8 @@ restarts.
   `urushi board attachment get <id> [--thumbnail] [-o file]|rm <id>` (`add --color --tag`,
   `edit --color <c|none> --tag --untag --pr <url|"">`; `show` prints `Pull request:`
   lines), `urushi board col add|rename|color|mv|rm`,
-  `urushi board sub add|done|undo|rename|rm`, and `urushi thread new <repo> --task <task or subtask>`.
+  `urushi board sub add|done|undo|rename|rm`, `urushi board quick
+  ls|add|edit|rm <board> …` (`--search`, `--kind`, `--tag`; a filter by name or id), and `urushi thread new <repo> --task <task or subtask>`.
   Columns can be named, e.g. `urushi board mv <task> done`.
 
 ## Invariants
@@ -305,6 +318,9 @@ restarts.
   moving and removing columns included; a board always keeps a column
   (`crates/urushi-core/tests/board_props.rs`).
 - A failed operation changes nothing (`board/tests.rs::failed_operations_change_nothing`).
+- Quick-filter operations never lose, duplicate or reorder a board's quick filters, keep
+  more than the bound, or change anything when they fail
+  (`tests/quick_filter_props.rs`).
 - Reordering boards never loses or duplicates one, and an unknown board changes nothing
   (`board/order.rs` tests, `tests/board_order.rs`).
 - A task is in one place, a column or one parent; nesting, moving and removing never
@@ -356,6 +372,10 @@ restarts.
   subtask's own editor: its details, Back keeping it, removing it, Jira's required
   fields, older daemons) and
   `update/tests/labels.rs` (colors, tags, columns, the filter),
+  `update/tests/quick_filters.rs` (saving the selection, turning the filter on, renaming
+  or replacing its rule), `filter/quick/tests.rs` (rules and the selection), the
+  `board-quick-filters` snapshot, `tests/quick_filters.rs` in the daemon (kept across
+  restarts, refusals),
   `update/tests/board_order.rs` (dragging tabs, the drop line, Move left/right,
   Escape and closing the panel, a single board, older daemons) and
   `update/tests/attachments.rs` (picking, dropping, opening, deleting, thumbnails);
@@ -378,6 +398,9 @@ restarts.
   Phones can't attach or open files yet, and images can't be pasted from the clipboard.
 - Thumbnails share the renderer's glyph atlas; many large ones on screen could churn it.
 - Tags are per task; there is no place to rename or recolor a tag across a board.
+- A quick filter on a board of Urushi's own holds one search, kinds and tags. Quick
+  filters that are on when saving aren't folded into the new one. Phones list them in
+  **Filters ▾**, but can't edit or delete them yet (no right-click).
 - With many columns, columns get narrow: the board doesn't scroll sideways yet.
 - Subtasks can't be reordered by dragging (`NestTask` takes an index, but the editor
   doesn't offer it), and cards can't be dragged onto a task to nest them.

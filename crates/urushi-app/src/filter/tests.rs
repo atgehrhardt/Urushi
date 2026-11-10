@@ -43,6 +43,7 @@ fn card() -> v1::Task {
 const CX: Context<'static> = Context {
     me: Some("acc-ada"),
     now_ms: 2_000,
+    kept: &[],
 };
 
 #[test]

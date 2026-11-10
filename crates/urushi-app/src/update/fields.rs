@@ -52,6 +52,11 @@ macro_rules! focused_field {
             (Some(Dialog::ConnectJira { site, .. }), Field::JiraSite) => Some(site),
             (Some(Dialog::ConnectJira { email, .. }), Field::JiraEmail) => Some(email),
             (Some(Dialog::ConnectJira { token, .. }), Field::JiraToken) => Some(token),
+            (Some(Dialog::QuickFilter(e)), Field::QuickFilterName) => Some($($r)+ e.name),
+            (Some(Dialog::QuickFilter(e)), Field::QuickFilterJql) => match $($r)+ e.jql {
+                Some(jql) => Some(jql),
+                None => None,
+            },
             _ => None,
         }
     };
@@ -111,6 +116,10 @@ impl AppState {
                 vec![Field::JiraSite, Field::JiraEmail, Field::JiraToken]
             }
             Some(Dialog::ImportJira { .. }) => vec![Field::JiraQuery],
+            Some(Dialog::QuickFilter(e)) if e.jql.is_some() => {
+                vec![Field::QuickFilterName, Field::QuickFilterJql]
+            }
+            Some(Dialog::QuickFilter(_)) => vec![Field::QuickFilterName],
             Some(Dialog::Task { .. }) => {
                 let mut fields = vec![Field::TaskTitle, Field::TaskNotes];
                 if self.daemon_supports_board_extras() {

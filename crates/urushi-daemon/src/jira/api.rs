@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use urushi_core::TaskKind;
 use urushi_core::board::{
-    JiraBoard, JiraColumn, Person, PullRequest, QuickFilter, StatusCategory, SyncedIssue,
+    JiraBoard, JiraColumn, JiraQuickFilter, Person, PullRequest, StatusCategory, SyncedIssue,
 };
 
 use super::details::{Field, IssueDetails, IssueRef};
@@ -71,11 +71,20 @@ pub struct BoardConfig {
     /// The site's sprint field, if it has sprints.
     pub sprint_field: Option<String>,
     /// Its quick filters.
-    pub quick_filters: Vec<QuickFilter>,
+    pub quick_filters: Vec<JiraQuickFilter>,
     /// The saved filter choosing its issues.
     pub filter_id: u64,
     /// A kanban board's extra query narrowing the filter (e.g. unreleased versions).
     pub sub_query: Option<String>,
+}
+
+/// A quick filter as written to Jira.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QuickFilterDraft {
+    /// Its name.
+    pub name: String,
+    /// Its JQL.
+    pub jql: String,
 }
 
 /// Which of a board's issues to read.
@@ -255,6 +264,27 @@ pub trait JiraApi: Send + Sync {
     /// Deletes an issue for good, with its sub-tasks (Jira refuses to delete an issue
     /// that has sub-tasks otherwise).
     fn delete_issue(&self, account: &Account, key: &str) -> JiraResult<()>;
+
+    // ---- A board's quick filters (ADR 0037) -----------------------------------------
+    /// A board's quick filters, as Jira shows them above it.
+    fn quick_filters(&self, account: &Account, board: u64) -> JiraResult<Vec<JiraQuickFilter>>;
+    /// Adds a quick filter to a board; its id, when Jira's answer says it.
+    fn create_quick_filter(
+        &self,
+        account: &Account,
+        board: u64,
+        filter: &QuickFilterDraft,
+    ) -> JiraResult<Option<u64>>;
+    /// Replaces a quick filter's name and JQL.
+    fn update_quick_filter(
+        &self,
+        account: &Account,
+        board: u64,
+        id: u64,
+        filter: &QuickFilterDraft,
+    ) -> JiraResult<()>;
+    /// Deletes a quick filter.
+    fn delete_quick_filter(&self, account: &Account, board: u64, id: u64) -> JiraResult<()>;
 
     // ---- One issue in full (the editor) -------------------------------------------
     /// Everything the editor shows of an issue: its editable fields with their values

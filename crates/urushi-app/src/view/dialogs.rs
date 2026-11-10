@@ -71,6 +71,10 @@ pub(super) fn view(
             (title, notes, subtasks, labels),
             issue,
         ),
+        Dialog::QuickFilter(e) => super::board::quick_filter::editor(state, theme, e),
+        Dialog::DeleteQuickFilter { filter, name, .. } => {
+            super::board::quick_filter::delete(theme, name, filter)
+        }
         Dialog::DeleteIssue(about) => super::board::delete_issue(state, theme, about),
         Dialog::DeleteBoard { board, name, tasks } => {
             let jira = state

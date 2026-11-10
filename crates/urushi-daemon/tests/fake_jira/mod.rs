@@ -15,7 +15,7 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use serde_json::Value;
 use urushi_core::board::{
-    Issue, JiraColumn, Person, PullRequest, QuickFilter, StatusCategory, SyncedIssue,
+    Issue, JiraColumn, JiraQuickFilter, Person, PullRequest, StatusCategory, SyncedIssue,
 };
 use urushi_core::{TaskKind, Timestamp};
 use urushi_daemon::jira::details::{
@@ -24,7 +24,7 @@ use urushi_daemon::jira::details::{
 };
 use urushi_daemon::jira::{
     Account, BoardConfig, BoardInfo, Fetched, IssueEdit, IssueFields, IssueQuery, JiraApi,
-    JiraError, JiraResult, Me, NewIssue, Rank, Transition,
+    JiraError, JiraResult, Me, NewIssue, QuickFilterDraft, Rank, Transition,
 };
 
 pub const TOKEN: &str = "s3cret-t0ken";
@@ -101,6 +101,11 @@ pub struct FakeJira {
     /// While `true`, asking for an issue's transitions waits (see
     /// [`FakeJira::hold_transitions`]).
     transitions_held: (Mutex<bool>, Condvar),
+    /// The board's quick filters.
+    pub quick_filters: Mutex<Vec<JiraQuickFilter>>,
+    /// While set, writing quick filters fails with this (see
+    /// [`FakeJira::refuse_quick_filter_writes`]).
+    quick_filter_refusal: Mutex<Option<JiraError>>,
     /// While `true`, deleting issues is refused, as for an account without Jira's
     /// "Delete issues" permission.
     pub deletes_forbidden: Mutex<bool>,
@@ -108,6 +113,9 @@ pub struct FakeJira {
     /// requests).
     pub pull_requests: Mutex<HashMap<u32, JiraResult<Vec<PullRequest>>>>,
 }
+
+/// JQL Jira can't read (`issue_ids` refuses it).
+pub const BAD_JQL: &str = "type = = INVALID";
 
 /// The JQL of the board's one quick filter.
 pub const BUGS: &str = "type = Bug";
@@ -149,6 +157,12 @@ impl FakeJira {
             ]),
             calls: Mutex::default(),
             transitions_held: (Mutex::new(false), Condvar::new()),
+            quick_filters: Mutex::new(vec![JiraQuickFilter {
+                id: 1,
+                name: "Bugs".into(),
+                jql: BUGS.into(),
+            }]),
+            quick_filter_refusal: Mutex::new(None),
             deletes_forbidden: Mutex::new(false),
             pull_requests: Mutex::default(),
         })
@@ -165,6 +179,21 @@ impl FakeJira {
     pub fn release_transitions(&self) {
         *self.transitions_held.0.lock().unwrap() = false;
         self.transitions_held.1.notify_all();
+    }
+
+    /// Makes writing quick filters fail with `error` (`None`: work again), as Jira does
+    /// for an account that isn't a board admin, or once its endpoint is gone.
+    pub fn refuse_quick_filter_writes(&self, error: Option<JiraError>) {
+        *self.quick_filter_refusal.lock().unwrap() = error;
+    }
+
+    fn quick_filter_write(&self, account: &Account, call: String) -> JiraResult<()> {
+        Self::check(account)?;
+        self.log(call);
+        match self.quick_filter_refusal.lock().unwrap().clone() {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
     }
 
     fn log(&self, call: String) {
@@ -291,11 +320,7 @@ impl JiraApi for FakeJira {
             rank_field: Some("customfield_10019".into()),
             points_field: Some("customfield_10016".into()),
             sprint_field: Some("customfield_10020".into()),
-            quick_filters: vec![QuickFilter {
-                id: 1,
-                name: "Bugs".into(),
-                jql: BUGS.into(),
-            }],
+            quick_filters: self.quick_filters.lock().unwrap().clone(),
             filter_id: 10003,
             sub_query: None,
         })
@@ -358,17 +383,71 @@ impl JiraApi for FakeJira {
     fn issue_ids(&self, account: &Account, query: &IssueQuery) -> JiraResult<Vec<String>> {
         Self::check(account)?;
         self.log(format!("issue_ids {:?}", query.extra_jql));
+        if query.extra_jql.iter().any(|q| q == BAD_JQL) {
+            return Err(JiraError::Rejected("Error in the JQL Query".into()));
+        }
         let remote = self.issues.lock().unwrap().clone();
+        // Understands `type = <Kind>` only.
         Ok(remote
             .iter()
             .filter(|r| {
-                query
-                    .extra_jql
-                    .iter()
-                    .all(|q| q == BUGS && r.kind == TaskKind::Bug)
+                query.extra_jql.iter().all(|q| {
+                    q.strip_prefix("type = ")
+                        .is_some_and(|t| t.eq_ignore_ascii_case(r.kind.name()))
+                })
             })
             .map(|r| self.synced(r).issue.id)
             .collect())
+    }
+
+    fn quick_filters(&self, account: &Account, board: u64) -> JiraResult<Vec<JiraQuickFilter>> {
+        Self::check(account)?;
+        assert_eq!(board, 7);
+        Ok(self.quick_filters.lock().unwrap().clone())
+    }
+
+    fn create_quick_filter(
+        &self,
+        account: &Account,
+        board: u64,
+        filter: &QuickFilterDraft,
+    ) -> JiraResult<Option<u64>> {
+        self.quick_filter_write(
+            account,
+            format!("create_quick_filter {board} {}", filter.name),
+        )?;
+        let mut list = self.quick_filters.lock().unwrap();
+        let id = list.iter().map(|q| q.id).max().unwrap_or(0) + 1;
+        list.push(JiraQuickFilter {
+            id,
+            name: filter.name.clone(),
+            jql: filter.jql.clone(),
+        });
+        Ok(Some(id))
+    }
+
+    fn update_quick_filter(
+        &self,
+        account: &Account,
+        board: u64,
+        id: u64,
+        filter: &QuickFilterDraft,
+    ) -> JiraResult<()> {
+        self.quick_filter_write(account, format!("update_quick_filter {board} {id}"))?;
+        let mut list = self.quick_filters.lock().unwrap();
+        let q = list
+            .iter_mut()
+            .find(|q| q.id == id)
+            .ok_or_else(|| JiraError::NotFound(format!("quick filter {id}")))?;
+        q.name.clone_from(&filter.name);
+        q.jql.clone_from(&filter.jql);
+        Ok(())
+    }
+
+    fn delete_quick_filter(&self, account: &Account, board: u64, id: u64) -> JiraResult<()> {
+        self.quick_filter_write(account, format!("delete_quick_filter {board} {id}"))?;
+        self.quick_filters.lock().unwrap().retain(|q| q.id != id);
+        Ok(())
     }
 
     fn issue(

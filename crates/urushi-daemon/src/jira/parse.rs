@@ -4,7 +4,7 @@
 
 use serde_json::Value;
 use urushi_core::board::{
-    Issue, JiraColumn, Named, Person, QuickFilter, StatusCategory, SyncedIssue,
+    Issue, JiraColumn, JiraQuickFilter, Named, Person, StatusCategory, SyncedIssue,
 };
 use urushi_core::{TaskKind, Timestamp};
 
@@ -173,13 +173,13 @@ pub(super) fn next_page(v: &Value) -> Option<String> {
 }
 
 /// A board's quick filters (`GET board/{id}/quickfilter`).
-pub(super) fn quick_filters(v: &Value) -> Vec<QuickFilter> {
+pub(super) fn quick_filters(v: &Value) -> Vec<JiraQuickFilter> {
     v["values"]
         .as_array()
         .map(|a| {
             a.iter()
                 .filter_map(|q| {
-                    Some(QuickFilter {
+                    Some(JiraQuickFilter {
                         id: id(&q["id"])?,
                         name: text(&q["name"]),
                         jql: some_text(&q["jql"])?,

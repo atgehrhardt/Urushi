@@ -382,6 +382,10 @@ pub enum Followup {
     JiraBoards,
     /// The issues of this board its quick filters let through.
     QuickFilter(String),
+    /// A quick filter was saved on this board: turn it on, or say why it failed.
+    QuickFilterSaved(String),
+    /// A quick filter was changed: close the dialog, or say why it failed.
+    QuickFilterChanged,
     /// Show this task's issue in full in its editor.
     JiraIssue(String),
     /// Show what this task's editor's picker searched for.
