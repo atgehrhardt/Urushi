@@ -7,7 +7,7 @@
 ## What it does
 Every pane is a real process on a PTY, owned by the daemon. Closing the window, the app crashing or the network dropping doesn't stop the process. Reattaching shows exactly what was on screen.
 
-When the daemon itself stops (**Restart daemon…**, a reboot, a crash), the processes end, but every pane of every ready thread comes back as it was:
+When the daemon itself stops (**Restart daemon…**, a reboot, a crash), the processes end, but every pane of every ready thread, and of the quick terminal, comes back as it was:
 - **Shells** show their last 2,000 lines of output, then a dim "── restored after the daemon restarted ──" line, and a new shell in the directory the old one was in.
 - **Agents** start again on the same conversation: Claude resumes the exact session the pane had open (a Claude that had nothing said yet starts fresh), and Codex and Cursor resume their latest conversation in that directory.
 - **Programs** that were running in the foreground (`vim notes.md`, `less`, `npm run dev`, `tail -f log | grep x`) run again with the same arguments, in the directory they ran in.
@@ -46,6 +46,7 @@ When the daemon itself stops (**Restart daemon…**, a reboot, a crash), the pro
 - `crates/urushi-core/src/agent/resume.rs`: resume command lines per agent, session id validation. `shell.rs`: quoting, pipelines, rewritten titles, control characters refused.
 - `crates/urushi-daemon/src/usage/process.rs`: the foreground job (pipelines, not helpers or background jobs), damaged arguments.
 - `crates/urushi-daemon/src/restore/`: records saved, loaded and pruned; Claude session files and transcripts; how an agent starts again.
+- `crates/urushi-daemon/tests/quick_terminal.rs`: the quick terminal and its output come back after a restart.
 - `crates/urushi-daemon/tests/restore.rs`: a real daemon restarted: old output above the new shell, the shell back in its subdirectory, a (fake) Claude resumed with its session id, a running program started again with an argument containing a space; closed panes' restore points deleted.
 - `crates/urushi-app/src/ui_state.rs` and `update/tests.rs::reopening_shows_the_remembered_thread_and_tab`.
 - Manually verified against a throwaway daemon home with zsh and Claude Code 2.1: output, colours and directory restored; Claude typed `--resume` with the id from its session file, and an empty session came back as a fresh Claude; `less "my notes.txt"`, `python3 -m http.server` (serving again) and a `yes | head | sleep` pipeline ran again.

@@ -46,6 +46,7 @@ pub(super) fn workspace() -> v1::Workspace {
         }],
         folders: Vec::new(),
         boards: Vec::new(),
+        quick_terminal: None,
     }
 }
 

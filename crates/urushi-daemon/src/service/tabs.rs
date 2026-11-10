@@ -1,10 +1,10 @@
 //! Tabs, panes and layout operations.
 
-use urushi_core::{Agent, Axis, Direction, PaneId, Tab, TabId, ThreadId};
+use urushi_core::{Agent, Axis, Direction, PaneGroup, PaneId, Tab, TabId, Thread, ThreadId};
 use urushi_mux::TermSize;
 
 use super::threads::DEFAULT_TAB_TITLE;
-use super::{Service, ServiceError, ServiceResult, new_uuid};
+use super::{PaneHome, Service, ServiceError, ServiceResult, State, new_uuid};
 
 impl Service {
     /// Opens a new tab with one shell in the thread's worktree. With an `agent`, the
@@ -56,10 +56,10 @@ impl Service {
         result
     }
 
-    /// Closes a tab and kills its terminals.
+    /// Closes a tab (or the quick terminal) and kills its terminals.
     pub fn close_tab(&self, tab: TabId) -> ServiceResult<()> {
         let panes = self.mutate(|state| {
-            state.tab(tab)?;
+            state.group(tab)?;
             Ok(state.remove_tab(tab))
         })?;
         self.kill_sessions(panes);
@@ -74,22 +74,21 @@ impl Service {
         })
     }
 
-    /// Splits `pane`, starting a new shell on `side`. Returns the new pane.
+    /// Splits `pane` in a tab (or the quick terminal), starting a new shell on `side`.
+    /// Returns the new pane.
     pub fn split_pane(&self, tab: TabId, pane: PaneId, side: Direction) -> ServiceResult<PaneId> {
         let (thread, shell) = self.read(|state| {
-            let existing = state.tab(tab)?;
-            if !existing.layout().contains(pane) {
+            if !state.group(tab)?.layout().contains(pane) {
                 return Err(ServiceError::NotFound(format!("pane {pane} in tab {tab}")));
             }
-            let thread = state.thread(existing.thread())?.thread.clone();
-            let shell = state.effective_settings(thread.repo).default_shell;
-            Ok((thread, shell))
+            pane_home(state, tab)
         })?;
+        let home = thread.as_ref().map_or(PaneHome::Quick, PaneHome::Thread);
         let new = PaneId::from_uuid(new_uuid());
-        self.spawn_session(new, &thread, shell, TermSize::DEFAULT)?;
+        self.spawn_session(new, home, shell, TermSize::DEFAULT)?;
         let result = self.mutate(|state| {
             state
-                .tab_mut(tab)?
+                .group_mut(tab)?
                 .split(pane, new, side)
                 .map_err(|e| ServiceError::Invalid(e.to_string()))
         });
@@ -102,10 +101,11 @@ impl Service {
         }
     }
 
-    /// Closes a pane and kills its terminal. Closing a tab's last pane closes the tab.
+    /// Closes a pane and kills its terminal. Closing the last pane of a tab (or of the
+    /// quick terminal) closes that too.
     pub fn close_pane(&self, tab: TabId, pane: PaneId) -> ServiceResult<()> {
         self.mutate(|state| {
-            if !state.tab(tab)?.layout().contains(pane) {
+            if !state.group(tab)?.layout().contains(pane) {
                 return Err(ServiceError::NotFound(format!("pane {pane} in tab {tab}")));
             }
             state.remove_pane(pane);
@@ -150,13 +150,25 @@ impl Service {
         })
     }
 
+    /// Applies a layout operation to a tab or the quick terminal.
     fn layout_op(
         &self,
         tab: TabId,
-        op: impl FnOnce(&mut Tab) -> Result<(), urushi_core::LayoutError>,
+        op: impl FnOnce(&mut PaneGroup) -> Result<(), urushi_core::LayoutError>,
     ) -> ServiceResult<()> {
         self.mutate(|state| {
-            op(state.tab_mut(tab)?).map_err(|e| ServiceError::Invalid(e.to_string()))
+            op(state.group_mut(tab)?).map_err(|e| ServiceError::Invalid(e.to_string()))
         })
     }
+}
+
+/// Where new panes of `tab` start, and with which shell: a tab's thread and its repo's
+/// shell, or (`None`) the quick terminal and the global shell.
+fn pane_home(state: &State, tab: TabId) -> ServiceResult<(Option<Thread>, Option<String>)> {
+    if state.quick(tab).is_some() {
+        return Ok((None, state.settings.default_shell.clone()));
+    }
+    let thread = state.thread(state.tab(tab)?.thread())?.thread.clone();
+    let shell = state.effective_settings(thread.repo).default_shell;
+    Ok((Some(thread), shell))
 }

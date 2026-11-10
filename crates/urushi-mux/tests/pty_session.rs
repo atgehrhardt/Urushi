@@ -176,9 +176,10 @@ mod unix {
             program: Some("/bin/sh".into()),
             args: vec![
                 "-c".into(),
-                "printf \"$URUSHI_TEST:$(pwd -P)\"; sleep 5".into(),
+                "printf \"[${HOME-unset}]$URUSHI_TEST:$(pwd -P)\"; sleep 5".into(),
             ],
             cwd: Some(dir.clone()),
+            env_remove: vec!["HOME".into()],
             env: vec![("URUSHI_TEST".into(), "marker".into())],
             size: Some(TermSize::new(200, 3)),
             tty_env: None,
@@ -190,7 +191,7 @@ mod unix {
         )
         .unwrap();
         let canonical = std::fs::canonicalize(&dir).unwrap();
-        wait_for_text(&s, &format!("marker:{}", canonical.display())).await;
+        wait_for_text(&s, &format!("[unset]marker:{}", canonical.display())).await;
         s.kill().await.unwrap();
     }
 }

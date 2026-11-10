@@ -25,7 +25,7 @@ The multiplexer is **invisible infrastructure**. It exists so terminal sessions 
         │  versioned protobuf frames (docs/protocol.md)
         │  Unix socket (macOS/Linux) | named pipe (Windows) | TCP on tailnet IP (remote)
  urushid (Rust; macOS/Linux/Windows) ← single source of truth
-   workspace model   Repo → Thread → Tab → Layout → Pane; Project groups Threads; Boards of Tasks
+   workspace model   Repo → Thread → Tab → Layout → Pane; Quick terminal → Layout → Pane; Project groups Threads; Boards of Tasks
    mux               per-pane Session actor: PTY ⇄ VT emulator → damage → diffs
    git               worktree + branch lifecycle via the `git` CLI
    agents            finds installed agent CLIs; tabs type their command into a shell (ADR 0009)
@@ -71,9 +71,10 @@ urushi-cli ─► urushi-client
 | **Project** | A user-made group of threads, from any repos. It can name a **parent branch** in one repo, which its new threads start from, and keep a **parent-branch thread** working on that branch (ADR 0029). (`Folder` on the wire.) |
 | **Thread** | One unit of agent work. **Always** owns exactly one git worktree and its primary branch (named by the user, or `urushi/<slug>-<short-id>`). |
 | **Tab** | A layout tree of panes inside a thread. |
+| **Quick terminal** | At most one per daemon: a layout of panes in **no** thread, shown as a drop-down panel over the workspace (ADR 0031, [quick terminal](features/quick-terminal.md)). Its id is a tab id, so the tab layout requests act on it; it ends when its last pane closes. |
 | **Layout** | An n-ary tree. Leaves are panes. Splits have an axis and child ratios that sum to 1. |
 | **Board** | A kanban board of **tasks** in columns (To do, In progress, Done). A task's **subtasks** are tasks nested inside it (ADR 0015), a task can have a kind (task, story, bug, epic) and files attached (kept by the daemon, ADR 0016), and any task can name the thread started for it (ADR 0012). A board can follow a Jira board (`Board.source`): Jira is then its source of truth, and changes are written to Jira first (ADR 0020); its epics are cards too (ADR 0027). Only organization: it never touches git or terminals. |
-| **Pane** | One terminal session. Its shell starts in the thread's worktree, with `URUSHI_THREAD_ID`, `URUSHI_PANE_ID`, `URUSHI_WORKTREE`, `URUSHI_TTY` (its terminal device), the agent hook settings, `URUSHI_HOME` and the `urushi` CLI's directory first on `PATH` (ADR 0024) in its environment. A pane whose agent finished or waits for the user carries **attention**, kept in the daemon's memory ([agent attention](features/agent-attention.md)). A tab opened for an agent (Claude, Codex, Cursor) is the same, with the agent's command typed into the shell. |
+| **Pane** | One terminal session. Its shell starts in the thread's worktree (a quick-terminal pane: the home directory, without the thread variables), with `URUSHI_THREAD_ID`, `URUSHI_PANE_ID`, `URUSHI_WORKTREE`, `URUSHI_TTY` (its terminal device), the agent hook settings, `URUSHI_HOME` and the `urushi` CLI's directory first on `PATH` (ADR 0024) in its environment; values the daemon inherited from a pane it was started in are cleared first (`service/spawn.rs`). A pane whose agent finished or waits for the user carries **attention**, kept in the daemon's memory ([agent attention](features/agent-attention.md)). A tab opened for an agent (Claude, Codex, Cursor) is the same, with the agent's command typed into the shell. |
 
 The pure model lives in `urushi-core`. The daemon persists it and applies changes.
 

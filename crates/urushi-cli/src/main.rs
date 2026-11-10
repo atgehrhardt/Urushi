@@ -68,6 +68,9 @@ enum Command {
     /// Manage panes (terminals).
     #[command(subcommand)]
     Pane(PaneCmd),
+    /// The quick terminal: split panes in no thread, shown as a drop-down panel.
+    #[command(subcommand)]
+    Quick(QuickCmd),
     /// Type text into a pane, followed by Enter unless --no-enter.
     Send {
         /// Pane id.
@@ -303,6 +306,14 @@ enum Side {
     Right,
     Up,
     Down,
+}
+
+#[derive(Subcommand)]
+enum QuickCmd {
+    /// Open the quick terminal (or show the open one) and print its panes.
+    Open,
+    /// Close the quick terminal and every pane in it.
+    Close,
 }
 
 #[derive(Subcommand)]

@@ -212,6 +212,7 @@ fn all_request_kinds() {
         B::ClearAttention(v1::ClearAttentionRequest {
             pane_ids: vec!["p".into(), "q".into()],
         }),
+        B::OpenQuickTerminal(v1::OpenQuickTerminalRequest {}),
     ];
     for (i, body) in bodies.into_iter().enumerate() {
         round_trip(&envelope::request(i as u64, body));
@@ -308,6 +309,11 @@ fn all_response_kinds() {
                 agent: v1::Agent::Codex.into(),
                 path: "/usr/local/bin/codex".into(),
             }],
+        }),
+        O::QuickTerminal(quick_terminal()),
+        O::Workspace(v1::Workspace {
+            quick_terminal: Some(quick_terminal()),
+            ..Default::default()
         }),
     ];
     for (i, outcome) in outcomes.into_iter().enumerate() {
@@ -409,4 +415,19 @@ fn tabs_carry_pane_attention() {
         ..Default::default()
     };
     round_trip(&envelope::response(1, response::Outcome::Tab(tab)));
+}
+
+fn quick_terminal() -> v1::QuickTerminal {
+    v1::QuickTerminal {
+        id: "q".into(),
+        layout: Some(v1::LayoutNode {
+            kind: Some(v1::layout_node::Kind::PaneId("p".into())),
+        }),
+        focused_pane_id: "p".into(),
+        attention: vec![v1::PaneAttention {
+            pane_id: "p".into(),
+            kind: v1::AttentionKind::Waiting.into(),
+            since_ms: 1,
+        }],
+    }
 }

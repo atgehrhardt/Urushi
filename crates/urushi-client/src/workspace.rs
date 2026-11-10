@@ -1,6 +1,6 @@
 //! The workspace as last reported by the daemon, with convenient lookups.
 
-use urushi_core::Tab;
+use urushi_core::{PaneGroup, PaneId, QuickTerminal, Tab};
 use urushi_proto::{convert, v1};
 
 /// A read-only mirror of the daemon's workspace. Replace it wholesale on every
@@ -142,28 +142,48 @@ impl WorkspaceMirror {
 
     /// The tab containing `pane_id`.
     pub fn tab_of_pane(&self, pane_id: &str) -> Option<&v1::Tab> {
-        let pane = convert::parse_id::<urushi_core::PaneId>(pane_id, "pane_id").ok()?;
-        self.workspace.tabs.iter().find(|t| {
-            t.layout
-                .as_ref()
-                .and_then(|l| convert::layout_from_proto(l).ok())
-                .is_some_and(|l| l.contains(pane))
-        })
+        let pane = convert::parse_id::<PaneId>(pane_id, "pane_id").ok()?;
+        self.workspace
+            .tabs
+            .iter()
+            .find(|t| panes(t.layout.as_ref()).contains(&pane))
+    }
+
+    /// The daemon's quick terminal as sent (protocol 1.20; `None` when none is open).
+    pub fn quick_terminal_raw(&self) -> Option<&v1::QuickTerminal> {
+        self.workspace.quick_terminal.as_ref()
+    }
+
+    /// The quick terminal, converted to the domain type.
+    pub fn quick_terminal(&self) -> Option<QuickTerminal> {
+        convert::quick_terminal_from_proto(self.quick_terminal_raw()?).ok()
+    }
+
+    /// The panes of the tab or quick terminal with this id (layout requests name either
+    /// by a tab id).
+    pub fn group(&self, id: &str) -> Option<PaneGroup> {
+        match self.quick_terminal().filter(|q| q.id().to_string() == id) {
+            Some(quick) => Some(quick.group().clone()),
+            None => self.tab(id).map(|t| t.group().clone()),
+        }
+    }
+
+    /// The id of the tab or quick terminal holding `pane_id`.
+    pub fn owner_of_pane(&self, pane_id: &str) -> Option<String> {
+        let pane = convert::parse_id::<PaneId>(pane_id, "pane_id").ok()?;
+        self.quick_terminal_raw()
+            .filter(|q| panes(q.layout.as_ref()).contains(&pane))
+            .map(|q| q.id.clone())
+            .or_else(|| self.tab_of_pane(pane_id).map(|t| t.id.clone()))
     }
 
     /// How many terminals (panes) are open, and in how many threads: what restarting
-    /// the daemon would close.
+    /// the daemon would close. The quick terminal's panes count, in no thread.
     pub fn open_terminals(&self) -> (usize, usize) {
-        let panes = |t: &v1::Tab| {
-            t.layout
-                .as_ref()
-                .and_then(|l| convert::layout_from_proto(l).ok())
-                .map_or(0, |l| l.panes().len())
-        };
         let mut threads: Vec<&str> = Vec::new();
         let mut total = 0;
         for tab in &self.workspace.tabs {
-            let n = panes(tab);
+            let n = panes(tab.layout.as_ref()).len();
             if n > 0 {
                 total += n;
                 if !threads.contains(&tab.thread_id.as_str()) {
@@ -171,27 +191,26 @@ impl WorkspaceMirror {
                 }
             }
         }
-        (total, threads.len())
+        let quick = self
+            .quick_terminal_raw()
+            .map_or(0, |q| panes(q.layout.as_ref()).len());
+        (total + quick, threads.len())
     }
 
-    /// Finds an entity id by unique prefix among repos, projects, threads, tabs, panes,
-    /// boards, columns, tasks (subtasks at any depth too) and attachments, e.g. so the CLI accepts short ids. `None` if nothing or more than one thing matches.
+    /// Finds an entity id by unique prefix among repos, projects, threads, tabs, the
+    /// quick terminal, panes, boards, columns, tasks (subtasks at any depth too) and
+    /// attachments, e.g. so the CLI accepts short ids. `None` if nothing or more than one
+    /// thing matches.
     pub fn resolve(&self, prefix: &str) -> Option<String> {
+        let quick = self.quick_terminal_raw();
         let panes = self
             .workspace
             .tabs
             .iter()
-            .filter_map(|t| t.layout.as_ref())
-            .flat_map(|l| {
-                convert::layout_from_proto(l)
-                    .map(|l| {
-                        l.panes()
-                            .into_iter()
-                            .map(|p| p.to_string())
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default()
-            });
+            .map(|t| t.layout.as_ref())
+            .chain(quick.map(|q| q.layout.as_ref()))
+            .flat_map(panes)
+            .map(|p| p.to_string());
         let ids: Vec<String> = self
             .workspace
             .projects
@@ -200,6 +219,7 @@ impl WorkspaceMirror {
             .chain(self.workspace.folders.iter().map(|f| f.id.clone()))
             .chain(self.workspace.threads.iter().map(|t| t.id.clone()))
             .chain(self.workspace.tabs.iter().map(|t| t.id.clone()))
+            .chain(quick.map(|q| q.id.clone()))
             .chain(panes)
             .chain(self.workspace.boards.iter().flat_map(|b| {
                 std::iter::once(b.id.clone()).chain(b.columns.iter().flat_map(|c| {
@@ -229,6 +249,14 @@ impl WorkspaceMirror {
             _ => None,
         }
     }
+}
+
+/// The panes of a wire layout (none if it is missing or broken).
+fn panes(layout: Option<&v1::LayoutNode>) -> Vec<PaneId> {
+    layout
+        .and_then(|l| convert::layout_from_proto(l).ok())
+        .map(|l| l.panes())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -283,5 +311,23 @@ mod tests {
         });
         assert_eq!(mirror.project_base_thread("f").unwrap().id, "m");
         assert!(mirror.project_base_thread("g").is_none());
+    }
+
+    #[test]
+    fn the_quick_terminal_is_found_by_its_id_and_its_panes() {
+        let pane = PaneId::from_u128(7);
+        let id = urushi_core::TabId::from_u128(3).to_string();
+        let mirror = WorkspaceMirror::new(v1::Workspace {
+            quick_terminal: Some(convert::quick_terminal_to_proto(&QuickTerminal::new(
+                urushi_core::TabId::from_u128(3),
+                pane,
+            ))),
+            ..Default::default()
+        });
+        assert_eq!(mirror.group(&id).unwrap().focused(), pane);
+        assert!(mirror.group("nope").is_none());
+        assert_eq!(mirror.owner_of_pane(&pane.to_string()), Some(id.clone()));
+        assert_eq!(mirror.open_terminals(), (1, 0), "in no thread");
+        assert_eq!(mirror.resolve(&id[id.len() - 4..]), Some(id));
     }
 }

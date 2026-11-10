@@ -470,6 +470,9 @@ pub use folders::{
     project_from_proto, project_settings_from_proto, project_settings_to_proto, project_to_proto,
 };
 
+mod quick;
+pub use quick::{quick_terminal_from_proto, quick_terminal_to_proto};
+
 mod boards;
 pub use boards::{
     attachment_to_proto, board_from_proto, board_to_proto, category_to_proto, color_from_proto,

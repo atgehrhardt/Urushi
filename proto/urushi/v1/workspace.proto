@@ -28,6 +28,8 @@ message Workspace {
   repeated Folder folders = 5;
   // Task boards, in tab order. Since protocol 1.5.
   repeated Board boards = 6;
+  // The daemon's quick terminal; absent when none is open. Since 1.20.
+  QuickTerminal quick_terminal = 7;
 }
 
 // A user-made group of threads, shown to users as a "project". It can hold threads
@@ -108,6 +110,22 @@ message Tab {
   // types (not stored; lost when the daemon restarts). Since 1.9.
   repeated PaneAttention attention = 6;
 }
+
+// Split panes that belong to no thread, shown as a drop-down panel (ADR 0031). A daemon
+// has at most one; it ends when its last pane closes. Its id is accepted wherever a
+// layout request takes a tab_id (SplitPane, ClosePane, FocusPane, MoveDivider,
+// ResizePaneEdge, Equalize, CloseTab). Since 1.20.
+message QuickTerminal {
+  string id = 1;
+  LayoutNode layout = 2;
+  string focused_pane_id = 3;
+  // As Tab.attention.
+  repeated PaneAttention attention = 4;
+}
+
+// Returns the quick terminal, first opening one with a single shell in the home
+// directory if there is none. Since 1.20.
+message OpenQuickTerminalRequest {}
 
 // Why a pane wants the user. Ordered by urgency: WAITING outranks DONE.
 enum AttentionKind {

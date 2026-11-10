@@ -183,7 +183,7 @@ impl Service {
             let pane = PaneId::from_uuid(new_uuid());
             thread.tabs.push(tab_id);
             let env = first.agent.as_ref().map(TaskAgent::env).unwrap_or_default();
-            self.spawn_session_with_env(pane, thread, shell, TermSize::DEFAULT, env)?;
+            self.spawn_session_with_env(pane, &*thread, shell, TermSize::DEFAULT, env)?;
             let title = first
                 .agent
                 .as_ref()

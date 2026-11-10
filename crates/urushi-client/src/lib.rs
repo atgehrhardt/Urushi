@@ -14,6 +14,7 @@ mod jira_issue;
 mod launcher;
 mod platform;
 mod projects;
+mod quick;
 mod requests;
 mod screen;
 mod tasks;
@@ -24,6 +25,7 @@ pub use launcher::{
     DAEMON_BIN_ENV, StopMethod, StoppedDaemon, ensure_local_daemon, local_daemon_endpoint,
     restart_local_daemon, stop_local_daemon,
 };
+pub use quick::QUICK_TERMINAL_SINCE_MINOR;
 pub use screen::{Cell, ScreenState};
 pub use tasks::{FoundTask, TaskRef};
 pub use urushi_proto::endpoint::{Endpoint, parse_tcp};

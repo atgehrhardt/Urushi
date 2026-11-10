@@ -1,7 +1,7 @@
 # Feature: Split-pane layouts
 
 - **Status:** Shipped
-- **Owners (crates):** `urushi-core` (`layout`, `tab`), `urushi-daemon`, `urushi-app`
+- **Owners (crates):** `urushi-core` (`layout`, `pane_group`, `tab`), `urushi-daemon`, `urushi-app`
 - **Related ADRs:** [0001](../adr/0001-in-house-multiplexer.md), [0002](../adr/0002-daemon-source-of-truth.md)
 
 ## What it does
@@ -12,6 +12,7 @@ Each tab is split into any arrangement of terminal panes. Users split right/left
 - Operations live in `layout/ops.rs`: `split`, `close`, `resize`, `move_divider`, `equalize`.
 - `Layout::geometry(bounds)` returns pane rectangles plus `Divider`s. The GUI draws from these and maps a divider drag to `move_divider(anchor, axis, fraction)`.
 - `focus_neighbour` picks the next pane spatially, not by tree order.
+- `urushi_core::PaneGroup` is a layout plus its focused pane, with the focus rule. A `Tab` and the [quick terminal](quick-terminal.md) each own one, so both get every operation, and the daemon's layout requests take either's id (`State::group`).
 - The daemon owns the authoritative `Tab` (layout + focus) and broadcasts changes. Clients send intents (`SplitPaneRequest`, `MoveDividerRequest`, …).
 - When a pane closes (closed by the user, or its process exited), `Tab::close_pane` hands focus to the pane that took its space.
 
