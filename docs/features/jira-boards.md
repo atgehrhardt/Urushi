@@ -1,8 +1,8 @@
 # Feature: Jira boards
 
-- **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits, issues in full)
+- **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits, issues in full, epics as cards)
 - **Owners (crates):** `urushi-core` (`board/{jira,sync,kind}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `time.rs`, `jira/{api,cloud,cloud/details,parse,parse/details,details,adf,credentials}.rs`, `service/{jira,jira_write,jira_query,jira_details,jira_edit}.rs`, `server/{jira,jira_issue}.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `jira_issue.proto`, `convert/boards/jira/`), `urushi-client` (`jira.rs`, `jira_issue.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`filter.rs`, `issue.rs`, `update/{jira,filter,issue}.rs`, `msg/{jira,filter,issue}.rs`, `view/jira.rs`, `view/board/{jira,filter}.rs`, `view/tasks/{jira,header}.rs`, `view/tasks/issue/`, `view/menu/{jira,filter}.rs`, `snapshot/{jira,jira_issue}.rs`), `urushi-cli` (`urushi jira`, `urushi board sync`)
-- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0027](../adr/0027-epics-are-cards-on-jira-boards.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 Any Jira Cloud board can be imported into the Tasks panel. It keeps Jira's columns and stays
@@ -24,6 +24,11 @@ moves at once and goes back if Jira refuses.
   issue type's color (story green, bug red and round, task blue, epic purple), the issue
   key (not on phones), an epic chip, Jira labels as tags, subtask progress and the
   assignee's initials, at the same size as any card.
+- **Epics are cards** (ADR 0027): an epic sits in the column that shows its status, like
+  any issue. It can be dragged, opened in full and used to start a thread. Its stories
+  stay in their own columns with its chip, and filtering on the epic shows the epic with
+  its stories. Jira epics hold stories, not sub-tasks: an epic's editor says so in place
+  of "Add a subtask…", and the daemon refuses sub-tasks under an epic.
 - **Filtering, as in Jira:** under the tabs, a search field (title, key or notes; Escape
   clears it, then lets go of the keyboard), the people issues are assigned to as
   avatars, **Only my issues**, **Recently updated** (the last day) and the board's own
@@ -56,7 +61,8 @@ moves at once and goes back if Jira refuses.
   the workflow doesn't allow is refused with a message and the card stays. Title, notes
   and tags (labels; no spaces) are edited in Jira. Checking a subtask off transitions it to
   a done status, unchecking to a to-do one. **+** on a column creates an issue of the type
-  picked in the editor (task, story or bug), with its subtasks, moved to that column, and
+  picked in the editor (task, story, bug, or epic from a 1.15 daemon), with its subtasks
+  (none for an epic), moved to that column, and
   only on **Save**: Enter in the title moves on to the notes, and subtasks added in the
   editor are created in Jira on Save too, each a Sub-task issue with what its own editor
   set (description, labels, the Sub-task type's fields, required ones asked for first;
@@ -88,7 +94,8 @@ moves at once and goes back if Jira refuses.
   serde-defaulted. `Board::new_jira` and `set_jira_columns` build columns from Jira's
   configuration (same name keeps id and color). `Board::merge_issues(snapshot, full,
   new_id)` (`sync.rs`) re-places every task from its issue (column by status, rank order,
-  subtasks under their parent by `Issue.parent`, epics into `Board.epics`), keeps ids,
+  subtasks under their parent by `Issue.parent`; epics are cards too, and `Board.epics`
+  names every epic that is a card or that a task names), keeps ids,
   links and colors, removes issues missing from a full snapshot, and bounds the board
   (`MAX_SYNCED_ISSUES`, `MAX_SUBTASKS`, `MAX_NOTES`). `local_only` refuses what Jira owns
   with `BoardError::FollowsJira` (`FAILED_PRECONDITION` on the wire). `TaskKind::from_jira`
@@ -118,7 +125,7 @@ moves at once and goes back if Jira refuses.
   back off (`backoff`: `Retry-After` within 1 min–1 h for a 429). A per-board async lock
   keeps one sync or write at a time.
 - **Daemon, writing** (`service/jira_write.rs`, and `service/jira_create.rs` for new
-  issues and sub-tasks with their details): `update_task`, `move_task`,
+  issues (epics included, never with sub-tasks) and sub-tasks with their details): `update_task`, `move_task`,
   `create_task`, `create_subtask` and `delete_task` in `service/boards.rs` branch to it for
   tasks on Jira boards: Jira first (`edit` with label add/remove operations, `transition`,
   `create` with the project's issue type for the kind, `rank`), then `issue` read back and
@@ -138,6 +145,9 @@ moves at once and goes back if Jira refuses.
   `jira/adf/` converts ADF ⇄ Markdown both ways.
 - **Sign-in** (`jira/credentials.rs`): `site_address` normalizes the site (https only);
   `CredentialStore` keeps it in `<home>/jira-credentials.json` (0600).
+- **Wire (1.15):** no new fields: epic issues arrive as cards, and `CreateTask.kind =
+  EPIC` is accepted on Jira boards (the app checks `daemon_supports_epic_cards()`,
+  `EPIC_CARDS_SINCE_MINOR = 15`, before offering it).
 - **Wire (1.13):** `JiraIssue.{type_id, assignee_id, reporter, priority_id, due, points,
   sprint, components, fix_versions, links}`, `JiraBoardSource.quick_filters`,
   `JiraAccount.account_id` (learned on the next full sync for a sign-in made before),
@@ -168,9 +178,11 @@ moves at once and goes back if Jira refuses.
   (`tests/jira_boards.rs::the_sign_in_survives_restarts_and_never_leaves_the_daemon`,
   `jira/credentials.rs` tests, `http/tests.rs::debug_output_leaves_out_credentials`).
 - Requests reach curl only through stdin (`http/tests.rs::requests_reach_curl_only_through_its_stdin`).
-- Merging never duplicates an issue, keeps a task's id and link while its issue stays, never
-  makes an epic a card, stays within the bounds, and merging the same snapshot again
-  changes nothing (`urushi-core/tests/jira_sync_props.rs`, `board/sync/tests.rs`).
+- Merging never duplicates an issue, keeps a task's id and link while its issue stays,
+  makes every epic a card (never a subtask) named in `Board.epics`, stays within the
+  bounds, and merging the same snapshot again changes nothing (`urushi-core/tests/jira_sync_props.rs`, `board/sync/tests.rs`).
+- An epic never gets sub-tasks: refused before Jira is asked
+  (`tests/jira_boards.rs::epics_are_cards_and_can_be_created`).
 - A change Jira refuses changes nothing here
   (`tests/jira_boards.rs::moves_and_new_cards_take_jiras_transitions`, `what_jira_owns_is_refused`).
 - Jira-owned changes are refused on Jira boards whoever asks
@@ -190,14 +202,15 @@ moves at once and goes back if Jira refuses.
   values), `jira/adf/` (Markdown round trips), `jira/credentials.rs`,
   `service/jira.rs` (backoff), `service/jira_edit.rs`, and end to end against an
   in-memory Jira (`tests/fake_jira/`): `tests/jira_boards.rs` (sign-in, import, remote
-  changes, transitions, refused moves, edits, subtasks, refusals, restart, sign-out,
-  quick filters) and `tests/jira_issues.rs` (any field, comments, files, links,
+  changes, transitions, refused moves, edits, subtasks, epics, refusals, restart,
+  sign-out, quick filters) and `tests/jira_issues.rs` (any field, comments, files, links,
   watching, work, searches, required create fields).
 - UI: `textfield/secret.rs`. App: `filter/tests.rs` (each dimension, how they combine,
   subtasks keeping their card), `issue.rs` (durations, drafts), `update/tests/jira.rs` (a new issue created only on
   Save, field drafts sent with Save, changes made at once, required create fields,
-  filters, quick-filter queries, the search's keyboard); `snapshot/tests.rs` (`jira-board`, `jira-task`, `jira-subtask` (the top
-  bar), `jira-filters`, `jira-filter-menu`, `jira-issue`, `jira-issue-picker`, `jira-connect`, `jira-import` scenarios, card sizes, no
+  filters, quick-filter queries, the search's keyboard, a new epic, an epic under its own
+  filter), `view/tasks/jira.rs` (Epic offered only from 1.15 daemons); `snapshot/tests.rs` (`jira-board`, `jira-task`, `jira-subtask` (the top
+  bar), `jira-filters`, `jira-filter-menu`, `jira-issue`, `jira-issue-picker`, `jira-new-epic`, `jira-connect`, `jira-import` scenarios, card sizes, no
   subtask delete on Jira boards, the Type picker).
 
 ## Limitations and follow-ups
@@ -215,7 +228,10 @@ moves at once and goes back if Jira refuses.
   thumbnails on cards.
 - Opening an issue takes several requests (about a second) before its fields show.
 - Issues whose status no column shows, and done issues older than 14 days, aren't on the
-  board; a board shows at most 500 tasks.
+  board; a board shows at most 500 tasks, epics included. A board whose filter leaves
+  epics out can't show a new epic ("Jira made KEY, but this board doesn't show it").
+- An epic's editor doesn't list its stories (the Epic filter shows them). A story is put
+  in an epic through its **Parent** field, once created.
 - The sign-in is a file, not the OS keychain (ADR 0021). Claude's usage request still makes
   its own curl call instead of going through `HttpClient`.
 - Opening Jira pages isn't wired to the mobile apps yet.

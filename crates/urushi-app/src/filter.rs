@@ -234,9 +234,17 @@ pub fn values(dim: Dim, task: TaskRef<'_>) -> Vec<(String, String)> {
             .filter(|i| !i.status.is_empty())
             .map(|i| vec![pair(&i.status, &i.status)])
             .unwrap_or_default(),
+        // An epic card is in its own epic, so it shows with its stories.
         Dim::Epic => issue
-            .filter(|i| !i.epic_key.is_empty())
-            .map(|i| vec![pair(&i.epic_key, &i.epic_key)])
+            .map(|i| {
+                if task.kind() == i32::from(v1::TaskKind::Epic) {
+                    &i.key
+                } else {
+                    &i.epic_key
+                }
+            })
+            .filter(|k| !k.is_empty())
+            .map(|k| vec![pair(k, k)])
             .unwrap_or_default(),
         Dim::Sprint => issue
             .and_then(|i| i.sprint.as_ref())

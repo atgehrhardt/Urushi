@@ -3,8 +3,8 @@
 //! parent in the top bar (`jira-subtask`), the board filtered to one person's issues
 //! (`jira-filters`) and the Filters menu's Assignee page (`jira-filter-menu`), an issue in
 //! full with its fields and comments (`jira-issue`) and its assignee picker open
-//! (`jira-issue-picker`), signing in (`jira-connect`) and choosing a board to import
-//! (`jira-import`).
+//! (`jira-issue-picker`), a new epic in the editor (`jira-new-epic`), signing in
+//! (`jira-connect`) and choosing a board to import (`jira-import`).
 
 use urushi_client::v1;
 
@@ -21,6 +21,7 @@ pub(super) const SCENARIOS: &[&str] = &[
     "jira-filter-menu",
     "jira-issue",
     "jira-issue-picker",
+    "jira-new-epic",
     "jira-connect",
     "jira-import",
 ];
@@ -31,6 +32,7 @@ fn issue(key: &str, (kind, status): (v1::TaskKind, &str), assignee: &str, epic: 
     let type_name = match kind {
         v1::TaskKind::Story => "Story",
         v1::TaskKind::Bug => "Bug",
+        v1::TaskKind::Epic => "Epic",
         _ => "Task",
     };
     v1::Task {
@@ -110,12 +112,15 @@ fn board() -> v1::Board {
         "ACME-7",
     );
     keys.title = "Rotate API keys".into();
+    // Epics are cards too (ADR 0027).
+    let mut payments = issue("ACME-7", (v1::TaskKind::Epic, "In Progress"), "", "");
+    payments.title = "Payments".into();
     v1::Board {
         id: "jb".into(),
         name: "ACME board".into(),
         columns: vec![
             column("1", "To Do", vec![checkout, crash]),
-            column("3", "In Progress", vec![invoices]),
+            column("3", "In Progress", vec![invoices, payments]),
             column("10001", "Done", vec![keys]),
         ],
         jira: Some(Box::new(v1::JiraBoardSource {
@@ -155,6 +160,17 @@ fn board() -> v1::Board {
     }
 }
 
+/// **+** on To Do, with Type Epic picked.
+fn new_epic(state: &mut AppState) {
+    state.update(Msg::NewTask {
+        board: "jb".into(),
+        column: "1".into(),
+    });
+    state.update(Msg::Board(crate::msg::BoardMsg::PickKind(
+        v1::TaskKind::Epic.into(),
+    )));
+}
+
 /// Sets up a Jira scenario on a connected state.
 pub(super) fn show(state: &mut AppState, name: &str) {
     let mut workspace = state.workspace.raw().clone();
@@ -181,6 +197,7 @@ pub(super) fn show(state: &mut AppState, name: &str) {
                 )));
             }
         }
+        "jira-new-epic" => new_epic(state),
         "jira-filters" => {
             state.update(Msg::Filter(FilterMsg::Toggle(
                 Dim::Assignee,

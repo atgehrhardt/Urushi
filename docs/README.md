@@ -41,6 +41,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0024 – Start a task's agent with a reference to the task and the CLI to read it, not a copy](adr/0024-task-prompts-by-reference.md)
 - [0025 – Write a new subtask in an editor of its own, kept as a draft until Save](adr/0025-new-subtasks-in-their-own-editor.md)
 - [0026 – Name a Jira issue's thread branch after its key, and let Jira's integration link the code](adr/0026-issue-keys-in-branch-names.md)
+- [0027 – Show a Jira board's epics as cards, and create them like any issue](adr/0027-epics-are-cards-on-jira-boards.md)
 
 ## Features
 - [_template](features/_template.md)
