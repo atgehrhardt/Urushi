@@ -228,6 +228,8 @@ pub enum Msg {
     Tick(i64),
     /// The window gained (`true`) or lost keyboard focus.
     WindowFocused(bool),
+    /// Running indicators' brightness moved (0 to 1), while an agent works.
+    Pulse(f32),
 
     // ---- tabs and panes --------------------------------------------------------------
     /// Show a tab.

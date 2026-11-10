@@ -1,5 +1,5 @@
-//! A thread's card in the sidebar: its title (with a dot when its agent finished or
-//! waits, and the Jira and GitHub marks of its task's issue and pull request, which
+//! A thread's card in the sidebar: its title (with a dot when its agent finished, works
+//! or waits, and the Jira and GitHub marks of its task's issue and pull request, which
 //! open them in a browser, ADR 0036), the repo and branch it's on, and its lifecycle
 //! badge. Click to open it, right-click for its menu, drag it onto a project to file it
 //! there, or onto another thread to take that thread's place and join its group. A
@@ -14,6 +14,7 @@ use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key};
 use crate::brand_icons::{Brand, mark};
 use crate::msg::Msg;
 use crate::organize::{Dragged, MenuTarget};
+use crate::running::Indicator;
 use crate::state::AppState;
 
 use super::board::drop_line;
@@ -41,11 +42,17 @@ pub(super) fn thread_card(
         Ok(v1::ThreadState::Deleting) => Some(("deleting", theme.warning)),
         _ => Some(("creating", theme.warning)),
     };
-    let attention = state.thread_attention(&thread.id);
+    let attention = state.thread_indicator(&thread.id);
     let mut details = Node::column()
         .width(Length::Fill(1.0))
         .gap(1.0)
-        .child(thread_title(theme, thread, (selected, attention), links))
+        .child(thread_title(
+            state,
+            theme,
+            thread,
+            (selected, attention),
+            links,
+        ))
         .child(Node::text(
             thread_meta(state, thread),
             Font::Ui,
@@ -171,11 +178,12 @@ fn drop_line_at(state: &AppState, thread: &str) -> (bool, bool) {
 }
 
 /// A thread's title, then the marks of its links (ADR 0036), then a dot when its
-/// agent finished or waits (ADR 0017).
+/// agent finished, works or waits (ADR 0017, ADR 0039).
 fn thread_title(
+    state: &AppState,
     theme: &Theme,
     thread: &v1::Thread,
-    (selected, attention): (bool, Option<v1::AttentionKind>),
+    (selected, attention): (bool, Option<Indicator>),
     links: Option<&ThreadLinks>,
 ) -> Node<Msg> {
     let color = if selected {
@@ -196,7 +204,9 @@ fn thread_title(
                 .into_iter()
                 .flat_map(|l| link_marks(theme, &thread.id, l)),
         )
-        .children(attention.map(|k| super::attention::indicator(theme, k, super::attention::DOT)))
+        .children(
+            attention.map(|k| super::attention::indicator(state, theme, k, super::attention::DOT)),
+        )
 }
 
 /// The Jira mark for the thread's issue and the GitHub mark for its pull request. Each

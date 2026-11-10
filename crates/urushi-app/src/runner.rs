@@ -12,7 +12,7 @@ use urushi_ui::{CursorIcon, Frame, Key, Point, Rect, TextSystem, Theme, build};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::window::{Window, WindowId};
 
 use crate::backend::Backend;
@@ -72,6 +72,10 @@ pub(crate) struct Runner {
     pub(crate) safe_area: Option<crate::config::SafeAreaFn>,
     /// When the board panel's slide last advanced (`None`: not sliding).
     pub(crate) animated_at: Option<std::time::Instant>,
+    /// The running indicators' pulse: its brightness and when its next frame is due.
+    pub(crate) pulse: crate::pulse::Pulse,
+    /// The window can't be seen (minimized, or covered): no pulse frames.
+    pub(crate) occluded: bool,
     /// The text field a press started in, while the button is held (drag selects).
     pub(crate) field_press: Option<Key>,
     /// The last left click: when, where, and how many quick clicks it made.
@@ -272,11 +276,22 @@ impl Runner {
         self.request_redraw();
     }
 
+    /// Whether running indicators should pulse: an agent works and the window can be
+    /// seen.
+    fn pulsing(&self) -> bool {
+        !self.occluded && self.window.is_some() && self.state.any_running()
+    }
+
     fn redraw(&mut self) {
         let Some(window) = self.window.clone() else {
             return;
         };
         self.animate();
+        if self.pulsing() {
+            let now = std::time::Instant::now();
+            self.state.update(Msg::Pulse(self.pulse.brightness(now)));
+            self.pulse.drew(now);
+        }
         let scale = self.scale();
         let size = window.inner_size();
         let bounds = self.content_rect(&window, scale);
@@ -589,6 +604,10 @@ impl ApplicationHandler<UserEvent> for Runner {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Focused(focused) => self.dispatch(Msg::WindowFocused(focused)),
+            WindowEvent::Occluded(occluded) => {
+                self.occluded = occluded;
+                self.request_redraw();
+            }
             WindowEvent::RedrawRequested => self.redraw(),
             WindowEvent::Resized(size) => {
                 let scale = self.scale();
@@ -673,6 +692,23 @@ impl ApplicationHandler<UserEvent> for Runner {
                 });
             }
             _ => {}
+        }
+    }
+
+    /// While an agent runs, wakes up for the next frame of its indicator's pulse;
+    /// otherwise sleeps until something happens.
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if !self.pulsing() {
+            event_loop.set_control_flow(ControlFlow::Wait);
+            return;
+        }
+        let now = std::time::Instant::now();
+        let next = self.pulse.next_frame(now);
+        if next <= now {
+            self.request_redraw();
+            event_loop.set_control_flow(ControlFlow::Wait);
+        } else {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(next));
         }
     }
 

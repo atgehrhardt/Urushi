@@ -7,9 +7,11 @@
 //! OSC 777 sequence, [`AttentionKind::signal_sequence`]. Agents started by Urushi get
 //! hooks that write it (`agent::hooks`); the daemon's terminal emulator recognises it.
 //!
-//! The same sequence also carries [`READY_SIGNAL`], which is not attention: an agent's
-//! hook says its input is ready, so a drafted task message can be typed into it (ADR
-//! 0030).
+//! The same sequence also carries signals that are not attention:
+//! - [`READY_SIGNAL`]: an agent's hook says its input is ready, so a drafted task message
+//!   can be typed into it (ADR 0030).
+//! - [`RUNNING_SIGNAL`] and [`IDLE_SIGNAL`]: an agent's hooks say it is working on a
+//!   turn (a prompt, a tool, a subagent) or has ended its session (ADR 0039).
 
 /// Why a pane wants the user. `Waiting` outranks `Done`: a thread shows its most urgent
 /// pane.
@@ -28,6 +30,12 @@ pub const SIGNAL_NAMESPACE: &str = "urushi";
 /// The word in Urushi's signal for "the agent has started and reads input". Never raises
 /// attention.
 pub const READY_SIGNAL: &str = "ready";
+/// The word in Urushi's signal for "the agent is working": it took a prompt, uses a tool
+/// or started a subagent. Never raises attention.
+pub const RUNNING_SIGNAL: &str = "running";
+/// The word in Urushi's signal for "the agent's session ended": it no longer works,
+/// though nothing finished. Never raises attention.
+pub const IDLE_SIGNAL: &str = "idle";
 
 /// Urushi's signal carrying `word`: `ESC ] 777 ; urushi ; <word> BEL`.
 pub fn signal_sequence(word: &str) -> String {
@@ -78,11 +86,13 @@ mod tests {
             assert_eq!(AttentionKind::from_signal(kind.signal()), Some(kind));
         }
         assert_eq!(AttentionKind::from_signal("nope"), None);
-        assert_eq!(
-            AttentionKind::from_signal(READY_SIGNAL),
-            None,
-            "not attention"
-        );
+        for word in [READY_SIGNAL, RUNNING_SIGNAL, IDLE_SIGNAL] {
+            assert_eq!(
+                AttentionKind::from_signal(word),
+                None,
+                "{word} is not attention"
+            );
+        }
         assert_eq!(
             signal_sequence(READY_SIGNAL),
             "\u{1b}]777;urushi;ready\u{7}"

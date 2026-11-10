@@ -32,6 +32,7 @@ mod quick;
 mod quick_filters;
 mod repos;
 mod restore;
+mod running;
 mod settings;
 mod spawn;
 mod state;
@@ -63,6 +64,7 @@ pub use project_base::ProjectSettingsRequest;
 pub use projects::{Assign, ThreadUpdate};
 pub use quick_filters::QuickFilterSaved;
 pub use repos::BranchList;
+pub use running::is_interrupt;
 use spawn::PaneHome;
 pub(crate) use state::State;
 pub use threads::ThreadRequest;
@@ -161,6 +163,8 @@ pub struct Service {
     restore_points: Mutex<HashMap<PaneId, (u64, PaneRecord)>>,
     /// Panes whose program finished or waits for the user. Not stored (`attention.rs`).
     attention: Mutex<HashMap<PaneId, attention::Attention>>,
+    /// Panes whose agent is working, since when. Not stored (`running.rs`).
+    running: Mutex<HashMap<PaneId, Timestamp>>,
     /// Panes waiting for a task's message to be drafted into their agent, with how many
     /// times the user acted on each since (`task_draft.rs`).
     drafts: Mutex<HashMap<PaneId, u64>>,
@@ -233,6 +237,7 @@ impl Service {
             jira: jira::JiraLink::new(config.jira, &config.home),
             restore_points: Mutex::new(HashMap::new()),
             attention: Mutex::new(HashMap::new()),
+            running: Mutex::new(HashMap::new()),
             drafts: Mutex::default(),
             home: config.home,
             cli: config.cli,
@@ -271,11 +276,13 @@ impl Service {
         self.changes.subscribe()
     }
 
-    /// The whole workspace as a wire message, with each tab's attention.
+    /// The whole workspace as a wire message, with each tab's attention and running
+    /// panes.
     pub fn workspace(&self) -> v1::Workspace {
         let state = lock(&self.state);
         let mut workspace = state.to_proto();
         self.add_attention(&mut workspace, &state);
+        self.add_running(&mut workspace, &state);
         workspace
     }
 

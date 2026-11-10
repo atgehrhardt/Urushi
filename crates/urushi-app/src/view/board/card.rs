@@ -1,9 +1,10 @@
 //! Task cards: all the same size, with the title, two lines of notes and a footer
 //! (tags, subtask progress, the thread chip); a colored task has a stripe and a tint.
-//! When an agent in a thread linked to the task (or one of its subtasks) finished or
-//! waits for the user, the card shows a badge by its title and a border in that color
-//! (ADR 0017). A task with a kind has a marker in its color before the title; a Jira
-//! issue its key there, and its epic and assignee in the footer. The copy that follows
+//! When an agent in a thread linked to the task (or one of its subtasks) finished, works
+//! or waits for the user, the card shows a badge by its title (ADR 0017, ADR 0039).
+//! Finished and waiting also color its border; a running card keeps its usual border.
+//! A task with a kind has a marker in its color before the title; a Jira issue its key
+//! there, and its epic and assignee in the footer. The copy that follows
 //! the pointer while dragging is the same card.
 
 use urushi_client::v1;
@@ -43,10 +44,10 @@ pub(super) fn card(state: &AppState, theme: &Theme, task: &v1::Task) -> Node<Msg
         .dragging
         .as_ref()
         .is_some_and(|(id, _)| *id == task.id);
-    let needs = state.task_attention(task);
-    let (border_width, border) = match needs {
+    let shown = state.task_indicator(task);
+    let (border_width, border) = match state.task_attention(task) {
         _ if dragged => (1.0, theme.accent.with_alpha(0.5)),
-        Some(kind) => (1.5, attention::color(theme, kind)),
+        Some(kind) => (1.5, attention::color(theme, kind.into())),
         None => (1.0, theme.border),
     };
     let mut node = card_body(state, theme, task, dragged, true)
@@ -65,7 +66,7 @@ pub(super) fn card(state: &AppState, theme: &Theme, task: &v1::Task) -> Node<Msg
             format!(
                 "Task {}{}",
                 task.title,
-                needs.map_or(String::new(), |k| format!(", {}", attention::label(k)))
+                shown.map_or(String::new(), |k| format!(", {}", attention::label(k)))
             ),
         );
     if state.board.dragging.is_none() {
@@ -145,8 +146,8 @@ fn title_row(state: &AppState, theme: &Theme, task: &v1::Task, color: Color) -> 
         )
         .children(
             state
-                .task_attention(task)
-                .map(|kind| attention::badge(theme, kind)),
+                .task_indicator(task)
+                .map(|kind| attention::badge(state, theme, kind)),
         )
 }
 
@@ -275,8 +276,8 @@ fn card_footer(
             .background(theme.accent.with_alpha(0.16))
             .children(
                 state
-                    .thread_attention(&thread.id)
-                    .map(|k| attention::indicator(theme, k, 6.0)),
+                    .thread_indicator(&thread.id)
+                    .map(|k| attention::indicator(state, theme, k, 6.0)),
             )
             .child(Node::text(
                 format!("→ {}", shorten(&thread.title, CHIP_CHARS)),

@@ -476,6 +476,21 @@ fn tabs_carry_pane_attention() {
     round_trip(&envelope::response(1, response::Outcome::Tab(tab)));
 }
 
+#[test]
+fn tabs_carry_running_panes() {
+    let tab = v1::Tab {
+        id: "t".into(),
+        thread_id: "th".into(),
+        title: "Claude".into(),
+        running: vec![v1::PaneRunning {
+            pane_id: "p".into(),
+            since_ms: 1_700_000_000_000,
+        }],
+        ..Default::default()
+    };
+    round_trip(&envelope::response(1, response::Outcome::Tab(tab)));
+}
+
 fn quick_terminal() -> v1::QuickTerminal {
     v1::QuickTerminal {
         id: "q".into(),
@@ -487,6 +502,10 @@ fn quick_terminal() -> v1::QuickTerminal {
             pane_id: "p".into(),
             kind: v1::AttentionKind::Waiting.into(),
             since_ms: 1,
+        }],
+        running: vec![v1::PaneRunning {
+            pane_id: "p".into(),
+            since_ms: 2,
         }],
     }
 }

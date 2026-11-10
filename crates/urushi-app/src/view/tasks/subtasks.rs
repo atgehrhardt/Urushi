@@ -125,8 +125,9 @@ fn subtask_row(state: &AppState, theme: &Theme, s: &v1::Subtask) -> Node<Msg> {
     if openable {
         row = row.on_secondary_click(Msg::OpenMenu(MenuTarget::Task(s.id.clone())));
     }
-    if let Some(kind) = state.subtask_attention(s) {
+    if let Some(kind) = state.subtask_indicator(s) {
         row = row.child(super::super::attention::indicator(
+            state,
             theme,
             kind,
             super::super::attention::DOT,

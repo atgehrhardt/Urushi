@@ -23,6 +23,11 @@ impl AppState {
         reason = "one arm per message kind keeps routing in one place"
     )]
     pub fn update(&mut self, msg: Msg) -> Vec<Effect> {
+        // A frame of the running indicators' pulse changes nothing else.
+        if let Msg::Pulse(brightness) = msg {
+            self.pulse = brightness.clamp(0.0, 1.0);
+            return Vec::new();
+        }
         let before = crate::errors::BeforeUpdate::of(self);
         let mut fx = Vec::new();
         match msg {
@@ -184,6 +189,7 @@ impl AppState {
             Msg::Filter(msg) => self.filter_msg(msg, &mut fx),
             Msg::Tick(now_ms) => self.tick(now_ms, &mut fx),
             Msg::WindowFocused(focused) => self.attention.in_background = !focused,
+            Msg::Pulse(_) => {}
             // The mouse over terminals: `update/pointer.rs`.
             msg @ (Msg::AreaPress(_)
             | Msg::AreaDrag(_)

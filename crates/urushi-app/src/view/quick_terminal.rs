@@ -32,8 +32,8 @@ pub(super) fn toggle_button(state: &AppState, theme: &Theme) -> Node<Msg> {
         .gap(2.0)
         .children(
             state
-                .quick_attention()
-                .map(|k| super::attention::indicator(theme, k, super::attention::DOT)),
+                .quick_indicator()
+                .map(|k| super::attention::indicator(state, theme, k, super::attention::DOT)),
         )
         .child(
             icon_button(theme, ">_", &label, Msg::Quick(QuickMsg::Toggle))

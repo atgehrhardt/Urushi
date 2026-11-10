@@ -250,7 +250,16 @@ fn sample_board() -> v1::Board {
                 color: v1::LabelColor::Teal.into(),
                 ..column("c2", "In progress", vec![pricing])
             },
-            column("c3", "Done", vec![task("k4", "Stripe sandbox keys", "")]),
+            column(
+                "c3",
+                "Done",
+                vec![{
+                    // Its agent is still at work (see `sample_tabs`).
+                    let mut keys = task("k4", "Stripe sandbox keys", "");
+                    keys.thread_id = "t5".into();
+                    keys
+                }],
+            ),
         ],
         ..Default::default()
     }
@@ -262,9 +271,11 @@ const TAB3: &str = "00000000-0000-0000-0000-0000000000a3";
 const PANE3: &str = "00000000-0000-0000-0000-0000000000b3";
 const TAB4: &str = "00000000-0000-0000-0000-0000000000a4";
 const PANE4: &str = "00000000-0000-0000-0000-0000000000b4";
+const TAB5: &str = "00000000-0000-0000-0000-0000000000a5";
+const PANE5: &str = "00000000-0000-0000-0000-0000000000b5";
 
-/// The tabs: Claude in "Invoice API", plus an agent that finished ("Pricing page") and
-/// one waiting for permission ("Checkout copy").
+/// The tabs: Claude in "Invoice API", plus an agent that finished ("Pricing page"), one
+/// waiting for permission ("Checkout copy") and one at work ("Welcome emails").
 fn sample_tabs() -> Vec<v1::Tab> {
     vec![
         v1::Tab {
@@ -276,9 +287,18 @@ fn sample_tabs() -> Vec<v1::Tab> {
             }),
             focused_pane_id: PANE.into(),
             attention: Vec::new(),
+            running: Vec::new(),
         },
         agent_tab(TAB3, PANE3, "t3", v1::AttentionKind::Done),
         agent_tab(TAB4, PANE4, "t4", v1::AttentionKind::Waiting),
+        v1::Tab {
+            attention: Vec::new(),
+            running: vec![v1::PaneRunning {
+                pane_id: PANE5.into(),
+                since_ms: 1,
+            }],
+            ..agent_tab(TAB5, PANE5, "t5", v1::AttentionKind::Done)
+        },
     ]
 }
 
@@ -297,6 +317,7 @@ fn agent_tab(tab: &str, pane: &str, thread: &str, kind: v1::AttentionKind) -> v1
             kind: kind.into(),
             since_ms: 1,
         }],
+        running: Vec::new(),
     }
 }
 
@@ -332,6 +353,15 @@ pub fn scenario(
     height: f32,
 ) -> Option<Scene> {
     scenario_frame(name, theme, text, width, height).map(|f| f.scene)
+}
+
+/// `menu`: a thread's context menu; `menu-status`: the same on its Status page.
+fn open_thread_menu(state: &mut AppState, name: &str) {
+    state.update(Msg::Pointer(Point::new(150.0, 230.0)));
+    state.update(Msg::OpenMenu(MenuTarget::Thread("t2".into())));
+    if name == "menu-status" {
+        state.update(Msg::MenuPage(MenuPage::Status));
+    }
 }
 
 /// [`scenario`]'s whole frame (hit regions, accessibility nodes), for layout checks.
@@ -379,7 +409,10 @@ fn scenario_frame(
                     tab_ids: vec![TAB4.into()],
                     ..sample_thread("t4", "w", "Checkout copy", "f1", "Blocked", false)
                 },
-                sample_thread("t5", "p", "Welcome emails", "f2", "", false),
+                v1::Thread {
+                    tab_ids: vec![TAB5.into()],
+                    ..sample_thread("t5", "p", "Welcome emails", "f2", "", false)
+                },
                 sample_thread("t6", "w", "Fix typo", "", "", false),
             ],
             tabs: sample_tabs(),
@@ -408,13 +441,7 @@ fn scenario_frame(
         "settings-task-message" => own_drafted_message(&mut state),
         "settings-appearance" | "settings-custom" | "logo-hidden" => show_look(&mut state, name),
         "setup" | "setup-mode" => state.dialog = Some(setup_wizard(name)),
-        "menu" | "menu-status" => {
-            state.update(Msg::Pointer(Point::new(150.0, 230.0)));
-            state.update(Msg::OpenMenu(MenuTarget::Thread("t2".into())));
-            if name == "menu-status" {
-                state.update(Msg::MenuPage(MenuPage::Status));
-            }
-        }
+        "menu" | "menu-status" => open_thread_menu(&mut state, name),
         "drag" | "drag-thread" | "drag-project" => show_drag(&mut state, name),
         "sidebar-collapsed" => {
             show_board_or_usage(&mut state, "status");

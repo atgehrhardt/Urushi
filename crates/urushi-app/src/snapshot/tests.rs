@@ -303,20 +303,21 @@ fn panes_split_and_close_from_their_context_menu_not_buttons() {
 }
 
 #[test]
-fn threads_show_when_their_agent_finished_or_waits() {
-    // "Pricing page" has a finished agent, "Checkout copy" one waiting for permission.
+fn threads_show_when_their_agent_finished_works_or_waits() {
+    // "Pricing page" has a finished agent, "Checkout copy" one waiting for permission,
+    // "Welcome emails" one at work.
     let sidebar = dump("status", 1280.0);
-    for text in ["\"finished\"", "\"needs input\""] {
+    for text in ["\"finished\"", "\"needs input\"", "\"running\""] {
         assert!(sidebar.contains(text), "{text} missing: {sidebar}");
     }
 }
 
 #[test]
-fn cards_show_when_an_agent_on_their_threads_finished_or_waits() {
+fn cards_show_when_an_agent_on_their_threads_finished_works_or_waits() {
     // "Invoice PDF export" is linked to a waiting thread; a nested subtask of "Pricing
-    // page copy" to a finished one.
+    // page copy" to a finished one; "Stripe sandbox keys" to one at work.
     let board = dump("board", 1280.0);
-    for text in ["\"Needs input\"", "\"Finished\""] {
+    for text in ["\"Needs input\"", "\"Finished\"", "\"Running\""] {
         assert!(board.contains(text), "{text} missing: {board}");
     }
 }

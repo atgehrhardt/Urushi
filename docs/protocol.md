@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.24 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.25 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -37,6 +37,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 25 | Running agents (ADR 0039): `Tab.running` and `QuickTerminal.running` (`PaneRunning{pane_id, since_ms}`) list panes whose agent is working, as its hooks say. Like attention, running panes aren't stored: changes arrive as `WorkspaceChanged` with the same `revision`. Esc or Ctrl+C sent as `Input` to a pane ends its running. Older daemons send none, so nothing shows as running. |
 | 24 | `MoveThread{thread_id, index}` reorders threads (ADR 0038): the index is into `Workspace.threads`, counted without the moved thread and clamped to the end; an unknown thread is `NOT_FOUND`. A thread's project, pin and status don't change. `Workspace.threads` is in display order: the sidebar shows each group (project, pin, status) in it. Clients check `Welcome.protocol_minor ≥ 24` before sending it. |
 | 23 | Quick filters that can be made, changed and removed (ADR 0037): `CreateQuickFilter{board_id, name, rule}` → `QuickFilterSaved{filter, kept_here}`, `UpdateQuickFilter{board_id, filter, name, rule}` (an empty name and an unset rule keep them) and `DeleteQuickFilter{board_id, filter}` → `Empty`, where `filter` is a `QuickFilterRef` (`jira_id` for a Jira board's own, `id` for one the board keeps) and `rule` a `QuickFilterRule{search, kinds, tags, jql}`. On a Jira board the rule is JQL, checked with a search (unreadable JQL is `INVALID_ARGUMENT`) and written to Jira; if Jira won't take a new one, the daemon keeps it in `Board.quick_filters` and `kept_here` says why. Elsewhere the rule is a search, kinds and tags, kept in `Board.quick_filters` and evaluated by clients. A rule that filters by nothing or doesn't suit the board is `INVALID_ARGUMENT`; an unknown filter `NOT_FOUND`. Also `JiraQuickFilter.jql` and `QueryJiraFilter.kept_quick_filter_ids` (the board's own JQL filters). Clients check `Welcome.protocol_minor ≥ 23`. |
 | 22 | Pull requests on tasks (ADR 0036): `Task.pr_url`, `Subtask.pr_url` (a local task's pull request, an `https://` URL; empty for none), `UpdateTask.optional pr_url` (empty unlinks; anything but an `https://` URL with a host is `INVALID_ARGUMENT`; on a Jira board `FAILED_PRECONDITION`), and `JiraIssue.pull_requests` (`PullRequest{url, title, status}`, the `PullRequestStatus` enum: `OPEN`, `MERGED`, `DECLINED`; `UNSPECIFIED` = unknown), read from Jira's development info only while a thread is linked to the issue. Clients check `Welcome.protocol_minor ≥ 22` before offering the link; older daemons leave every field empty. |

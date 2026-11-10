@@ -515,6 +515,9 @@ pub struct AppState {
     /// Attention already announced or cleared, and whether the window is in the
     /// background (`attention.rs`).
     pub attention: crate::attention::AttentionTracker,
+    /// How bright running indicators are right now, 0 to 1: the runner moves it while an
+    /// agent works, so they pulse (`running.rs`).
+    pub pulse: f32,
     /// In compact mode, whether the thread list is showing (instead of the terminals).
     pub sidebar_open: bool,
     /// Outside compact mode: the sidebar's width, and whether it's collapsed.
@@ -590,6 +593,7 @@ impl AppState {
             focused_override: HashMap::new(),
             compact: false,
             attention: crate::attention::AttentionTracker::default(),
+            pulse: 1.0,
             sidebar_open: true,
             sidebar: crate::sidebar::SidebarLayout::default(),
             agents: Vec::new(),

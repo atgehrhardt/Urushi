@@ -105,6 +105,7 @@ impl Emulator for AlacrittyEmulator {
         events.extend(self.notices.advance(bytes).into_iter().map(|n| match n {
             super::notices::Notice::Attention(kind) => EmulatorEvent::Attention(kind),
             super::notices::Notice::Ready => EmulatorEvent::Ready,
+            super::notices::Notice::Running(running) => EmulatorEvent::Running(running),
         }));
         events
     }

@@ -53,6 +53,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0036 – Show a thread's pull request: read a Jira issue's from Jira's development info, and let a local task link one](adr/0036-pull-requests-from-jira-dev-info-and-local-links.md)
 - [0037 – Write quick filters to Jira through its board-settings endpoint, and keep them here when Jira refuses](adr/0037-quick-filters-written-to-jira-or-kept-here.md)
 - [0038 – Reorder threads by moving them in the one stored list, and let a drop join the target's group](adr/0038-reorder-threads-in-the-stored-list.md)
+- [0039 – Learn that an agent is running from its prompt and tool hooks, and end it on Stop, prompts, session end or an interrupt key](adr/0039-running-agents-from-their-hooks.md)
 
 ## Features
 - [_template](features/_template.md)
@@ -68,6 +69,6 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [Jira boards](features/jira-boards.md)
 - [Task agent and first-run setup](features/task-agent.md)
 - [Agent usage in the status bar](features/agent-usage.md)
-- [Agent attention (finished / needs input)](features/agent-attention.md)
+- [Agent attention and activity (finished / running / needs input)](features/agent-attention.md)
 - [Quick terminal](features/quick-terminal.md)
 - [CI and releases](features/ci-and-releases.md)
