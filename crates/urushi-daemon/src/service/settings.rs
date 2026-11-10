@@ -47,6 +47,9 @@ fn apply_patch(settings: &mut Settings, patch: &v1::SettingsPatch) -> ServiceRes
     if let Some(shell) = &patch.default_shell {
         settings.default_shell = Some(shell.clone()).filter(|s| !s.trim().is_empty());
     }
+    if let Some(v) = patch.update_base_from_remote {
+        settings.update_base_from_remote = v;
+    }
     if let Some(root) = &patch.worktree_root {
         settings.worktree_root = Some(PathBuf::from(root)).filter(|p| !p.as_os_str().is_empty());
     }
@@ -134,6 +137,13 @@ mod tests {
         assert_eq!(s.tailnet.port, 9000);
         assert_eq!(s.tailnet.allowed_logins, vec!["me@example.com"]);
         assert_eq!(s.branch_prefix.as_str(), "urushi/", "untouched");
+        assert!(s.update_base_from_remote, "untouched");
+        let off = v1::SettingsPatch {
+            update_base_from_remote: Some(false),
+            ..Default::default()
+        };
+        apply_patch(&mut s, &off).unwrap();
+        assert!(!s.update_base_from_remote);
     }
 
     #[test]

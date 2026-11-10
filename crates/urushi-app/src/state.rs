@@ -9,6 +9,10 @@ use urushi_ui::{CellMetrics, Point, Rect, TextField};
 use crate::config::ConnectTarget;
 use crate::organize::{ContextMenu, Prompt, Select, SidebarTab};
 
+/// The protocol minor from which the daemon can fetch a new thread's base from its
+/// remote first (ADR 0028).
+pub const FRESH_BASE_SINCE_MINOR: u32 = 16;
+
 /// Connection status.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Connection {
@@ -159,6 +163,8 @@ pub enum FieldCommand {
 pub enum SettingToggle {
     /// Delete remote branches with threads.
     DeleteRemoteBranches,
+    /// Fetch a new thread's base from its remote first.
+    UpdateBaseFromRemote,
     /// Serve the daemon on the tailnet.
     ServeTailnet,
     /// Start an agent with its skip-permissions flag.
@@ -553,6 +559,12 @@ impl AppState {
     /// Whether the daemon stores agent settings and starts agents (protocol 1.1).
     pub fn daemon_supports_agents(&self) -> bool {
         self.daemon_minor >= 1
+    }
+
+    /// Whether the daemon can fetch a new thread's base from its remote first (protocol
+    /// 1.16, ADR 0028).
+    pub fn daemon_supports_fresh_base(&self) -> bool {
+        self.daemon_minor >= FRESH_BASE_SINCE_MINOR
     }
 
     /// Whether the daemon keeps subtasks and links threads to tasks (protocol 1.6).

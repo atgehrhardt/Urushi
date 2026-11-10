@@ -335,6 +335,7 @@ pub fn settings_to_proto(s: &Settings) -> v1::Settings {
             .as_ref()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default(),
+        update_base_from_remote: s.update_base_from_remote,
         tailnet: Some(v1::TailnetSettings {
             serve: s.tailnet.serve,
             port: u32::from(s.tailnet.port),
@@ -365,6 +366,7 @@ pub fn settings_from_proto(s: &v1::Settings) -> Result<Settings, ConvertError> {
             .map_err(|e| ConvertError::new("settings.branch_prefix", e))?,
         default_shell: non_empty(&s.default_shell),
         worktree_root: non_empty(&s.worktree_root).map(PathBuf::from),
+        update_base_from_remote: s.update_base_from_remote,
         tailnet: TailnetSettings {
             serve: tailnet.serve,
             port: port_from_proto(tailnet.port)?,

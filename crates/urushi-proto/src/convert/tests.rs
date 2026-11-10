@@ -181,6 +181,7 @@ fn settings_round_trip() {
         .set_skip_permissions(urushi_core::Agent::Cursor, true);
     s.agents.task_agent = Some(urushi_core::Agent::Claude);
     s.agents.task_mode = urushi_core::AgentMode::Plan;
+    s.update_base_from_remote = false;
     assert_eq!(settings_from_proto(&settings_to_proto(&s)).unwrap(), s);
     assert_eq!(
         settings_from_proto(&settings_to_proto(&Settings::default())).unwrap(),

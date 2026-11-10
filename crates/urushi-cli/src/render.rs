@@ -144,6 +144,7 @@ pub(crate) fn print_settings(s: &v1::Settings) -> Result<()> {
             &s.worktree_root
         }
     )?;
+    writeln!(o, "update-base-from-remote {}", s.update_base_from_remote)?;
     writeln!(o, "tailnet-serve           {}", t.serve)?;
     writeln!(o, "tailnet-port            {}", t.port)?;
     writeln!(

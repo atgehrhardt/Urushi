@@ -364,17 +364,9 @@ pub(crate) fn settings_scroll_key() -> urushi_ui::Key {
     key(&["settings-body"])
 }
 
-fn settings_dialog(
-    state: &AppState,
-    (theme, scroll): (&Theme, &std::collections::HashMap<urushi_ui::Key, f32>),
-    (prefix, shell): (&TextField, &TextField),
-    look: &crate::appearance::LookDraft,
-) -> Node<Msg> {
-    let prefix = field(state, theme, prefix, Field::BranchPrefix, "urushi/");
-    let shell = field(state, theme, shell, Field::DefaultShell, "Login shell");
-    let s = state.settings.clone().unwrap_or_default();
-    let tailnet = state.tailnet.clone().unwrap_or_default();
-    let status = if tailnet.serving {
+/// One line on Tailscale for the settings: serving, running, or why not.
+fn tailnet_status(tailnet: &v1::TailnetStatus) -> String {
+    if tailnet.serving {
         format!(
             "Serving at {}:{} — only {} can connect",
             tailnet.dns_name,
@@ -391,11 +383,33 @@ fn settings_dialog(
         tailnet.error.clone()
     } else {
         "Tailscale status unknown".to_owned()
-    };
+    }
+}
+
+fn settings_dialog(
+    state: &AppState,
+    (theme, scroll): (&Theme, &std::collections::HashMap<urushi_ui::Key, f32>),
+    (prefix, shell): (&TextField, &TextField),
+    look: &crate::appearance::LookDraft,
+) -> Node<Msg> {
+    let prefix = field(state, theme, prefix, Field::BranchPrefix, "urushi/");
+    let shell = field(state, theme, shell, Field::DefaultShell, "Login shell");
+    let s = state.settings.clone().unwrap_or_default();
+    let tailnet = state.tailnet.clone().unwrap_or_default();
+    let status = tailnet_status(&tailnet);
     let mut body = Node::column().width(Length::Fill(1.0)).gap(10.0);
     body = body.children(super::daemon::settings_section(state, theme));
     if state.daemon_minor >= crate::issue::ISSUES_SINCE_MINOR {
         body = body.children(super::appearance::section(state, theme, look));
+    }
+    // An older daemon doesn't update bases; don't offer a switch that does nothing.
+    if state.daemon_supports_fresh_base() {
+        body = body.child(toggle(
+            theme,
+            s.update_base_from_remote,
+            "Update the base branch from its remote before creating a thread",
+            Msg::Toggle(SettingToggle::UpdateBaseFromRemote),
+        ));
     }
     let body = body
         .child(toggle(

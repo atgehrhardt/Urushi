@@ -22,6 +22,10 @@ pub struct Settings {
     pub default_shell: Option<String>,
     /// Where thread worktrees are created. `None` uses `<app data dir>/worktrees`.
     pub worktree_root: Option<PathBuf>,
+    /// Before making a new thread's worktree, fetch its base branch from the base's
+    /// remote and start from the newer commit, so threads don't start from stale code
+    /// (ADR 0028). Default: `true`.
+    pub update_base_from_remote: bool,
     /// Remote access over Tailscale.
     pub tailnet: TailnetSettings,
     /// How agent CLIs (Claude, Codex, Cursor) are started.
@@ -37,6 +41,7 @@ impl Default for Settings {
             branch_prefix: BranchPrefix::default(),
             default_shell: None,
             worktree_root: None,
+            update_base_from_remote: true,
             tailnet: TailnetSettings::default(),
             agents: AgentSettings::default(),
             appearance: Appearance::default(),
@@ -126,6 +131,7 @@ mod tests {
         assert!(s.delete_remote_branches);
         assert_eq!(s.branch_prefix.as_str(), "urushi/");
         assert!(!s.tailnet.serve);
+        assert!(s.update_base_from_remote);
     }
 
     #[test]
@@ -156,5 +162,9 @@ mod tests {
         assert!(s.tailnet.serve);
         assert_eq!(s.tailnet.port, TailnetSettings::DEFAULT_PORT);
         assert!(s.delete_remote_branches);
+        assert!(
+            s.update_base_from_remote,
+            "settings saved before the field existed start with it on"
+        );
     }
 }
