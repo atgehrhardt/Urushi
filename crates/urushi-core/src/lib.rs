@@ -42,10 +42,10 @@ pub use ids::{
 pub use layout::{Axis, Direction, Layout, LayoutError};
 pub use naming::{BranchName, BranchPrefix, IssueKey, NamingError, Slug, issue_branch_stem};
 pub use ownership::{OwnershipFacts, owned_branches};
-pub use project::Project;
+pub use project::{BaseCheckout, Project, ProjectBase, ProjectSettings, base_checkout};
 pub use repo::Repo;
 pub use settings::{EffectiveSettings, RepoSettingsOverrides, Settings, TailnetSettings};
 pub use status::{Status, StatusError};
 pub use tab::Tab;
-pub use thread::{NewThread, Thread, ThreadState, ThreadStateError};
+pub use thread::{NewThread, Thread, ThreadKind, ThreadState, ThreadStateError};
 pub use time::Timestamp;

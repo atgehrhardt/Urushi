@@ -221,7 +221,8 @@ fn drop_line_at(state: &AppState, project: Option<&str>) -> (bool, bool) {
     }
 }
 
-/// Pinned threads, then a section per status, then threads without a status.
+/// The project's parent-branch thread (ADR 0029), then pinned threads, then a section
+/// per status, then threads without a status.
 fn group(
     state: &AppState,
     theme: &Theme,
@@ -230,10 +231,15 @@ fn group(
 ) -> Vec<Node<Msg>> {
     let mut out: Vec<Node<Msg>> = threads
         .iter()
-        .filter(|t| t.pinned)
+        .filter(|t| t.project_base)
+        .chain(threads.iter().filter(|t| t.pinned && !t.project_base))
         .map(|t| thread_card(state, theme, t))
         .collect();
-    let rest: Vec<&v1::Thread> = threads.iter().copied().filter(|t| !t.pinned).collect();
+    let rest: Vec<&v1::Thread> = threads
+        .iter()
+        .copied()
+        .filter(|t| !t.pinned && !t.project_base)
+        .collect();
     let mut statuses: Vec<&str> = rest
         .iter()
         .map(|t| t.status.as_str())

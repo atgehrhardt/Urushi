@@ -25,6 +25,7 @@ mod jira_edit;
 mod jira_query;
 mod jira_sync;
 mod jira_write;
+mod project_base;
 mod projects;
 mod repos;
 mod restore;
@@ -52,7 +53,9 @@ pub use deletion::DeletionPlan;
 pub use jira::{JiraSignIn, NOT_SIGNED_IN};
 pub use jira_edit::IssueChange;
 pub use jira_sync::{ACTIVE_INTERVAL, BoardWatch, FULL_INTERVAL, IDLE_INTERVAL, WATCHED_INTERVAL};
+pub use project_base::ProjectSettingsRequest;
 pub use projects::{Assign, ThreadUpdate};
+pub use repos::BranchList;
 pub(crate) use state::State;
 pub use threads::ThreadRequest;
 

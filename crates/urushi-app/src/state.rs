@@ -238,7 +238,11 @@ pub enum Dialog {
         title: String,
         /// What the daemon will delete.
         plan: v1::DeletionPlan,
+        /// Project settings to save once the thread (a parent-branch thread) is closed.
+        then: Option<Box<crate::project_settings::PendingSettings>>,
     },
+    /// A project's settings: its parent branch and parent-branch thread.
+    ProjectSettings(Box<crate::project_settings::ProjectSettingsDraft>),
     /// Settings.
     Settings {
         /// Branch prefix field.
@@ -595,6 +599,12 @@ impl AppState {
     /// Whether the daemon can reorder boards (protocol 1.17).
     pub fn daemon_supports_board_order(&self) -> bool {
         self.daemon_minor >= crate::board::BOARD_ORDER_SINCE_MINOR
+    }
+
+    /// Whether the daemon keeps project settings: a parent branch and its thread
+    /// (protocol 1.18).
+    pub fn daemon_supports_project_settings(&self) -> bool {
+        self.daemon_minor >= crate::organize::PROJECT_SETTINGS_SINCE_MINOR
     }
 
     /// Whether `agent` is started with its skip-permissions flag (per the daemon's settings).

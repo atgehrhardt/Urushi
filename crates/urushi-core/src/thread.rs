@@ -1,4 +1,9 @@
-//! A thread: one unit of agent work, always backed by its own git worktree.
+//! A thread: one unit of agent work, always backed by a git worktree.
+//!
+//! Most threads are [`ThreadKind::Branch`]: a new branch in a new worktree of their own.
+//! A project's parent-branch thread ([`ThreadKind::ProjectBase`], ADR 0029) instead works
+//! on an existing branch, possibly in a checkout the user already had. It never owns a
+//! branch.
 //!
 //! # Lifecycle
 //! ```text
@@ -45,6 +50,29 @@ pub struct ThreadStateError {
     pub from: ThreadState,
     /// What was attempted.
     pub action: &'static str,
+}
+
+/// What kind of thread it is, which decides what deleting it may destroy.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ThreadKind {
+    /// A new branch in a new worktree, both owned by the thread.
+    #[default]
+    Branch,
+    /// Its project's parent-branch thread, working on that existing branch. It owns no
+    /// branch.
+    ProjectBase {
+        /// It runs in a checkout Urushi didn't create (e.g. the repo's own folder), so
+        /// closing it leaves everything on disk alone.
+        attached: bool,
+    },
+}
+
+impl ThreadKind {
+    /// Whether it is an ordinary thread (used to keep it out of stored JSON).
+    pub fn is_branch(&self) -> bool {
+        matches!(self, Self::Branch)
+    }
 }
 
 /// What the daemon passes in to create a [`Thread`]. Ids, paths and time are supplied by
@@ -108,6 +136,10 @@ pub struct Thread {
     pub state: ThreadState,
     /// Tabs, in display order.
     pub tabs: Vec<TabId>,
+    /// Ordinary or a project's parent-branch thread. Threads saved before kinds existed
+    /// are ordinary.
+    #[serde(default, skip_serializing_if = "ThreadKind::is_branch")]
+    pub kind: ThreadKind,
 }
 
 impl Thread {
@@ -115,11 +147,22 @@ impl Thread {
     /// or `<prefix><slug>-<short id>`.
     pub fn new(spec: NewThread, prefix: &BranchPrefix) -> Result<Self, NamingError> {
         let slug = Slug::from_title(&spec.title);
-        let primary_branch = match spec.branch {
+        let primary_branch = match spec.branch.clone() {
             Some(branch) => branch,
             None => BranchName::for_thread(prefix, &slug, spec.id)?,
         };
-        Ok(Self {
+        Ok(Self::build(spec, slug, primary_branch, ThreadKind::Branch))
+    }
+
+    /// A project's parent-branch thread, in the `Creating` state, working on `branch`
+    /// (which already exists). `attached`: see [`ThreadKind::ProjectBase`].
+    pub fn project_base(spec: NewThread, branch: BranchName, attached: bool) -> Self {
+        let slug = Slug::from_title(&spec.title);
+        Self::build(spec, slug, branch, ThreadKind::ProjectBase { attached })
+    }
+
+    fn build(spec: NewThread, slug: Slug, primary_branch: BranchName, kind: ThreadKind) -> Self {
+        Self {
             id: spec.id,
             repo: spec.repo,
             project: spec.project,
@@ -134,7 +177,18 @@ impl Thread {
             created_at: spec.created_at,
             state: ThreadState::Creating,
             tabs: Vec::new(),
-        })
+            kind,
+        }
+    }
+
+    /// Whether it is its project's parent-branch thread.
+    pub fn is_project_base(&self) -> bool {
+        matches!(self.kind, ThreadKind::ProjectBase { .. })
+    }
+
+    /// Whether it runs in a checkout Urushi didn't create, which it must never remove.
+    pub fn is_attached(&self) -> bool {
+        matches!(self.kind, ThreadKind::ProjectBase { attached: true })
     }
 
     /// `Creating → Ready`, once the worktree exists.
@@ -240,6 +294,25 @@ mod tests {
         let json = serde_json::to_string(&filed).unwrap();
         assert!(json.contains("\"folder\""), "{json}");
         assert_eq!(serde_json::from_str::<Thread>(&json).unwrap(), filed);
+    }
+
+    #[test]
+    fn a_project_base_thread_works_on_the_given_branch_and_round_trips() {
+        let main = BranchName::new("main").unwrap();
+        let t = Thread::project_base(thread_spec(), main.clone(), true);
+        assert_eq!(t.primary_branch, main);
+        assert!(t.is_project_base() && t.is_attached());
+        let json = serde_json::to_string(&t).unwrap();
+        assert_eq!(serde_json::from_str::<Thread>(&json).unwrap(), t);
+
+        let plain = serde_json::to_string(&thread()).unwrap();
+        assert!(
+            !plain.contains("\"kind\""),
+            "ordinary threads store no kind: {plain}"
+        );
+        let loaded: Thread = serde_json::from_str(&plain).unwrap();
+        assert_eq!(loaded.kind, ThreadKind::Branch);
+        assert!(!loaded.is_project_base() && !loaded.is_attached());
     }
 
     #[test]

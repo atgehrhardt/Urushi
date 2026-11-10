@@ -139,6 +139,9 @@ async fn repo(client: &Client, cmd: RepoCmd) -> Result<()> {
                     if branch == b.current { "*" } else { " " }
                 ))?;
             }
+            for branch in b.remote_branches {
+                out(&format!("  {branch}  (remote)"))?;
+            }
             Ok(())
         }
     }
@@ -159,6 +162,21 @@ async fn project(client: &Client, cmd: ProjectCmd) -> Result<()> {
         ProjectCmd::Move { project, index } => Ok(client
             .move_project(&resolve(client, &project).await?, index)
             .await?),
+        ProjectCmd::Settings {
+            project,
+            repo,
+            branch,
+            clear,
+            base_thread,
+        } => {
+            let change = crate::project_settings::Change {
+                repo,
+                branch,
+                clear,
+                base_thread: base_thread.map(|b| matches!(b, crate::OnOff::On)),
+            };
+            crate::project_settings::run(client, &project, change).await
+        }
     }
 }
 

@@ -38,7 +38,8 @@ pub fn scene(
 /// thread in `task-in-thread`), a terminal with an agent's plan
 /// usage in the `status` bar (and its pane's context menu in `pane-menu`), the same with
 /// the sidebar hidden (`sidebar-collapsed`), and the first-run `setup` wizard (its mode
-/// step in `setup-mode`), and the Jira screens (`snapshot/jira.rs`).
+/// step in `setup-mode`), the Jira screens (`snapshot/jira.rs`), and a project's
+/// parent branch (`snapshot/project_base.rs`).
 pub const SCENARIOS: &[&str] = &[
     "launcher",
     "picker",
@@ -80,6 +81,8 @@ pub const SCENARIOS: &[&str] = &[
     "jira-new-epic",
     "jira-connect",
     "jira-import",
+    "project-base-thread",
+    "project-settings",
 ];
 
 fn sample_attachment(id: &str, name: &str, (width, height): (u32, u32)) -> v1::Attachment {
@@ -390,6 +393,7 @@ fn scenario_frame(
             state.update(Msg::Sidebar(crate::msg::SidebarMsg::Reveal(0.0)));
         }
         name if jira::SCENARIOS.contains(&name) => jira::show(&mut state, name),
+        name if project_base::SCENARIOS.contains(&name) => project_base::show(&mut state, name),
         name if BOARD_SCENARIOS.contains(&name) || name == "status" || name == "pane-menu" => {
             show_board_or_usage(&mut state, name);
         }
@@ -461,6 +465,7 @@ fn open_new_thread(state: &mut AppState, name: &str) {
     let branches = v1::Branches {
         branches: vec!["main".into(), "dev".into(), "release/1.2".into()],
         current: "main".into(),
+        remote_branches: vec!["origin/main".into(), "origin/hotfix".into()],
     };
     state.branches = Some(("p".into(), branches));
     state.update(Msg::Paste("Fix Login Bug".into()));
@@ -565,6 +570,7 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
 
 mod jira;
 mod jira_issue;
+mod project_base;
 
 #[cfg(test)]
 mod tests;

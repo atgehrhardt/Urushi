@@ -1,6 +1,8 @@
 //! A thread's card in the sidebar: its title (with a dot when its agent finished or
 //! waits), the repo and branch it's on, and its lifecycle badge. Click to open it,
-//! right-click for its menu, drag to file it under another project.
+//! right-click for its menu, drag to file it under another project. A project's
+//! parent-branch thread (ADR 0029) stays at its project's top: it can't be dragged, and
+//! is closed from its menu rather than a delete button.
 
 use urushi_client::v1;
 use urushi_ui::widgets::icon_button;
@@ -57,7 +59,7 @@ pub(super) fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) 
     } else {
         Color::TRANSPARENT
     };
-    Node::row()
+    let card = Node::row()
         .width(Length::Fill(1.0))
         .padding(Insets {
             top: 6.0,
@@ -77,20 +79,29 @@ pub(super) fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) 
         .key(key(&["thread", &thread.id]))
         .on_click(Msg::SelectThread(thread.id.clone()))
         .on_secondary_click(Msg::OpenMenu(MenuTarget::Thread(thread.id.clone())))
-        .on_drag(Msg::DragThread(thread.id.clone()))
         .role(
             Role::Item,
             format!(
                 "Thread {}{}{}",
                 thread.title,
-                if thread.pinned { ", pinned" } else { "" },
+                if thread.project_base {
+                    ", parent branch"
+                } else if thread.pinned {
+                    ", pinned"
+                } else {
+                    ""
+                },
                 attention.map_or(String::new(), |k| format!(
                     ", {}",
                     super::attention::label(k)
                 )),
             ),
         )
-        .child(details)
+        .child(details);
+    if thread.project_base {
+        return card;
+    }
+    card.on_drag(Msg::DragThread(thread.id.clone()))
         .child(icon_button(
             theme,
             "×",
@@ -123,7 +134,7 @@ fn thread_title(
 }
 
 /// Which repo and branch a thread is on. Pinned threads leave their status section, so
-/// they show the status here.
+/// they show the status here. A parent-branch thread says so.
 fn thread_meta(state: &AppState, thread: &v1::Thread) -> String {
     let repo = state
         .workspace
@@ -133,7 +144,9 @@ fn thread_meta(state: &AppState, thread: &v1::Thread) -> String {
     if thread.pinned && !thread.status.is_empty() {
         meta = format!("{} · {meta}", thread.status);
     }
-    if thread.pinned {
+    if thread.project_base {
+        meta = format!("Parent branch · {meta}");
+    } else if thread.pinned {
         meta = format!("Pinned · {meta}");
     }
     meta

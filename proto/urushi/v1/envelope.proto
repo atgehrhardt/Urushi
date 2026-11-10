@@ -121,6 +121,8 @@ message Request {
     WatchBoardRequest watch_board = 69;
     // Since 1.17.
     MoveBoardRequest move_board = 70;
+    // Since 1.18.
+    UpdateFolderSettingsRequest update_folder_settings = 71;
   }
 }
 

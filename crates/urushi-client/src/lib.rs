@@ -13,6 +13,7 @@ mod jira;
 mod jira_issue;
 mod launcher;
 mod platform;
+mod projects;
 mod requests;
 mod screen;
 mod tasks;

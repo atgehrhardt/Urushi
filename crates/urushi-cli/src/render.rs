@@ -16,7 +16,8 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
         writeln!(o, "no repos yet; add one with `urushi repo add <path>`")?;
     }
     for project in mirror.projects() {
-        writeln!(o, "project {} {}", short(&project.id), project.name)?;
+        let parent = crate::project_settings::describe(mirror, project);
+        writeln!(o, "project {} {}{parent}", short(&project.id), project.name)?;
     }
     for repo in mirror.repos() {
         writeln!(o, "{} {}  {}", short(&repo.id), repo.name, repo.repo_root)?;
@@ -30,6 +31,12 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
                 Err(_) => "  [?]".into(),
             };
             let mut organization = String::new();
+            if thread.project_base {
+                organization.push_str("  parent branch");
+                if thread.attached_checkout {
+                    organization.push_str(" (in an existing checkout)");
+                }
+            }
             if thread.pinned {
                 organization.push_str("  pinned");
             }
@@ -85,7 +92,15 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
 pub(crate) fn print_plan(plan: &v1::DeletionPlan) -> Result<()> {
     let mut o = std::io::stdout().lock();
     writeln!(o, "Deleting this thread will permanently remove:")?;
-    writeln!(o, "  worktree        {}", plan.worktree_path)?;
+    if plan.keeps_worktree {
+        writeln!(
+            o,
+            "  nothing on disk: {} is an existing checkout and is kept",
+            plan.worktree_path
+        )?;
+    } else {
+        writeln!(o, "  worktree        {}", plan.worktree_path)?;
+    }
     if plan.modified_files + plan.untracked_files > 0 {
         writeln!(
             o,

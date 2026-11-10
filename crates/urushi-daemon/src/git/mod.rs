@@ -81,6 +81,23 @@ pub trait Git: Send + Sync {
         branch: &BranchName,
         base_commit: &str,
     ) -> Result<(), GitError>;
+    /// Creates `path` as a new worktree checking out the existing branch `branch`. If
+    /// there is no such local branch but exactly one remote has it, git creates it,
+    /// tracking that remote branch.
+    fn worktree_add_existing(
+        &self,
+        repo: &Path,
+        path: &Path,
+        branch: &BranchName,
+    ) -> Result<(), GitError>;
+    /// Creates local branch `branch` tracking the remote-tracking branch `upstream`
+    /// (e.g. `origin/feature`), without checking it out.
+    fn create_tracking_branch(
+        &self,
+        repo: &Path,
+        branch: &BranchName,
+        upstream: &str,
+    ) -> Result<(), GitError>;
     /// Removes a worktree, discarding uncommitted changes.
     fn worktree_remove(&self, repo: &Path, path: &Path) -> Result<(), GitError>;
     /// Forgets worktrees whose directories no longer exist.

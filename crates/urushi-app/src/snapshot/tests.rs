@@ -574,3 +574,21 @@ fn saving_the_look_sends_it_only_when_changed() {
         i32::from(urushi_client::v1::ColorScheme::Ember)
     );
 }
+
+#[test]
+fn a_projects_parent_branch_thread_and_its_settings_are_shown() {
+    let sidebar = dump("project-base-thread", 1280.0);
+    let parent = sidebar
+        .find("Parent branch · urushi · main")
+        .expect(&sidebar);
+    let pinned = sidebar.find("Pinned · urushi · urushi/t").expect(&sidebar);
+    assert!(parent < pinned, "first in its project: {sidebar}");
+    let dialog = dump("project-settings", 1280.0);
+    for text in [
+        "Billing launch settings",
+        "\"develop\"",
+        "\"origin/release\"",
+    ] {
+        assert!(dialog.contains(text), "{text} missing: {dialog}");
+    }
+}

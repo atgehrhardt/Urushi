@@ -195,6 +195,9 @@ fn thread_items(state: &AppState, theme: &Theme, menu: &ContextMenu, id: &str) -
         return Vec::new();
     };
     let id = id.to_owned();
+    if thread.project_base {
+        return base_thread_items(theme, id);
+    }
     match menu.page {
         MenuPage::Main | MenuPage::Color | MenuPage::Filter(_) => vec![
             item(
@@ -320,6 +323,28 @@ fn move_page(state: &AppState, theme: &Theme, thread: &v1::Thread, id: String) -
     items
 }
 
+/// A project's parent-branch thread is always at the project's top and stays there:
+/// it can be renamed or closed (which switches it off in the project's settings).
+fn base_thread_items(theme: &Theme, id: String) -> Vec<Node<Msg>> {
+    vec![
+        item(
+            theme,
+            "Rename…",
+            "",
+            theme.text,
+            Msg::OpenPrompt(Prompt::RenameThread(id.clone())),
+        ),
+        separator(theme),
+        item(
+            theme,
+            "Close parent-branch thread…",
+            "",
+            theme.danger,
+            Msg::RequestDeleteThread(id),
+        ),
+    ]
+}
+
 fn project_items(state: &AppState, theme: &Theme, id: &str) -> Vec<Node<Msg>> {
     let mut items = vec![
         item(
@@ -340,6 +365,15 @@ fn project_items(state: &AppState, theme: &Theme, id: &str) -> Vec<Node<Msg>> {
             Msg::OpenPrompt(Prompt::RenameProject(id.to_owned())),
         ),
     ];
+    if state.daemon_supports_project_settings() {
+        items.push(item(
+            theme,
+            "Project settings…",
+            "",
+            theme.text,
+            Msg::OpenProjectSettings(id.to_owned()),
+        ));
+    }
     items.extend(move_items(state, theme, id));
     items.push(separator(theme));
     items.push(item(

@@ -7,6 +7,17 @@ use urushi_core::{Repo, RepoId};
 
 use super::{Service, ServiceError, ServiceResult, blocking, new_uuid, now};
 
+/// A repo's branches, for picking where a thread or a project starts from.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BranchList {
+    /// Local branches.
+    pub local: Vec<String>,
+    /// The branch checked out in the main worktree (`None` if detached).
+    pub current: Option<String>,
+    /// Remote-tracking branches, as `<remote>/<branch>`.
+    pub remote: Vec<String>,
+}
+
 impl Service {
     /// Adds the repository containing `path`. If it's already added, the existing
     /// repo is returned.
@@ -47,7 +58,8 @@ impl Service {
     }
 
     /// Removes a repo. Refused while it still has threads, since removing it would
-    /// orphan their worktrees and branches. Delete the threads first.
+    /// orphan their worktrees and branches. Delete the threads first. Projects whose
+    /// parent branch was in it no longer have one.
     pub fn remove_repo(&self, id: RepoId) -> ServiceResult<()> {
         self.mutate(|state| {
             state.repo(id)?;
@@ -58,14 +70,31 @@ impl Service {
                 )));
             }
             state.repos.retain(|p| p.id != id);
+            for project in &mut state.projects {
+                if project.settings.base.as_ref().is_some_and(|b| b.repo == id) {
+                    project.settings.base = None;
+                }
+            }
             Ok(())
         })
     }
 
-    /// Local branches of a repo, plus the one checked out in its main worktree.
-    pub async fn list_branches(&self, id: RepoId) -> ServiceResult<(Vec<String>, Option<String>)> {
+    /// A repo's local and remote-tracking branches, and the one checked out in its main
+    /// worktree.
+    pub async fn list_branches(&self, id: RepoId) -> ServiceResult<BranchList> {
         let repo = self.read(|s| Ok(s.repo(id)?.repo_root.clone()))?;
         let git = self.git.clone();
-        blocking(move || Ok((git.local_branches(&repo)?, git.current_branch(&repo)?))).await
+        blocking(move || {
+            Ok(BranchList {
+                local: git.local_branches(&repo)?,
+                current: git.current_branch(&repo)?,
+                remote: git
+                    .remote_branches(&repo)?
+                    .into_iter()
+                    .map(|(remote, branch)| format!("{remote}/{branch}"))
+                    .collect(),
+            })
+        })
+        .await
     }
 }

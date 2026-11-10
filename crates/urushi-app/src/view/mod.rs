@@ -11,6 +11,7 @@ mod launcher;
 mod main_area;
 mod menu;
 mod new_thread;
+mod project_settings;
 mod projects;
 mod setup;
 mod sidebar;

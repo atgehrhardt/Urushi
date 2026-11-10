@@ -6,7 +6,9 @@
 //! matches, so nothing can change between the warning and the deletion.
 //!
 //! Which branches may be deleted is decided by `urushi_core::owned_branches`. This
-//! module only gathers the git facts.
+//! module only gathers the git facts. A project's parent-branch thread (ADR 0029) owns
+//! no branch, and when it runs in a checkout Urushi didn't make, deleting it leaves
+//! everything on disk alone; deleting it switches it off in its project's settings.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -42,6 +44,8 @@ pub struct DeletionPlan {
     pub delete_remote_branches: bool,
     /// Problems found while planning that don't block deletion.
     pub warnings: Vec<String>,
+    /// The worktree is a checkout Urushi didn't create, so it is kept.
+    pub keeps_worktree: bool,
     /// Fingerprint of everything above. See [`DeletionPlan::token`].
     pub token: String,
 }
@@ -51,7 +55,7 @@ impl DeletionPlan {
     /// secret. Any change to what would be deleted changes the token.
     fn fingerprint(&self) -> String {
         let canonical = format!(
-            "{}|{}|{}/{}|{}|{:?}|{:?}|{}|{}",
+            "{}|{}|{}/{}|{}|{:?}|{:?}|{}|{}|{}",
             self.thread,
             self.worktree_path.display(),
             self.changes.modified,
@@ -61,6 +65,7 @@ impl DeletionPlan {
             self.remote_branches,
             self.running_panes,
             self.delete_remote_branches,
+            self.keeps_worktree,
         );
         let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
         for byte in canonical.bytes() {
@@ -76,6 +81,8 @@ struct PlanInputs {
     repo: PathBuf,
     delete_remote: bool,
     running_panes: u32,
+    /// Parent branches of projects in this repo: never deleted with any thread.
+    project_bases: Vec<BranchName>,
 }
 
 impl Service {
@@ -87,6 +94,11 @@ impl Service {
             let delete_remote = s
                 .effective_settings(record.thread.repo)
                 .delete_remote_branches;
+            let project_bases = s
+                .projects
+                .iter()
+                .filter_map(|p| p.settings.base_in(record.thread.repo).cloned())
+                .collect();
             let running = {
                 let sessions = super::lock(&self.sessions);
                 s.thread_panes(thread)
@@ -99,6 +111,7 @@ impl Service {
                 repo,
                 delete_remote,
                 running_panes: u32::try_from(running).unwrap_or(u32::MAX),
+                project_bases,
             })
         })?;
         let git = self.git.clone();
@@ -145,7 +158,15 @@ impl Service {
 
         self.mutate(|state| {
             if failures.is_empty() {
+                let gone = state.thread(thread)?.thread.clone();
                 state.threads.retain(|r| r.thread.id != thread);
+                // Closing a parent-branch thread is switching it off.
+                if gone.is_project_base()
+                    && let Some(project) = gone.project
+                    && let Ok(project) = state.project_mut(project)
+                {
+                    project.settings.base_thread = false;
+                }
                 // Tasks started as this thread can be started again.
                 for board in &mut state.boards {
                     board.unlink_thread(thread);
@@ -180,8 +201,10 @@ fn compute_plan(git: &dyn Git, inputs: &PlanInputs) -> DeletionPlan {
     let thread = &inputs.record.thread;
     let worktree = &thread.worktree_path;
     let mut warnings = Vec::new();
-    let exists = worktree.is_dir();
-    if !exists {
+    let keeps_worktree = thread.is_attached();
+    // A kept checkout loses nothing, so its state doesn't matter.
+    let exists = worktree.is_dir() && !keeps_worktree;
+    if !exists && !keeps_worktree {
         warnings.push(format!(
             "worktree directory {} is already missing",
             worktree.display()
@@ -225,15 +248,20 @@ fn compute_plan(git: &dyn Git, inputs: &PlanInputs) -> DeletionPlan {
     if let Ok(base) = BranchName::new(thread.base_ref.clone()) {
         protected.insert(base);
     }
+    protected.extend(inputs.project_bases.iter().cloned());
 
-    let local_branches = owned_branches(&OwnershipFacts {
-        primary: Some(thread.primary_branch.clone()),
-        checked_out_in_worktree,
-        preexisting: inputs.record.preexisting_branches.clone(),
-        protected: protected.clone(),
-        checked_out_elsewhere,
-        existing,
-    });
+    let local_branches = if thread.is_project_base() {
+        Vec::new() // It works on a branch that was there before it.
+    } else {
+        owned_branches(&OwnershipFacts {
+            primary: Some(thread.primary_branch.clone()),
+            checked_out_in_worktree,
+            preexisting: inputs.record.preexisting_branches.clone(),
+            protected: protected.clone(),
+            checked_out_elsewhere,
+            existing,
+        })
+    };
 
     let unpushed_commits = git
         .unpushed_commits(&inputs.repo, &local_branches, &thread.base_commit)
@@ -258,6 +286,7 @@ fn compute_plan(git: &dyn Git, inputs: &PlanInputs) -> DeletionPlan {
         running_panes: inputs.running_panes,
         delete_remote_branches: inputs.delete_remote,
         warnings,
+        keeps_worktree,
         token: String::new(),
     };
     plan.token = plan.fingerprint();
@@ -299,7 +328,8 @@ fn remote_branches_for(
 /// Carries out a plan. Returns a description of each step that failed.
 fn execute_plan(git: &dyn Git, repo: &Path, plan: &DeletionPlan) -> Vec<String> {
     let mut failures = Vec::new();
-    if plan.worktree_path.is_dir()
+    if !plan.keeps_worktree
+        && plan.worktree_path.is_dir()
         && let Err(e) = git.worktree_remove(repo, &plan.worktree_path)
     {
         failures.push(format!("removing worktree: {e}"));

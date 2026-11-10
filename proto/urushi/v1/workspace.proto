@@ -36,6 +36,19 @@ message Folder {
   string id = 1;
   string name = 2;
   int64 created_at_ms = 3;
+  // Project settings. Since 1.18.
+  FolderSettings settings = 4;
+}
+
+// A project's settings (ADR 0029). Since 1.18.
+message FolderSettings {
+  // The parent branch's repo (a `Project` on the wire). Empty: no parent branch.
+  string base_repo_id = 1;
+  // The parent branch: a local branch of that repo. In UpdateFolderSettingsRequest it
+  // may also name a remote-tracking branch (`origin/x`); the daemon stores `x`.
+  string base_branch = 2;
+  // Keep a parent-branch thread pinned at the top of the project. Unset means on.
+  optional bool base_thread = 3;
 }
 
 message Project {
@@ -77,6 +90,12 @@ message Thread {
   bool pinned = 14;
   // User-chosen status label; empty means none. Since 1.2.
   string status = 15;
+  // Its folder's (project's) parent-branch thread: it works on an existing branch and
+  // owns none. Since 1.18.
+  bool project_base = 16;
+  // Runs in a checkout Urushi didn't create (e.g. the repo's own folder), which
+  // closing the thread leaves alone. Only set with `project_base`. Since 1.18.
+  bool attached_checkout = 17;
 }
 
 message Tab {
@@ -165,6 +184,8 @@ message Branches {
   repeated string branches = 1;
   // Branch checked out in the main working tree (empty if detached).
   string current = 2;
+  // Remote-tracking branches, as `<remote>/<branch>` (e.g. `origin/feature`). Since 1.18.
+  repeated string remote_branches = 3;
 }
 
 message CreateThreadRequest {
@@ -219,6 +240,15 @@ message DeleteFolderRequest {
   string folder_id = 1;
 }
 
+// Replaces a folder's settings. Turning the parent-branch thread on (with a parent
+// branch) creates it; a change that would need an existing one closed (switching it
+// off, or another parent branch) is refused with FAILED_PRECONDITION: close it first
+// with PlanThreadDeletion and DeleteThread, which also switches it off. Since 1.18.
+message UpdateFolderSettingsRequest {
+  string folder_id = 1;
+  FolderSettings settings = 2;
+}
+
 // Moves a folder to `index` among the others (counted without it; clamped to the end).
 // Folders are listed in this order. Since 1.11.
 message MoveFolderRequest {
@@ -251,6 +281,9 @@ message DeletionPlan {
   string token = 10;
   // Non-fatal issues discovered while planning (e.g. a remote could not be inspected).
   repeated string warnings = 11;
+  // The thread runs in a checkout Urushi didn't create: `worktree_path` is kept, and
+  // nothing on disk is removed. Since 1.18.
+  bool keeps_worktree = 12;
 }
 
 message RemoteBranch {

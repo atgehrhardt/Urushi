@@ -284,7 +284,7 @@ fn deleting_a_thread_always_goes_through_the_warning() {
         ..Default::default()
     };
     s.update(Msg::Response {
-        followup: Followup::DeletionPlan,
+        followup: Followup::DeletionPlan(None),
         result: Ok(Outcome::DeletionPlan(plan)),
     });
     assert!(matches!(&s.dialog, Some(Dialog::DeleteThread { title, .. }) if title == "Fix bug"));
@@ -399,6 +399,7 @@ mod organize;
 mod panes;
 mod pointer;
 mod project_order;
+mod project_settings;
 mod setup;
 mod sidebar;
 mod subtask_drafts;

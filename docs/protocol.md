@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.17 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.18 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -37,6 +37,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 18 | Project settings (ADR 0029): `Folder.settings` (`FolderSettings{base_repo_id, base_branch, optional base_thread}`; unset `base_thread` means on, and a folder from an older daemon has none, which reads as the defaults) and `UpdateFolderSettings{folder_id, settings}` → `Folder`, which replaces them. `base_branch` may name a remote-tracking branch (`origin/x`); the daemon stores the local `x`, creating it to track the remote one if needed. Anything that isn't a branch of the repo is `INVALID_ARGUMENT`. Switching the parent-branch thread on (with a parent branch) opens it; a change that would need an open one closed is `FAILED_PRECONDITION`. Parent-branch threads: `Thread.{project_base, attached_checkout}`; `DeletionPlan.keeps_worktree` (an attached thread: nothing on disk is removed). Deleting a parent-branch thread switches it off; moving it to another folder is `FAILED_PRECONDITION`. `Branches.remote_branches` (`<remote>/<branch>`, no `HEAD`). Clients check `Welcome.protocol_minor ≥ 18` before offering project settings. |
 | 17 | `MoveBoard{board_id, index}` reorders boards, Jira boards included (nothing is sent to Jira): the index counts positions without the moved board and is clamped to the end; an unknown board is `NOT_FOUND`. `Workspace.boards` is in display (tab) order. Clients check `Welcome.protocol_minor ≥ 17` before sending it. |
 | 16 | `Settings.update_base_from_remote` and `SettingsPatch.update_base_from_remote` (ADR 0028): before making a new thread's worktree, the daemon fetches the base from its remote and starts from the newer commit. Older daemons leave it unset (`false`), which is accurate because they don't update. Clients check `Welcome.protocol_minor ≥ 16` before showing the switch. |
 | 15 | Epics are cards on Jira boards (ADR 0027), with no wire change: epic issues arrive as `Task`s with `kind = EPIC` in the column showing their status, and `Board.epics` also lists every epic shown as a card. `CreateTask.kind = EPIC` on a Jira board creates an epic issue; an epic with `subtasks`/`subtask_details`, and `CreateSubtask` under an epic, are `INVALID_ARGUMENT` (Jira epics hold stories, not sub-tasks). Older daemons refuse epics, so clients check `Welcome.protocol_minor ≥ 15` before offering Epic on a Jira board. |
@@ -60,7 +61,7 @@ v1 field names are frozen (`buf breaking` uses `WIRE_JSON`). On the wire, **`Pro
 
 ## Message groups (v1)
 
-- **Workspace:** `ListWorkspace{subscribe}`, `AddProject`, `RemoveProject`, `ListBranches`, `CreateThread{branch, skip_initial_tab, folder_id, task_id, subtask_id, start_task_agent}`, `RenameThread`, `UpdateThread`, `CreateFolder`, `RenameFolder`, `DeleteFolder`, `MoveFolder`, `PlanThreadDeletion` → `DeletionPlan{token}`, `DeleteThread{token}`, `CreateTab{agent, task_id, subtask_id, start_task_agent}`, `ListAgents`, `GetAgentUsage`, `CloseTab`, `RenameTab`, `SplitPane`, `ClosePane`, `FocusPane`, `ClearAttention`, `MoveDivider`, `ResizePaneEdge`, `Equalize`. The daemon sends `WorkspaceChanged` events to subscribers.
+- **Workspace:** `ListWorkspace{subscribe}`, `AddProject`, `RemoveProject`, `ListBranches`, `CreateThread{branch, skip_initial_tab, folder_id, task_id, subtask_id, start_task_agent}`, `RenameThread`, `UpdateThread`, `CreateFolder`, `RenameFolder`, `DeleteFolder`, `MoveFolder`, `UpdateFolderSettings`, `PlanThreadDeletion` → `DeletionPlan{token}`, `DeleteThread{token}`, `CreateTab{agent, task_id, subtask_id, start_task_agent}`, `ListAgents`, `GetAgentUsage`, `CloseTab`, `RenameTab`, `SplitPane`, `ClosePane`, `FocusPane`, `ClearAttention`, `MoveDivider`, `ResizePaneEdge`, `Equalize`. The daemon sends `WorkspaceChanged` events to subscribers.
 - **Terminal:**
   - `AttachPane{pane, cols, rows}` returns a full `ScreenUpdate`. After that the daemon streams `ScreenUpdate{seq}` events, and the client must send the `AckScreen{seq}` notification before the next one is sent.
   - `DetachPane`, `SetPaneSize`, the `Input{key|text|paste|mouse|wheel}` and `ScrollPane` notifications, and `ReadScreenText` (plain text, for the CLI and tests).

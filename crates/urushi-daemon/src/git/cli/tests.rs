@@ -280,3 +280,57 @@ fn ancestry_and_fast_forwards() {
         .unwrap();
     assert_eq!(git.resolve_commit(&f.repo, "release").unwrap(), new);
 }
+
+#[test]
+fn existing_branches_get_worktrees_and_remote_only_ones_are_tracked() {
+    let f = fixture();
+    let git = CliGit::default();
+    // A local branch that isn't checked out anywhere.
+    git_in(&f.repo, &["branch", "develop"]);
+    let wt = f.root.join("develop");
+    git.worktree_add_existing(&f.repo, &wt, &branch("develop"))
+        .unwrap();
+    assert_eq!(git.current_branch(&wt).unwrap().as_deref(), Some("develop"));
+
+    // A branch only the remote has becomes a local branch tracking it.
+    git_in(&f.repo, &["push", "-q", "origin", "main:release"]);
+    git_in(&f.repo, &["fetch", "-q", "origin"]);
+    assert!(
+        !git.local_branches(&f.repo)
+            .unwrap()
+            .contains(&"release".into())
+    );
+    let wt2 = f.root.join("release");
+    git.worktree_add_existing(&f.repo, &wt2, &branch("release"))
+        .unwrap();
+    assert_eq!(
+        git.current_branch(&wt2).unwrap().as_deref(),
+        Some("release")
+    );
+    assert!(
+        git.upstreams(&f.repo)
+            .unwrap()
+            .iter()
+            .any(|u| u.local == "release" && u.remote == "origin" && u.remote_branch == "release")
+    );
+
+    // A tracking branch can also be made without a worktree.
+    git_in(&f.repo, &["push", "-q", "origin", "main:hotfix"]);
+    git_in(&f.repo, &["fetch", "-q", "origin"]);
+    git.create_tracking_branch(&f.repo, &branch("hotfix"), "origin/hotfix")
+        .unwrap();
+    assert!(
+        git.upstreams(&f.repo)
+            .unwrap()
+            .iter()
+            .any(|u| u.local == "hotfix" && u.remote_branch == "hotfix")
+    );
+
+    // Git refuses a branch checked out elsewhere (main is, in the repo itself).
+    let wt3 = f.root.join("main-again");
+    assert!(
+        git.worktree_add_existing(&f.repo, &wt3, &branch("main"))
+            .is_err()
+    );
+    assert!(!wt3.exists());
+}

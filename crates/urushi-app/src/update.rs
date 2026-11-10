@@ -58,6 +58,10 @@ impl AppState {
             | Msg::PickRepo(_)
             | Msg::PickBase(_)
             | Msg::PickProject(_)) => self.organize(msg, &mut fx),
+            // Project settings: `update/project_settings.rs`.
+            msg @ (Msg::OpenProjectSettings(_) | Msg::ProjectSettings(_)) => {
+                self.project_settings_msg(msg, &mut fx);
+            }
             Msg::Connected { welcome, workspace } => self.on_connected(welcome, workspace, &mut fx),
             Msg::Disconnected(reason) => {
                 self.connection = Connection::Disconnected(reason);
@@ -89,7 +93,7 @@ impl AppState {
                 self.menu = None;
                 fx.push(request(
                     Body::PlanThreadDeletion(v1::PlanThreadDeletionRequest { thread_id }),
-                    Followup::DeletionPlan,
+                    Followup::DeletionPlan(None),
                 ));
             }
             Msg::OpenSettings => self.open_settings(&mut fx),
@@ -289,6 +293,21 @@ impl AppState {
         self.request_jira_account(fx);
     }
 
+    /// Shows the deletion warning for `plan`; `then`: project settings to save once the
+    /// thread is closed.
+    fn show_deletion_plan(
+        &mut self,
+        plan: v1::DeletionPlan,
+        then: Option<Box<crate::project_settings::PendingSettings>>,
+    ) {
+        let title = self
+            .workspace
+            .thread(&plan.thread_id)
+            .map(|t| t.title.clone())
+            .unwrap_or_default();
+        self.open(Dialog::DeleteThread { title, plan, then }, None);
+    }
+
     /// Typed or pasted text goes to the focused dialog field, otherwise to the focused pane.
     fn insert_text(
         &mut self,
@@ -463,10 +482,17 @@ impl AppState {
         result: Result<Outcome, String>,
         fx: &mut Vec<Effect>,
     ) {
-        if let Followup::ThreadDeleted(thread) = &followup {
-            self.thread_deleted(thread, result.err(), fx);
-            return;
-        }
+        let followup = match followup {
+            Followup::ThreadDeleted(thread) => {
+                self.thread_deleted(&thread, result.err(), fx);
+                return;
+            }
+            Followup::ProjectBaseClosed(thread, pending) => {
+                self.project_base_closed(&thread, *pending, result.err(), fx);
+                return;
+            }
+            other => other,
+        };
         let outcome = match result {
             Ok(outcome) => outcome,
             // An older daemon, or no agents: the picker just offers a terminal.
@@ -520,13 +546,8 @@ impl AppState {
             (Followup::ProjectCreated(thread), Outcome::Folder(project)) => {
                 self.project_created(thread, &project, fx);
             }
-            (Followup::DeletionPlan, Outcome::DeletionPlan(plan)) => {
-                let title = self
-                    .workspace
-                    .thread(&plan.thread_id)
-                    .map(|t| t.title.clone())
-                    .unwrap_or_default();
-                self.open(Dialog::DeleteThread { title, plan }, None);
+            (Followup::DeletionPlan(then), Outcome::DeletionPlan(plan)) => {
+                self.show_deletion_plan(plan, then);
             }
             (Followup::TaskTabCreated, Outcome::Tab(tab)) => self.task_tab_created(tab, fx),
             (Followup::TabCreated, Outcome::Tab(tab)) => {
@@ -615,6 +636,7 @@ impl AppState {
                 fx.push(request(body, Followup::ThreadCreated));
             }
             Some(Dialog::Prompt { .. }) => self.submit_prompt(fx),
+            Some(Dialog::ProjectSettings(_)) => self.submit_project_settings(fx),
             Some(Dialog::Setup { .. }) => self.setup_enter(fx),
             Some(Dialog::NestTask { task, query }) => {
                 let first = crate::board::nest_candidates(&self.workspace, task, query.text())
@@ -864,6 +886,7 @@ mod launcher;
 mod organize;
 mod panes;
 mod pointer;
+mod project_settings;
 mod setup;
 mod sidebar;
 mod subtask_drafts;

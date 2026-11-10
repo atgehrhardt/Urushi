@@ -66,6 +66,14 @@ impl WorkspaceMirror {
             })
     }
 
+    /// A project's parent-branch thread (ADR 0029), if it has one.
+    pub fn project_base_thread(&self, project_id: &str) -> Option<&v1::Thread> {
+        self.workspace
+            .threads
+            .iter()
+            .find(|t| t.project_base && t.folder_id == project_id)
+    }
+
     /// Every status in use, sorted case-insensitively. Statuses are user-defined: a
     /// status exists while some thread has it.
     pub fn statuses(&self) -> Vec<String> {
@@ -260,5 +268,20 @@ mod tests {
         assert_eq!(ids(Some("f")), ["a", "d"]);
         assert_eq!(ids(None), ["b", "c"], "unknown projects count as ungrouped");
         assert_eq!(mirror.statuses(), ["Blocked", "review"]);
+        assert!(mirror.project_base_thread("f").is_none());
+    }
+
+    #[test]
+    fn a_project_finds_its_parent_branch_thread() {
+        let base = v1::Thread {
+            project_base: true,
+            ..thread("m", "f", "")
+        };
+        let mirror = WorkspaceMirror::new(v1::Workspace {
+            threads: vec![thread("a", "f", ""), base, thread("x", "g", "")],
+            ..Default::default()
+        });
+        assert_eq!(mirror.project_base_thread("f").unwrap().id, "m");
+        assert!(mirror.project_base_thread("g").is_none());
     }
 }

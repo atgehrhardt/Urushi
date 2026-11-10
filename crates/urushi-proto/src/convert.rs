@@ -10,8 +10,8 @@ use thiserror::Error;
 use urushi_core::layout::{Child, Node};
 use urushi_core::{
     Agent, AgentMode, AgentSettings, Axis, BranchName, BranchPrefix, Direction, Layout, PaneId,
-    Project, Repo, RepoSettingsOverrides, Settings, Slug, Status, Tab, TabId, TailnetSettings,
-    Thread, ThreadState, Timestamp,
+    Repo, RepoSettingsOverrides, Settings, Slug, Status, Tab, TabId, TailnetSettings, Thread,
+    ThreadKind, ThreadState, Timestamp,
 };
 
 use crate::v1;
@@ -222,24 +222,6 @@ pub fn repo_from_proto(p: &v1::Project) -> Result<Repo, ConvertError> {
     })
 }
 
-/// Core project → wire (`v1::Folder`).
-pub fn project_to_proto(p: &Project) -> v1::Folder {
-    v1::Folder {
-        id: p.id.to_string(),
-        name: p.name.clone(),
-        created_at_ms: millis_to_proto(p.created_at),
-    }
-}
-
-/// Wire project (`v1::Folder`) → core.
-pub fn project_from_proto(f: &v1::Folder) -> Result<Project, ConvertError> {
-    Ok(Project {
-        id: parse_id(&f.id, "folder.id")?,
-        name: f.name.clone(),
-        created_at: millis_from_proto(f.created_at_ms),
-    })
-}
-
 /// A wire status: empty means none.
 pub fn status_from_proto(status: &str) -> Result<Option<Status>, ConvertError> {
     if status.trim().is_empty() {
@@ -278,6 +260,8 @@ pub fn thread_to_proto(t: &Thread) -> v1::Thread {
             .as_ref()
             .map(ToString::to_string)
             .unwrap_or_default(),
+        project_base: t.is_project_base(),
+        attached_checkout: t.is_attached(),
     }
 }
 
@@ -319,6 +303,13 @@ pub fn thread_from_proto(t: &v1::Thread) -> Result<Thread, ConvertError> {
             .iter()
             .map(|id| parse_id(id, "thread.tab_ids"))
             .collect::<Result<_, _>>()?,
+        kind: if t.project_base {
+            ThreadKind::ProjectBase {
+                attached: t.attached_checkout,
+            }
+        } else {
+            ThreadKind::Branch
+        },
     })
 }
 
@@ -465,7 +456,11 @@ fn non_empty(s: &str) -> Option<String> {
 }
 
 mod appearance;
+mod folders;
 pub use appearance::{appearance_from_proto, appearance_to_proto};
+pub use folders::{
+    project_from_proto, project_settings_from_proto, project_settings_to_proto, project_to_proto,
+};
 
 mod boards;
 pub use boards::{
