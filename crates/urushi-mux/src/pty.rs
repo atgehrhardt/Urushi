@@ -93,7 +93,7 @@ impl Pty for NativePty {
             command.env(key, value);
         }
         if let Some(key) = &spec.tty_env
-            && let Some(path) = pair.master.tty_name()
+            && let Some(path) = crate::platform::tty_path(&*pair.master)
         {
             command.env(key, path);
         }

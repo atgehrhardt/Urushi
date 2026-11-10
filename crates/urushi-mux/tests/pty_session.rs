@@ -8,10 +8,9 @@
 
 use std::time::Duration;
 
-use urushi_mux::{
-    AlacrittyEmulator, Input, Key, KeyEvent, Modifiers, NativePty, SessionHandle, SpawnSpec,
-    TermSize,
-};
+use urushi_mux::{AlacrittyEmulator, NativePty, SessionHandle, SpawnSpec, TermSize};
+#[cfg(unix)]
+use urushi_mux::{Input, Key, KeyEvent, Modifiers};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -44,6 +43,7 @@ async fn wait_for_text(session: &SessionHandle, needle: &str) -> Vec<String> {
     }
 }
 
+#[cfg(unix)]
 async fn wait_for_exit(session: &SessionHandle) -> i32 {
     let mut status = session.status();
     tokio::time::timeout(TIMEOUT, async {

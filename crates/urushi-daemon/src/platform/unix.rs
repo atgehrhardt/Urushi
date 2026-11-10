@@ -146,7 +146,7 @@ pub(crate) fn login_shell_path(
 
 /// Every process on this machine, one line each, from `ps` (see `process::PS_COLUMNS`).
 pub(crate) fn process_table() -> Option<String> {
-    crate::usage::exec_run(
+    crate::exec::run(
         "ps",
         &["-A", "-o", crate::usage::process::PS_COLUMNS],
         None,
@@ -162,7 +162,7 @@ pub(crate) fn process_table() -> Option<String> {
 pub(crate) fn claude_credentials() -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
-        let keychain = crate::usage::exec_run(
+        let keychain = crate::exec::run(
             "security",
             &[
                 "find-generic-password",

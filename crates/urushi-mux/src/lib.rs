@@ -14,6 +14,7 @@
 pub mod emulator;
 pub mod keys;
 pub mod mouse;
+mod platform;
 pub mod pty;
 pub mod replay;
 pub mod screen;

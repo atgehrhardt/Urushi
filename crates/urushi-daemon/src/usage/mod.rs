@@ -24,7 +24,6 @@ use std::time::{Duration, Instant};
 
 use urushi_core::{Agent, Timestamp};
 
-pub(crate) use crate::exec::run as exec_run;
 pub use cache::Failure;
 pub use process::Process;
 
