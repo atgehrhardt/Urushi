@@ -14,7 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Board, BoardError, LabelColor, TaskKind};
+use super::{Board, BoardError, LabelColor, PullRequest, TaskKind};
 use crate::Timestamp;
 
 /// Where a board's content comes from, if not from Urushi alone.
@@ -214,6 +214,11 @@ pub struct Issue {
     /// would cut it short in Jira, so they are read-only.
     #[serde(default = "yes")]
     pub notes_editable: bool,
+    /// Its pull requests, from Jira's development info (ADR 0036): read only while a
+    /// thread is linked to it, at most [`super::MAX_PULL_REQUESTS`]. A board sync
+    /// keeps them as they are.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pull_requests: Vec<PullRequest>,
 }
 
 fn yes() -> bool {

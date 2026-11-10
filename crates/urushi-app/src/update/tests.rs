@@ -403,6 +403,7 @@ mod panes;
 mod pointer;
 mod project_order;
 mod project_settings;
+mod pull_requests;
 mod quick;
 mod setup;
 mod sidebar;

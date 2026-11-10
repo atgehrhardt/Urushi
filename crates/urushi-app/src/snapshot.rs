@@ -77,6 +77,7 @@ pub const SCENARIOS: &[&str] = &[
     "quick-terminal",
     "setup",
     "setup-mode",
+    "thread-links",
     "jira-board",
     "jira-task",
     "jira-subtask",
@@ -208,6 +209,7 @@ fn sample_board() -> v1::Board {
     invoice.tags = vec!["backend".into()];
     // Its agent waits for permission (see `sample_tabs`).
     invoice.thread_id = "t4".into();
+    invoice.pr_url = "https://github.com/acme/web/pull/398".into();
     pricing.subtasks = vec![
         sub("s1", "Draft tiers table", true, ""),
         v1::Subtask {

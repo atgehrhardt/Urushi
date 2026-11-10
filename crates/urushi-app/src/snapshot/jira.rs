@@ -6,7 +6,8 @@
 //! (`jira-issue-picker`), a new epic in the editor (`jira-new-epic`), signing in
 //! (`jira-connect`), choosing a board to import (`jira-import`), and the questions
 //! before an issue is deleted in Jira: from its card's menu (`jira-delete-issue`) and
-//! for a subtask in the editor (`jira-delete-subtask`).
+//! for a subtask in the editor (`jira-delete-subtask`). `thread-links` shows the sidebar
+//! with the marks of threads' Jira issues and pull requests (ADR 0036).
 
 use urushi_client::v1;
 
@@ -16,6 +17,7 @@ use crate::state::AppState;
 
 /// The Jira scenarios.
 pub(super) const SCENARIOS: &[&str] = &[
+    "thread-links",
     "jira-board",
     "jira-task",
     "jira-subtask",
@@ -62,6 +64,18 @@ fn issue(key: &str, (kind, status): (v1::TaskKind, &str), assignee: &str, epic: 
     }
 }
 
+/// Starts `task` as thread "Pricing page", whose pull request Jira reports (ADR 0036).
+fn link_thread(task: &mut v1::Task) {
+    task.thread_id = "t3".into();
+    if let Some(issue) = task.issue.as_mut() {
+        issue.pull_requests = vec![v1::PullRequest {
+            url: "https://github.com/acme/web/pull/412".into(),
+            title: "ACME-139 Invoice PDFs".into(),
+            status: v1::PullRequestStatus::Open.into(),
+        }];
+    }
+}
+
 /// "ACME board": three columns of stories, bugs and tasks in two epics.
 fn board() -> v1::Board {
     let column = |id: &str, name: &str, tasks: Vec<v1::Task>| v1::BoardColumn {
@@ -89,6 +103,7 @@ fn board() -> v1::Board {
         "ACME-8",
     );
     invoices.title = "Invoice PDFs".into();
+    link_thread(&mut invoices);
     let subtask = |key: &str, title: &str, done: bool| {
         let task = issue(
             key,
@@ -202,6 +217,9 @@ pub(super) fn show(state: &mut AppState, name: &str) {
         display_name: "Ada Lovelace".into(),
         account_id: "acc-ada".into(),
     });
+    if name == "thread-links" {
+        return;
+    }
     state.update(Msg::ToggleBoard);
     state.update(Msg::BoardReveal(1.0));
     state.update(Msg::SelectBoard("jb".into()));

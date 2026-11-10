@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.21 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.22 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -37,6 +37,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 22 | Pull requests on tasks (ADR 0036): `Task.pr_url`, `Subtask.pr_url` (a local task's pull request, an `https://` URL; empty for none), `UpdateTask.optional pr_url` (empty unlinks; anything but an `https://` URL with a host is `INVALID_ARGUMENT`; on a Jira board `FAILED_PRECONDITION`), and `JiraIssue.pull_requests` (`PullRequest{url, title, status}`, the `PullRequestStatus` enum: `OPEN`, `MERGED`, `DECLINED`; `UNSPECIFIED` = unknown), read from Jira's development info only while a thread is linked to the issue. Clients check `Welcome.protocol_minor ≥ 22` before offering the link; older daemons leave every field empty. |
 | 21 | Deleting Jira issues (UR-43, ADR 0034), with no wire change: `DeleteTask` and `DeleteSubtask` on a Jira board delete the issue in Jira, with its sub-tasks, then take it off the board; an issue Jira no longer has is taken off too. A refusal changes nothing (`PERMISSION_DENIED` when the account may not delete issues). Older daemons answer `FAILED_PRECONDITION`, so clients check `Welcome.protocol_minor ≥ 21` before offering Delete on a Jira issue, and ask the user to confirm first. |
 | 20 | The quick terminal (ADR 0031): `Workspace.quick_terminal` (`QuickTerminal{id, layout, focused_pane_id, attention}`; absent when none is open) and `OpenQuickTerminal` → `QuickTerminal`, which returns the daemon's one quick terminal, first opening it with a shell in the home directory. Its `id` is accepted as the `tab_id` of `SplitPane`, `ClosePane`, `FocusPane`, `MoveDivider`, `ResizePaneEdge`, `Equalize` and `CloseTab` (`RenameTab` is `NOT_FOUND`). It ends when its last pane closes or exits. Clients check `Welcome.protocol_minor ≥ 20`; older clients don't see it. |
 | 19 | How a task's agent gets its message (UR-30, ADR 0030): `AgentSettings.{task_draft, task_message_custom, task_message}` and the same as `optional` in `SettingsPatch`. `task_draft` starts the task agent without its prompt and pastes it into the agent's input, unsent, once the agent is ready; false (the default) sends it as before. With `task_message_custom` on and a non-blank `task_message`, that text replaces the default message, with `{key}`, `{title}`, `{url}` and `{show}` filled in per task; the text is kept while it is off. A message over 10 000 characters is `INVALID_ARGUMENT`. Older daemons ignore the fields, so clients check `Welcome.protocol_minor ≥ 19` before offering them. |

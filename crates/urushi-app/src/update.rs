@@ -72,6 +72,7 @@ impl AppState {
             Msg::Daemon(event) => self.on_event(event, &mut fx),
             Msg::Response { followup, result } => self.on_response(followup, result, &mut fx),
             Msg::SelectThread(id) => self.select_thread(id, &mut fx),
+            Msg::OpenUrl(url) => fx.push(Effect::OpenUrl(url)),
             Msg::SetCompact(compact) => self.compact = compact,
             Msg::WindowHeight(height) => self.window_height = height,
             Msg::LookScheme(scheme) => {

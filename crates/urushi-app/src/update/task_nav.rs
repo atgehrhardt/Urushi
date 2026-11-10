@@ -164,6 +164,24 @@ impl AppState {
         }
     }
 
+    /// Whether the task editor on screen has a pull request field: an existing task on
+    /// a local board (a Jira issue's pull requests come from Jira, ADR 0036).
+    pub(crate) fn shows_pr_field(&self) -> bool {
+        let Some(Dialog::Task {
+            board,
+            task: Some(_),
+            ..
+        }) = &self.dialog
+        else {
+            return false;
+        };
+        self.daemon_supports_pr_links()
+            && self
+                .workspace
+                .board(board)
+                .is_some_and(|b| b.jira.is_none())
+    }
+
     /// Closing the task editor: with unsaved edits it asks first (a second close, e.g.
     /// Escape, keeps editing). Returns whether the close was held back.
     pub(super) fn hold_editor_close(&mut self) -> bool {

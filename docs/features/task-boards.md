@@ -94,6 +94,13 @@ it back.
   card's or on-screen thread picked first. **Start in thread** opens a new tab there,
   running the task agent with the task as its prompt (a plain terminal without one), and
   links the task to that thread (ADR 0018).
+- **Pull request** (ADR 0036, 1.22 daemons): an existing task on a local board has a
+  **Pull request** field under its tags. It takes the pull request's `https://` address
+  (anything else is pointed out, and the daemon refuses it) and is saved with Save;
+  **Open** opens it. Emptying it unlinks it. The thread linked to the task then shows
+  GitHub's mark on its card ([thread organization](thread-organization.md)). A Jira
+  board has no such field, because its issues' pull requests come from Jira
+  ([jira-boards](jira-boards.md)).
 - **Agent attention on cards:** when an agent in a thread linked to the task, or to any
   of its subtasks at any depth, finishes or waits for the user, the card gets a
   **Finished** (green) or **Needs input** (amber) badge by its title and a border in that
@@ -142,6 +149,9 @@ restarts.
   color, `move_task` takes an
   index counted without the moved task, clamped to the bottom, a task has at most
   `MAX_SUBTASKS`, and `link_thread` / `unlink_thread` record and forget threads.
+  `Task::pr_url` is a `PrUrl` (`pull_request.rs`: `https://` with a host, no
+  whitespace, at most `MAX_PR_URL`), set through `TaskPatch::pr_url` and refused on a
+  Jira board.
   The list of boards is kept in tab order; `move_board` (`order.rs`) reorders it. Ids and
   timestamps are passed in. Older documents' checklist items load as tasks (every new
   field has a serde default; `created_at` reads as 0).
@@ -285,7 +295,8 @@ restarts.
   subtasks as an indented tree; `mv` takes a subtask out onto the board; `edit`,
   `rm-task` and `sub add` take subtask ids), `urushi board attach <task> <file>`,
   `urushi board attachment get <id> [--thumbnail] [-o file]|rm <id>` (`add --color --tag`,
-  `edit --color <c|none> --tag --untag`), `urushi board col add|rename|color|mv|rm`,
+  `edit --color <c|none> --tag --untag --pr <url|"">`; `show` prints `Pull request:`
+  lines), `urushi board col add|rename|color|mv|rm`,
   `urushi board sub add|done|undo|rename|rm`, and `urushi thread new <repo> --task <task or subtask>`.
   Columns can be named, e.g. `urushi board mv <task> done`.
 
@@ -315,6 +326,12 @@ restarts.
 ## Tests
 - Core: `board/tests.rs`, `board/tree/tests.rs` (nesting, bounds, links, old
   documents), `board/order.rs` (moving boards), `board/attachments.rs` (names, media types, bounds), `board/prompt.rs` and `tests/board_props.rs`.
+- Pull requests: core `board/pull_request.rs` (URLs, labels, the one shown),
+  `board/tests.rs` (linking at any depth, old documents); proto
+  `convert/boards/tests.rs` (round trips, an invalid link reads as none); daemon
+  `tests/jira_pull_requests.rs::a_local_task_links_a_pull_request_and_a_jira_issue_cannot`;
+  app `update/tests/pull_requests.rs` (the field, Save, unlinking, Jira boards and
+  older daemons).
 - Proto: `convert/boards/tests.rs` covers round trips and wire encoding of every 1.5,
   1.6 and 1.8 board message (`tests/round_trip.rs` covers `MoveBoard`), and that the largest attachment fits in a frame;
   `convert/boards/labels.rs` the color mapping.
@@ -369,6 +386,10 @@ restarts.
 - In the notes, Up/Down move between lines separated by line breaks, not between the
   wrapped lines of a long paragraph (the editing model doesn't know the layout).
 - A card's title is one line, cut short with an ellipsis.
+- A new task can't be given a pull request until it is saved: `CreateTask` has no
+  `pr_url`, so the field shows only on an existing task.
+- A local task links one pull request; the card can't show its state (open or merged),
+  since nothing reads the code host.
 - A dragged card doesn't scroll a column that is taller than the panel.
 - The board tabs don't scroll sideways: with many boards they run past the panel's edge,
   and a dragged tab can't reach the ones out of view (use the menu or `urushi board

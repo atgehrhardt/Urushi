@@ -1,12 +1,23 @@
 //! Wire → service for task boards (protocol 1.5; subtasks since 1.6; colors, tags,
-//! columns and nested tasks since 1.8; kinds and Jira boards since 1.12; reordering boards since 1.17). Task changes
+//! columns and nested tasks since 1.8; kinds and Jira boards since 1.12; reordering boards since 1.17; pull request links
+//! since 1.22). Task changes
 //! are async: on a Jira board they are written to Jira first.
 
+use urushi_core::board::PrUrl;
 use urushi_proto::convert;
 use urushi_proto::v1::{self, request::Body, response::Outcome};
 
 use super::handlers::{invalid, ok, parse};
 use crate::service::{AttachmentData, NewSubtask, NewTask, Service, ServiceResult};
+
+/// A pull request link to set: empty unlinks, anything else must be a valid URL.
+fn pr_url(url: &str) -> ServiceResult<Option<PrUrl>> {
+    if url.trim().is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(PrUrl::parse(url)?))
+    }
+}
 
 /// Handles the board requests; anything else is refused as a routing bug.
 pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcome> {
@@ -62,6 +73,7 @@ pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcom
                 tags: r.tags.map(|t| t.tags),
                 done: None,
                 kind: r.kind.map(convert::kind_from_proto),
+                pr_url: r.pr_url.as_deref().map(pr_url).transpose()?,
             };
             service
                 .update_task(parse(&r.task_id, "task_id")?, &patch)

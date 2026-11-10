@@ -75,7 +75,7 @@ pub(crate) enum BoardCmd {
         #[arg(long)]
         kind: Option<String>,
     },
-    /// Change a task's title, notes, color, tags or kind.
+    /// Change a task's title, notes, color, tags, kind or pull request.
     Edit {
         /// Task id.
         task: String,
@@ -97,6 +97,10 @@ pub(crate) enum BoardCmd {
         /// New kind (task, story, bug, epic, subtask), or "none" to clear it.
         #[arg(long)]
         kind: Option<String>,
+        /// Link a pull request (an https:// URL), or "" to unlink it. Local boards only:
+        /// a Jira issue's pull requests come from Jira.
+        #[arg(long = "pr")]
+        pr_url: Option<String>,
     },
     /// Move a task (or a subtask, which then becomes a card) to a column of its board.
     Mv {
@@ -271,6 +275,7 @@ async fn edit(client: &Client, cmd: BoardCmd) -> Result<()> {
         tags,
         untags,
         kind,
+        pr_url,
     } = cmd
     else {
         return Ok(());
@@ -298,6 +303,7 @@ async fn edit(client: &Client, cmd: BoardCmd) -> Result<()> {
             color: color.as_deref().map(color_arg).transpose()?.map(Into::into),
             tags,
             kind: kind.as_deref().map(kind_arg).transpose()?,
+            pr_url,
         })
         .await?)
 }

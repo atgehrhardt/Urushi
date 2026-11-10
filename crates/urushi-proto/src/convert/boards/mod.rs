@@ -7,6 +7,7 @@ use urushi_core::{Board, Column, Task, ThreadId};
 mod attachments;
 mod jira;
 mod labels;
+mod pull_requests;
 
 use attachments::attachment_from_proto;
 pub use attachments::attachment_to_proto;
@@ -15,6 +16,9 @@ pub use jira::{
     kind_from_proto, kind_to_proto, source_from_proto, source_to_proto,
 };
 pub use labels::{color_from_proto, color_to_proto};
+use pull_requests::{
+    pr_url_from_proto, pr_url_to_proto, pull_request_to_proto, pull_requests_from_proto,
+};
 
 use super::{ConvertError, millis_from_proto, millis_to_proto, parse_id};
 use crate::v1;
@@ -81,6 +85,7 @@ fn task_on(t: &Task, site: Option<&str>) -> v1::Task {
         attachments: t.attachments.iter().map(attachment_to_proto).collect(),
         kind: kind_to_proto(t.kind),
         issue: t.issue.as_ref().map(|i| Box::new(issue_to_proto(i, site))),
+        pr_url: pr_url_to_proto(t.pr_url.as_ref()),
     }
 }
 
@@ -103,6 +108,7 @@ fn subtask_on(s: &Task, site: Option<&str>) -> v1::Subtask {
         attachments: s.attachments.iter().map(attachment_to_proto).collect(),
         kind: kind_to_proto(s.kind),
         issue: s.issue.as_ref().map(|i| Box::new(issue_to_proto(i, site))),
+        pr_url: pr_url_to_proto(s.pr_url.as_ref()),
     }
 }
 
@@ -142,6 +148,7 @@ fn subtask_from_proto(s: &v1::Subtask) -> Result<Task, ConvertError> {
         thread: link_from_proto(&s.thread_id, "board.task.subtask.thread_id")?,
         kind: kind_from_proto(s.kind),
         issue: s.issue.as_deref().map(issue_from_proto),
+        pr_url: pr_url_from_proto(&s.pr_url),
     })
 }
 
@@ -159,6 +166,7 @@ fn task_from_proto(t: &v1::Task) -> Result<Task, ConvertError> {
         thread: link_from_proto(&t.thread_id, "board.task.thread_id")?,
         kind: kind_from_proto(t.kind),
         issue: t.issue.as_deref().map(issue_from_proto),
+        pr_url: pr_url_from_proto(&t.pr_url),
     })
 }
 

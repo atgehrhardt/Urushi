@@ -153,6 +153,8 @@ pub enum Field {
     NestQuery,
     /// Task editor: the "add a tag" field.
     TaskTag,
+    /// Task editor: the pull request link.
+    TaskPrUrl,
     /// Connect Jira: the site.
     JiraSite,
     /// Connect Jira: the account's email.
@@ -638,6 +640,12 @@ impl AppState {
     /// Whether the daemon creates epics on Jira boards, as cards (protocol 1.15).
     pub fn daemon_supports_epic_cards(&self) -> bool {
         self.daemon_minor >= crate::board::EPIC_CARDS_SINCE_MINOR
+    }
+
+    /// Whether the daemon links pull requests to tasks and reads a Jira issue's from
+    /// Jira (protocol 1.22, ADR 0036).
+    pub fn daemon_supports_pr_links(&self) -> bool {
+        self.daemon_minor >= crate::board::PR_LINKS_SINCE_MINOR
     }
 
     /// Whether the daemon deletes Jira issues (protocol 1.21, ADR 0034).

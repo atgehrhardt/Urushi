@@ -5,7 +5,9 @@
 use std::time::Duration;
 
 use urushi_core::TaskKind;
-use urushi_core::board::{JiraBoard, JiraColumn, Person, QuickFilter, StatusCategory, SyncedIssue};
+use urushi_core::board::{
+    JiraBoard, JiraColumn, Person, PullRequest, QuickFilter, StatusCategory, SyncedIssue,
+};
 
 use super::details::{Field, IssueDetails, IssueRef};
 
@@ -303,4 +305,8 @@ pub trait JiraApi: Send + Sync {
         started: &str,
         comment: &str,
     ) -> JiraResult<()>;
+    /// The GitHub pull requests the site's code-host integration reports for the issue
+    /// with this Jira id (ADR 0036), newest first; none when the site has no such
+    /// integration.
+    fn pull_requests(&self, account: &Account, issue_id: &str) -> JiraResult<Vec<PullRequest>>;
 }

@@ -24,6 +24,7 @@ mod issue;
 mod jira;
 mod labels;
 mod nest;
+mod pull_request;
 mod subtasks;
 
 pub(super) use nest::picker as nest_picker;
@@ -221,7 +222,8 @@ fn notes_input(
 }
 
 /// The editor's organizing side: the kind (or a Jira issue's own fields), the column
-/// (or a subtask's check mark), color and tags, and attachments (not on Jira boards).
+/// (or a subtask's check mark), color and tags, and a pull request link and attachments
+/// (not on Jira boards).
 fn organize(
     state: &AppState,
     (theme, scroll): (&Theme, &HashMap<Key, f32>),
@@ -267,6 +269,9 @@ fn organize(
             (board, side_width(state)),
             labels,
         ));
+    }
+    if state.shows_pr_field() {
+        organize = organize.children(pull_request::section(state, theme, labels));
     }
     if state.daemon_supports_board_extras() && !jira_board {
         organize = organize.children(attachments::section(state, (theme, scroll), current));

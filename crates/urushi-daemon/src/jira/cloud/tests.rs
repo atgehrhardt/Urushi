@@ -11,20 +11,20 @@ use crate::http::{HttpError, Response};
 
 /// Answers requests from a script and keeps them.
 #[derive(Default)]
-struct Script {
+pub(super) struct Script {
     answers: Mutex<VecDeque<(u16, Value)>>,
     seen: Mutex<Vec<Request>>,
 }
 
 impl Script {
-    fn answering(answers: impl IntoIterator<Item = (u16, Value)>) -> Arc<Self> {
+    pub(super) fn answering(answers: impl IntoIterator<Item = (u16, Value)>) -> Arc<Self> {
         Arc::new(Self {
             answers: Mutex::new(answers.into_iter().collect()),
             seen: Mutex::default(),
         })
     }
 
-    fn seen(&self) -> Vec<Request> {
+    pub(super) fn seen(&self) -> Vec<Request> {
         self.seen.lock().unwrap().clone()
     }
 }
@@ -50,7 +50,7 @@ impl HttpClient for Script {
     }
 }
 
-fn account() -> Account {
+pub(super) fn account() -> Account {
     Account {
         site: "https://acme.atlassian.net".into(),
         email: "a@b.c".into(),

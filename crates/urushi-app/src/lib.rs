@@ -15,6 +15,7 @@ pub mod appearance;
 pub mod attention;
 mod backend;
 pub mod board;
+mod brand_icons;
 pub mod config;
 pub mod deletions;
 pub mod drafts;

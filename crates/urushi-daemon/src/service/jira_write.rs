@@ -102,6 +102,13 @@ impl Service {
         if patch.kind.is_some() {
             return Err(refused("an issue's type is changed"));
         }
+        if patch.pr_url.is_some() {
+            return Err(ServiceError::Precondition(
+                "a Jira issue's pull requests come from Jira: name the issue's key in the \
+                 pull request's title or branch"
+                    .into(),
+            ));
+        }
         let issue = t.task.issue.clone().unwrap_or_default();
         let mut edit = IssueEdit::default();
         if let Some(title) = patch.title.as_deref().map(task_title).transpose()? {

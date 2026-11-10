@@ -50,6 +50,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0033 – Name the CLI by its absolute path in task prompts](adr/0033-task-prompts-name-the-cli-by-path.md)
 - [0034 – Delete Jira issues from Urushi, with their sub-tasks, after confirming](adr/0034-delete-jira-issues-after-confirming.md)
 - [0035 – Treat Claude as finished only when no background agent of its own still runs](adr/0035-claude-is-done-when-no-background-agent-runs.md)
+- [0036 – Show a thread's pull request: read a Jira issue's from Jira's development info, and let a local task link one](adr/0036-pull-requests-from-jira-dev-info-and-local-links.md)
 
 ## Features
 - [_template](features/_template.md)

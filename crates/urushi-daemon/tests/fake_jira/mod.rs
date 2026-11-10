@@ -10,10 +10,13 @@
     reason = "test helpers"
 )]
 
+use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex};
 
 use serde_json::Value;
-use urushi_core::board::{Issue, JiraColumn, Person, QuickFilter, StatusCategory, SyncedIssue};
+use urushi_core::board::{
+    Issue, JiraColumn, Person, PullRequest, QuickFilter, StatusCategory, SyncedIssue,
+};
 use urushi_core::{TaskKind, Timestamp};
 use urushi_daemon::jira::details::{
     Comment, Field, FieldKind, FieldOption, FieldValue, IssueDetails, IssueRef, JiraAttachment,
@@ -101,6 +104,9 @@ pub struct FakeJira {
     /// While `true`, deleting issues is refused, as for an account without Jira's
     /// "Delete issues" permission.
     pub deletes_forbidden: Mutex<bool>,
+    /// What development info answers for an issue, by its number (none: no pull
+    /// requests).
+    pub pull_requests: Mutex<HashMap<u32, JiraResult<Vec<PullRequest>>>>,
 }
 
 /// The JQL of the board's one quick filter.
@@ -144,6 +150,7 @@ impl FakeJira {
             calls: Mutex::default(),
             transitions_held: (Mutex::new(false), Condvar::new()),
             deletes_forbidden: Mutex::new(false),
+            pull_requests: Mutex::default(),
         })
     }
 
@@ -728,6 +735,18 @@ impl JiraApi for FakeJira {
             r.extra.worklogs.push((id, seconds, comment.into()));
         });
         Ok(())
+    }
+
+    fn pull_requests(&self, account: &Account, issue_id: &str) -> JiraResult<Vec<PullRequest>> {
+        Self::check(account)?;
+        let n: u32 = issue_id.trim_start_matches("100").parse().unwrap();
+        self.log(format!("pull_requests {}", key(n)));
+        self.pull_requests
+            .lock()
+            .unwrap()
+            .get(&n)
+            .cloned()
+            .unwrap_or(Ok(Vec::new()))
     }
 }
 
