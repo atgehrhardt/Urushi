@@ -36,7 +36,10 @@ pub(super) fn view(
             )
         }
         Dialog::NewTab { highlighted } => super::launcher::dialog(state, theme, *highlighted),
-        Dialog::DeleteThread { title, plan } => delete_dialog(theme, title, plan),
+        Dialog::DeleteThread { title, plan, .. } => delete_dialog(state, theme, title, plan),
+        Dialog::ProjectSettings(draft) => {
+            super::project_settings::view(state, theme, scroll, draft)
+        }
         Dialog::Settings {
             prefix,
             shell,
@@ -270,30 +273,57 @@ fn connect(state: &AppState, theme: &Theme, host: &TextField) -> Node<Msg> {
     modal(theme, "Connect to a host", 460.0, body, actions, dismiss)
 }
 
+/// One line of the deletion warning: what, then the detail in `color`.
+fn plan_row(theme: &Theme, what: &str, detail: String, color: Color) -> Node<Msg> {
+    Node::row()
+        .width(Length::Fill(1.0))
+        .gap(12.0)
+        .child(
+            Node::text(what, Font::UiMedium, theme.font_size, theme.text_muted)
+                .width(Length::Fixed(130.0)),
+        )
+        .child(Node::text(detail, Font::Ui, theme.font_size, color).width(Length::Fill(1.0)))
+}
+
+/// The warning's first lines: what happens, and the worktree it removes. Closing a
+/// project's parent-branch thread (ADR 0029) keeps its branch, and a checkout it was
+/// attached to.
+fn plan_heading(theme: &Theme, plan: &v1::DeletionPlan, base: bool) -> [Node<Msg>; 2] {
+    let lead = if base {
+        "Closes the project's parent-branch thread. Its branch is kept."
+    } else {
+        "This permanently deletes:"
+    };
+    let worktree = if plan.keeps_worktree {
+        let detail = format!("{} is kept: nothing on disk is removed", plan.worktree_path);
+        plan_row(theme, "Checkout", detail, theme.text_muted)
+    } else {
+        plan_row(theme, "Worktree", plan.worktree_path.clone(), theme.text)
+    };
+    [
+        Node::text(lead, Font::Ui, theme.font_size, theme.text),
+        worktree,
+    ]
+}
+
 /// The deletion warning. It lists exactly what the daemon will destroy, and the default
 /// action (Cancel, and Enter) never deletes. Delete closes it at once: the daemon deletes
 /// in the background (`update/deletion.rs`).
-fn delete_dialog(theme: &Theme, title: &str, plan: &v1::DeletionPlan) -> Node<Msg> {
-    let row = |what: &str, detail: String, color: Color| {
-        Node::row()
-            .width(Length::Fill(1.0))
-            .gap(12.0)
-            .child(
-                Node::text(what, Font::UiMedium, theme.font_size, theme.text_muted)
-                    .width(Length::Fixed(130.0)),
-            )
-            .child(Node::text(detail, Font::Ui, theme.font_size, color).width(Length::Fill(1.0)))
-    };
+fn delete_dialog(
+    state: &AppState,
+    theme: &Theme,
+    title: &str,
+    plan: &v1::DeletionPlan,
+) -> Node<Msg> {
+    let base = state
+        .workspace
+        .thread(&plan.thread_id)
+        .is_some_and(|t| t.project_base);
+    let row = |what: &str, detail: String, color: Color| plan_row(theme, what, detail, color);
     let mut body = Node::column()
         .width(Length::Fill(1.0))
         .gap(8.0)
-        .child(Node::text(
-            "This permanently deletes:",
-            Font::Ui,
-            theme.font_size,
-            theme.text,
-        ))
-        .child(row("Worktree", plan.worktree_path.clone(), theme.text));
+        .children(plan_heading(theme, plan, base));
     if plan.modified_files + plan.untracked_files > 0 {
         let detail = format!(
             "{} modified, {} untracked file(s) will be lost",
@@ -337,7 +367,11 @@ fn delete_dialog(theme: &Theme, title: &str, plan: &v1::DeletionPlan) -> Node<Ms
     }
     let delete = button(
         theme,
-        "Delete thread",
+        if base {
+            "Close thread"
+        } else {
+            "Delete thread"
+        },
         ButtonKind::Danger,
         Msg::ConfirmDelete,
     );

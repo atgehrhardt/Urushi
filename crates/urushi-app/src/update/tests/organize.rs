@@ -190,6 +190,7 @@ fn the_new_thread_dialog_picks_repo_and_base_from_lists() {
         result: Ok(Outcome::Branches(v1::Branches {
             branches: vec!["main".into(), "dev".into()],
             current: "main".into(),
+            remote_branches: vec!["origin/hotfix".into()],
         })),
     });
     s.update(Msg::ToggleSelect(Select::Base));
@@ -212,6 +213,11 @@ fn the_new_thread_dialog_picks_repo_and_base_from_lists() {
     );
     assert!(matches!(bodies(&fx)[..], [Body::ListBranches(_)]));
     s.update(Msg::PickRepo(repo()));
+    // A remote branch can be picked too; the daemon resolves it.
+    s.update(Msg::PickBase(Some("origin/hotfix".into())));
+    assert!(
+        matches!(&s.dialog, Some(Dialog::NewThread { base: Some(b), .. }) if b == "origin/hotfix")
+    );
     s.update(Msg::PickBase(Some("dev".into())));
 
     let fx = s.update(Msg::Submit);

@@ -1,4 +1,5 @@
-//! Creating and renaming threads. Every thread always gets its own worktree (ADR 0004).
+//! Creating and renaming threads. Every thread gets its own worktree on a new branch
+//! (ADR 0004); a project's parent-branch thread is made in `project_base` (ADR 0029).
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -24,7 +25,8 @@ pub(crate) const DEFAULT_TAB_TITLE: &str = "Terminal";
 pub struct ThreadRequest {
     /// Title; empty uses "New thread".
     pub title: String,
-    /// Ref to branch from; `None` uses the project's default base, or its current branch.
+    /// Ref to branch from; `None` uses the parent branch of `project` (when it is in this
+    /// repo), else the repo's default base, else its current branch.
     pub base_ref: Option<String>,
     /// Branch to create; `None` generates `<prefix><slug>-<short id>`, or for a Jira
     /// issue `<prefix><KEY>-<slug>-<short id>`.
@@ -43,10 +45,12 @@ pub struct ThreadRequest {
 }
 
 impl Service {
-    /// Creates a thread: a new branch and worktree from the requested base (or the
-    /// repo's default base, or its current branch), plus, if asked, a first tab with a
-    /// shell in the worktree. With `update_base_from_remote` on, the base is first
-    /// fetched from its remote (ADR 0028).
+    /// Creates a thread: a new branch and worktree from the requested base (or its
+    /// project's parent branch, the repo's default base, or its current branch), plus, if
+    /// asked, a first tab with a shell in the worktree. The first thread of a project
+    /// without a parent branch makes its base the project's parent branch.
+    /// With `update_base_from_remote` on, the base is first fetched from its remote
+    /// (ADR 0028).
     ///
     /// All-or-nothing: if anything fails after the worktree was created, the worktree
     /// and branch are removed again and no thread is recorded.
@@ -66,10 +70,11 @@ impl Service {
         } = request;
         let branch = parse_branch(branch)?;
         let title = thread_title(&title);
-        let (project, settings, worktree_root, issue_key, refresh) = self.read(|s| {
-            if let Some(id) = project_id {
-                s.project(id)?;
-            }
+        let (project, settings, worktree_root, issue_key, parent, refresh) = self.read(|s| {
+            let parent = match project_id {
+                Some(id) => s.project(id)?.settings.base_in(repo_id).cloned(),
+                None => None,
+            };
             // Refuse up front, before making a worktree, if the task isn't there.
             let issue_key = task.map(|l| s.task_issue_key(l)).transpose()?.flatten();
             let project = s.repo(repo_id)?.clone();
@@ -80,7 +85,7 @@ impl Service {
                 .clone()
                 .unwrap_or_else(|| self.home().join("worktrees"));
             let refresh = s.settings.update_base_from_remote;
-            Ok((project, settings, root, issue_key, refresh))
+            Ok((project, settings, root, issue_key, parent, refresh))
         })?;
         // Resolve the agent and the prompt before making a worktree, so a refusal
         // leaves nothing behind.
@@ -93,9 +98,7 @@ impl Service {
 
         let git = self.git.clone();
         let repo = project.repo_root.clone();
-        let base_ref = base_ref
-            .filter(|b| !b.trim().is_empty())
-            .or(project.default_base.clone());
+        let base_ref = start_ref(base_ref, parent, project.default_base.clone());
         let prefix = settings.branch_prefix.clone();
         let branch = issue_branch(branch, issue_key.as_ref(), &prefix, &title, id)?;
         let created_at = now();
@@ -157,6 +160,7 @@ impl Service {
         if let Some((pane, command_line)) = started {
             self.start_task_agent(thread.id, pane, &command_line).await;
         }
+        self.adopt_project_base(&thread).await;
         Ok(thread)
     }
 
@@ -264,7 +268,7 @@ fn thread_title(title: &str) -> String {
 }
 
 /// Where a thread's worktree goes: `<root>/<repo slug>-<short>/<title slug>-<short>`.
-fn worktree_dir(
+pub(super) fn worktree_dir(
     root: &std::path::Path,
     repo: &urushi_core::Repo,
     title: &str,
@@ -293,6 +297,19 @@ fn issue_branch(
             .map_err(|e| ServiceError::Invalid(e.to_string())),
         (branch, _) => Ok(branch),
     }
+}
+
+/// What a thread starts from: the ref asked for, else its project's parent branch (in
+/// this repo), else the repo's default base. `None` leaves it to [`resolve_base`].
+fn start_ref(
+    requested: Option<String>,
+    parent: Option<BranchName>,
+    repo_default: Option<String>,
+) -> Option<String> {
+    requested
+        .filter(|b| !b.trim().is_empty())
+        .or_else(|| parent.map(|b| b.to_string()))
+        .or(repo_default)
 }
 
 /// Validates a branch name the user typed. Blank means "generate one".

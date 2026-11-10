@@ -68,7 +68,7 @@ urushi-cli ─► urushi-client
 | Concept | Meaning |
 |---|---|
 | **Repo** | A git repository the user added. (`Project` on the v1 wire, ADR 0010.) |
-| **Project** | A user-made group of threads, from any repos. Only organization: it never touches git. (`Folder` on the wire.) |
+| **Project** | A user-made group of threads, from any repos. It can name a **parent branch** in one repo, which its new threads start from, and keep a **parent-branch thread** working on that branch (ADR 0029). (`Folder` on the wire.) |
 | **Thread** | One unit of agent work. **Always** owns exactly one git worktree and its primary branch (named by the user, or `urushi/<slug>-<short-id>`). |
 | **Tab** | A layout tree of panes inside a thread. |
 | **Layout** | An n-ary tree. Leaves are panes. Splits have an axis and child ratios that sum to 1. |
@@ -96,6 +96,9 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
   A task can also start in an existing thread: `CreateTab{task_id, start_task_agent}` opens a tab running the task agent there and links the task in the same mutation (ADR 0018).
 
   If any step fails, everything is rolled back.
+
+  Without a base, a thread starts from its project's parent branch (if that is in the same repo), else the repo's current branch.
+- **Parent-branch thread** (ADR 0029, `service/project_base.rs`): it works on its project's parent branch. If a worktree already has that branch checked out (usually the repo's own folder), it runs there and is *attached*. Otherwise it gets `git worktree add <path> <branch>` without `-b`. It owns no branch. Closing it is deleting it through the same two steps: an attached thread's plan has `keeps_worktree`, so nothing on disk is removed. Deleting it switches it off in the project's settings.
 - **Ownership:** a thread owns its primary branch, plus branches that did not exist at creation and were checked out in its worktree (read from the worktree's own HEAD reflog). It never owns the base branch, the default branch, branches that existed before it, or branches checked out in other worktrees.
 - **Delete** (two steps, enforced by the protocol):
   1. `PlanThreadDeletion` returns a `DeletionPlan`: the worktree, dirty/untracked counts, unpushed commits, local branches, remote branches (when `delete_remote_branches`, default **on**) and running processes. It also returns a token.

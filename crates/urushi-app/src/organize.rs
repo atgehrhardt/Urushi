@@ -8,6 +8,9 @@ use urushi_ui::Point;
 
 /// First protocol minor version that can reorder projects (`MoveFolder`).
 pub const PROJECT_ORDER_SINCE_MINOR: u32 = 11;
+/// First protocol minor version with project settings: a parent branch and its
+/// parent-branch thread (`UpdateFolderSettings`, ADR 0029).
+pub const PROJECT_SETTINGS_SINCE_MINOR: u32 = 18;
 
 /// Which list the sidebar shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -156,12 +159,12 @@ impl Prompt {
     }
 }
 
-/// A selector in the new-thread dialog that can be open.
+/// A selector in the new-thread or project-settings dialog that can be open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Select {
     /// The repo to create the thread in.
     Repo,
-    /// The branch to start from.
+    /// The branch to start from (or, for a project, its parent branch).
     Base,
     /// The project to file the thread under.
     Project,

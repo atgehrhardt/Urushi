@@ -123,6 +123,13 @@ impl State {
             .ok_or_else(|| ServiceError::NotFound(format!("project {id}")))
     }
 
+    /// The project's parent-branch thread, if it has one (in any state).
+    pub(crate) fn project_base_thread(&self, project: ProjectId) -> Option<&ThreadRecord> {
+        self.threads
+            .iter()
+            .find(|r| r.thread.project == Some(project) && r.thread.is_project_base())
+    }
+
     pub(crate) fn thread(&self, id: ThreadId) -> ServiceResult<&ThreadRecord> {
         self.threads
             .iter()

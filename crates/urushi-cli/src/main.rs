@@ -9,6 +9,7 @@ mod commands;
 mod daemon;
 mod jira;
 mod look;
+mod project_settings;
 mod render;
 
 use std::path::PathBuf;
@@ -160,6 +161,32 @@ enum ProjectCmd {
         /// New position, counted without the project (clamped to the end).
         index: u32,
     },
+    /// Show or change a project's settings: its parent branch, which its new threads
+    /// start from, and whether a parent-branch thread is kept at its top. With no
+    /// options, prints them.
+    Settings {
+        /// Project id.
+        project: String,
+        /// The parent branch's repo (default: the one already set).
+        #[arg(long)]
+        repo: Option<String>,
+        /// The parent branch: a local branch, or a remote one such as `origin/x`.
+        #[arg(long)]
+        branch: Option<String>,
+        /// Remove the parent branch.
+        #[arg(long, conflicts_with_all = ["repo", "branch"])]
+        clear: bool,
+        /// Keep a parent-branch thread at the project's top. Switching it off while it
+        /// is open is refused: close it with `urushi thread rm`.
+        #[arg(long, value_enum)]
+        base_thread: Option<OnOff>,
+    },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum OnOff {
+    On,
+    Off,
 }
 
 #[derive(Subcommand)]

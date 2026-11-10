@@ -198,6 +198,14 @@ fn all_request_kinds() {
             board_id: "b".into(),
             index: 3,
         }),
+        B::UpdateFolderSettings(v1::UpdateFolderSettingsRequest {
+            folder_id: "f".into(),
+            settings: Some(v1::FolderSettings {
+                base_repo_id: "r".into(),
+                base_branch: "origin/develop".into(),
+                base_thread: Some(false),
+            }),
+        }),
         B::ClearAttention(v1::ClearAttentionRequest {
             pane_ids: vec!["p".into(), "q".into()],
         }),
@@ -230,6 +238,7 @@ fn all_response_kinds() {
         O::Branches(v1::Branches {
             branches: vec!["main".into()],
             current: "main".into(),
+            remote_branches: vec!["origin/feature".into()],
         }),
         O::Thread(v1::Thread::default()),
         O::DeletionPlan(v1::DeletionPlan {
@@ -239,6 +248,7 @@ fn all_response_kinds() {
                 branch: "urushi/x".into(),
             }],
             token: "abc".into(),
+            keeps_worktree: true,
             ..Default::default()
         }),
         O::Tab(v1::Tab::default()),
@@ -269,6 +279,11 @@ fn all_response_kinds() {
             id: "f".into(),
             name: "Billing".into(),
             created_at_ms: 1,
+            settings: Some(v1::FolderSettings {
+                base_repo_id: "r".into(),
+                base_branch: "main".into(),
+                base_thread: None,
+            }),
         }),
         O::Workspace(v1::Workspace {
             folders: vec![v1::Folder::default()],
@@ -276,6 +291,8 @@ fn all_response_kinds() {
                 folder_id: "f".into(),
                 pinned: true,
                 status: "Blocked".into(),
+                project_base: true,
+                attached_checkout: true,
                 ..Default::default()
             }],
             ..Default::default()

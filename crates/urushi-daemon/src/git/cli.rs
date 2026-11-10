@@ -190,6 +190,36 @@ impl Git for CliGit {
         .map(drop)
     }
 
+    fn worktree_add_existing(
+        &self,
+        repo: &Path,
+        path: &Path,
+        branch: &BranchName,
+    ) -> Result<(), GitError> {
+        // Without -b, git checks the branch out, or makes a remote-only one into a
+        // tracking local branch (as `git switch` would). `--` keeps a path or branch
+        // name from reading as an option.
+        self.run(
+            repo,
+            &["worktree", "add", "--", &path_str(path), branch.as_str()],
+        )
+        .map(drop)
+    }
+
+    fn create_tracking_branch(
+        &self,
+        repo: &Path,
+        branch: &BranchName,
+        upstream: &str,
+    ) -> Result<(), GitError> {
+        let upstream = format!("refs/remotes/{upstream}");
+        self.run(
+            repo,
+            &["branch", "--track", "--", branch.as_str(), &upstream],
+        )
+        .map(drop)
+    }
+
     fn worktree_remove(&self, repo: &Path, path: &Path) -> Result<(), GitError> {
         // Two -f: also remove locked worktrees.
         self.run(repo, &["worktree", "remove", "-f", "-f", &path_str(path)])

@@ -90,7 +90,7 @@ pub(super) fn view(
             state,
             theme,
             scroll,
-            repo,
+            (repo, project.as_deref()),
             base.as_deref(),
             *open,
         ));
@@ -248,13 +248,23 @@ fn project_selector(
     out
 }
 
-/// The start-from selector: the repo's current branch (the default), then its other
-/// branches as the daemon reported them.
+/// The branch a thread of `project` in `repo` starts from when none is picked: the
+/// project's parent branch, if it is in this repo (the daemon decides; this is only the
+/// label).
+fn parent_branch<'a>(state: &'a AppState, repo: &str, project: Option<&str>) -> Option<&'a str> {
+    let settings = state.workspace.project(project?)?.settings.as_ref()?;
+    (settings.base_repo_id == repo && !settings.base_branch.is_empty())
+        .then_some(settings.base_branch.as_str())
+}
+
+/// The start-from selector: the default (the project's parent branch, or the repo's
+/// current branch), then the repo's other local branches and its remote branches, as the
+/// daemon reported them.
 fn base_selector(
     state: &AppState,
     theme: &Theme,
     scroll: &HashMap<Key, f32>,
-    repo: &str,
+    (repo, project): (&str, Option<&str>),
     base: Option<&str>,
     open: Option<Select>,
 ) -> Vec<Node<Msg>> {
@@ -263,11 +273,17 @@ fn base_selector(
         .as_ref()
         .filter(|(r, _)| r == repo)
         .map(|(_, b)| b);
-    let current = branches
-        .map(|b| b.current.as_str())
-        .filter(|c| !c.is_empty());
-    let default_label =
-        current.map_or_else(|| "Repo default".to_owned(), |c| format!("{c} (current)"));
+    let parent = parent_branch(state, repo, project);
+    let current = parent.or_else(|| {
+        branches
+            .map(|b| b.current.as_str())
+            .filter(|c| !c.is_empty())
+    });
+    let default_label = match (parent, current) {
+        (Some(p), _) => format!("{p} (project)"),
+        (None, Some(c)) => format!("{c} (current)"),
+        (None, None) => "Repo default".to_owned(),
+    };
     let is_open = open == Some(Select::Base);
     let mut out = vec![select_button(
         theme,
@@ -285,10 +301,11 @@ fn base_selector(
         on_pick: Msg::PickBase(None),
     }];
     match branches {
-        // The current branch is the default choice above.
+        // The default branch is the first choice above.
         Some(b) => options.extend(
             b.branches
                 .iter()
+                .chain(&b.remote_branches)
                 .filter(|n| Some(n.as_str()) != current)
                 .map(|name| SelectOption {
                     label: name.clone(),

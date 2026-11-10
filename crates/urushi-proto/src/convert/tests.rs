@@ -2,8 +2,9 @@ use std::path::PathBuf;
 
 use urushi_core::thread::NewThread;
 use urushi_core::{
-    BranchPrefix, Direction, Layout, PaneId, Project, ProjectId, Repo, RepoId,
-    RepoSettingsOverrides, Settings, Status, Tab, TabId, Thread, ThreadId, ThreadState, Timestamp,
+    BranchName, BranchPrefix, Direction, Layout, PaneId, Project, ProjectBase, ProjectId,
+    ProjectSettings, Repo, RepoId, RepoSettingsOverrides, Settings, Status, Tab, TabId, Thread,
+    ThreadId, ThreadKind, ThreadState, Timestamp,
 };
 
 use super::*;
@@ -114,6 +115,14 @@ fn thread_round_trip_all_states() {
         thread_from_proto(&thread_to_proto(&thread)).unwrap(),
         thread
     );
+    // A project's parent-branch thread, attached or in its own worktree.
+    for attached in [true, false] {
+        thread.kind = ThreadKind::ProjectBase { attached };
+        let wire = thread_to_proto(&thread);
+        assert!(wire.project_base);
+        assert_eq!(wire.attached_checkout, attached);
+        assert_eq!(thread_from_proto(&wire).unwrap(), thread);
+    }
 }
 
 #[test]
@@ -122,10 +131,45 @@ fn folders_are_projects_and_statuses_are_validated() {
         id: ProjectId::from_u128(8),
         name: "Billing launch".into(),
         created_at: Timestamp::from_unix_millis(7),
+        settings: ProjectSettings::default(),
     };
     assert_eq!(
         project_from_proto(&project_to_proto(&project)).unwrap(),
         project
+    );
+    let mut with_base = project.clone();
+    with_base.settings = ProjectSettings {
+        base: Some(ProjectBase {
+            repo: RepoId::from_u128(2),
+            branch: BranchName::new("develop").unwrap(),
+        }),
+        base_thread: false,
+    };
+    assert_eq!(
+        project_from_proto(&project_to_proto(&with_base)).unwrap(),
+        with_base
+    );
+    // A folder from a daemon older than 1.18 has no settings: the defaults apply, with
+    // the parent-branch thread on.
+    let mut old = project_to_proto(&project);
+    old.settings = None;
+    assert_eq!(
+        project_from_proto(&old).unwrap().settings,
+        ProjectSettings::default()
+    );
+    let unset = v1::FolderSettings {
+        base_repo_id: RepoId::from_u128(2).to_string(),
+        base_branch: "main".into(),
+        base_thread: None,
+    };
+    assert!(project_settings_from_proto(&unset).unwrap().base_thread);
+    let bad = v1::FolderSettings {
+        base_branch: "bad..name".into(),
+        ..unset
+    };
+    assert_eq!(
+        project_settings_from_proto(&bad).unwrap_err().field,
+        "folder.settings.base_branch"
     );
     assert_eq!(status_from_proto("").unwrap(), None);
     assert!(status_from_proto(&"x".repeat(80)).is_err());

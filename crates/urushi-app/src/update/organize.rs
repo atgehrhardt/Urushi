@@ -293,8 +293,9 @@ impl AppState {
         }
     }
 
-    /// Opens the new-thread dialog in `repo` (default: the first repo), filed under
-    /// `project`. Without any repo, asks to add one instead.
+    /// Opens the new-thread dialog in `repo` (default: the repo of `project`'s parent
+    /// branch, else the first repo), filed under `project`. Without any repo, asks to add
+    /// one instead.
     pub(super) fn open_new_thread(
         &mut self,
         repo: Option<String>,
@@ -302,7 +303,15 @@ impl AppState {
         fx: &mut Vec<Effect>,
     ) {
         self.menu = None;
-        let Some(repo) = repo.or_else(|| self.workspace.repos().first().map(|r| r.id.clone()))
+        let parent_repo = project
+            .as_deref()
+            .and_then(|p| self.workspace.project(p))
+            .and_then(|p| p.settings.as_ref())
+            .map(|s| s.base_repo_id.clone())
+            .filter(|r| self.workspace.repo(r).is_some());
+        let Some(repo) = repo
+            .or(parent_repo)
+            .or_else(|| self.workspace.repos().first().map(|r| r.id.clone()))
         else {
             self.sidebar_tab = crate::organize::SidebarTab::Repos;
             fx.extend(self.update(Msg::OpenAddProject));
@@ -337,7 +346,7 @@ impl AppState {
         }
     }
 
-    fn request_branches(repo: String, fx: &mut Vec<Effect>) {
+    pub(super) fn request_branches(repo: String, fx: &mut Vec<Effect>) {
         fx.push(request(
             Body::ListBranches(v1::ListBranchesRequest {
                 project_id: repo.clone(),

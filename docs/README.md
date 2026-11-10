@@ -43,6 +43,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0026 – Name a Jira issue's thread branch after its key, and let Jira's integration link the code](adr/0026-issue-keys-in-branch-names.md)
 - [0027 – Show a Jira board's epics as cards, and create them like any issue](adr/0027-epics-are-cards-on-jira-boards.md)
 - [0028 – Start a new thread from its base's state on the remote, without touching the user's checkout](adr/0028-start-threads-from-the-bases-remote-state.md)
+- [0029 – Give projects a parent branch, and a parent-branch thread that works on it](adr/0029-project-parent-branch-threads.md)
 
 ## Features
 - [_template](features/_template.md)
@@ -53,6 +54,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [The workspace GUI](features/gui-workspace.md)
 - [Agent launcher](features/agent-launcher.md)
 - [Organizing threads (projects, pins, statuses)](features/thread-organization.md)
+- [A project's parent branch and its parent-branch thread](features/project-parent-branch.md)
 - [Task boards](features/task-boards.md)
 - [Jira boards](features/jira-boards.md)
 - [Task agent and first-run setup](features/task-agent.md)

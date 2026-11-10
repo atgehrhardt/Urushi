@@ -25,6 +25,7 @@ pub mod keys;
 pub mod msg;
 pub mod organize;
 mod platform;
+pub mod project_settings;
 mod runner;
 pub mod sidebar;
 pub mod snapshot;

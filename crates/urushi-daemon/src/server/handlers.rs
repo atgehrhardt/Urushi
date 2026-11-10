@@ -115,12 +115,13 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             ok()
         }
         Body::ListBranches(r) => {
-            let (branches, current) = service
+            let list = service
                 .list_branches(parse(&r.project_id, "project_id")?)
                 .await?;
             Outcome::Branches(v1::Branches {
-                branches,
-                current: current.unwrap_or_default(),
+                branches: list.local,
+                current: list.current.unwrap_or_default(),
+                remote_branches: list.remote,
             })
         }
         Body::CreateThread(r) => {
@@ -287,6 +288,9 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             ok()
         }
         Body::UpdateThread(r) => super::organize::update_thread(connection, r)?,
+        Body::UpdateFolderSettings(r) => {
+            super::organize::update_folder_settings(service, r).await?
+        }
         Body::GetAgentUsage(r) => {
             let report = service.agent_usage(parse(&r.pane_id, "pane_id")?).await?;
             Outcome::AgentUsage(super::usage::to_proto(&report))
@@ -390,5 +394,6 @@ fn plan_to_proto(plan: &DeletionPlan) -> v1::DeletionPlan {
         delete_remote_branches: plan.delete_remote_branches,
         token: plan.token.clone(),
         warnings: plan.warnings.clone(),
+        keeps_worktree: plan.keeps_worktree,
     }
 }

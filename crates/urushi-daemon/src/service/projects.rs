@@ -2,7 +2,7 @@
 //! pins, statuses and which project a thread is filed under. None of this touches
 //! worktrees or branches.
 
-use urushi_core::{Project, ProjectId, Status, ThreadId, project};
+use urushi_core::{Project, ProjectId, ProjectSettings, Status, ThreadId, project};
 
 use super::{Service, ServiceError, ServiceResult, new_uuid, now};
 
@@ -53,6 +53,7 @@ impl Service {
             id: ProjectId::from_uuid(new_uuid()),
             name: project_name(name)?,
             created_at: now(),
+            settings: ProjectSettings::default(),
         };
         self.mutate(|state| {
             state.projects.push(project.clone());
@@ -69,7 +70,8 @@ impl Service {
         })
     }
 
-    /// Deletes a project. Its threads become ungrouped.
+    /// Deletes a project. Its threads become ungrouped, its parent-branch thread too
+    /// (nothing on disk changes; it can be closed like any thread).
     pub fn delete_project(&self, id: ProjectId) -> ServiceResult<()> {
         self.mutate(|state| {
             state.project(id)?;
@@ -93,7 +95,8 @@ impl Service {
         })
     }
 
-    /// Applies `update` to a thread, all or nothing.
+    /// Applies `update` to a thread, all or nothing. A project's parent-branch thread
+    /// stays in its project.
     pub fn update_thread(&self, id: ThreadId, update: ThreadUpdate) -> ServiceResult<()> {
         let title = match update.title.as_deref().map(str::trim) {
             Some("") => return Err(ServiceError::Invalid("title must not be empty".into())),
@@ -102,6 +105,18 @@ impl Service {
         self.mutate(|state| {
             if let Some(Assign::Set(project)) = update.project {
                 state.project(project)?;
+            }
+            // Checked before anything changes: a failed mutation isn't rolled back.
+            let current = &state.thread(id)?.thread;
+            let target = match update.project {
+                Some(Assign::Set(p)) => Some(Some(p)),
+                Some(Assign::Clear) => Some(None),
+                None => None,
+            };
+            if current.is_project_base() && target.is_some_and(|t| t != current.project) {
+                return Err(ServiceError::Precondition(
+                    "a parent-branch thread stays in its project".into(),
+                ));
             }
             let thread = &mut state.thread_mut(id)?.thread;
             if let Some(title) = title {

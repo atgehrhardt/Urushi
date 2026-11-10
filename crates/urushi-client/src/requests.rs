@@ -105,7 +105,7 @@ impl Client {
         .await
     }
 
-    /// A repo's local branches.
+    /// A repo's local and (since 1.18) remote-tracking branches.
     pub async fn list_branches(&self, repo_id: &str) -> Result<v1::Branches, ClientError> {
         let body = Body::ListBranches(v1::ListBranchesRequest {
             project_id: repo_id.into(),

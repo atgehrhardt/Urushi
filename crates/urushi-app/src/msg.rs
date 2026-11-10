@@ -95,6 +95,10 @@ pub enum Msg {
     OpenPrompt(Prompt),
     /// Delete a project (its threads become ungrouped).
     DeleteProject(String),
+    /// Open a project's settings: its parent branch and parent-branch thread.
+    OpenProjectSettings(String),
+    /// A change in the project-settings dialog (`update/project_settings.rs`).
+    ProjectSettings(crate::project_settings::ProjectSettingsMsg),
     /// The desktop sidebar: collapsing, resizing, sliding (`update/sidebar.rs`).
     Sidebar(SidebarMsg),
     /// A thread started being dragged.
@@ -319,11 +323,16 @@ pub enum Followup {
     Attached(String),
     /// Select the new thread.
     ThreadCreated,
-    /// Show the deletion warning.
-    DeletionPlan,
+    /// Show the deletion warning; when closing a parent-branch thread to change its
+    /// project's settings, save them once it is closed.
+    DeletionPlan(Option<Box<crate::project_settings::PendingSettings>>),
     /// The daemon answered `DeleteThread` for this thread: on failure, show it again
     /// and say why. Never touches dialogs or focus.
     ThreadDeleted(String),
+    /// The daemon answered `DeleteThread` for this project's parent-branch thread, closed
+    /// to change the project's settings: save them, or on failure show the thread again
+    /// and say why. Never touches dialogs or focus.
+    ProjectBaseClosed(String, Box<crate::project_settings::PendingSettings>),
     /// Select the new tab.
     TabCreated,
     /// A task was started in an existing thread: go to its new tab.

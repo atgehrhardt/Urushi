@@ -33,7 +33,7 @@ fn two_threads() -> (AppState, v1::Workspace) {
 fn confirm(s: &mut AppState, thread: &str) -> Vec<Effect> {
     s.update(Msg::RequestDeleteThread(thread.to_owned()));
     s.update(Msg::Response {
-        followup: Followup::DeletionPlan,
+        followup: Followup::DeletionPlan(None),
         result: Ok(Outcome::DeletionPlan(v1::DeletionPlan {
             thread_id: thread.to_owned(),
             token: "tok".into(),
