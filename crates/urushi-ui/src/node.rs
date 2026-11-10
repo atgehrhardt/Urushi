@@ -134,6 +134,24 @@ pub struct Style {
     /// Shifts the box (and everything in it) left by this fraction of its own width:
     /// 0 is in place, 1 is fully to the left. For panels that slide in.
     pub slide: f32,
+    /// Bottom colour of a top-to-bottom gradient over the background.
+    pub gradient: Option<Color>,
+    /// A soft shadow drawn under the box.
+    pub shadow: Option<Shadow>,
+    /// Frosts what's under the box with a blur of this many logical pixels (0: none).
+    pub backdrop_blur: f32,
+}
+
+/// A soft drop shadow under a box: the box's shape, moved down by `offset` and
+/// feathered over `blur` logical pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shadow {
+    /// Colour at its darkest.
+    pub color: Color,
+    /// Width of the feathered edge.
+    pub blur: f32,
+    /// How far below the box it falls.
+    pub offset: f32,
 }
 
 impl Default for Style {
@@ -152,6 +170,9 @@ impl Default for Style {
             radius: 0.0,
             clip: false,
             slide: 0.0,
+            gradient: None,
+            shadow: None,
+            backdrop_blur: 0.0,
         }
     }
 }
@@ -392,6 +413,28 @@ impl<M> Node<M> {
     #[must_use]
     pub fn radius(mut self, radius: f32) -> Self {
         self.style.radius = radius;
+        self
+    }
+
+    /// Fades the background from its colour at the top to `bottom`.
+    #[must_use]
+    pub fn gradient(mut self, bottom: Color) -> Self {
+        self.style.gradient = Some(bottom);
+        self
+    }
+
+    /// Casts a soft shadow under the box.
+    #[must_use]
+    pub fn shadow(mut self, shadow: Shadow) -> Self {
+        self.style.shadow = Some(shadow);
+        self
+    }
+
+    /// Frosts what's drawn under the box (glass): a blur of `blur` logical pixels,
+    /// under the background. Costs extra GPU passes, so keep it to overlays.
+    #[must_use]
+    pub fn backdrop_blur(mut self, blur: f32) -> Self {
+        self.style.backdrop_blur = blur;
         self
     }
 

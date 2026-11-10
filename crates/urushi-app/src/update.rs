@@ -30,6 +30,11 @@ impl AppState {
             Msg::OpenMenu(crate::organize::MenuTarget::Field(field)) => {
                 self.open_field_menu(field);
             }
+            // The desktop sidebar's collapse and width: `update/sidebar.rs`.
+            Msg::Sidebar(msg) => self.sidebar_msg(msg),
+            msg @ (Msg::DragMove(_) | Msg::DragCancel) if self.sidebar.resizing() => {
+                self.sidebar_drag(&msg);
+            }
             // Organizing threads and the sidebar: `update/organize.rs`.
             msg @ (Msg::SidebarTab(_)
             | Msg::ToggleSection(_)
@@ -717,6 +722,7 @@ impl AppState {
             "v" => vec![Effect::RequestPaste],
             "," => self.update(Msg::OpenSettings),
             "b" => self.update(Msg::ToggleBoard),
+            "\\" | "|" => self.update(Msg::Sidebar(crate::msg::SidebarMsg::Toggle)),
             "n" => {
                 // Same repo and project as the thread on screen.
                 let current = self
@@ -816,6 +822,7 @@ mod organize;
 mod panes;
 mod pointer;
 mod setup;
+mod sidebar;
 mod task_threads;
 mod tasks;
 mod usage;

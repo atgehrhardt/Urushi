@@ -35,7 +35,7 @@ Crates marked ⏳ are planned but don't exist yet. Create them where listed; don
 | `crates/urushi-daemon` | `urushid`: server, request router, JSON document store, git worktree lifecycle, Tailscale, agent usage. |
 | `crates/urushi-client` | Protocol client, state mirror, transports (Unix socket / named pipe / TCP), daemon launcher. |
 | `crates/urushi-ui` | In-house widget toolkit (Elm-style). Produces a renderer-agnostic `Scene`. |
-| `crates/urushi-render` | wgpu backend: quads, glyph atlas (cosmic-text), terminal-grid pipeline. |
+| `crates/urushi-render` | wgpu backend: quads, glyph atlas (cosmic-text), backdrop blur. |
 | `crates/urushi-app` | Screens: sidebar, tabs, splits, dialogs, settings. Platform-neutral. |
 | `crates/urushi-cli` | `urushi` CLI for scripting and headless verification. |
 | `apps/desktop` | Desktop entry point (`urushi-app` binary); `scripts/bundle-macos.sh` builds `Urushi.app`. |

@@ -33,6 +33,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0016 – Keep attachments in the daemon, send their bytes over the protocol, and decode images there](adr/0016-daemon-stores-attachments.md)
 - [0017 – Learn when an agent finished or waits from what it writes to its pane's terminal](adr/0017-agent-attention-through-the-pane-terminal.md)
 - [0018 – Start a task in an existing thread through `CreateTab`, linking it there](adr/0018-start-tasks-in-existing-threads.md)
+- [0019 – Draw frosted glass in our own renderer, with a backdrop-blur pass](adr/0019-in-app-frosted-glass.md)
 
 ## Features
 - [_template](features/_template.md)

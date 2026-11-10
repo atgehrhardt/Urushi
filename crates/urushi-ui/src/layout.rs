@@ -9,7 +9,7 @@
 use crate::color::Color;
 use crate::field::{self, FieldRegion};
 use crate::geometry::{Point, Rect, Size};
-use crate::node::{Align, Content, CursorIcon, Flow, Key, Length, Node, Role};
+use crate::node::{Align, Content, CursorIcon, Flow, Key, Length, Node, Role, Style};
 use crate::scene::{Quad, Scene};
 use crate::text::TextSystem;
 
@@ -285,22 +285,7 @@ impl<M: Clone> Ctx<'_, M> {
         let hovered = (node.on_click.is_some() || node.on_drop.is_some())
             && self.pointer.is_some_and(|p| visible.contains(p));
 
-        // Background and border.
-        let fill = if hovered {
-            s.hover_background.or(s.background)
-        } else {
-            s.background
-        };
-        if fill.is_some() || s.border.is_some() {
-            let (border_width, border_color) = s.border.unwrap_or((0.0, Color::TRANSPARENT));
-            self.frame.scene.quad(Quad {
-                rect,
-                color: fill.unwrap_or(Color::TRANSPARENT),
-                radius: s.radius,
-                border_width,
-                border_color,
-            });
-        }
+        self.paint_box(s, rect, clip, hovered);
 
         // Interaction and accessibility.
         if node.on_click.is_some()
@@ -354,6 +339,47 @@ impl<M: Clone> Ctx<'_, M> {
             self.frame.scene.pop_clip();
         }
         self.owner = outer_owner;
+    }
+
+    /// A node's own box: its shadow, frosted backdrop, background (or hover fill) and
+    /// border, in that order.
+    fn paint_box(&mut self, s: &Style, rect: Rect, clip: Rect, hovered: bool) {
+        if let Some(shadow) = s.shadow {
+            self.frame.scene.quad(Quad {
+                rect: Rect::new(rect.x, rect.y + shadow.offset, rect.width, rect.height),
+                color: shadow.color,
+                radius: s.radius + shadow.blur / 2.0,
+                softness: shadow.blur,
+                ..Quad::default()
+            });
+        }
+        if s.backdrop_blur > 0.0 {
+            self.frame
+                .scene
+                .backdrop(rect.intersect(&clip), s.radius, s.backdrop_blur);
+        }
+        let fill = if hovered {
+            s.hover_background.or(s.background)
+        } else {
+            s.background
+        };
+        if fill.is_some() || s.border.is_some() {
+            let (border_width, border_color) = s.border.unwrap_or((0.0, Color::TRANSPARENT));
+            self.frame.scene.quad(Quad {
+                rect,
+                color: fill.unwrap_or(Color::TRANSPARENT),
+                radius: s.radius,
+                border_width,
+                border_color,
+                // A hover fill replaces the gradient; the resting fill keeps it.
+                gradient: if hovered && s.hover_background.is_some() {
+                    None
+                } else {
+                    s.gradient
+                },
+                softness: 0.0,
+            });
+        }
     }
 
     fn paint_content(&mut self, node: &Node<M>, inner: Rect) {

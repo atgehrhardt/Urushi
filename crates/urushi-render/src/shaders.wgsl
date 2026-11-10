@@ -1,4 +1,5 @@
-// Quads: rounded, bordered rectangles drawn with a signed distance field.
+// Quads: rounded, bordered rectangles drawn with a signed distance field. A softness
+// feathers the edge (shadows, glows); a second colour makes a top-to-bottom gradient.
 // Glyphs: textured quads sampling an RGBA atlas (masks are white + alpha).
 
 struct Globals {
@@ -20,7 +21,8 @@ struct QuadIn {
     @location(0) rect: vec4<f32>,
     @location(1) color: vec4<f32>,
     @location(2) border_color: vec4<f32>,
-    @location(3) params: vec2<f32>, // radius, border width
+    @location(3) params: vec4<f32>, // radius, border width, softness, unused
+    @location(4) bottom: vec4<f32>, // gradient's bottom colour (= color when flat)
 };
 
 struct QuadOut {
@@ -29,18 +31,20 @@ struct QuadOut {
     @location(1) half_size: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) border_color: vec4<f32>,
-    @location(4) params: vec2<f32>,
+    @location(4) params: vec4<f32>,
 };
 
 @vertex
 fn quad_vs(@builtin(vertex_index) vi: u32, q: QuadIn) -> QuadOut {
     let c = corner(vi);
-    let pos = q.rect.xy + c * q.rect.zw;
+    // A soft edge reaches half its width outside the rect, so draw that far out.
+    let pad = vec2<f32>(q.params.z * 0.5);
+    let pos = q.rect.xy - pad + c * (q.rect.zw + 2.0 * pad);
     var out: QuadOut;
     out.position = to_clip(pos);
     out.half_size = q.rect.zw * 0.5;
-    out.local = c * q.rect.zw - out.half_size;
-    out.color = q.color;
+    out.local = pos - (q.rect.xy + out.half_size);
+    out.color = mix(q.color, q.bottom, c.y);
     out.border_color = q.border_color;
     out.params = q.params;
     return out;
@@ -55,7 +59,11 @@ fn rounded_box(p: vec2<f32>, half_size: vec2<f32>, radius: f32) -> f32 {
 @fragment
 fn quad_fs(in: QuadOut) -> @location(0) vec4<f32> {
     let d = rounded_box(in.local, in.half_size, in.params.x);
-    let coverage = clamp(0.5 - d, 0.0, 1.0);
+    var coverage = clamp(0.5 - d, 0.0, 1.0);
+    let soft = in.params.z;
+    if (soft > 0.0) {
+        coverage = 1.0 - smoothstep(-0.5 * soft, 0.5 * soft, d);
+    }
     var color = in.color;
     if (in.params.y > 0.0) {
         // Inside the border band (from the edge inwards by border width) use the border colour.

@@ -61,12 +61,12 @@ impl Font {
     }
 }
 
-/// A filled (optionally rounded, optionally bordered) rectangle.
-#[derive(Clone, Debug, PartialEq)]
+/// A filled (optionally rounded, bordered, soft-edged or gradient) rectangle.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Quad {
     /// Bounds.
     pub rect: Rect,
-    /// Fill.
+    /// Fill (the top colour when `gradient` is set).
     pub color: Color,
     /// Corner radius.
     pub radius: f32,
@@ -74,6 +74,24 @@ pub struct Quad {
     pub border_width: f32,
     /// Border colour.
     pub border_color: Color,
+    /// Width of a feathered edge, centred on the outline (0 = crisp). Soft quads are
+    /// drop shadows and glows, which would otherwise need a blur pass.
+    pub softness: f32,
+    /// Bottom colour of a top-to-bottom gradient (`None`: a flat fill).
+    pub gradient: Option<Color>,
+}
+
+/// "Frost whatever is already drawn under this rounded rectangle": the renderer blurs
+/// what's below and draws the blurred copy inside the shape. Glass panels put one under
+/// their translucent fill.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Backdrop {
+    /// Bounds.
+    pub rect: Rect,
+    /// Corner radius.
+    pub radius: f32,
+    /// How far the blur spreads, in logical pixels.
+    pub blur: f32,
 }
 
 /// One line of text.
@@ -137,6 +155,8 @@ pub enum Primitive {
     Text(Text),
     /// A bitmap.
     Image(Image),
+    /// A blurred copy of what's below.
+    Backdrop(Backdrop),
     /// Restrict following primitives to `Rect` (intersected with any outer clip).
     PushClip(Rect),
     /// Undo the most recent `PushClip`.
@@ -161,9 +181,7 @@ impl Scene {
         self.quad(Quad {
             rect,
             color,
-            radius: 0.0,
-            border_width: 0.0,
-            border_color: Color::TRANSPARENT,
+            ..Quad::default()
         });
     }
 
@@ -171,9 +189,19 @@ impl Scene {
     pub fn quad(&mut self, quad: Quad) {
         if quad.rect.width > 0.0
             && quad.rect.height > 0.0
-            && (quad.color.a > 0.0 || quad.border_width > 0.0)
+            && (quad.color.a > 0.0
+                || quad.border_width > 0.0
+                || quad.gradient.is_some_and(|c| c.a > 0.0))
         {
             self.primitives.push(Primitive::Quad(quad));
+        }
+    }
+
+    /// Frosts what's already drawn under `rect` (see [`Backdrop`]).
+    pub fn backdrop(&mut self, rect: Rect, radius: f32, blur: f32) {
+        if rect.width > 0.0 && rect.height > 0.0 && blur > 0.0 {
+            self.primitives
+                .push(Primitive::Backdrop(Backdrop { rect, radius, blur }));
         }
     }
 
@@ -222,11 +250,17 @@ impl Scene {
         for p in &self.primitives {
             let _ = match p {
                 Primitive::Quad(q) => {
-                    let border = if q.border_width > 0.0 {
+                    let mut border = if q.border_width > 0.0 {
                         format!(" border {:.0} {}", q.border_width, q.border_color.to_hex())
                     } else {
                         String::new()
                     };
+                    if let Some(bottom) = q.gradient {
+                        let _ = write!(border, " to {}", bottom.to_hex());
+                    }
+                    if q.softness > 0.0 {
+                        let _ = write!(border, " soft {:.0}", q.softness);
+                    }
                     writeln!(
                         out,
                         "quad {} {} r{:.0}{border}",
@@ -246,6 +280,13 @@ impl Scene {
                     t.color.to_hex()
                 ),
                 Primitive::Image(i) => writeln!(out, "image {} #{}", r(&i.rect), i.data.id),
+                Primitive::Backdrop(b) => writeln!(
+                    out,
+                    "backdrop {} r{:.0} blur {:.0}",
+                    r(&b.rect),
+                    b.radius,
+                    b.blur
+                ),
                 Primitive::PushClip(c) => writeln!(out, "clip {}", r(c)),
                 Primitive::PopClip => writeln!(out, "unclip"),
             };

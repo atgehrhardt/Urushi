@@ -35,17 +35,18 @@ pub(super) fn overlay(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
         .on_secondary_click(Msg::CloseMenu);
     let mut backdrop = backdrop;
     backdrop.cursor = urushi_ui::CursorIcon::Default;
-    let card = Node::column()
-        .width(Length::Fixed(MENU_WIDTH))
-        .padding(Insets::all(4.0))
-        .gap(1.0)
-        .background(theme.surface)
-        .border(1.0, theme.border)
-        .radius(theme.radius + 2.0)
-        .key(key(&["context-menu"]))
-        .role(Role::Dialog, "Menu")
-        .children(items)
-        .at(menu.at);
+    let card = urushi_ui::widgets::overlay(
+        theme,
+        Node::column()
+            .width(Length::Fixed(MENU_WIDTH))
+            .padding(Insets::all(4.0))
+            .gap(1.0),
+        theme.radius + 3.0,
+    )
+    .key(key(&["context-menu"]))
+    .role(Role::Dialog, "Menu")
+    .children(items)
+    .at(menu.at);
     vec![backdrop, card]
 }
 
@@ -57,18 +58,19 @@ pub(super) fn drag_ghost(state: &AppState, theme: &Theme) -> Option<Node<Msg>> {
         Dragged::Project(project) => state.workspace.project(project)?.name.clone(),
     };
     Some(
-        Node::row()
-            .padding(Insets::symmetric(5.0, 10.0))
-            .background(theme.surface)
-            .border(1.0, theme.accent)
-            .radius(theme.radius)
-            .child(Node::text(
-                title,
-                Font::UiMedium,
-                theme.font_size,
-                theme.text,
-            ))
-            .at(Point::new(at.x + 14.0, at.y + 10.0)),
+        urushi_ui::widgets::overlay(
+            theme,
+            Node::row().padding(Insets::symmetric(5.0, 10.0)),
+            theme.radius,
+        )
+        .border(1.0, theme.accent)
+        .child(Node::text(
+            title,
+            Font::UiMedium,
+            theme.font_size,
+            theme.text,
+        ))
+        .at(Point::new(at.x + 14.0, at.y + 10.0)),
     )
 }
 

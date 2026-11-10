@@ -26,7 +26,6 @@ pub(super) fn view(state: &AppState, theme: &Theme) -> Node<Msg> {
         .padding(Insets::symmetric(0.0, 12.0))
         .gap(10.0)
         .align(Align::Center)
-        .background(theme.sidebar)
         .child(small(theme, &format!("⎇ {branch}"), theme.text_muted).width(Length::Fill(1.0)));
     if let Some(usage) = state.shown_usage() {
         bar = bar.children(usage_items(theme, usage, state.now_ms));

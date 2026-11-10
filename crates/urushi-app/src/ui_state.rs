@@ -1,11 +1,13 @@
-//! What the window showed, remembered across app launches: the selected thread and the
-//! tab chosen in each thread. Reopening the app shows the same thread and tabs again
-//! (the terminals themselves live in the daemon and are still running, or were
-//! restored from their restore points).
+//! What the window showed, remembered across app launches: the selected thread, the
+//! tab chosen in each thread, and the sidebar's width and whether it was collapsed.
+//! Reopening the app shows the same thread and tabs again (the terminals themselves
+//! live in the daemon and are still running, or were restored from their restore
+//! points).
 //!
-//! Which thread a window shows is the window's own business, not the workspace's, so it
-//! stays in the app (ADR 0002). It's saved for the local daemon only, as
-//! `<daemon home>/app-state` with one `thread <id>` or `tab <thread> <tab>` per line.
+//! What a window shows is the window's own business, not the workspace's, so it stays
+//! in the app (ADR 0002). It's saved for the local daemon only, as
+//! `<daemon home>/app-state` with one `thread <id>`, `tab <thread> <tab>`,
+//! `sidebar-width <px>` or `sidebar collapsed` per line.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,6 +22,10 @@ pub struct UiState {
     pub thread: Option<String>,
     /// The tab chosen in each thread.
     pub tabs: HashMap<String, String>,
+    /// The sidebar's chosen width, in whole logical pixels (`None`: the default).
+    pub sidebar_width: Option<u32>,
+    /// Whether the sidebar was collapsed.
+    pub sidebar_collapsed: bool,
 }
 
 impl UiState {
@@ -35,9 +41,19 @@ impl UiState {
 
     /// The selection in `state`.
     pub fn of(state: &AppState) -> Self {
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "widths are clamped to a few hundred pixels"
+        )]
+        let width = state.sidebar.chosen_width().round() as u32;
+        #[allow(clippy::cast_precision_loss, reason = "a few hundred pixels")]
+        let custom = (width as f32 - crate::sidebar::DEFAULT_WIDTH).abs() >= 1.0;
         Self {
             thread: state.selected_thread.clone(),
             tabs: state.selected_tab.clone(),
+            sidebar_width: custom.then_some(width),
+            sidebar_collapsed: state.sidebar.collapsed(),
         }
     }
 
@@ -46,6 +62,11 @@ impl UiState {
     pub fn apply(self, state: &mut AppState) {
         state.selected_thread = self.thread;
         state.selected_tab = self.tabs;
+        #[allow(clippy::cast_precision_loss, reason = "a few hundred pixels")]
+        let width = self
+            .sidebar_width
+            .map_or(crate::sidebar::DEFAULT_WIDTH, |w| w as f32);
+        state.sidebar = crate::sidebar::SidebarLayout::restored(width, self.sidebar_collapsed);
     }
 
     /// Reads a saved selection; missing or unreadable files give an empty one.
@@ -71,6 +92,8 @@ impl UiState {
                 ["tab", thread, tab] => {
                     state.tabs.insert(thread.to_owned(), tab.to_owned());
                 }
+                ["sidebar-width", width] => state.sidebar_width = width.parse().ok(),
+                ["sidebar", "collapsed"] => state.sidebar_collapsed = true,
                 _ => {}
             }
         }
@@ -85,6 +108,10 @@ impl UiState {
             tabs.into_iter()
                 .map(|(thread, tab)| format!("tab {thread} {tab}")),
         );
+        lines.extend(self.sidebar_width.map(|w| format!("sidebar-width {w}")));
+        if self.sidebar_collapsed {
+            lines.push("sidebar collapsed".to_owned());
+        }
         lines.join("\n") + "\n"
     }
 }
@@ -106,6 +133,8 @@ mod tests {
         let state = UiState {
             thread: Some("t2".into()),
             tabs: HashMap::from([("t1".into(), "a".into()), ("t2".into(), "b".into())]),
+            sidebar_width: Some(320),
+            sidebar_collapsed: true,
         };
         state.save(&path);
         assert_eq!(UiState::load(&path), state);
@@ -113,8 +142,14 @@ mod tests {
             UiState::parse("thread x\ngarbage\ntab only-two\n"),
             UiState {
                 thread: Some("x".into()),
-                tabs: HashMap::new()
-            }
+                ..UiState::default()
+            },
+            "files from before the sidebar was remembered still load"
+        );
+        assert_eq!(
+            UiState::parse("sidebar-width wide\nsidebar open\n"),
+            UiState::default(),
+            "nonsense is ignored"
         );
         std::fs::remove_dir_all(&dir).unwrap();
         assert!(UiState::path(&ConnectTarget::Remote("box".into())).is_none());

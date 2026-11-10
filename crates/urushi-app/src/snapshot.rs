@@ -35,8 +35,9 @@ pub fn scene(
 /// `task-menu`, a column's in `column-menu`, a subtask opened as a task in
 /// `task-nested`, "Make subtask of…" in `nest`, and Start thread switched to an existing
 /// thread in `task-in-thread`), a terminal with an agent's plan
-/// usage in the `status` bar (and its pane's context menu in `pane-menu`), and the
-/// first-run `setup` wizard (its mode step in `setup-mode`).
+/// usage in the `status` bar (and its pane's context menu in `pane-menu`), the same with
+/// the sidebar hidden (`sidebar-collapsed`), and the first-run `setup` wizard (its mode
+/// step in `setup-mode`).
 pub const SCENARIOS: &[&str] = &[
     "launcher",
     "picker",
@@ -60,6 +61,7 @@ pub const SCENARIOS: &[&str] = &[
     "task-in-thread",
     "status",
     "pane-menu",
+    "sidebar-collapsed",
     "setup",
     "setup-mode",
 ];
@@ -361,6 +363,11 @@ fn scenario_frame(
             }
         }
         "drag" | "drag-project" => show_drag(&mut state, name),
+        "sidebar-collapsed" => {
+            show_board_or_usage(&mut state, "status");
+            state.update(Msg::Sidebar(crate::msg::SidebarMsg::Toggle));
+            state.update(Msg::Sidebar(crate::msg::SidebarMsg::Reveal(0.0)));
+        }
         name if BOARD_SCENARIOS.contains(&name) || name == "status" || name == "pane-menu" => {
             show_board_or_usage(&mut state, name);
         }

@@ -21,6 +21,7 @@ pub mod msg;
 pub mod organize;
 mod platform;
 mod runner;
+pub mod sidebar;
 pub mod snapshot;
 pub mod state;
 pub mod task_agent;

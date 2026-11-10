@@ -4,9 +4,11 @@
 //! - [`Offscreen`]: draws into memory, for pixel tests and screenshots.
 //!
 //! Both use the same `SceneRenderer`: two instanced pipelines (rounded quads, and
-//! glyphs from a shelf-packed atlas), batched in paint order with scissor clips.
+//! glyphs from a shelf-packed atlas), batched in paint order with scissor clips, plus
+//! the blur passes that frost backdrops (`blur.rs`).
 
 mod atlas;
+mod blur;
 mod gpu;
 mod image;
 mod offscreen;

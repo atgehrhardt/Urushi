@@ -376,6 +376,8 @@ pub struct AppState {
     pub attention: crate::attention::AttentionTracker,
     /// In compact mode, whether the thread list is showing (instead of the terminals).
     pub sidebar_open: bool,
+    /// Outside compact mode: the sidebar's width, and whether it's collapsed.
+    pub sidebar: crate::sidebar::SidebarLayout,
     /// Agent CLIs installed on the daemon's machine, as last reported.
     pub agents: Vec<urushi_core::Agent>,
     /// The daemon's protocol minor version (capabilities, see `docs/protocol.md`).
@@ -440,6 +442,7 @@ impl AppState {
             compact: false,
             attention: crate::attention::AttentionTracker::default(),
             sidebar_open: true,
+            sidebar: crate::sidebar::SidebarLayout::default(),
             agents: Vec::new(),
             daemon_minor: 0,
             daemon_version: String::new(),

@@ -20,7 +20,6 @@ pub(super) fn view(state: &AppState, theme: &Theme, scroll: f32, width: Length) 
     Node::column()
         .width(width)
         .height(Length::Fill(1.0))
-        .background(theme.sidebar)
         .child(header(state, theme))
         .child(tabs(state, theme))
         .child(tasks_button(state, theme))
@@ -57,9 +56,9 @@ fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
         .height(Length::Fixed(48.0))
         .padding(Insets {
             top: 0.0,
-            right: 16.0,
+            right: 10.0,
             bottom: 0.0,
-            left: 10.0,
+            left: 12.0,
         })
         .gap(8.0)
         .children(
@@ -86,20 +85,27 @@ fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
                     theme.warning,
                 ))
         }))
-        .child(Node::spacer())
         .child(
-            Node::new()
-                .width(Length::Fixed(7.0))
-                .height(Length::Fixed(7.0))
-                .radius(3.5)
-                .background(dot),
-        )
-        .child(
-            Node::text(status, Font::Ui, theme.font_size_small, theme.text_muted)
-                .width(Length::Fixed(110.0))
+            Node::row()
+                .width(Length::Fill(1.0))
+                .gap(6.0)
+                .align(Align::Center)
                 .on_click(Msg::OpenConnect)
-                .role(Role::Button, "Connection"),
+                .role(Role::Button, "Connection")
+                .child(
+                    Node::new()
+                        .width(Length::Fixed(7.0))
+                        .height(Length::Fixed(7.0))
+                        .radius(3.5)
+                        .background(dot),
+                )
+                .child(
+                    Node::text(status, Font::Ui, theme.font_size_small, theme.text_muted)
+                        .width(Length::Fill(1.0)),
+                ),
         )
+        // Phones switch between the list and the terminals instead.
+        .children((!state.compact).then(|| super::sidebar_toggle(state, theme)))
 }
 
 /// The Projects | Repos switch, and the "+" for the shown list.

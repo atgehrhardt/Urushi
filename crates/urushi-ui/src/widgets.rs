@@ -2,7 +2,7 @@
 
 use crate::color::Color;
 use crate::geometry::{Insets, Point};
-use crate::node::{Align, Content, CursorIcon, Key, Length, Node, Role};
+use crate::node::{Align, Content, CursorIcon, Key, Length, Node, Role, Shadow};
 use crate::scene::Font;
 use crate::text::TextSystem;
 use crate::textfield::TextField;
@@ -29,7 +29,7 @@ pub fn button<M>(theme: &Theme, label: &str, kind: ButtonKind, on_click: M) -> N
             theme.accent.mix(Color::hex(0xffffff), 0.12),
             theme.on_accent,
         ),
-        ButtonKind::Secondary => (theme.surface, theme.hover, theme.text),
+        ButtonKind::Secondary => (theme.surface, theme.selected, theme.text),
         ButtonKind::Danger => (
             theme.danger,
             theme.danger.mix(Color::hex(0xffffff), 0.12),
@@ -47,9 +47,33 @@ pub fn button<M>(theme: &Theme, label: &str, kind: ButtonKind, on_click: M) -> N
         .on_click(on_click)
         .role(Role::Button, label);
     if kind == ButtonKind::Secondary {
-        node = node.border(1.0, theme.border);
+        node = node.border(1.0, theme.glass_border);
     }
     node
+}
+
+/// Styles `node` as a glass panel resting on the window's backdrop (sidebar, tab bar):
+/// a translucent fill that fades downwards, a bright hairline and large corners. It
+/// doesn't blur: only the soft glows are behind it.
+pub fn panel<M>(theme: &Theme, node: Node<M>) -> Node<M> {
+    node.background(theme.glass)
+        .gradient(theme.glass_low)
+        .border(1.0, theme.glass_border)
+        .radius(theme.radius_large)
+}
+
+/// Styles `node` as glass floating over content (menus, popovers, the task board): it
+/// blurs what's under it, with a stronger fill and a shadow. `radius` is its corners.
+pub fn overlay<M>(theme: &Theme, node: Node<M>, radius: f32) -> Node<M> {
+    node.backdrop_blur(theme.blur)
+        .background(theme.glass_strong)
+        .border(1.0, theme.glass_border)
+        .radius(radius)
+        .shadow(Shadow {
+            color: theme.shadow,
+            blur: 24.0,
+            offset: 8.0,
+        })
 }
 
 /// A small square button showing a glyph, e.g. "+" or "×".
@@ -64,6 +88,34 @@ pub fn icon_button<M>(theme: &Theme, glyph: &str, label: &str, on_click: M) -> N
         .width(Length::Fixed(22.0))
         .height(Length::Fixed(22.0))
         .justify(Align::Center)
+        .radius(4.0)
+        .hover_background(theme.hover)
+        .on_click(on_click)
+        .role(Role::Button, label)
+}
+
+/// A small square button showing a sidebar (a window outline with its left pane
+/// filled), for hiding and showing one. Drawn from boxes, not a font glyph.
+pub fn sidebar_button<M>(theme: &Theme, label: &str, on_click: M) -> Node<M> {
+    let icon = Node::row()
+        .width(Length::Fixed(15.0))
+        .height(Length::Fixed(12.0))
+        .padding(Insets::all(2.0))
+        .border(1.25, theme.text_muted)
+        .radius(3.0)
+        .child(
+            Node::new()
+                .width(Length::Fixed(3.5))
+                .height(Length::Fill(1.0))
+                .radius(1.0)
+                .background(theme.text_muted),
+        );
+    Node::row()
+        .child(icon)
+        .width(Length::Fixed(22.0))
+        .height(Length::Fixed(22.0))
+        .justify(Align::Center)
+        .align(Align::Center)
         .radius(4.0)
         .hover_background(theme.hover)
         .on_click(on_click)
@@ -112,7 +164,7 @@ fn field_box<M>(
 ) -> Node<M> {
     let mut node = Node::row()
         .width(Length::Fill(1.0))
-        .background(theme.background)
+        .background(theme.well)
         .border(1.0, if focused { theme.accent } else { theme.border })
         .radius(theme.radius)
         .key(key)
@@ -230,13 +282,19 @@ pub fn modal<M: Clone>(
         .justify(Align::End)
         .width(Length::Fill(1.0))
         .children(actions);
+    // The scrim already blurs everything behind the dialog, so the card itself needn't.
     let card = Node::column()
         .width(Length::Fixed(width))
         .padding(Insets::all(20.0))
         .gap(16.0)
-        .background(theme.surface)
-        .border(1.0, theme.border)
-        .radius(theme.radius * 2.0)
+        .background(theme.glass_strong)
+        .border(1.0, theme.glass_border)
+        .radius(theme.radius_large)
+        .shadow(Shadow {
+            color: theme.shadow,
+            blur: 40.0,
+            offset: 12.0,
+        })
         .key(crate::node::key(&["modal", title]))
         .role(Role::Dialog, title)
         .child(header)
@@ -245,6 +303,7 @@ pub fn modal<M: Clone>(
     let mut backdrop = Node::column()
         .width(Length::Fill(1.0))
         .height(Length::Fill(1.0))
+        .backdrop_blur(theme.blur / 2.0)
         .background(theme.scrim)
         .justify(Align::Center)
         .align(Align::Center)
@@ -267,7 +326,7 @@ pub fn select_button<M>(theme: &Theme, value: &str, open: bool, key: Key, on_tog
         .height(Length::Fixed(30.0))
         .padding(Insets::symmetric(0.0, 10.0))
         .gap(8.0)
-        .background(theme.background)
+        .background(theme.well)
         .hover_background(theme.hover)
         .border(1.0, if open { theme.accent } else { theme.border })
         .radius(theme.radius)
@@ -303,13 +362,14 @@ pub fn select_options<M>(
     max_visible: usize,
 ) -> Node<M> {
     let rows = options.len();
-    let mut list = Node::column()
-        .width(Length::Fill(1.0))
-        .padding(Insets::all(4.0))
-        .background(theme.surface)
-        .border(1.0, theme.border)
-        .radius(theme.radius)
-        .clip();
+    let mut list = overlay(
+        theme,
+        Node::column()
+            .width(Length::Fill(1.0))
+            .padding(Insets::all(4.0)),
+        theme.radius,
+    )
+    .clip();
     if rows > max_visible {
         #[allow(clippy::cast_precision_loss, reason = "a handful of rows")]
         let height = max_visible as f32 * SELECT_ROW + 8.0;

@@ -10,7 +10,7 @@ Urushi is a **graphical app that contains terminals**, not a TUI. It must run on
 - **Rust everywhere.**
 - **Windowing and input:** winit. **GPU:** wgpu (Metal/Vulkan/DX12/GLES). **Text:** cosmic-text. **Accessibility:** AccessKit.
 - **Our own widget toolkit (`urushi-ui`):** Elm architecture (a pure `update`, plus a `view` that builds a widget tree), laid out into a renderer-agnostic `Scene`. Only `urushi-render` touches the GPU.
-- Terminal panes are drawn by a dedicated instanced-cell pipeline.
+- Terminal panes are drawn as ordinary quads and text in the same scene.
 
 ## Alternatives considered
 - **Flutter + Rust core:** mature on mobile, but adds a second language and a framework we don't control.

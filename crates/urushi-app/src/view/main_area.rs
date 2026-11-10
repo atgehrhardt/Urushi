@@ -126,18 +126,19 @@ fn tab_bar(state: &AppState, theme: &Theme) -> Node<Msg> {
             .height(Length::Fill(1.0))
             .padding(Insets {
                 top: 0.0,
-                right: 4.0,
+                right: 3.0,
                 bottom: 0.0,
                 left: 12.0,
             })
             .gap(6.0)
+            .radius(theme.radius + 1.0)
             .background(if selected {
-                theme.background
+                theme.selected
             } else {
                 Color::TRANSPARENT
             })
             .hover_background(if selected {
-                theme.background
+                theme.selected
             } else {
                 theme.hover
             })
@@ -166,22 +167,33 @@ fn tab_bar(state: &AppState, theme: &Theme) -> Node<Msg> {
                 Msg::CloseTab(tab.id.clone()),
             ))
     });
-    // No thread title here: the sidebar already shows which thread is selected.
+    // No thread title here: the sidebar already shows which thread is selected. The
+    // bar sits on the main panel's glass, with the tabs as pills.
     let mut bar = Node::row()
         .width(Length::Fill(1.0))
-        .height(Length::Fixed(36.0))
-        .background(theme.sidebar)
+        .height(Length::Fixed(40.0))
+        .padding(Insets::symmetric(6.0, 6.0))
+        .gap(2.0)
         .align(Align::Stretch);
     if state.compact {
+        bar = bar.child(Node::row().align(Align::Center).child(icon_button(
+            theme,
+            "‹",
+            "Back to threads",
+            Msg::ShowSidebar,
+        )));
+    } else if state.sidebar.collapsed() {
         bar = bar.child(
             Node::row()
-                .padding(Insets::symmetric(0.0, 6.0))
-                .child(icon_button(theme, "‹", "Back to threads", Msg::ShowSidebar)),
+                .align(Align::Center)
+                .padding(Insets::symmetric(0.0, 2.0))
+                .child(super::sidebar_toggle(state, theme)),
         );
     }
     let bar = bar.children(tabs).child(
         Node::row()
-            .padding(Insets::symmetric(0.0, 6.0))
+            .align(Align::Center)
+            .padding(Insets::symmetric(0.0, 4.0))
             .child(icon_button(theme, "+", "New tab…", Msg::NewTab)),
     );
     // Splitting and closing panes is in each pane's context menu (a right or two-finger
@@ -227,16 +239,26 @@ fn terminal_area(state: &AppState, theme: &Theme) -> Node<Msg> {
     let selection = state.selection.clone();
     let palette = theme.terminal.clone();
     let (cell, font_size) = (state.cell, theme.terminal_font_size);
-    let (divider, accent, muted) = (theme.border, theme.accent, theme.text_muted);
-    Node::new()
+    let (divider, accent, muted) = (theme.glass_border, theme.accent, theme.text_muted);
+    let radius = theme.radius;
+    let area = Node::new()
         .width(Length::Fill(1.0))
         .height(Length::Fill(1.0))
         .key(area_key())
         .cursor(CursorIcon::Text)
         .role(Role::Terminal, "Terminal")
         .paint(move |rect, scene, _text| {
+            // One tinted sheet of glass behind every pane, with hairlines between them.
+            scene.quad(urushi_ui::Quad {
+                rect,
+                color: palette.background,
+                radius,
+                ..urushi_ui::Quad::default()
+            });
             let Some(tab) = &tab else { return };
-            scene.rect(rect, divider);
+            for d in terminal::dividers(tab.layout(), rect) {
+                scene.rect(d.line, divider);
+            }
             for (pane, pane_rect) in terminal::pane_rects(tab.layout(), rect) {
                 let is_focused = focused.as_deref() == Some(&pane);
                 let screen = screens
@@ -258,18 +280,35 @@ fn terminal_area(state: &AppState, theme: &Theme) -> Node<Msg> {
                     };
                     terminal::paint_pane(scene, pane_rect, &view);
                 } else {
-                    scene.rect(pane_rect, palette.background);
                     let at = Point::new(pane_rect.x + 12.0, pane_rect.y + 10.0);
                     scene.text(at, "Connecting to terminal…", Font::Ui, 12.0, muted);
                 }
                 if is_focused && screens.len() > 1 {
-                    scene.rect(
-                        urushi_ui::Rect::new(pane_rect.x, pane_rect.y, pane_rect.width, 2.0),
-                        accent,
-                    );
+                    scene.quad(urushi_ui::Quad {
+                        rect: urushi_ui::Rect::new(
+                            pane_rect.x + 6.0,
+                            pane_rect.y,
+                            pane_rect.width - 12.0,
+                            2.0,
+                        ),
+                        color: accent,
+                        radius: 1.0,
+                        ..urushi_ui::Quad::default()
+                    });
                 }
             }
+        });
+    // Inset from the panel's edges, so its rounded corners and hairline stay visible.
+    Node::row()
+        .width(Length::Fill(1.0))
+        .height(Length::Fill(1.0))
+        .padding(Insets {
+            top: 0.0,
+            right: 6.0,
+            bottom: 0.0,
+            left: 6.0,
         })
+        .child(area)
 }
 
 /// Touch keyboards lack these keys; mobile clients show them above the keyboard.
@@ -300,7 +339,6 @@ fn key_bar(theme: &Theme) -> Node<Msg> {
         .height(Length::Fixed(44.0))
         .padding(Insets::symmetric(4.0, 8.0))
         .gap(6.0)
-        .background(theme.sidebar)
         .children(
             keys.into_iter()
                 .map(|(label, msg)| button(theme, label, ButtonKind::Secondary, msg)),

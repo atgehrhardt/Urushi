@@ -162,9 +162,9 @@ fn notes_row(
     row
 }
 
-/// The card's background: the surface, tinted with the task's color if it has one.
+/// The card's background: raised glass, tinted with the task's color if it has one.
 fn card_background(theme: &Theme, task: &v1::Task) -> Color {
-    labels::color(theme, task.color).map_or(theme.surface, |c| theme.surface.mix(c, TINT))
+    labels::color(theme, task.color).map_or(theme.surface, |c| c.with_alpha(TINT + 0.04))
 }
 
 /// The task's tags as small chips, at most [`FOOTER_TAGS`] and then "+n".
@@ -282,21 +282,16 @@ pub(in crate::view) fn drag_ghost(state: &AppState, theme: &Theme) -> Option<Nod
     let (task, at) = state.board.dragging.as_ref()?;
     let (_, _, task) = state.workspace.task(task)?;
     let card = card_body(state, theme, task, false, false)
-        .background(card_background(theme, task).mix(theme.hover, 0.5))
+        .background(card_background(theme, task))
         .border(1.5, theme.accent);
-    // A soft dark rim stands in for a drop shadow.
+    // Lifted glass: it frosts what it passes over and casts a shadow.
     Some(
-        Node::column()
-            .width(Length::Fixed(GHOST_WIDTH))
-            .padding(Insets {
-                top: 1.0,
-                right: 4.0,
-                bottom: 5.0,
-                left: 2.0,
-            })
-            .radius(theme.radius + 3.0)
-            .background(Color::hex(0x000000).with_alpha(0.35))
-            .child(card)
-            .at(Point::new(at.x - 24.0, at.y - 14.0)),
+        urushi_ui::widgets::overlay(
+            theme,
+            Node::column().width(Length::Fixed(GHOST_WIDTH)),
+            theme.radius + 2.0,
+        )
+        .child(card)
+        .at(Point::new(at.x - 24.0, at.y - 14.0)),
     )
 }

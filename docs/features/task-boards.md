@@ -8,7 +8,7 @@
 A **Tasks** button sits under the sidebar's Projects | Repos tabs. It shows the number of
 open tasks, meaning tasks not in a board's last column. The button, or **Cmd+B**
 (Ctrl+Shift+B off Apple platforms), slides a kanban panel out from under the sidebar, over
-the terminals, which show faintly through it. Escape, ×, the button or the shortcut slide
+the terminals, as frosted glass that blurs them. Escape, ×, the button or the shortcut slide
 it back.
 - Boards are tabs across the top. **+** creates a board, and **Rename** and **Delete**
   act on the board shown. Deleting asks first and says how many tasks go with the board.

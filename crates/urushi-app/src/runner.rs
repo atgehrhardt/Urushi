@@ -17,7 +17,7 @@ use winit::window::{Window, WindowId};
 
 use crate::backend::Backend;
 use crate::keys::{KeyPress, Mods};
-use crate::msg::{Effect, Msg};
+use crate::msg::{Effect, Msg, SidebarMsg};
 use crate::platform::{self, Clipboard};
 use crate::state::AppState;
 use crate::{UserEvent, view};
@@ -128,7 +128,7 @@ impl Runner {
                 }
             }
         }
-        self.remember_selection();
+        self.remember_ui();
         self.request_redraw();
     }
 
@@ -148,13 +148,17 @@ impl Runner {
         }
     }
 
-    /// Saves the selected thread and tabs when they change, for the next launch.
-    fn remember_selection(&mut self) {
+    /// Saves the selected thread and tabs, and the sidebar's width and collapse, when
+    /// they change, for the next launch.
+    fn remember_ui(&mut self) {
         // The file is the local daemon's; a window switched to a remote one keeps it.
         let (Some(path), saved) = &self.ui_state else {
             return;
         };
-        if !matches!(self.state.target, crate::config::ConnectTarget::Local(_)) {
+        if !matches!(self.state.target, crate::config::ConnectTarget::Local(_))
+            // Written once when the drag ends, not on every move.
+            || self.state.sidebar.resizing()
+        {
             return;
         }
         let now = crate::ui_state::UiState::of(&self.state);
@@ -210,12 +214,19 @@ impl Runner {
         Rect::new(0.0, 0.0, w, h)
     }
 
-    /// Moves the board panel's slide one frame towards open or closed, and keeps
-    /// redrawing until it gets there.
+    /// Moves the board panel's and the sidebar's slides one frame towards where they're
+    /// heading, and keeps redrawing until both get there.
     fn animate(&mut self) {
-        let target = if self.state.board.open { 1.0 } else { 0.0 };
-        let current = self.state.board.reveal;
-        if (current - target).abs() < f32::EPSILON {
+        let board = (
+            self.state.board.reveal,
+            if self.state.board.open { 1.0 } else { 0.0 },
+        );
+        let sidebar = (
+            self.state.sidebar.reveal(),
+            self.state.sidebar.reveal_target(),
+        );
+        let moving = |(current, target): (f32, f32)| (current - target).abs() >= f32::EPSILON;
+        if !moving(board) && !moving(sidebar) {
             self.animated_at = None;
             return;
         }
@@ -226,13 +237,22 @@ impl Runner {
             .map_or(1.0 / 60.0, |at| now.duration_since(at).as_secs_f32())
             .min(0.05);
         self.animated_at = Some(now);
-        let step = elapsed / crate::board::SLIDE_SECONDS;
-        let next = if target > current {
-            (current + step).min(target)
-        } else {
-            (current - step).max(target)
+        let advance = |(current, target): (f32, f32), seconds: f32| {
+            let step = elapsed / seconds;
+            if target > current {
+                (current + step).min(target)
+            } else {
+                (current - step).max(target)
+            }
         };
-        self.state.update(Msg::BoardReveal(next));
+        if moving(board) {
+            let next = advance(board, crate::board::SLIDE_SECONDS);
+            self.state.update(Msg::BoardReveal(next));
+        }
+        if moving(sidebar) {
+            let next = advance(sidebar, crate::sidebar::SLIDE_SECONDS);
+            self.state.update(Msg::Sidebar(SidebarMsg::Reveal(next)));
+        }
         self.request_redraw();
     }
 
@@ -247,6 +267,9 @@ impl Runner {
         let compact = bounds.width < COMPACT_WIDTH;
         if compact != self.state.compact {
             self.state.update(Msg::SetCompact(compact));
+        }
+        if (bounds.width - self.state.sidebar.window_width()).abs() >= 0.5 {
+            self.dispatch(Msg::Sidebar(SidebarMsg::WindowWidth(bounds.width)));
         }
         tracing::debug!(
             width = size.width,
@@ -296,7 +319,10 @@ impl Runner {
             return;
         };
         let mut icon = frame.cursor(p);
-        if let (Some(area), Some(tab)) = (self.state.area, self.state.current_tab())
+        if self.state.sidebar.resizing() {
+            // Keep the resize cursor even where the pointer has outrun the edge.
+            icon = CursorIcon::ResizeColumn;
+        } else if let (Some(area), Some(tab)) = (self.state.area, self.state.current_tab())
             && area.contains(p)
             && self.state.dialog.is_none()
             && let Some(tab) = self.state.workspace.tab(&tab.id)

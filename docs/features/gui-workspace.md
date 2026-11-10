@@ -2,10 +2,24 @@
 
 - **Status:** Shipped. Verified on macOS (rendering, input, accessibility, dialogs), in the iOS simulator and on the Android emulator (remote over Tailscale). See [platforms](../platforms.md).
 - **Owners (crates):** `urushi-app`, `urushi-ui`, `urushi-render`, `apps/desktop`
-- **Related ADRs:** [0006](../adr/0006-all-rust-gpu-gui.md), [0002](../adr/0002-daemon-source-of-truth.md)
+- **Related ADRs:** [0006](../adr/0006-all-rust-gpu-gui.md), [0002](../adr/0002-daemon-source-of-truth.md), [0019](../adr/0019-in-app-frosted-glass.md)
 
 ## What it does
-A graphical workspace:
+A graphical workspace in dark frosted glass. Behind everything, a near-black window has
+a few large, soft colour glows (Urushi red top left, indigo bottom right). The sidebar
+and the main area float over them as translucent, rounded glass panels. Overlays
+(dialogs, menus, selectors, the task board, drag ghosts) blur whatever they cover
+([ADR 0019](../adr/0019-in-app-frosted-glass.md)), and a dialog's scrim frosts the whole
+window. On phones the panels fill the screen edge to edge.
+- **Hiding and resizing the sidebar** (desktop and tablet widths):
+  - The sidebar button (a window outline) in the sidebar's header slides it away; the
+    same button then sits at the left of the tab bar to bring it back. Cmd+\ (Ctrl+Shift+\
+    elsewhere) does both.
+  - Drag the gap between the sidebar and the main panel to resize it, from 200 px up to
+    560 px or half the window. Dragging it narrower than 140 px collapses it, and it
+    reopens at its last width.
+  - The width and whether it's collapsed are remembered across launches, with the
+    selection (`ui_state.rs`). Logic: `sidebar.rs`, `update/sidebar.rs`.
 - **Sidebar:** a Projects tab (projects → pinned threads → status sections → threads, then threads in no project) and a Repos tab. See [organizing threads](thread-organization.md) for the context menu, statuses and drag and drop. A thread whose agent finished shows a green dot and "finished"; one waiting for you shows an amber dot and "needs input", and Urushi posts a system notification while it's in the background ([agent attention](agent-attention.md)). Under the tabs, **Tasks** slides out the [task boards](task-boards.md).
 - **Tab bar:** the tabs of the selected thread. **+** opens the [agent launcher](agent-launcher.md) picker.
 - **Terminal area:** split, recoverable terminal panes. A right or two-finger click on a pane opens its menu: **Split right**, **Split down**, **Copy**, **Paste**, **Close pane** (see [split-pane layouts](split-pane-layouts.md)). Touch screens have no secondary click, so on mobile the tab bar keeps **→ ↓ ×** buttons for the focused pane. A thread with no tabs (new, or its last tab closed) keeps its tab bar and shows the launcher inline.
@@ -34,6 +48,7 @@ A graphical workspace:
     - `,`: settings
     - N: new thread
     - B: open or close the task board
+    - `\`: hide or show the sidebar
     - `[` / `]`: previous and next tab
     - Alt+arrows: move focus
 - **Mouse** (`update/pointer.rs`):
@@ -61,8 +76,9 @@ A graphical workspace:
 ## Tests
 - `crates/urushi-app/src/update/tests.rs`: connect, attach, resize, screen updates, typing vs shortcuts, the deletion flow, dialog editing, connect-required mode, selection and copy. `update/tests/fields.rs`: field shortcuts, mouse selection and the field menu; `urushi-ui/tests/fields.rs`: pointer → caret, scrolling, selection painting.
 - `crates/urushi-app/src/update/tests/daemon.rs`: the restart confirmation and reconnecting.
+- `crates/urushi-app/src/sidebar.rs` and `update/tests/sidebar.rs`: hiding, the shortcut, resizing within limits, snapping shut, phones ignoring both; `view/mod.rs` tests: the edge, its cursor, and the show button while hidden.
 - `crates/urushi-app/src/update/tests/flows.rs`: launcher, branch name following the title, adding repos, dropped files, agent settings. `update/tests/organize.rs`: menus, prompts, drag and drop, selectors. `update/tests/panes.rs`: the pane menu and focus after a pane closes.
-- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `new-thread-project`, `settings`, `menu`, `menu-status`, `drag`, `drag-project`, `repos`, `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `setup`, `setup-mode`) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
+- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `new-thread-project`, `settings`, `menu`, `menu-status`, `drag`, `drag-project`, `repos`, `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `sidebar-collapsed`, `setup`, `setup-mode`) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
 - `crates/urushi-app/src/terminal.rs`: pane geometry, dividers, selection text, painting.
 - `crates/urushi-ui/tests/layout.rs` and `crates/urushi-render/tests/pixels.rs`: toolkit and GPU.
 

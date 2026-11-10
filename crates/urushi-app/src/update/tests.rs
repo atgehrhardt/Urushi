@@ -182,6 +182,7 @@ fn reopening_shows_the_remembered_thread_and_tab() {
     let remembered = crate::ui_state::UiState {
         thread: Some(other.id.clone()),
         tabs: [(other.id.clone(), TabId::from_u128(22).to_string())].into(),
+        ..Default::default()
     };
     let mut s = AppState::new(ConnectTarget::Local(None), CELL);
     remembered.clone().apply(&mut s);
@@ -394,5 +395,6 @@ mod panes;
 mod pointer;
 mod project_order;
 mod setup;
+mod sidebar;
 mod task_in_thread;
 mod tasks;

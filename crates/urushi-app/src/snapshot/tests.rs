@@ -60,9 +60,10 @@ fn task_cards_are_all_the_same_size() {
         .collect();
     assert_eq!(cards.len(), 4, "{cards:?}");
     for card in &cards {
-        assert_eq!(
-            (card.width, card.height),
-            (cards[0].width, cards[0].height),
+        // Columns split the width in fractions of a pixel; allow float rounding.
+        assert!(
+            (card.width - cards[0].width).abs() < 0.01
+                && (card.height - cards[0].height).abs() < 0.01,
             "{cards:?}"
         );
     }

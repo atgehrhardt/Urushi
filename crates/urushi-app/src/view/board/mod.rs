@@ -1,5 +1,5 @@
-//! The task-board panel: slides out from under the sidebar over the terminals, which
-//! show faintly through it. Board tabs across the top, then the board's columns of task
+//! The task-board panel: frosted glass that slides out from under the sidebar over the
+//! terminals, blurring them. Board tabs across the top, then the board's columns of task
 //! cards, all the same size. Cards open the task editor on click and move between
 //! columns by drag and drop: while a card is dragged, its place stays as a faint outline, a line shows where
 //! it would land, and a raised copy follows the pointer.
@@ -16,10 +16,6 @@ use crate::msg::Msg;
 use crate::organize::{MenuTarget, Prompt};
 use crate::state::AppState;
 
-/// How opaque the panel is over the terminals.
-const PANEL_ALPHA: f32 = 0.86;
-/// How opaque a column is (over the panel).
-const COLUMN_ALPHA: f32 = 0.7;
 /// Space between cards in a column.
 const CARD_GAP: f32 = 6.0;
 /// Width of the card that follows the pointer while dragging.
@@ -93,17 +89,24 @@ pub(super) fn panel(
             )),
         )
     };
-    Node::column()
-        .width(Length::Fill(1.0))
-        .height(Length::Fill(1.0))
-        .background(theme.background.with_alpha(PANEL_ALPHA))
-        .border(1.0, theme.border)
-        .key(key(&["board-panel"]))
-        .on_click(Msg::BoardBackground)
-        .slide_x(1.0 - state.board.eased())
-        .child(header(state, theme))
-        .child(urushi_ui::widgets::divider(theme, false))
-        .child(body)
+    let radius = if state.compact {
+        0.0
+    } else {
+        theme.radius_large
+    };
+    urushi_ui::widgets::overlay(
+        theme,
+        Node::column()
+            .width(Length::Fill(1.0))
+            .height(Length::Fill(1.0)),
+        radius,
+    )
+    .key(key(&["board-panel"]))
+    .on_click(Msg::BoardBackground)
+    .slide_x(1.0 - state.board.eased())
+    .child(header(state, theme))
+    .child(urushi_ui::widgets::divider(theme, false))
+    .child(body)
 }
 
 /// Board tabs, "+", and the shown board's actions.

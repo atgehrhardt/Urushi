@@ -11,6 +11,7 @@ use cosmic_text::CacheKey;
 use urushi_ui::{Color, Font, Image, Primitive, Rect, Scene, Text, TextSystem};
 
 use crate::atlas::{ATLAS_SIZE, Atlas, AtlasFull};
+use crate::blur::{BackdropInstance, Blur, levels_for};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -18,7 +19,10 @@ struct QuadInstance {
     rect: [f32; 4],
     color: [f32; 4],
     border_color: [f32; 4],
-    params: [f32; 2],
+    /// Radius, border width, softness, unused.
+    params: [f32; 4],
+    /// Bottom colour of a gradient (the fill colour when flat).
+    bottom: [f32; 4],
 }
 
 #[repr(C)]
@@ -34,6 +38,8 @@ struct GlyphInstance {
 enum Kind {
     Quads,
     Glyphs,
+    /// One backdrop: blur what's drawn so far, then draw it inside the shape.
+    Backdrop,
 }
 
 struct Batch {
@@ -48,6 +54,9 @@ struct Batch {
 struct FrameData {
     quads: Vec<QuadInstance>,
     glyphs: Vec<GlyphInstance>,
+    backdrops: Vec<BackdropInstance>,
+    /// How many halvings each backdrop's blur uses.
+    levels: Vec<usize>,
     batches: Vec<Batch>,
 }
 
@@ -55,7 +64,12 @@ impl FrameData {
     fn push_batch(&mut self, kind: Kind, scissor: [u32; 4], index: usize) {
         let index = u32::try_from(index).unwrap_or(u32::MAX);
         match self.batches.last_mut() {
-            Some(b) if b.kind == kind && b.scissor == scissor && b.end == index => {
+            Some(b)
+                if b.kind == kind
+                    && kind != Kind::Backdrop
+                    && b.scissor == scissor
+                    && b.end == index =>
+            {
                 b.end = index + 1;
             }
             _ => self.batches.push(Batch {
@@ -97,6 +111,7 @@ pub struct SceneRenderer {
     quad_buffer: wgpu::Buffer,
     glyph_buffer: wgpu::Buffer,
     shaped: HashMap<(String, Font, u32), Shaped>,
+    blur: Blur,
 }
 
 fn rgba(c: Color) -> [f32; 4] {
@@ -112,7 +127,7 @@ impl SceneRenderer {
         });
         let (globals, globals_layout, globals_group) = create_globals(device);
         let (atlas_texture, atlas_layout, atlas_group) = create_atlas(device);
-        let quad_attrs = wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x2];
+        let quad_attrs = wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4];
         let glyph_attrs =
             wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32];
         let quad_pipeline = create_pipeline(
@@ -131,6 +146,7 @@ impl SceneRenderer {
             ("glyph_vs", "glyph_fs"),
             (std::mem::size_of::<GlyphInstance>() as u64, &glyph_attrs),
         );
+        let blur = Blur::new(device, format, &globals_layout);
         Self {
             quad_pipeline,
             glyph_pipeline,
@@ -150,6 +166,7 @@ impl SceneRenderer {
                 4096 * std::mem::size_of::<GlyphInstance>() as u64,
             ),
             shaped: HashMap::new(),
+            blur,
         }
     }
 
@@ -230,8 +247,16 @@ impl SceneRenderer {
         if !frame.glyphs.is_empty() {
             queue.write_buffer(&self.glyph_buffer, 0, bytemuck::cast_slice(&frame.glyphs));
         }
+        if !frame.backdrops.is_empty() {
+            self.blur
+                .prepare(device, queue, target.size, &frame.backdrops);
+        }
     }
 
+    /// Records the frame's passes. Without backdrops that's one pass into the target.
+    /// With them, the frame is drawn into the blur's scene texture in segments: each
+    /// backdrop ends a segment, frosts what's there, and starts the next one by drawing
+    /// itself. The texture is copied to the target at the end.
     fn encode(
         &self,
         device: &wgpu::Device,
@@ -242,30 +267,53 @@ impl SceneRenderer {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("frame"),
         });
-        {
-            let clear_color = target.clear;
-            let clear = wgpu::Color {
-                r: f64::from(clear_color.r),
-                g: f64::from(clear_color.g),
-                b: f64::from(clear_color.b),
-                a: f64::from(clear_color.a),
+        let frosted = !frame.backdrops.is_empty();
+        let view = if frosted {
+            self.blur.scene_view().unwrap_or(target.view)
+        } else {
+            target.view
+        };
+        let clear_color = target.clear;
+        let clear = wgpu::Color {
+            r: f64::from(clear_color.r),
+            g: f64::from(clear_color.g),
+            b: f64::from(clear_color.b),
+            a: f64::from(clear_color.a),
+        };
+        let mut next = 0;
+        let mut first = true;
+        while first || next < frame.batches.len() {
+            let start = next;
+            if let Some(b) = frame.batches.get(start)
+                && b.kind == Kind::Backdrop
+            {
+                let levels = frame.levels.get(b.start as usize).copied().unwrap_or(1);
+                self.blur.frost(&mut encoder, levels);
+            }
+            let load = if first {
+                wgpu::LoadOp::Clear(clear)
+            } else {
+                wgpu::LoadOp::Load
             };
+            first = false;
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: target.view,
+                    view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(clear),
+                        load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
                 ..Default::default()
             });
-            pass.set_bind_group(0, &self.globals_group, &[]);
-            pass.set_bind_group(1, &self.atlas_group, &[]);
-            for batch in &frame.batches {
+            for (i, batch) in frame.batches[start..].iter().enumerate() {
+                if batch.kind == Kind::Backdrop && i > 0 {
+                    break;
+                }
+                next = start + i + 1;
                 let [x, y, w, h] = batch.scissor;
                 if w == 0 || h == 0 {
                     continue;
@@ -274,11 +322,21 @@ impl SceneRenderer {
                 let (pipeline, buffer) = match batch.kind {
                     Kind::Quads => (&self.quad_pipeline, &self.quad_buffer),
                     Kind::Glyphs => (&self.glyph_pipeline, &self.glyph_buffer),
+                    Kind::Backdrop => {
+                        self.blur
+                            .composite(&mut pass, &self.globals_group, batch.start);
+                        continue;
+                    }
                 };
+                pass.set_bind_group(0, &self.globals_group, &[]);
+                pass.set_bind_group(1, &self.atlas_group, &[]);
                 pass.set_pipeline(pipeline);
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 pass.draw(0..4, batch.start..batch.end);
             }
+        }
+        if frosted {
+            self.blur.blit(&mut encoder, target.view);
         }
         queue.submit([encoder.finish()]);
     }
@@ -321,12 +379,27 @@ impl SceneRenderer {
                         rect: [r.x * scale, r.y * scale, r.width * scale, r.height * scale],
                         color: rgba(q.color),
                         border_color: rgba(q.border_color),
-                        params: [q.radius * scale, q.border_width * scale],
+                        params: [
+                            q.radius * scale,
+                            q.border_width * scale,
+                            q.softness * scale,
+                            0.0,
+                        ],
+                        bottom: rgba(q.gradient.unwrap_or(q.color)),
                     });
                     frame.push_batch(Kind::Quads, scissor, frame.quads.len() - 1);
                 }
                 Primitive::Text(t) => self.push_text(t, (scale, scissor), text, &mut frame)?,
                 Primitive::Image(i) => self.push_image(i, (scale, scissor), &mut frame)?,
+                Primitive::Backdrop(b) => {
+                    let r = b.rect;
+                    frame.backdrops.push(BackdropInstance {
+                        rect: [r.x * scale, r.y * scale, r.width * scale, r.height * scale],
+                        params: [b.radius * scale, 0.0, 0.0, 0.0],
+                    });
+                    frame.levels.push(levels_for(b.blur * scale));
+                    frame.push_batch(Kind::Backdrop, scissor, frame.backdrops.len() - 1);
+                }
             }
         }
         Ok(frame)

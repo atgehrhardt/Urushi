@@ -121,8 +121,9 @@ fn clicks_hit_the_topmost_target_and_hover_changes_fill() {
 
     let hovered = build(&ui, bounds, &mut text, Some(first.center()));
     assert!(
-        hovered.scene.dump().contains(&theme.hover.to_hex()),
-        "hovered button uses the hover colour"
+        // On glass a secondary button rests on `surface`, so it brightens to `selected`.
+        hovered.scene.dump().contains(&theme.selected.to_hex()),
+        "hovered button brightens"
     );
     assert_eq!(
         hovered.cursor(first.center()),
@@ -412,4 +413,42 @@ fn a_sliding_panel_moves_with_its_children_and_is_clipped() {
     // In place: the button is at the left edge (rows centre their children).
     let frame = build(&ui(0.0), bounds, &mut text, None);
     assert_eq!(frame.click(Point::new(105.0, 45.0)), Some(Msg::B));
+}
+
+#[test]
+fn glass_paints_shadow_then_frost_then_fill() {
+    let mut text = TextSystem::bundled_only();
+    let ui: Node<Msg> = Node::row()
+        .width(Length::Fill(1.0))
+        .height(Length::Fill(1.0))
+        .align(Align::Start)
+        .child(
+            Node::new()
+                .width(Length::Fixed(100.0))
+                .height(Length::Fixed(50.0))
+                .radius(10.0)
+                .shadow(urushi_ui::Shadow {
+                    color: Color::hex(0x000000).with_alpha(0.5),
+                    blur: 20.0,
+                    offset: 6.0,
+                })
+                .backdrop_blur(24.0)
+                .background(Color::hex(0xffffff).with_alpha(0.1))
+                .gradient(Color::hex(0xffffff).with_alpha(0.02)),
+        );
+    let frame = build(&ui, Rect::new(0.0, 0.0, 400.0, 300.0), &mut text, None);
+    assert_eq!(
+        frame.scene.dump(),
+        "quad 0,6 100x50 #00000080 r20 soft 20\n\
+         backdrop 0,0 100x50 r10 blur 24\n\
+         quad 0,0 100x50 #ffffff1a r10 to #ffffff05\n"
+    );
+
+    // Plain boxes dump exactly as before.
+    let plain: Node<Msg> = Node::new()
+        .width(Length::Fixed(10.0))
+        .height(Length::Fixed(10.0))
+        .background(Color::hex(0xffffff));
+    let frame = build(&plain, Rect::new(0.0, 0.0, 400.0, 300.0), &mut text, None);
+    assert_eq!(frame.scene.dump(), "quad 0,0 400x300 #ffffff r0\n");
 }

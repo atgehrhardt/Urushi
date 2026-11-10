@@ -20,7 +20,7 @@ The multiplexer is **invisible infrastructure**. It exists so terminal sessions 
  Clients (Rust): desktop app (macOS/Linux/Windows) · iOS · Android · `urushi` CLI
    urushi-app     screens + Elm-style update/view (platform-neutral)
    urushi-ui      widget toolkit → Scene (display list)
-   urushi-render  wgpu: quads, glyph atlas, instanced terminal grid
+   urushi-render  wgpu: quads, glyph atlas, backdrop blur
    urushi-client  protocol client, state mirror, transports
         │  versioned protobuf frames (docs/protocol.md)
         │  Unix socket (macOS/Linux) | named pipe (Windows) | TCP on tailnet IP (remote)

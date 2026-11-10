@@ -11,9 +11,11 @@ use crate::state::{Field, FieldCommand, Launch, SettingToggle, TaskLink};
 
 mod board;
 mod pane;
+mod sidebar;
 
 pub use board::BoardMsg;
 pub use pane::PaneMsg;
+pub use sidebar::SidebarMsg;
 
 /// Something that happened.
 #[derive(Clone, Debug)]
@@ -87,6 +89,8 @@ pub enum Msg {
     OpenPrompt(Prompt),
     /// Delete a project (its threads become ungrouped).
     DeleteProject(String),
+    /// The desktop sidebar: collapsing, resizing, sliding (`update/sidebar.rs`).
+    Sidebar(SidebarMsg),
     /// A thread started being dragged.
     DragThread(String),
     /// The pointer moved during a drag.

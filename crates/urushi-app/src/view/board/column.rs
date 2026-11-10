@@ -8,7 +8,7 @@ use urushi_ui::{Font, Insets, Length, Node, Theme, key};
 
 use super::super::labels;
 use super::card::card;
-use super::{CARD_GAP, COLUMN_ALPHA, column_scroll_key};
+use super::{CARD_GAP, column_scroll_key};
 use crate::board::shows;
 use crate::msg::Msg;
 use crate::organize::MenuTarget;
@@ -84,10 +84,7 @@ pub(super) fn column(
             left: 0.0,
         })
         .radius(theme.radius + 2.0)
-        .background(
-            tint.map_or(theme.sidebar, |c| theme.sidebar.mix(c, TINT))
-                .with_alpha(COLUMN_ALPHA),
-        )
+        .background(tint.map_or(theme.surface, |c| c.with_alpha(TINT)))
         .border(
             1.0,
             if over.is_some() {
@@ -114,9 +111,7 @@ pub(super) fn column(
     }
     node = node.child(head).child(cards);
     if dragging {
-        node = node
-            .on_drop(drop_here)
-            .hover_background(theme.sidebar.mix(theme.hover, 0.6).with_alpha(0.85));
+        node = node.on_drop(drop_here).hover_background(theme.selected);
     }
     node
 }

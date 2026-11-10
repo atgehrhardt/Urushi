@@ -222,11 +222,14 @@ fn resolve(color: Option<&v1::Color>, palette: &TerminalPalette, default: Color)
     }
 }
 
-/// Paints a pane: backgrounds, selection, cursor, then text.
+/// Paints a pane: cell backgrounds, selection, cursor, then text. The pane's own
+/// background (the palette's, translucent) is the caller's, painted once under all
+/// panes.
 pub fn paint_pane(scene: &mut Scene, rect: Rect, view: &PaneView<'_>) {
     let p = view.palette;
     let cell = view.cell;
-    scene.rect(rect, p.background);
+    // Text drawn "in the background colour" (inverse video, dimming) takes it opaque.
+    let background = p.background.with_alpha(1.0);
     scene.push_clip(rect);
     let origin = Point::new(rect.x + PANE_PADDING, rect.y + PANE_PADDING);
     let mut glyphs: Vec<(Point, String, Font, Color)> = Vec::new();
@@ -238,7 +241,7 @@ pub fn paint_pane(scene: &mut Scene, rect: Rect, view: &PaneView<'_>) {
             let style = c.style.unwrap_or_default();
             let flags = style.flags;
             let mut fg = resolve(style.fg.as_ref(), p, p.foreground);
-            let mut bg = resolve(style.bg.as_ref(), p, p.background);
+            let mut bg = resolve(style.bg.as_ref(), p, background);
             if flags & v1::StyleFlag::Inverse as u32 != 0 {
                 std::mem::swap(&mut fg, &mut bg);
             }
@@ -247,7 +250,7 @@ pub fn paint_pane(scene: &mut Scene, rect: Rect, view: &PaneView<'_>) {
             }
             let width = cell.width * f32::from(c.width.max(1));
             let cell_rect = Rect::new(x, y, width, cell.height);
-            if bg != p.background {
+            if bg != background {
                 scene.rect(cell_rect, bg);
             }
             #[allow(clippy::cast_possible_truncation, reason = "column counts fit in u16")]
@@ -307,15 +310,14 @@ fn paint_cursor(
                 .iter_mut()
                 .filter(|g| (g.0.x - at.x).abs() < 0.5 && (g.0.y - at.y).abs() < 0.5)
             {
-                glyph.3 = view.palette.background;
+                glyph.3 = view.palette.background.with_alpha(1.0);
             }
         }
         (false, _) => scene.quad(Quad {
             rect: Rect::new(at.x, at.y, cell.width, cell.height),
-            color: Color::TRANSPARENT,
-            radius: 0.0,
             border_width: 1.0,
             border_color: color.with_alpha(0.7),
+            ..Quad::default()
         }),
     }
 }
