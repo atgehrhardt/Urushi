@@ -172,7 +172,8 @@ message CreateThreadRequest {
   string title = 2;
   // Ref to branch from; empty uses the project's default base.
   string base_ref = 3;
-  // Name of the branch to create; empty generates `<prefix><slug>-<short id>`.
+  // Name of the branch to create; empty generates `<prefix><slug>-<short id>`, or
+  // (since 1.14) `<prefix><KEY>-<slug>-<short id>` for a task that is a Jira issue.
   // Must not exist yet.
   string branch = 4;
   // Create the thread with no tabs, so the client can let the user pick what to

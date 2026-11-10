@@ -12,10 +12,12 @@ mod attachments;
 mod columns;
 mod print;
 mod show;
+mod sub;
 
 use attachments::AttachmentCmd;
 use columns::{ColCmd, color_arg};
 use print::print_boards;
+use sub::{SubCmd, sub};
 
 #[derive(Subcommand)]
 pub(crate) enum BoardCmd {
@@ -137,46 +139,13 @@ pub(crate) enum BoardCmd {
 }
 
 /// A `--kind` value as a wire kind; "none" is unspecified.
-fn kind_arg(kind: &str) -> Result<i32> {
+pub(super) fn kind_arg(kind: &str) -> Result<i32> {
     if kind.trim().eq_ignore_ascii_case("none") {
         return Ok(v1::TaskKind::Unspecified.into());
     }
     let kind = urushi_core::TaskKind::parse(kind)
         .with_context(|| format!("{kind:?} isn't a kind: task, story, bug, epic or subtask"))?;
     Ok(urushi_proto::convert::kind_to_proto(Some(kind)))
-}
-
-#[derive(Subcommand)]
-pub(crate) enum SubCmd {
-    /// Add a subtask at the end of a task's (or a subtask's) subtasks.
-    Add {
-        /// Task or subtask id.
-        task: String,
-        /// Title.
-        title: String,
-    },
-    /// Check a subtask off.
-    Done {
-        /// Subtask id.
-        subtask: String,
-    },
-    /// Uncheck a subtask.
-    Undo {
-        /// Subtask id.
-        subtask: String,
-    },
-    /// Rename a subtask.
-    Rename {
-        /// Subtask id.
-        subtask: String,
-        /// New title.
-        title: String,
-    },
-    /// Delete a subtask.
-    Rm {
-        /// Subtask id.
-        subtask: String,
-    },
 }
 
 pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
@@ -312,29 +281,6 @@ async fn edit(client: &Client, cmd: BoardCmd) -> Result<()> {
             kind: kind.as_deref().map(kind_arg).transpose()?,
         })
         .await?)
-}
-
-async fn sub(client: &Client, cmd: SubCmd) -> Result<()> {
-    match cmd {
-        SubCmd::Add { task, title } => {
-            let s = client
-                .create_subtask(&resolve(client, &task).await?, &title)
-                .await?;
-            out(&format!("subtask {} {}", short(&s.id), s.title))
-        }
-        SubCmd::Done { subtask } => Ok(client
-            .update_subtask(&resolve(client, &subtask).await?, None, Some(true))
-            .await?),
-        SubCmd::Undo { subtask } => Ok(client
-            .update_subtask(&resolve(client, &subtask).await?, None, Some(false))
-            .await?),
-        SubCmd::Rename { subtask, title } => Ok(client
-            .update_subtask(&resolve(client, &subtask).await?, Some(&title), None)
-            .await?),
-        SubCmd::Rm { subtask } => Ok(client
-            .delete_subtask(&resolve(client, &subtask).await?)
-            .await?),
-    }
 }
 
 /// A column of `board`, by name (any case) or id prefix.

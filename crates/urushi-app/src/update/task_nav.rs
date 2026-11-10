@@ -5,7 +5,7 @@
 //! edits, so going down to a subtask and back up loses nothing, and nothing is saved
 //! until **Save**, which saves every one of them.
 
-use crate::msg::{Effect, Followup};
+use crate::msg::{BoardMsg, Effect, Followup};
 use crate::state::{AppState, Dialog, EditorNav, Field};
 
 /// The task an editor shows (`None` for a new task's editor, or another dialog).
@@ -16,7 +16,7 @@ pub(super) fn editor_task(dialog: &Dialog) -> Option<&str> {
     }
 }
 
-fn nav_mut(dialog: &mut Dialog) -> Option<&mut EditorNav> {
+pub(super) fn nav_mut(dialog: &mut Dialog) -> Option<&mut EditorNav> {
     match dialog {
         Dialog::Task { nav, .. } => Some(nav),
         _ => None,
@@ -24,10 +24,30 @@ fn nav_mut(dialog: &mut Dialog) -> Option<&mut EditorNav> {
 }
 
 impl AppState {
+    /// Moving around in the editor: opening a task or a new subtask's editor, Back,
+    /// and answering the discard question.
+    pub(super) fn editor_nav(&mut self, msg: BoardMsg, fx: &mut Vec<Effect>) {
+        match msg {
+            BoardMsg::OpenTask(task) => self.edit_task(&task, fx),
+            BoardMsg::EditorBack => self.editor_back(),
+            BoardMsg::NewSubtask => self.new_subtask(fx),
+            BoardMsg::OpenSubtaskDraft(i) => self.open_subtask_draft(i, fx),
+            BoardMsg::RemoveSubtaskDraft => self.remove_subtask_draft(),
+            BoardMsg::KeepEditing => self.keep_editing(),
+            BoardMsg::DiscardEdits => self.discard_editor(),
+            _ => {}
+        }
+    }
+
     /// Opens the editor on an existing task or subtask. From the editor of another
     /// task, that editor is kept (unsaved edits too) for **Back**; a task already
     /// opened on the way here is returned to as it was left.
     pub(super) fn edit_task(&mut self, id: &str, fx: &mut Vec<Effect>) {
+        if self.workspace.find_task(id).is_none() {
+            return;
+        }
+        // A new subtask being written goes into its task's list first.
+        while self.fold_draft() {}
         let Some(found) = self.workspace.find_task(id) else {
             return;
         };
@@ -64,7 +84,11 @@ impl AppState {
     }
 
     /// **Back**: the editor this one was opened from, as it was left.
+    /// From a new subtask's editor, that subtask is kept in its task's list.
     pub(super) fn editor_back(&mut self) {
+        if self.fold_draft() {
+            return;
+        }
         let Some(Dialog::Task { nav, .. }) = &mut self.dialog else {
             return;
         };

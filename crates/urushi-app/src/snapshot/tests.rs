@@ -156,6 +156,47 @@ fn a_subtask_opens_with_where_it_is_and_its_own_subtasks() {
 }
 
 #[test]
+fn a_new_subtask_has_an_editor_of_its_own() {
+    let new = dump("task-new-subtask", 1280.0);
+    for text in [
+        "\"New subtask\"",
+        "\"Translate the FAQ\"",
+        "\"Notes\"",
+        "\"Tags\"",
+        "\"Remove subtask\"",
+        "\"Done\"",
+        "\"Save\"",
+    ] {
+        assert!(new.contains(text), "{text} missing: {new}");
+    }
+    assert!(!new.contains("\"Column\""), "it goes under its task: {new}");
+    assert!(!new.contains("\"Add a subtask…\""), "{new}");
+    let task = dump("task", 1280.0);
+    assert!(task.contains("\"New subtask…\""), "{task}");
+}
+
+#[test]
+fn the_task_editors_buttons_stay_on_screen_in_a_short_window() {
+    let theme = Theme::dark();
+    let mut text = TextSystem::bundled_only();
+    for name in ["task", "jira-issue"] {
+        for height in [520.0, 640.0] {
+            let frame = scenario_frame(name, &theme, &mut text, 1280.0, height).unwrap();
+            let save = frame
+                .access
+                .iter()
+                .find(|a| a.label == "Save")
+                .unwrap_or_else(|| panic!("no Save in {name}"));
+            assert!(
+                save.rect.y >= 0.0 && save.rect.y + save.rect.height <= height,
+                "{name} at {height}: Save at {:?}",
+                save.rect
+            );
+        }
+    }
+}
+
+#[test]
 fn long_subtask_titles_are_cut_short_inside_the_editor() {
     let task = dump("task", 1280.0);
     assert!(

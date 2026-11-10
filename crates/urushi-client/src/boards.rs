@@ -68,11 +68,21 @@ impl Client {
         task_id: &str,
         title: &str,
     ) -> Result<v1::Subtask, ClientError> {
-        let body = Body::CreateSubtask(v1::CreateSubtaskRequest {
+        self.create_subtask_with(v1::CreateSubtaskRequest {
             task_id: task_id.into(),
             title: title.into(),
-        });
-        match self.request(body).await? {
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Adds a subtask with everything a `CreateSubtask` can carry (notes, color, tags,
+    /// kind and Jira fields since 1.14).
+    pub async fn create_subtask_with(
+        &self,
+        request: v1::CreateSubtaskRequest,
+    ) -> Result<v1::Subtask, ClientError> {
+        match self.request(Body::CreateSubtask(request)).await? {
             Outcome::Subtask(subtask) => Ok(subtask),
             _ => Err(unexpected("CreateSubtask")),
         }

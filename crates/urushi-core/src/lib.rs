@@ -40,7 +40,7 @@ pub use ids::{
     AttachmentId, BoardId, ColumnId, PaneId, ProjectId, RepoId, TabId, TaskId, ThreadId,
 };
 pub use layout::{Axis, Direction, Layout, LayoutError};
-pub use naming::{BranchName, BranchPrefix, NamingError, Slug};
+pub use naming::{BranchName, BranchPrefix, IssueKey, NamingError, Slug, issue_branch_stem};
 pub use ownership::{OwnershipFacts, owned_branches};
 pub use project::Project;
 pub use repo::Repo;

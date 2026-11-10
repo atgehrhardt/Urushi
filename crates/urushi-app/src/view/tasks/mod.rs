@@ -8,14 +8,15 @@ use std::collections::HashMap;
 use urushi_ui::widgets::{ButtonKind, button, modal_with_header};
 use urushi_ui::{Align, Color, Font, Insets, Key, Length, Node, Role, TextField, Theme, key};
 
-use super::dialogs::{area, cancel, field, hint, label};
+use super::dialogs::{area, field, hint, label};
 use urushi_client::{FoundTask, TaskRef};
 
 use crate::board::TaskLabels;
 use crate::issue::IssueEditor;
 use crate::msg::{BoardMsg, Msg};
-use crate::state::{AppState, EditorNav, Field, SubtaskEditor, TaskLink};
+use crate::state::{AppState, EditorNav, Field, SubtaskEditor};
 
+mod actions;
 mod attachments;
 mod header;
 mod issue;
@@ -62,6 +63,8 @@ pub(super) fn editor(
     let issue = current.and_then(TaskRef::issue);
     // A Jira issue in full gets more room, and scrolls.
     let full = jira.details.is_some() || jira.loading;
+    // A new subtask's editor (ADR 0025): it has no subtasks or column of its own.
+    let draft = nav.draft_of_previous.is_some();
     let mut text = Node::column()
         .width(Length::Fill(1.0))
         .gap(8.0)
@@ -75,7 +78,7 @@ pub(super) fn editor(
         ))
         .child(label(theme, "Notes"));
     text = text.children(notes_input(state, theme, notes, issue));
-    if state.daemon_supports_subtasks() {
+    if state.daemon_supports_subtasks() && !draft {
         let offset = scroll.get(&subtasks_scroll_key()).copied().unwrap_or(0.0);
         text = text.children(subtasks::checklist(state, theme, current, subtasks, offset));
     }
@@ -86,11 +89,16 @@ pub(super) fn editor(
     let organize = organize(
         state,
         (theme, scroll),
-        (board, column, current),
+        (board, column, current, draft),
         labels,
         jira,
     );
-    let hint_text = if state.daemon_supports_subtasks() {
+    let hint_text = if draft {
+        format!(
+            "Back keeps this subtask in its task's list. Save ({}) saves the task with it.",
+            save_keys()
+        )
+    } else if state.daemon_supports_subtasks() {
         format!(
             "Enter adds a subtask, a tag or a notes line. Nothing is saved until Save ({}).",
             save_keys()
@@ -119,23 +127,28 @@ pub(super) fn editor(
             .align(Align::Start)
             .child(text.width(Length::Fill(1.4)))
             .child(organize.width(Length::Fill(1.0)));
+        let offset = scroll.get(&editor_scroll_key()).copied().unwrap_or(0.0);
         let mut body = Node::column()
             .width(Length::Fill(1.0))
             .gap(12.0)
             .child(columns)
-            .child(hint(theme, &hint_text));
-        if full {
-            let offset = scroll.get(&editor_scroll_key()).copied().unwrap_or(0.0);
-            body = body
-                .height(Length::Fixed(full_height(state)))
-                .scroll(editor_scroll_key(), offset);
-        }
+            .child(hint(theme, &hint_text))
+            .scroll(editor_scroll_key(), offset);
+        // A Jira issue in full keeps one height while it loads; any other task's
+        // editor is as tall as it needs, up to what keeps its buttons on screen.
+        body = if full {
+            body.height(Length::Fixed(full_height(state)))
+        } else {
+            body.max_height(full_height(state))
+        };
         (body, if full { FULL } else { WIDE })
     };
     let actions = if nav.confirm_discard {
-        discard_question(theme)
+        actions::discard_question(theme)
+    } else if draft {
+        actions::draft_actions(theme)
     } else {
-        editor_actions(state, theme, found.as_ref(), task.is_some())
+        actions::editor_actions(state, theme, found.as_ref(), task.is_some())
     };
     let (header, name) = header::header(state, theme, found.as_ref(), nav);
     modal_with_header(
@@ -191,7 +204,7 @@ fn notes_input(
 fn organize(
     state: &AppState,
     (theme, scroll): (&Theme, &HashMap<Key, f32>),
-    (board, column, current): (&str, &str, Option<TaskRef<'_>>),
+    (board, column, current, draft): (&str, &str, Option<TaskRef<'_>>, bool),
     labels: &TaskLabels,
     jira: &IssueEditor,
 ) -> Node<Msg> {
@@ -205,13 +218,18 @@ fn organize(
     } else if let (Some(i), Some(b), Some(c)) = (issue, on_board, current) {
         organize = organize.children(jira::issue_section(theme, b, i, c.kind()));
     } else if state.daemon_supports_jira() && current.is_none_or(TaskRef::is_card) {
-        organize = organize.children(jira::kind_picker(theme, labels.kind, jira_board, width));
+        // A Jira board's subtasks are all Sub-task issues: no kind to pick.
+        if !(draft && jira_board) {
+            organize = organize.children(jira::kind_picker(theme, labels.kind, jira_board, width));
+        }
         if jira_board && current.is_none() {
             organize = organize.children(issue::create_section(state, theme, jira, width, scroll));
         }
     }
     organize = match current.filter(|c| !c.is_card()) {
         Some(sub) => organize.children(nested_status(theme, sub, issue.is_none())),
+        // A new subtask goes under its task, not in a column.
+        None if draft => organize,
         None => organize.child(label(theme, "Column")).child(column_chips(
             state,
             theme,
@@ -354,73 +372,4 @@ fn side_width(state: &AppState) -> f32 {
     } else {
         (WIDE - 40.0 - 24.0) / 2.4
     }
-}
-
-/// Closing with unsaved edits: discard them, or keep editing.
-fn discard_question(theme: &Theme) -> Vec<Node<Msg>> {
-    vec![
-        Node::text(
-            "Discard unsaved changes?",
-            Font::UiMedium,
-            theme.font_size,
-            theme.text,
-        ),
-        Node::spacer(),
-        button(
-            theme,
-            "Keep editing",
-            ButtonKind::Secondary,
-            Msg::Board(BoardMsg::KeepEditing),
-        ),
-        button(
-            theme,
-            "Discard",
-            ButtonKind::Danger,
-            Msg::Board(BoardMsg::DiscardEdits),
-        ),
-    ]
-}
-
-/// Delete and Start thread (for an existing task), Cancel, and Save or Add task.
-fn editor_actions(
-    state: &AppState,
-    theme: &Theme,
-    found: Option<&FoundTask<'_>>,
-    editing: bool,
-) -> Vec<Node<Msg>> {
-    let mut actions = Vec::new();
-    if let Some(found) = found {
-        // Jira issues are deleted in Jira; the editor's Jira section opens it there.
-        if found.task().issue().is_none() {
-            let what = if found.task().is_card() {
-                "Delete task"
-            } else {
-                "Delete subtask"
-            };
-            actions.push(button(theme, what, ButtonKind::Danger, Msg::DeleteTask));
-        }
-        actions.push(Node::spacer());
-        if state.daemon_supports_subtasks() {
-            let link = TaskLink::of(found);
-            let label = if state.linked_thread(&link).is_some() {
-                "Go to thread"
-            } else {
-                "Start thread"
-            };
-            actions.push(button(
-                theme,
-                label,
-                ButtonKind::Secondary,
-                Msg::StartThread(link),
-            ));
-        }
-    }
-    actions.push(cancel(theme));
-    actions.push(button(
-        theme,
-        if editing { "Save" } else { "Add task" },
-        ButtonKind::Primary,
-        Msg::Submit,
-    ));
-    actions
 }

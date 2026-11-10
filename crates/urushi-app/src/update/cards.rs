@@ -39,34 +39,17 @@ impl AppState {
                 });
                 fx.push(request(body, Followup::None));
             }
-            BoardMsg::ColorColumn { column, color } => {
-                let body = Body::UpdateColumn(v1::UpdateColumnRequest {
-                    column_id: column,
-                    name: None,
-                    color: Some(color),
-                });
-                fx.push(request(body, Followup::None));
-            }
-            BoardMsg::MoveColumn { column, index } => {
-                let body = Body::MoveColumn(v1::MoveColumnRequest {
-                    column_id: column,
-                    index,
-                });
-                fx.push(request(body, Followup::None));
-            }
-            BoardMsg::OpenDeleteColumn(column) => self.open_delete_column(column),
-            BoardMsg::ConfirmDeleteColumn => {
-                if let Some(Dialog::DeleteColumn { column, .. }) = &self.dialog {
-                    let body = Body::DeleteColumn(v1::DeleteColumnRequest {
-                        column_id: column.clone(),
-                    });
-                    fx.push(request(body, Followup::CloseDialog));
-                }
-            }
-            BoardMsg::OpenTask(task) => self.edit_task(&task, fx),
-            BoardMsg::EditorBack => self.editor_back(),
-            BoardMsg::KeepEditing => self.keep_editing(),
-            BoardMsg::DiscardEdits => self.discard_editor(),
+            msg @ (BoardMsg::ColorColumn { .. }
+            | BoardMsg::MoveColumn { .. }
+            | BoardMsg::OpenDeleteColumn(_)
+            | BoardMsg::ConfirmDeleteColumn) => self.column_action(msg, fx),
+            msg @ (BoardMsg::OpenTask(_)
+            | BoardMsg::EditorBack
+            | BoardMsg::NewSubtask
+            | BoardMsg::OpenSubtaskDraft(_)
+            | BoardMsg::RemoveSubtaskDraft
+            | BoardMsg::KeepEditing
+            | BoardMsg::DiscardEdits) => self.editor_nav(msg, fx),
             BoardMsg::MakeStandalone(task) => {
                 if let Some(found) = self.workspace.find_task(&task) {
                     let body = Body::MoveTask(v1::MoveTaskRequest {
@@ -117,6 +100,37 @@ impl AppState {
 }
 
 impl AppState {
+    /// A column's color, place or removal (from its menu).
+    fn column_action(&mut self, msg: BoardMsg, fx: &mut Vec<Effect>) {
+        match msg {
+            BoardMsg::ColorColumn { column, color } => {
+                let body = Body::UpdateColumn(v1::UpdateColumnRequest {
+                    column_id: column,
+                    name: None,
+                    color: Some(color),
+                });
+                fx.push(request(body, Followup::None));
+            }
+            BoardMsg::MoveColumn { column, index } => {
+                let body = Body::MoveColumn(v1::MoveColumnRequest {
+                    column_id: column,
+                    index,
+                });
+                fx.push(request(body, Followup::None));
+            }
+            BoardMsg::OpenDeleteColumn(column) => self.open_delete_column(column),
+            BoardMsg::ConfirmDeleteColumn => {
+                if let Some(Dialog::DeleteColumn { column, .. }) = &self.dialog {
+                    let body = Body::DeleteColumn(v1::DeleteColumnRequest {
+                        column_id: column.clone(),
+                    });
+                    fx.push(request(body, Followup::CloseDialog));
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Asks before removing a column, saying where its tasks go.
     fn open_delete_column(&mut self, column: String) {
         let Some((board, c)) = self.workspace.column(&column) else {

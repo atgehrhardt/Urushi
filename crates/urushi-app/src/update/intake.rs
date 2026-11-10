@@ -1,8 +1,9 @@
 //! Bringing things in: adding projects (folder picker, drops), files dropped on a
-//! terminal, and the new-thread form's branch name that follows its title.
+//! terminal, and the new-thread form's branch name that follows its title (and leads
+//! with a Jira issue's key).
 
 use urushi_client::v1::{self, request::Body};
-use urushi_core::Slug;
+use urushi_core::{IssueKey, Slug, issue_branch_stem};
 
 use super::{input, request};
 use crate::msg::{Effect, Followup};
@@ -68,6 +69,7 @@ impl AppState {
             .as_ref()
             .map_or_else(|| "urushi/".to_owned(), |s| s.branch_prefix.clone());
         let focus = self.focus;
+        let key = self.new_thread_issue_key();
         let Some(Dialog::NewThread {
             title,
             branch,
@@ -80,20 +82,36 @@ impl AppState {
         match focus {
             Some(Field::ThreadBranch) => *branch_edited = !branch.text().is_empty(),
             Some(Field::ThreadTitle) if !*branch_edited => {
-                branch.set(suggested_branch(&prefix, title.text()));
+                branch.set(suggested_branch(&prefix, title.text(), key.as_ref()));
             }
             _ => {}
         }
     }
 }
 
+impl AppState {
+    /// The Jira issue key of the task (or subtask) the new-thread form is for, if any.
+    fn new_thread_issue_key(&self) -> Option<IssueKey> {
+        let Some(Dialog::NewThread {
+            task: Some(link), ..
+        }) = &self.dialog
+        else {
+            return None;
+        };
+        let found = self.workspace.find_task(link.target())?;
+        IssueKey::new(&found.task().issue()?.key)
+    }
+}
+
 /// The branch suggested for a title: the prefix, then the title in lower case with
-/// spaces and punctuation as `-`. Empty while the title is.
-pub(crate) fn suggested_branch(prefix: &str, title: &str) -> String {
-    if title.trim().is_empty() {
-        String::new()
-    } else {
-        format!("{prefix}{}", Slug::from_title(title))
+/// spaces and punctuation as `-`, led by the issue's key for a Jira issue
+/// (`urushi/UR-3-invoice-pdfs`, so Jira links the branch and its pull requests to the
+/// issue; ADR 0026). Empty while the title is.
+pub(crate) fn suggested_branch(prefix: &str, title: &str, key: Option<&IssueKey>) -> String {
+    match key {
+        _ if title.trim().is_empty() => String::new(),
+        Some(key) => format!("{prefix}{}", issue_branch_stem(key, title)),
+        None => format!("{prefix}{}", Slug::from_title(title)),
     }
 }
 
@@ -117,9 +135,18 @@ mod tests {
 
     #[test]
     fn suggested_branch_is_lowercase_with_dashes() {
-        assert_eq!(suggested_branch("urushi/", "Primary"), "urushi/primary");
-        assert_eq!(suggested_branch("", "Fix Login Bug"), "fix-login-bug");
-        assert_eq!(suggested_branch("urushi/", "  "), "");
+        assert_eq!(
+            suggested_branch("urushi/", "Primary", None),
+            "urushi/primary"
+        );
+        assert_eq!(suggested_branch("", "Fix Login Bug", None), "fix-login-bug");
+        assert_eq!(suggested_branch("urushi/", "  ", None), "");
+        let key = IssueKey::new("UR-3");
+        assert_eq!(
+            suggested_branch("urushi/", "Invoice PDFs", key.as_ref()),
+            "urushi/UR-3-invoice-pdfs"
+        );
+        assert_eq!(suggested_branch("urushi/", "", key.as_ref()), "");
     }
 
     #[test]

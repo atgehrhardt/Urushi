@@ -431,6 +431,8 @@ impl AppState {
     }
 
     /// A new Jira task's fields arrived (for the kind still chosen).
+    /// (A new subtask's editor asks for a Sub-task's; if it was left before the answer,
+    /// the task's editor now on screen, of another kind, mustn't take them.)
     fn create_fields_answered(&mut self, kind: i32, details: v1::JiraIssueDetails) {
         if let Some(Dialog::Task {
             task: None,
@@ -438,7 +440,7 @@ impl AppState {
             issue,
             ..
         }) = &mut self.dialog
-            && (labels.kind == kind || labels.kind == 0)
+            && (labels.kind == kind || labels.kind == 0 && kind == i32::from(v1::TaskKind::Task))
         {
             issue.details = Some(details);
             issue.loading = false;

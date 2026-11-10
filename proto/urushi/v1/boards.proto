@@ -261,6 +261,23 @@ message CreateTaskRequest {
   // On a Jira board, values for the new issue's other fields (from
   // GetJiraCreateFields; required ones must be given). Since 1.13.
   repeated JiraFieldEdit jira_fields = 9;
+  // Subtasks to create with it with their details, in order, after those named in
+  // `subtasks`. Since 1.14.
+  repeated NewSubtask subtask_details = 10;
+}
+
+// A subtask to create, with what its editor sets (see CreateSubtaskRequest). Since
+// 1.14.
+message NewSubtask {
+  string title = 1;
+  string notes = 2;
+  LabelColor color = 3;
+  repeated string tags = 4;
+  // Not on a Jira board, where every subtask is a Sub-task issue.
+  TaskKind kind = 5;
+  // On a Jira board, values for the new sub-task's other fields (from
+  // GetJiraCreateFields with TASK_KIND_SUBTASK).
+  repeated JiraFieldEdit jira_fields = 6;
 }
 
 // Since 1.13 (used with jira_issue.proto):
@@ -324,6 +341,16 @@ message DeleteTaskRequest {
 message CreateSubtaskRequest {
   string task_id = 1;
   string title = 2;
+  // Its details, as on a new task. Since 1.14; older daemons create it with the
+  // title only.
+  string notes = 3;
+  LabelColor color = 4;
+  repeated string tags = 5;
+  // Not on a Jira board, where every subtask is a Sub-task issue.
+  TaskKind kind = 6;
+  // On a Jira board, values for the new sub-task's other fields (from
+  // GetJiraCreateFields with TASK_KIND_SUBTASK).
+  repeated JiraFieldEdit jira_fields = 7;
 }
 
 // Renames and/or checks off a subtask. Unset fields are kept. Since 1.6.

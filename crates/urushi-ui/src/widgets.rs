@@ -311,6 +311,8 @@ pub fn modal_with_header<M: Clone>(
             offset: 12.0,
         })
         .key(crate::node::key(&["modal", label]))
+        // A click on the dialog's own space mustn't reach the backdrop, which closes it.
+        .opaque()
         .role(Role::Dialog, label)
         .child(header)
         .child(body)

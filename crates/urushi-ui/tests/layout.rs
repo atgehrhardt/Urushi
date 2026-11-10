@@ -154,6 +154,16 @@ fn modal_covers_the_app_and_dismisses_on_backdrop() {
         .find(|h| h.on_click == Some(Msg::B))
         .unwrap();
     assert_eq!(frame.click(delete.rect.center()), Some(Msg::B));
+    // The dialog's own space (between its text and buttons) doesn't close it.
+    let card = frame
+        .access
+        .iter()
+        .find(|a| a.label == "Delete thread")
+        .unwrap()
+        .rect;
+    let blank = Point::new(card.x + 4.0, card.y + card.height - 4.0);
+    assert_eq!(frame.click(blank), None, "a click inside the card");
+    assert_eq!(frame.drop_target(blank), None);
     let dump = frame.scene.dump();
     assert!(dump.contains("\"Delete thread\""));
     assert!(dump.contains(&theme.danger.to_hex()));
@@ -214,6 +224,40 @@ fn scroll_regions_clamp_and_offset_children() {
     assert_eq!(region.offset, 150.0, "clamped to content - viewport");
     assert_eq!(quads(&frame.scene)[0].y, -150.0);
     assert!(frame.scene.dump().starts_with("clip 0,0 100x50"));
+}
+
+#[test]
+fn a_max_height_caps_a_fit_box_which_then_scrolls() {
+    let mut text = TextSystem::bundled_only();
+    let k = key(&["capped"]);
+    let rows = |n: usize| (0..n).map(|_| Node::new().height(Length::Fixed(20.0)));
+    let capped = |n: usize| -> Node<Msg> {
+        Node::column().child(
+            Node::column()
+                .width(Length::Fixed(100.0))
+                .max_height(50.0)
+                .scroll(k, 0.0)
+                .children(rows(n)),
+        )
+    };
+    // Short content keeps its own height.
+    let frame = build(
+        &capped(2),
+        Rect::new(0.0, 0.0, 100.0, 400.0),
+        &mut text,
+        None,
+    );
+    assert_eq!(frame.scroll_regions[0].rect.height, 40.0);
+    // Long content stops at the cap and scrolls.
+    let frame = build(
+        &capped(10),
+        Rect::new(0.0, 0.0, 100.0, 400.0),
+        &mut text,
+        None,
+    );
+    let region = frame.scroll_regions[0];
+    assert_eq!(region.rect.height, 50.0);
+    assert_eq!(region.content_height, 200.0);
 }
 
 #[test]

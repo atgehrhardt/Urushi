@@ -2,7 +2,7 @@
 
 - **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits, issues in full)
 - **Owners (crates):** `urushi-core` (`board/{jira,sync,kind}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `time.rs`, `jira/{api,cloud,cloud/details,parse,parse/details,details,adf,credentials}.rs`, `service/{jira,jira_write,jira_query,jira_details,jira_edit}.rs`, `server/{jira,jira_issue}.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `jira_issue.proto`, `convert/boards/jira/`), `urushi-client` (`jira.rs`, `jira_issue.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`filter.rs`, `issue.rs`, `update/{jira,filter,issue}.rs`, `msg/{jira,filter,issue}.rs`, `view/jira.rs`, `view/board/{jira,filter}.rs`, `view/tasks/{jira,header}.rs`, `view/tasks/issue/`, `view/menu/{jira,filter}.rs`, `snapshot/{jira,jira_issue}.rs`), `urushi-cli` (`urushi jira`, `urushi board sync`)
-- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 Any Jira Cloud board can be imported into the Tasks panel. It keeps Jira's columns and stays
@@ -58,12 +58,23 @@ moves at once and goes back if Jira refuses.
   a done status, unchecking to a to-do one. **+** on a column creates an issue of the type
   picked in the editor (task, story or bug), with its subtasks, moved to that column, and
   only on **Save**: Enter in the title moves on to the notes, and subtasks added in the
-  editor are created in Jira on Save too.
+  editor are created in Jira on Save too, each a Sub-task issue with what its own editor
+  set (description, labels, the Sub-task type's fields, required ones asked for first;
+  ADR 0025).
 - **Where an issue is:** a subtask opened from its parent's editor is headed like a Jira
   issue: **‹** back to the parent (edits kept), the epic, `PARENT-1 /`, then its own kind
   and key. The parent's subtask rows show each subtask's kind and key.
 - **Urushi's own:** a card's color and the thread started for it stay here and survive every
   sync; threads start from Jira cards like any other.
+- **Linked from code** (ADR 0026): a thread started from an issue (card or subtask) gets
+  a branch led by that issue's key, as Jira writes it: the new-thread form suggests
+  `urushi/UR-3-invoice-pdfs` (`update/intake.rs::suggested_branch`), and a thread
+  created without a branch gets `urushi/UR-3-invoice-pdfs-<short id>`
+  (`BranchName::for_issue_thread`, `State::task_issue_key`). The agent is asked to put the
+  key in commit messages and pull request titles too. Jira's own GitHub, GitLab or
+  Bitbucket integration then lists the branch, its commits and its pull requests on the
+  issue; Urushi itself doesn't talk to the code host. Any number of threads, branches
+  and pull requests can name one issue.
 - **Left to Jira:** deleting issues, moving them between projects, changing columns and
   renaming the board. The editor has no Delete; the card menu offers **Open in Jira**
   instead. A description too long to show whole is read-only, and fields Urushi has no
@@ -106,7 +117,8 @@ moves at once and goes back if Jira refuses.
   clients only if the board changed. Failures are written to `JiraBoard.sync.error` and
   back off (`backoff`: `Retry-After` within 1 min–1 h for a 429). A per-board async lock
   keeps one sync or write at a time.
-- **Daemon, writing** (`service/jira_write.rs`): `update_task`, `move_task`,
+- **Daemon, writing** (`service/jira_write.rs`, and `service/jira_create.rs` for new
+  issues and sub-tasks with their details): `update_task`, `move_task`,
   `create_task`, `create_subtask` and `delete_task` in `service/boards.rs` branch to it for
   tasks on Jira boards: Jira first (`edit` with label add/remove operations, `transition`,
   `create` with the project's issue type for the kind, `rank`), then `issue` read back and
@@ -165,7 +177,11 @@ moves at once and goes back if Jira refuses.
   (`board/sync/tests.rs::changes_jira_owns_are_refused_and_change_nothing`).
 
 ## Tests
-- Core: `board/sync/tests.rs`, `board/kind.rs`, `tests/jira_sync_props.rs`.
+- Core: `board/sync/tests.rs`, `board/kind.rs`, `tests/jira_sync_props.rs`,
+  `naming.rs` (`issue_keys_are_jiras_shape`,
+  `issue_branches_start_with_the_key_as_jira_writes_it`), `board/prompt.rs`.
+- Daemon: `tests/jira_boards.rs::threads_for_issues_get_branches_named_after_them`.
+- App: `update/tests/jira.rs::a_thread_for_an_issue_suggests_a_branch_led_by_its_key`.
 - Proto: `convert/boards/jira/tests.rs` (round trips, wire messages, issue addresses).
 - Daemon: `http/tests.rs` (config quoting, uploads and redirects, a fake and the real
   curl), `jira/cloud/tests.rs` (requests, status mapping, paging, opening an issue,
@@ -185,6 +201,9 @@ moves at once and goes back if Jira refuses.
   subtask delete on Jira boards, the Type picker).
 
 ## Limitations and follow-ups
+- Linking code needs the Jira site's GitHub (GitLab, Bitbucket) integration installed;
+  Urushi doesn't check for it. A thread started in an existing thread (ADR 0018) keeps
+  that thread's branch, so it links only through commits and pull request titles.
 - Jira Cloud with an API token only: no Data Center/Server (personal access tokens, API
   v2) and no OAuth sign-in.
 - Polling, not webhooks: changes take up to 3 s on the board on screen, 15 s on others,

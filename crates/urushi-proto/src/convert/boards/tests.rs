@@ -155,6 +155,44 @@ fn unlinked_tasks_have_empty_thread_ids() {
     assert!(task.subtasks[0].done);
 }
 
+/// Subtasks created with their details (1.14) survive encode → decode.
+#[test]
+fn subtask_details_round_trip_on_the_wire() {
+    let jira_fields = vec![v1::JiraFieldEdit {
+        field_id: "duedate".into(),
+        value: Some(v1::JiraFieldValue {
+            text: "2026-12-01".into(),
+            options: vec![],
+        }),
+    }];
+    requests_round_trip([
+        Body::CreateTask(v1::CreateTaskRequest {
+            board_id: "1".into(),
+            column_id: "2".into(),
+            title: "t".into(),
+            subtasks: vec!["s1".into()],
+            subtask_details: vec![v1::NewSubtask {
+                title: "s3".into(),
+                notes: "how".into(),
+                color: v1::LabelColor::Red.into(),
+                tags: vec!["api".into()],
+                kind: v1::TaskKind::Bug.into(),
+                jira_fields: jira_fields.clone(),
+            }],
+            ..Default::default()
+        }),
+        Body::CreateSubtask(v1::CreateSubtaskRequest {
+            task_id: "3".into(),
+            title: "s".into(),
+            notes: "n".into(),
+            color: v1::LabelColor::Blue.into(),
+            tags: vec!["ui".into()],
+            kind: v1::TaskKind::Story.into(),
+            jira_fields,
+        }),
+    ]);
+}
+
 /// Every 1.5, 1.6 and 1.8 board message survives encode → decode.
 #[test]
 fn messages_round_trip_on_the_wire() {
@@ -186,10 +224,12 @@ fn messages_round_trip_on_the_wire() {
                     }],
                 }),
             }],
+            subtask_details: vec![],
         }),
         Body::CreateSubtask(v1::CreateSubtaskRequest {
             task_id: "3".into(),
             title: "s".into(),
+            ..Default::default()
         }),
         Body::UpdateSubtask(v1::UpdateSubtaskRequest {
             subtask_id: "4".into(),

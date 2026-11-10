@@ -397,5 +397,6 @@ mod pointer;
 mod project_order;
 mod setup;
 mod sidebar;
+mod subtask_drafts;
 mod task_in_thread;
 mod tasks;

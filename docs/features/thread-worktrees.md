@@ -5,7 +5,7 @@
 - **Related ADRs:** [0004](../adr/0004-git-cli-worktrees.md)
 
 ## What it does
-Every thread **always** gets its own git worktree on a new branch: the name the user gave (`CreateThread.branch`), or `<prefix><slug>-<short id>`. The branch must not exist yet. Deleting a thread removes the worktree and every branch the thread owns, locally and (by default, configurable) on remotes. It always shows a warning listing exactly what will be destroyed.
+Every thread **always** gets its own git worktree on a new branch: the name the user gave (`CreateThread.branch`), or `<prefix><slug>-<short id>` (for a thread started from a Jira issue, `<prefix><KEY>-<slug>-<short id>`, e.g. `urushi/UR-3-invoice-pdfs-1a2b3c4d`; ADR 0026). The branch must not exist yet. Deleting a thread removes the worktree and every branch the thread owns, locally and (by default, configurable) on remotes. It always shows a warning listing exactly what will be destroyed.
 
 ## How it works
 - **Creation** is all-or-nothing:

@@ -23,6 +23,7 @@ pub(super) fn header(
 ) -> (Node<Msg>, String) {
     let current = found.map(FoundTask::task);
     let label = match current {
+        None if nav.draft_of_previous.is_some() => "New subtask".to_owned(),
         None => "New task".to_owned(),
         Some(c) if c.is_card() => "Edit task".to_owned(),
         Some(_) => "Edit subtask".to_owned(),

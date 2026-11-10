@@ -7,6 +7,7 @@ use urushi_core::thread::NewThread;
 use urushi_core::{
     BranchName, PaneId, ProjectId, RepoId, Slug, Tab, TabId, TaskId, Thread, ThreadId,
 };
+use urushi_core::{BranchPrefix, IssueKey};
 use urushi_mux::TermSize;
 
 use super::task_agent::TaskAgent;
@@ -25,7 +26,8 @@ pub struct ThreadRequest {
     pub title: String,
     /// Ref to branch from; `None` uses the project's default base, or its current branch.
     pub base_ref: Option<String>,
-    /// Branch to create; `None` generates `<prefix><slug>-<short id>`.
+    /// Branch to create; `None` generates `<prefix><slug>-<short id>`, or for a Jira
+    /// issue `<prefix><KEY>-<slug>-<short id>`.
     pub branch: Option<String>,
     /// Open a first tab with a shell. Clients that let the user pick what to run first
     /// turn this off.
@@ -63,14 +65,12 @@ impl Service {
         } = request;
         let branch = parse_branch(branch)?;
         let title = thread_title(&title);
-        let (project, settings, worktree_root) = self.read(|s| {
+        let (project, settings, worktree_root, issue_key) = self.read(|s| {
             if let Some(id) = project_id {
                 s.project(id)?;
             }
             // Refuse up front, before making a worktree, if the task isn't there.
-            if let Some(link) = task {
-                s.task_link_target(link)?;
-            }
+            let issue_key = task.map(|l| s.task_issue_key(l)).transpose()?.flatten();
             let project = s.repo(repo_id)?.clone();
             let settings = s.effective_settings(repo_id);
             let root = s
@@ -78,7 +78,7 @@ impl Service {
                 .worktree_root
                 .clone()
                 .unwrap_or_else(|| self.home().join("worktrees"));
-            Ok((project, settings, root))
+            Ok((project, settings, root, issue_key))
         })?;
         // Resolve the agent and the prompt before making a worktree, so a refusal
         // leaves nothing behind.
@@ -95,6 +95,7 @@ impl Service {
             .filter(|b| !b.trim().is_empty())
             .or(project.default_base.clone());
         let prefix = settings.branch_prefix.clone();
+        let branch = issue_branch(branch, issue_key.as_ref(), &prefix, &title, id)?;
         let created_at = now();
         let (mut thread, preexisting) = blocking(move || {
             let (base, base_commit) = resolve_base(&*git, &repo, base_ref)?;
@@ -273,6 +274,23 @@ fn worktree_dir(
         repo.id.short()
     ))
     .join(format!("{}-{}", Slug::from_title(title), id.short()))
+}
+
+/// With no branch asked for, a thread for a Jira issue gets one named after the issue,
+/// which Jira's code integrations link to it (ADR 0026); otherwise `branch` as given.
+fn issue_branch(
+    branch: Option<BranchName>,
+    key: Option<&IssueKey>,
+    prefix: &BranchPrefix,
+    title: &str,
+    id: ThreadId,
+) -> ServiceResult<Option<BranchName>> {
+    match (branch, key) {
+        (None, Some(key)) => BranchName::for_issue_thread(prefix, key, title, id)
+            .map(Some)
+            .map_err(|e| ServiceError::Invalid(e.to_string())),
+        (branch, _) => Ok(branch),
+    }
 }
 
 /// Validates a branch name the user typed. Blank means "generate one".

@@ -3,8 +3,9 @@
 //! a task and its subtasks.
 //!
 //! Nothing is saved before **Save**: Enter in the title moves on to the notes, and
-//! subtasks typed in the editor are drafts, created with a new task
-//! (`CreateTask.subtasks`) or one by one for an existing one. Checking an existing
+//! subtasks added in the editor are drafts (written in an editor of their own in
+//! `subtask_drafts.rs`), created with a new task (`CreateTask.subtask_details`) or one
+//! by one for an existing one. Checking an existing
 //! subtask off and deleting one are immediate. Moving between a task and its subtasks
 //! keeps every editor's unsaved edits (`task_nav.rs`). Threads are in `task_threads.rs`.
 
@@ -14,6 +15,7 @@ use urushi_ui::TextField;
 
 use super::request;
 use crate::board::TaskLabels;
+use crate::drafts::SubtaskDraft;
 use crate::msg::{Effect, Followup, Msg};
 use crate::state::{AppState, Dialog, Field};
 
@@ -124,7 +126,11 @@ impl AppState {
             _ => {}
         }
         let Some(Dialog::Task {
-            subtasks, labels, ..
+            board,
+            column,
+            subtasks,
+            labels,
+            ..
         }) = &mut self.dialog
         else {
             return false;
@@ -137,17 +143,32 @@ impl AppState {
                 true
             }
             Some(Field::NewSubtask) if !subtasks.new.text().trim().is_empty() => {
-                let title = subtasks.new.text().trim().to_owned();
+                let draft = SubtaskDraft::titled(board, column, subtasks.new.text().trim());
                 subtasks.new.clear();
-                subtasks.drafts.push(title);
+                subtasks.drafts.push(draft);
                 true
             }
             _ => false,
         }
     }
 
-    /// Enter or "Save" in the task editor. A blank title does nothing.
+    /// Enter or "Save" in the task editor. A blank title does nothing. In a new
+    /// subtask's editor, the subtask goes into its task's editor first, and Save saves
+    /// that one (and those before it).
     pub(super) fn submit_task(&mut self, fx: &mut Vec<Effect>) {
+        if let Some(Dialog::Task { title, nav, .. }) = &self.dialog
+            && nav.draft_of_previous.is_some()
+        {
+            if title.text().trim().is_empty() {
+                return;
+            }
+            while self.fold_draft() {}
+        }
+        if let Some(problem) = self.drafts_problem() {
+            self.error = Some(problem);
+            return;
+        }
+        let details = self.daemon_supports_subtask_details();
         let Some(Dialog::Task {
             board,
             column,
@@ -174,12 +195,25 @@ impl AppState {
             }
             // A subtask typed but not yet added goes with the task too.
             let typed = Some(subtasks.new.text().trim().to_owned()).filter(|t| !t.is_empty());
+            // Since 1.14 with their details; older daemons take titles.
+            let (titles, subtask_details) = if details {
+                let typed = typed.map(|title| v1::NewSubtask {
+                    title,
+                    ..Default::default()
+                });
+                let all = subtasks.drafts.iter().map(SubtaskDraft::request);
+                (Vec::new(), all.chain(typed).collect())
+            } else {
+                let all = subtasks.drafts.iter().map(|d| d.title().to_owned());
+                (all.chain(typed).collect(), Vec::new())
+            };
             let body = Body::CreateTask(v1::CreateTaskRequest {
                 board_id: board.clone(),
                 column_id: column.clone(),
                 title: title.text().trim().to_owned(),
                 notes: notes.text().to_owned(),
-                subtasks: subtasks.drafts.iter().cloned().chain(typed).collect(),
+                subtasks: titles,
+                subtask_details,
                 color: labels.color,
                 tags: labels.with_typed(),
                 kind: labels.kind,
@@ -228,11 +262,27 @@ impl AppState {
         };
         let current = found.task();
         let mut out = Vec::new();
-        let typed = Some(subtasks.new.text().trim().to_owned()).filter(|t| !t.is_empty());
-        for title in subtasks.drafts.iter().cloned().chain(typed) {
+        let typed = Some(subtasks.new.text().trim().to_owned())
+            .filter(|t| !t.is_empty())
+            .map(|title| v1::NewSubtask {
+                title,
+                ..Default::default()
+            });
+        for new in subtasks
+            .drafts
+            .iter()
+            .map(SubtaskDraft::request)
+            .chain(typed)
+        {
+            // Daemons before 1.14 read the title and ignore the rest.
             let body = Body::CreateSubtask(v1::CreateSubtaskRequest {
                 task_id: task.clone(),
-                title,
+                title: new.title,
+                notes: new.notes,
+                color: new.color,
+                tags: new.tags,
+                kind: new.kind,
+                jira_fields: new.jira_fields,
             });
             out.push(request(body, Followup::None));
         }

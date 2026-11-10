@@ -6,7 +6,7 @@ use urushi_proto::convert;
 use urushi_proto::v1::{self, request::Body, response::Outcome};
 
 use super::handlers::{invalid, ok, parse};
-use crate::service::{AttachmentData, NewTask, Service, ServiceResult};
+use crate::service::{AttachmentData, NewSubtask, NewTask, Service, ServiceResult};
 
 /// Handles the board requests; anything else is refused as a routing bug.
 pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcome> {
@@ -22,30 +22,8 @@ pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcom
             service.delete_board(parse(&r.board_id, "board_id")?)?;
             ok()
         }
-        Body::CreateTask(r) => {
-            let task = service
-                .create_task(
-                    parse(&r.board_id, "board_id")?,
-                    parse(&r.column_id, "column_id")?,
-                    &NewTask {
-                        title: &r.title,
-                        notes: &r.notes,
-                        color: convert::color_from_proto(r.color),
-                        tags: &r.tags,
-                        subtasks: &r.subtasks,
-                        kind: convert::kind_from_proto(r.kind),
-                        jira_fields: &super::jira_issue::edits_from_proto(&r.jira_fields),
-                    },
-                )
-                .await?;
-            Outcome::Task(convert::task_to_proto(&task))
-        }
-        Body::CreateSubtask(r) => {
-            let subtask = service
-                .create_subtask(parse(&r.task_id, "task_id")?, &r.title)
-                .await?;
-            Outcome::Subtask(convert::subtask_to_proto(&subtask))
-        }
+        Body::CreateTask(r) => create_task(service, r).await?,
+        Body::CreateSubtask(r) => create_subtask(service, r).await?,
         // Since 1.8 a subtask is a task; these stay for 1.6 clients.
         Body::UpdateSubtask(r) => {
             let patch = urushi_core::TaskPatch {
@@ -178,4 +156,58 @@ pub(super) async fn route_attachments(service: &Service, body: Body) -> ServiceR
         }
         _ => invalid("not an attachment request"),
     })
+}
+
+/// A subtask to create, from the wire.
+fn new_subtask(r: &v1::NewSubtask) -> NewSubtask {
+    NewSubtask {
+        title: r.title.clone(),
+        notes: r.notes.clone(),
+        color: convert::color_from_proto(r.color),
+        tags: r.tags.clone(),
+        kind: convert::kind_from_proto(r.kind),
+        jira_fields: super::jira_issue::edits_from_proto(&r.jira_fields),
+    }
+}
+
+/// A new task, with its subtasks: titles only (1.6), then with their details (1.14).
+async fn create_task(service: &Service, r: v1::CreateTaskRequest) -> ServiceResult<Outcome> {
+    let subtasks: Vec<NewSubtask> = r
+        .subtasks
+        .iter()
+        .map(NewSubtask::titled)
+        .chain(r.subtask_details.iter().map(new_subtask))
+        .collect();
+    let task = service
+        .create_task(
+            parse(&r.board_id, "board_id")?,
+            parse(&r.column_id, "column_id")?,
+            &NewTask {
+                title: &r.title,
+                notes: &r.notes,
+                color: convert::color_from_proto(r.color),
+                tags: &r.tags,
+                subtasks: &subtasks,
+                kind: convert::kind_from_proto(r.kind),
+                jira_fields: &super::jira_issue::edits_from_proto(&r.jira_fields),
+            },
+        )
+        .await?;
+    Ok(Outcome::Task(convert::task_to_proto(&task)))
+}
+
+/// A new subtask under a task at any depth, with its details since 1.14.
+async fn create_subtask(service: &Service, r: v1::CreateSubtaskRequest) -> ServiceResult<Outcome> {
+    let new = new_subtask(&v1::NewSubtask {
+        title: r.title,
+        notes: r.notes,
+        color: r.color,
+        tags: r.tags,
+        kind: r.kind,
+        jira_fields: r.jira_fields,
+    });
+    let subtask = service
+        .create_subtask(parse(&r.task_id, "task_id")?, &new)
+        .await?;
+    Ok(Outcome::Subtask(convert::subtask_to_proto(&subtask)))
 }

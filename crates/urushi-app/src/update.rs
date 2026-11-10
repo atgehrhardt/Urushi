@@ -869,6 +869,7 @@ mod panes;
 mod pointer;
 mod setup;
 mod sidebar;
+mod subtask_drafts;
 mod task_nav;
 mod task_threads;
 mod tasks;

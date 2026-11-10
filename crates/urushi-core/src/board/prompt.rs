@@ -112,8 +112,15 @@ pub fn task_reference_prompt(board: &Board, id: TaskId) -> Result<String, BoardE
     } else {
         "its notes, subtasks and attachments."
     });
-    if task.issue.is_some() {
+    if let Some(issue) = &task.issue {
         out.push_str(" Ask me before changing anything in Jira.");
+        // Jira links branches, commits and pull requests by the key in them (ADR 0026).
+        let _ = write!(
+            out,
+            " Put {} in commit messages and pull request titles, so Jira links them to \
+             the issue.",
+            issue.key
+        );
     }
     Ok(capped(out))
 }
@@ -353,7 +360,8 @@ mod tests {
              Start by reviewing it in full: run `urushi board show UR-3` (and `urushi board \
              show UR-1` for the task it is part of). It prints the issue's fields, \
              description, subtasks, comments, links and files. Ask me before changing \
-             anything in Jira."
+             anything in Jira. Put UR-3 in commit messages and pull request titles, so \
+             Jira links them to the issue."
         );
     }
 }

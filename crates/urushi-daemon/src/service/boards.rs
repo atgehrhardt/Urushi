@@ -6,7 +6,7 @@
 //! written to Jira first (`jira_write.rs`).
 
 use urushi_core::{
-    Board, BoardError, BoardId, ColumnId, LabelColor, Task, TaskId, TaskKind, TaskPatch,
+    Board, BoardError, BoardId, ColumnId, IssueKey, LabelColor, Task, TaskId, TaskKind, TaskPatch,
 };
 
 use super::{Service, ServiceError, ServiceResult, State, new_uuid, now};
@@ -36,12 +36,53 @@ pub struct NewTask<'a> {
     pub color: Option<LabelColor>,
     /// Tags.
     pub tags: &'a [String],
-    /// Titles of subtasks to create with it.
-    pub subtasks: &'a [String],
+    /// Subtasks to create with it, in order.
+    pub subtasks: &'a [NewSubtask],
     /// Its kind, if said (on a Jira board, the type of issue to create).
     pub kind: Option<TaskKind>,
     /// On a Jira board, values for the new issue's other fields (by field id).
     pub jira_fields: &'a [(String, crate::jira::details::FieldValue)],
+}
+
+/// What a new subtask starts with: what its editor sets, as for a new task.
+#[derive(Clone, Debug, Default)]
+pub struct NewSubtask {
+    /// Title.
+    pub title: String,
+    /// Notes; may be empty.
+    pub notes: String,
+    /// Color, if any.
+    pub color: Option<LabelColor>,
+    /// Tags.
+    pub tags: Vec<String>,
+    /// Its kind, if said (ignored on a Jira board, where it is a Sub-task issue).
+    pub kind: Option<TaskKind>,
+    /// On a Jira board, values for the new sub-task's other fields (by field id).
+    pub jira_fields: Vec<(String, crate::jira::details::FieldValue)>,
+}
+
+impl NewSubtask {
+    /// A subtask with only a title.
+    pub fn titled(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            ..Self::default()
+        }
+    }
+
+    /// The task it starts as on a board Urushi keeps.
+    fn task(&self) -> ServiceResult<Task> {
+        let mut task = Task::new(
+            TaskId::from_uuid(new_uuid()),
+            &self.title,
+            &self.notes,
+            now(),
+        )?;
+        task.color = self.color;
+        task.tags = urushi_core::board::task_tags(&self.tags)?;
+        task.kind = self.kind;
+        Ok(task)
+    }
 }
 
 impl State {
@@ -101,6 +142,21 @@ impl State {
     /// returns the task it would be linked to.
     pub(super) fn task_link_target(&self, link: (TaskId, Option<TaskId>)) -> ServiceResult<TaskId> {
         self.link_target(link)
+    }
+
+    /// The Jira issue key of the task a thread is started for (the subtask, when one
+    /// is named), if it is a Jira issue: its branch is named after it (ADR 0026).
+    pub(super) fn task_issue_key(
+        &self,
+        link: (TaskId, Option<TaskId>),
+    ) -> ServiceResult<Option<IssueKey>> {
+        let target = self.link_target(link)?;
+        Ok(self
+            .boards
+            .iter()
+            .find_map(|b| b.task(target))
+            .and_then(|t| t.issue.as_ref())
+            .and_then(|i| IssueKey::new(&i.key)))
     }
 }
 
@@ -163,8 +219,8 @@ impl Service {
         task.subtasks = new
             .subtasks
             .iter()
-            .map(|t| Task::new(TaskId::from_uuid(new_uuid()), t, "", now()))
-            .collect::<Result<_, _>>()?;
+            .map(NewSubtask::task)
+            .collect::<ServiceResult<_>>()?;
         self.mutate(|state| {
             state.board_mut(board)?.add_task(column, task.clone())?;
             Ok(task)
@@ -209,11 +265,11 @@ impl Service {
     }
 
     /// Adds a subtask at the end of a task's (at any depth) subtasks.
-    pub async fn create_subtask(&self, parent: TaskId, title: &str) -> ServiceResult<Task> {
+    pub async fn create_subtask(&self, parent: TaskId, new: &NewSubtask) -> ServiceResult<Task> {
         if let Some(t) = self.read(|state| state.jira_task(parent))? {
-            return self.jira_create_subtask(t, title).await;
+            return self.jira_create_subtask(t, new).await;
         }
-        let subtask = Task::new(TaskId::from_uuid(new_uuid()), title, "", now())?;
+        let subtask = new.task()?;
         self.mutate(|state| {
             state
                 .board_of_task(parent)?

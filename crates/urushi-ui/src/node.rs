@@ -140,6 +140,9 @@ pub struct Style {
     pub shadow: Option<Shadow>,
     /// Frosts what's under the box with a blur of this many logical pixels (0: none).
     pub backdrop_blur: f32,
+    /// The most a `Fit` height may grow to; past it the box keeps this height (make it
+    /// scroll to reach the rest).
+    pub max_height: Option<f32>,
 }
 
 /// A soft drop shadow under a box: the box's shape, moved down by `offset` and
@@ -173,6 +176,7 @@ impl Default for Style {
             gradient: None,
             shadow: None,
             backdrop_blur: 0.0,
+            max_height: None,
         }
     }
 }
@@ -277,6 +281,10 @@ pub struct Node<M> {
     /// Inside a [`Flow::Stack`], places this node at this point (its natural size,
     /// clamped to the stack), instead of filling the stack. For menus and popups.
     pub position: Option<Point>,
+    /// Clicks on this node's own space (not on a child that takes them) stop here
+    /// instead of reaching what is under it, e.g. a dialog over a backdrop that closes
+    /// it.
+    pub opaque: bool,
 }
 
 impl<M> Node<M> {
@@ -296,6 +304,7 @@ impl<M> Node<M> {
             on_drag: None,
             on_drop: None,
             position: None,
+            opaque: false,
         }
     }
 
@@ -442,6 +451,20 @@ impl<M> Node<M> {
     #[must_use]
     pub fn clip(mut self) -> Self {
         self.style.clip = true;
+        self
+    }
+
+    /// Caps a `Fit` height at `height`.
+    #[must_use]
+    pub fn max_height(mut self, height: f32) -> Self {
+        self.style.max_height = Some(height);
+        self
+    }
+
+    /// Stops clicks on this node from reaching what is under it (see [`Node::opaque`]).
+    #[must_use]
+    pub fn opaque(mut self) -> Self {
+        self.opaque = true;
         self
     }
 
