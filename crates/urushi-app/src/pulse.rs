@@ -1,4 +1,4 @@
-//! The running indicators' pulse (ADR 0033): how bright they are at a given moment, and
+//! The running indicators' pulse (ADR 0039): how bright they are at a given moment, and
 //! when the runner should draw the next frame. It draws a few frames a second, and only
 //! while an agent is running, so an idle window stays idle.
 

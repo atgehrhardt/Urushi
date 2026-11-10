@@ -1,7 +1,7 @@
 //! Task cards: all the same size, with the title, two lines of notes and a footer
 //! (tags, subtask progress, the thread chip); a colored task has a stripe and a tint.
 //! When an agent in a thread linked to the task (or one of its subtasks) finished, works
-//! or waits for the user, the card shows a badge by its title (ADR 0017, ADR 0033).
+//! or waits for the user, the card shows a badge by its title (ADR 0017, ADR 0039).
 //! Finished and waiting also color its border; a running card keeps its usual border.
 //! A task with a kind has a marker in its color before the title; a Jira issue its key
 //! there, and its epic and assignee in the footer. The copy that follows

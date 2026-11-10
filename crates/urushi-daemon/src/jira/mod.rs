@@ -19,7 +19,7 @@ mod parse;
 
 pub use api::{
     BoardConfig, BoardInfo, Fetched, IssueEdit, IssueFields, IssueQuery, JiraApi, JiraError,
-    JiraResult, Me, NewIssue, Rank, Transition,
+    JiraResult, Me, NewIssue, QuickFilterDraft, Rank, Transition,
 };
 pub use cloud::{CloudJira, DONE_DAYS, jql};
 pub use credentials::{Account, CredentialStore, site_address};

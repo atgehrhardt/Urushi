@@ -1,4 +1,4 @@
-//! Running agents (ADR 0033): threads, tabs, cards and subtask rows show the most
+//! Running agents (ADR 0039): threads, tabs, cards and subtask rows show the most
 //! important of their panes' states, waiting > running > finished, and the pulse runs
 //! only while something is running.
 
@@ -95,7 +95,7 @@ fn cards_show_agents_running_on_their_threads_and_nested_subtasks() {
 
 #[test]
 fn older_daemons_show_nothing_running() {
-    // A daemon before 1.21 sends no running panes.
+    // A daemon before 1.25 sends no running panes.
     let s = showing(&[(101, DONE, 5)], 20);
     assert!(!s.any_running());
     assert_eq!(s.thread_indicator(&thread(11)), Some(Indicator::Done));

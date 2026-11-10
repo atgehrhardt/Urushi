@@ -1,0 +1,43 @@
+// Making, changing and removing a board's quick filters (ADR 0037). On a board of
+// Urushi's own the daemon keeps them (Board.quick_filters). On a Jira board they are
+// written to Jira, as quick filters of the Jira board; if Jira won't take a new one,
+// the daemon keeps it instead and says why. Since protocol 1.23.
+syntax = "proto3";
+
+package urushi.v1;
+
+import "urushi/v1/boards.proto";
+
+// Adds a quick filter to a board. Answered with QuickFilterSaved. INVALID_ARGUMENT for
+// a blank name, a rule that filters by nothing or doesn't suit the board (JQL on a
+// Jira board, the other criteria elsewhere) or JQL Jira refuses; NOT_FOUND for an
+// unknown board.
+message CreateQuickFilterRequest {
+  string board_id = 1;
+  string name = 2;
+  QuickFilterRule rule = 3;
+}
+
+// Where a new quick filter went. Since 1.23.
+message QuickFilterSaved {
+  QuickFilterRef filter = 1;
+  // Set when the board follows Jira but Jira wouldn't take the filter, so the daemon
+  // keeps it (Board.quick_filters): why Jira refused.
+  string kept_here = 2;
+}
+
+// Renames a quick filter and/or replaces its rule. An empty name and an unset rule keep
+// them. Answered with Empty; NOT_FOUND for an unknown board or filter.
+message UpdateQuickFilterRequest {
+  string board_id = 1;
+  QuickFilterRef filter = 2;
+  string name = 3;
+  QuickFilterRule rule = 4;
+}
+
+// Removes a quick filter (a Jira board's own is deleted in Jira). Answered with Empty;
+// NOT_FOUND for an unknown board or filter.
+message DeleteQuickFilterRequest {
+  string board_id = 1;
+  QuickFilterRef filter = 2;
+}

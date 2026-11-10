@@ -1,4 +1,5 @@
-//! The main area: tab bar, terminal panes, the status bar, and the error banner.
+//! The main area: tab bar, terminal panes, the status bar, and the error when nothing
+//! covers the main area (`errors.rs`).
 
 use urushi_ui::widgets::{ButtonKind, button, icon_button};
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key};
@@ -45,26 +46,12 @@ pub(super) fn view(state: &AppState, theme: &Theme) -> Node<Msg> {
         }
         column = column.child(empty_state(state, theme));
     }
-    if let Some(error) = &state.error {
-        column = column.child(
-            Node::row()
-                .width(Length::Fill(1.0))
-                .padding(Insets::symmetric(8.0, 16.0))
-                .gap(12.0)
-                .background(theme.danger.mix(theme.background, 0.7))
-                .child(
-                    Node::text(error, Font::Ui, theme.font_size, theme.text)
-                        .width(Length::Fill(1.0)),
-                )
-                .child(button(
-                    theme,
-                    "Dismiss",
-                    ButtonKind::Ghost,
-                    Msg::DismissError,
-                )),
-        );
-    }
-    column
+    column.children(super::error::for_place(
+        state,
+        theme,
+        crate::errors::ErrorPlace::Main,
+        None,
+    ))
 }
 
 fn empty_state(state: &AppState, theme: &Theme) -> Node<Msg> {

@@ -11,7 +11,7 @@
 //! - [`READY_SIGNAL`]: an agent's hook says its input is ready, so a drafted task message
 //!   can be typed into it (ADR 0030).
 //! - [`RUNNING_SIGNAL`] and [`IDLE_SIGNAL`]: an agent's hooks say it is working on a
-//!   turn (a prompt, a tool, a subagent) or has ended its session (ADR 0033).
+//!   turn (a prompt, a tool, a subagent) or has ended its session (ADR 0039).
 
 /// Why a pane wants the user. `Waiting` outranks `Done`: a thread shows its most urgent
 /// pane.

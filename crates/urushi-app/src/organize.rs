@@ -3,11 +3,13 @@
 //! itself (projects, pins, statuses) lives in the daemon; these only describe what the
 //! UI is doing with it.
 
-use urushi_client::v1;
+use urushi_client::{WorkspaceMirror, v1};
 use urushi_ui::Point;
 
 /// First protocol minor version that can reorder projects (`MoveFolder`).
 pub const PROJECT_ORDER_SINCE_MINOR: u32 = 11;
+/// First protocol minor version that can reorder threads (`MoveThread`).
+pub const THREAD_ORDER_SINCE_MINOR: u32 = 24;
 /// First protocol minor version with project settings: a parent branch and its
 /// parent-branch thread (`UpdateFolderSettings`, ADR 0029).
 pub const PROJECT_SETTINGS_SINCE_MINOR: u32 = 18;
@@ -39,6 +41,8 @@ pub enum MenuTarget {
     Board(String),
     /// The board's filters (by board id).
     Filter(String),
+    /// A quick filter's chip (board id, filter): change or delete it.
+    QuickFilter(String, crate::filter::quick::QuickRef),
     /// The board panel's "+": a new board, or one imported from Jira.
     NewBoard,
     /// A terminal pane (by pane id): split, copy, paste, close.
@@ -111,6 +115,79 @@ pub fn project_drop_index(projects: &[v1::Folder], dragged: &str, target: &str) 
 /// [`drop_index`]): right of a tab further right, left of one further left.
 pub fn board_drop_index(boards: &[v1::Board], dragged: &str, target: &str) -> Option<u32> {
     drop_index(boards.iter().map(|b| b.id.as_str()), dragged, target)
+}
+
+/// Where thread `dragged` goes in the workspace's list of threads when dropped on thread
+/// `target` (see [`drop_index`]). The sidebar shows each group in that list's order, so it
+/// lands below a target further down and above one further up.
+pub fn thread_drop_index(threads: &[v1::Thread], dragged: &str, target: &str) -> Option<u32> {
+    drop_index(threads.iter().map(|t| t.id.as_str()), dragged, target)
+}
+
+/// The project a thread is listed under in the sidebar: none when it has none, or when
+/// the workspace doesn't have its project.
+fn listed_project<'a>(workspace: &WorkspaceMirror, thread: &'a v1::Thread) -> &'a str {
+    if workspace.project(&thread.folder_id).is_some() {
+        &thread.folder_id
+    } else {
+        ""
+    }
+}
+
+/// Whether two threads are listed in the same sidebar group: the same project, then
+/// both pinned, or both unpinned with the same status. Parent-branch threads are in no
+/// group: they always come first, alone.
+pub fn same_group(workspace: &WorkspaceMirror, a: &v1::Thread, b: &v1::Thread) -> bool {
+    !a.project_base
+        && !b.project_base
+        && listed_project(workspace, a) == listed_project(workspace, b)
+        && a.pinned == b.pinned
+        && (a.pinned || a.status == b.status)
+}
+
+/// The threads listed just above and just below `thread` in its sidebar group, for Move
+/// up / Move down.
+pub fn thread_neighbours<'a>(
+    workspace: &'a WorkspaceMirror,
+    thread: &str,
+) -> (Option<&'a v1::Thread>, Option<&'a v1::Thread>) {
+    let Some(this) = workspace.thread(thread) else {
+        return (None, None);
+    };
+    let group: Vec<&v1::Thread> = workspace
+        .raw()
+        .threads
+        .iter()
+        .filter(|t| t.id == this.id || same_group(workspace, this, t))
+        .collect();
+    let Some(at) = group.iter().position(|t| t.id == this.id) else {
+        return (None, None);
+    };
+    let above = at.checked_sub(1).and_then(|i| group.get(i)).copied();
+    (above, group.get(at + 1).copied())
+}
+
+/// What dropping thread `dragged` on thread `target` changes so that it joins the
+/// target's group: its project, pin and status, each only where it differs (`None` when
+/// it's already in that group). A pinned target leaves the status as it is, since pinned
+/// threads aren't grouped by status.
+pub fn join_group(
+    workspace: &WorkspaceMirror,
+    dragged: &v1::Thread,
+    target: &v1::Thread,
+) -> Option<v1::UpdateThreadRequest> {
+    if same_group(workspace, dragged, target) {
+        return None;
+    }
+    let project = listed_project(workspace, target);
+    let status_differs = !target.pinned && dragged.status != target.status;
+    Some(v1::UpdateThreadRequest {
+        thread_id: dragged.id.clone(),
+        folder_id: (listed_project(workspace, dragged) != project).then(|| project.to_owned()),
+        pinned: (dragged.pinned != target.pinned).then_some(target.pinned),
+        status: status_differs.then(|| target.status.clone()),
+        ..Default::default()
+    })
 }
 
 /// Where a dragged thread can be dropped.

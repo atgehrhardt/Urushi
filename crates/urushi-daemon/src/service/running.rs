@@ -1,4 +1,4 @@
-//! Running: which panes' agents are working right now (ADR 0033).
+//! Running: which panes' agents are working right now (ADR 0039).
 //!
 //! An agent's hooks say when it works: Claude writes Urushi's `running` signal when it
 //! takes a prompt, uses a tool or starts a subagent, and `idle` when its session ends.

@@ -25,7 +25,7 @@ pub(crate) struct Attention {
 impl Service {
     /// Raises `kind` on `pane`. The same kind again changes nothing (a program ringing
     /// the bell repeatedly is one alert until the user looks). An agent that finished or
-    /// waits no longer runs (ADR 0033).
+    /// waits no longer runs (ADR 0039).
     pub(crate) fn raise_attention(&self, pane: PaneId, kind: AttentionKind) {
         self.set_running(pane, false);
         {

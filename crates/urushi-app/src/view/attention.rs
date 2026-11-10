@@ -1,4 +1,4 @@
-//! How a thread's agents look (ADR 0017, ADR 0033): a green dot when an agent finished,
+//! How a thread's agents look (ADR 0017, ADR 0039): a green dot when an agent finished,
 //! a pulsing blue one while it works, an amber one when something waits for the user.
 //! Shown on thread rows, tabs, task cards (a badge, and a colored border for attention)
 //! and the thread chips and subtask rows that lead to them.

@@ -90,7 +90,7 @@ impl Drop for BoardWatch {
 }
 
 /// When to try again after `error`, the `failures`-th in a row.
-fn backoff(error: &JiraError, failures: u32) -> Duration {
+pub(super) fn backoff(error: &JiraError, failures: u32) -> Duration {
     let doubled = |base: u64, max: u64| {
         Duration::from_secs(base.saturating_mul(1 << failures.min(10)).min(max))
     };
@@ -146,6 +146,13 @@ impl Service {
         let mut boards = lock(&self.jira.boards);
         let seen = &mut boards.entry(board).or_default().seen;
         seen.extend(issues.iter().map(|i| (i.issue.id.clone(), i.issue.updated)));
+    }
+
+    /// Forgets when deleted issues last changed: they won't be read again.
+    pub(super) fn unsee(&self, board: BoardId, issue_ids: &[String]) {
+        if let Some(sync) = lock(&self.jira.boards).get_mut(&board) {
+            sync.seen.retain(|id, _| !issue_ids.contains(id));
+        }
     }
 
     /// Reads a Jira board and merges what changed: completely when `full` (or when due),

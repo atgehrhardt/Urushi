@@ -1,4 +1,4 @@
-# 0033. Learn that an agent is running from its prompt and tool hooks, and end it on Stop, prompts, session end or an interrupt key
+# 0039. Learn that an agent is running from its prompt and tool hooks, and end it on Stop, prompts, session end or an interrupt key
 
 - **Status:** Accepted
 - **Date:** 2026-11-10
@@ -44,7 +44,7 @@ trusts them. Cursor has no command-line hooks.
 
   Ordinary typing doesn't stop it, because messages typed while Claude works are queued.
 - **The wire** carries running panes as `Tab.running` and `QuickTerminal.running`
-  (`PaneRunning{pane_id, since_ms}`, protocol 1.21). Like attention, they aren't stored and
+  (`PaneRunning{pane_id, since_ms}`, protocol 1.25). Like attention, they aren't stored and
   don't bump the revision.
 - **The app** shows one indicator per thread, tab, card or subtask row, by priority:
   needs input > running > finished. The running dot is blue and pulses. The runner draws

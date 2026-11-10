@@ -3,11 +3,11 @@
 //! site, so it travels without being stored.
 
 use urushi_core::board::{
-    BoardSource, Epic, Issue, JiraBoard, Named, Person, QuickFilter, StatusCategory, SyncState,
+    BoardSource, Epic, Issue, JiraBoard, JiraQuickFilter, Named, Person, StatusCategory, SyncState,
     TaskKind,
 };
 
-use super::{color_from_proto, color_to_proto};
+use super::{color_from_proto, color_to_proto, pull_request_to_proto, pull_requests_from_proto};
 use crate::convert::{millis_from_proto, millis_to_proto};
 use crate::v1;
 
@@ -73,13 +73,14 @@ pub fn source_to_proto(source: Option<&BoardSource>) -> Option<v1::JiraBoardSour
             .map(|q| v1::JiraQuickFilter {
                 id: q.id,
                 name: q.name.clone(),
+                jql: q.jql.clone(),
             })
             .collect(),
     })
 }
 
-/// Wire source → core. The rank, estimate and sprint fields and the quick filters' JQL
-/// are the daemon's and aren't sent.
+/// Wire source → core. The rank, estimate and sprint fields are the daemon's and aren't
+/// sent.
 pub fn source_from_proto(source: Option<&v1::JiraBoardSource>) -> Option<BoardSource> {
     let j = source?;
     Some(BoardSource::Jira(JiraBoard {
@@ -94,10 +95,10 @@ pub fn source_from_proto(source: Option<&v1::JiraBoardSource>) -> Option<BoardSo
         quick_filters: j
             .quick_filters
             .iter()
-            .map(|q| QuickFilter {
+            .map(|q| JiraQuickFilter {
                 id: q.id,
                 name: q.name.clone(),
-                jql: String::new(),
+                jql: q.jql.clone(),
             })
             .collect(),
         sync: SyncState {
@@ -157,6 +158,7 @@ pub fn issue_to_proto(i: &Issue, site: Option<&str>) -> v1::JiraIssue {
         components: i.components.iter().map(named_to_proto).collect(),
         fix_versions: i.fix_versions.iter().map(named_to_proto).collect(),
         links: i.links,
+        pull_requests: i.pull_requests.iter().map(pull_request_to_proto).collect(),
     }
 }
 
@@ -204,6 +206,7 @@ pub fn issue_from_proto(i: &v1::JiraIssue) -> Issue {
         components: i.components.iter().map(named_from_proto).collect(),
         fix_versions: i.fix_versions.iter().map(named_from_proto).collect(),
         links: i.links,
+        pull_requests: pull_requests_from_proto(&i.pull_requests),
     }
 }
 

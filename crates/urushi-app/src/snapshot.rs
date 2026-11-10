@@ -30,8 +30,9 @@ pub fn scene(
 /// `picker`, the `add-repo` and `new-thread` dialogs (`new-thread-base` with the branch
 /// list open, `new-thread-project` with the project list open), `settings` (with task
 /// messages drafted and the user's own message on in `settings-task-message`), the thread
-/// `menu` and its `menu-status` page, a thread being dragged (`drag`), a project being
-/// dragged above another (`drag-project`), the `repos` tab, the task `board` (a task
+/// `menu` and its `menu-status` page, a thread being dragged (`drag`), a thread being
+/// dragged onto another to take its place (`drag-thread`), a project being dragged above
+/// another (`drag-project`), the `repos` tab, the task `board` (a task
 /// being dragged across it in `board-drag`, the "Personal" board's tab dragged onto the
 /// first in `board-tab-drag`, a `task` with subtasks being edited, and a card's context menu in
 /// `task-menu`, a column's in `column-menu`, a subtask opened as a task in
@@ -40,7 +41,8 @@ pub fn scene(
 /// usage in the `status` bar (and its pane's context menu in `pane-menu`), the same with
 /// the sidebar hidden (`sidebar-collapsed`), the quick terminal dropped down over it
 /// (`quick-terminal`, `snapshot/quick.rs`), the first-run `setup` wizard (its mode
-/// step in `setup-mode`), the Jira screens (`snapshot/jira.rs`), and a project's
+/// step in `setup-mode`), the Jira screens (`snapshot/jira.rs`), quick filters
+/// (`snapshot/quick_filters.rs`), and a project's
 /// parent branch (`snapshot/project_base.rs`).
 pub const SCENARIOS: &[&str] = &[
     "launcher",
@@ -57,12 +59,15 @@ pub const SCENARIOS: &[&str] = &[
     "menu",
     "menu-status",
     "drag",
+    "drag-thread",
     "drag-project",
     "repos",
     "board",
     "board-drag",
     "board-tab-drag",
     "task",
+    "task-error",
+    "board-error",
     "task-menu",
     "column-menu",
     "task-nested",
@@ -75,6 +80,7 @@ pub const SCENARIOS: &[&str] = &[
     "quick-terminal",
     "setup",
     "setup-mode",
+    "thread-links",
     "jira-board",
     "jira-task",
     "jira-subtask",
@@ -85,6 +91,11 @@ pub const SCENARIOS: &[&str] = &[
     "jira-new-epic",
     "jira-connect",
     "jira-import",
+    "board-quick-filters",
+    "quick-filter-save",
+    "quick-filter-menu",
+    "jira-delete-issue",
+    "jira-delete-subtask",
     "project-base-thread",
     "project-settings",
 ];
@@ -125,6 +136,8 @@ const BOARD_SCENARIOS: &[&str] = &[
     "board-drag",
     "board-tab-drag",
     "task",
+    "task-error",
+    "board-error",
     "task-menu",
     "column-menu",
     "task-nested",
@@ -202,6 +215,7 @@ fn sample_board() -> v1::Board {
     invoice.tags = vec!["backend".into()];
     // Its agent waits for permission (see `sample_tabs`).
     invoice.thread_id = "t4".into();
+    invoice.pr_url = "https://github.com/acme/web/pull/398".into();
     pricing.subtasks = vec![
         sub("s1", "Draft tiers table", true, ""),
         v1::Subtask {
@@ -341,6 +355,15 @@ pub fn scenario(
     scenario_frame(name, theme, text, width, height).map(|f| f.scene)
 }
 
+/// `menu`: a thread's context menu; `menu-status`: the same on its Status page.
+fn open_thread_menu(state: &mut AppState, name: &str) {
+    state.update(Msg::Pointer(Point::new(150.0, 230.0)));
+    state.update(Msg::OpenMenu(MenuTarget::Thread("t2".into())));
+    if name == "menu-status" {
+        state.update(Msg::MenuPage(MenuPage::Status));
+    }
+}
+
 /// [`scenario`]'s whole frame (hit regions, accessibility nodes), for layout checks.
 fn scenario_frame(
     name: &str,
@@ -418,14 +441,8 @@ fn scenario_frame(
         "settings-task-message" => own_drafted_message(&mut state),
         "settings-appearance" | "settings-custom" | "logo-hidden" => show_look(&mut state, name),
         "setup" | "setup-mode" => state.dialog = Some(setup_wizard(name)),
-        "menu" | "menu-status" => {
-            state.update(Msg::Pointer(Point::new(150.0, 230.0)));
-            state.update(Msg::OpenMenu(MenuTarget::Thread("t2".into())));
-            if name == "menu-status" {
-                state.update(Msg::MenuPage(MenuPage::Status));
-            }
-        }
-        "drag" | "drag-project" => show_drag(&mut state, name),
+        "menu" | "menu-status" => open_thread_menu(&mut state, name),
+        "drag" | "drag-thread" | "drag-project" => show_drag(&mut state, name),
         "sidebar-collapsed" => {
             show_board_or_usage(&mut state, "status");
             state.update(Msg::Sidebar(crate::msg::SidebarMsg::Toggle));
@@ -433,6 +450,7 @@ fn scenario_frame(
         }
         "quick-terminal" => quick::show(&mut state),
         name if jira::SCENARIOS.contains(&name) => jira::show(&mut state, name),
+        name if quick_filters::SCENARIOS.contains(&name) => quick_filters::show(&mut state, name),
         name if project_base::SCENARIOS.contains(&name) => project_base::show(&mut state, name),
         name if BOARD_SCENARIOS.contains(&name) || name == "status" || name == "pane-menu" => {
             show_board_or_usage(&mut state, name);
@@ -481,12 +499,20 @@ fn show_look(state: &mut AppState, name: &str) {
     }
 }
 
-/// The `drag` (a thread) and `drag-project` (a project, over the one above) scenarios.
+/// The `drag` (a thread), `drag-thread` (a thread, over the one above it in its status
+/// section) and `drag-project` (a project, over the one above) scenarios.
 fn show_drag(state: &mut AppState, name: &str) {
     if name == "drag" {
         state.update(Msg::Pointer(Point::new(120.0, 470.0)));
         state.update(Msg::DragThread("t6".into()));
         state.update(Msg::DragMove(Point::new(140.0, 400.0)));
+    } else if name == "drag-thread" {
+        state.update(Msg::Pointer(Point::new(120.0, 400.0)));
+        state.update(Msg::DragThread("t3".into()));
+        state.update(Msg::DragMove(Point::new(140.0, 345.0)));
+        state.update(Msg::DragOver(Some(Box::new(Msg::DropOnThread(
+            "t2".into(),
+        )))));
     } else {
         state.update(Msg::Pointer(Point::new(120.0, 300.0)));
         state.update(Msg::DragProject("f2".into()));
@@ -554,9 +580,16 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
                 state.update(Msg::Pointer(urushi_ui::Point::new(760.0, 110.0)));
                 state.update(Msg::OpenMenu(MenuTarget::Column("c2".into())));
             }
-            if name == "task" {
+            if name == "task" || name == "task-error" {
                 state.update(Msg::PressTask("k3".into()));
                 state.update(Msg::PressEnded);
+            }
+            if name.ends_with("-error") {
+                state.error = Some(
+                    "Jira refused the issue: Field 'customfield_10020' cannot be set. It is \
+                     not on the appropriate screen, or unknown."
+                        .into(),
+                );
             }
             if name == "board-tab-drag" {
                 // "Personal" held over "Billing launch": the line shows before it.
@@ -612,6 +645,7 @@ mod jira;
 mod jira_issue;
 mod project_base;
 mod quick;
+mod quick_filters;
 
 #[cfg(test)]
 mod tests;

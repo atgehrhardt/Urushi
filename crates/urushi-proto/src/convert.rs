@@ -477,9 +477,11 @@ pub use quick::{quick_terminal_from_proto, quick_terminal_to_proto};
 mod boards;
 pub use boards::{
     attachment_to_proto, board_from_proto, board_to_proto, category_to_proto, color_from_proto,
-    color_to_proto, column_to_proto, epic_from_proto, epic_to_proto, issue_from_proto,
-    issue_to_proto, kind_from_proto, kind_to_proto, source_from_proto, source_to_proto,
-    subtask_in_board_to_proto, subtask_to_proto, task_in_board_to_proto, task_to_proto,
+    color_to_proto, column_to_proto, epic_from_proto, epic_to_proto, filter_ref_from_proto,
+    filter_ref_to_proto, issue_from_proto, issue_to_proto, kind_from_proto, kind_to_proto,
+    quick_filter_from_proto, quick_filter_to_proto, rule_from_proto, rule_to_proto,
+    source_from_proto, source_to_proto, subtask_in_board_to_proto, subtask_to_proto,
+    task_in_board_to_proto, task_to_proto,
 };
 
 #[cfg(test)]

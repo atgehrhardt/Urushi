@@ -1,8 +1,9 @@
 //! The sidebar's Projects tab: each project (collapsible), then threads in no project.
 //! Inside each group: pinned threads first, then one collapsible section per status in
 //! use, then threads without a status. Threads can be dragged onto a project (or onto
-//! "No project") to move them, and a project's header can be dragged onto another
-//! project to take its place.
+//! "No project") to move them, or onto another thread to take its place and join its
+//! group (`thread_card.rs`), and a project's header can be dragged onto another project
+//! to take its place.
 
 use urushi_client::v1;
 use urushi_ui::widgets::{ButtonKind, button, icon_button};
@@ -229,11 +230,14 @@ fn group(
     project: Option<&str>,
     threads: &[&v1::Thread],
 ) -> Vec<Node<Msg>> {
+    // Each thread's Jira issue and pull request (ADR 0036), read in one pass.
+    let links = state.workspace.thread_links();
+    let thread_card = |t: &v1::Thread| thread_card(state, theme, t, links.get(&t.id));
     let mut out: Vec<Node<Msg>> = threads
         .iter()
         .filter(|t| t.project_base)
         .chain(threads.iter().filter(|t| t.pinned && !t.project_base))
-        .map(|t| thread_card(state, theme, t))
+        .map(|t| thread_card(t))
         .collect();
     let rest: Vec<&v1::Thread> = threads
         .iter()
@@ -280,13 +284,13 @@ fn group(
                 .child(count(theme, members.len())),
         );
         if !collapsed {
-            out.extend(members.iter().map(|t| thread_card(state, theme, t)));
+            out.extend(members.iter().map(|t| thread_card(t)));
         }
     }
     out.extend(
         rest.iter()
             .filter(|t| t.status.is_empty())
-            .map(|t| thread_card(state, theme, t)),
+            .map(|t| thread_card(t)),
     );
     out
 }

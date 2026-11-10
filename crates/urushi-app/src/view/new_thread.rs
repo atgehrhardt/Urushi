@@ -5,13 +5,14 @@
 
 use std::collections::HashMap;
 
-use urushi_ui::widgets::{ButtonKind, SelectOption, button, modal, select_button, select_options};
+use urushi_ui::widgets::{ButtonKind, SelectOption, button, select_button, select_options};
 use urushi_ui::{Key, Length, Node, Theme, key};
 
 use super::dialogs::{cancel, field, hint, label};
 use crate::msg::Msg;
 use crate::organize::Select;
 use crate::state::{AppState, Dialog, Field, TaskLink, ThreadTarget};
+use crate::view::modal::modal;
 
 /// Rows a selector shows before it scrolls.
 const VISIBLE_OPTIONS: usize = 6;
@@ -106,6 +107,7 @@ pub(super) fn view(
         None => "New thread".to_owned(),
     };
     Some(modal(
+        state,
         theme,
         &heading,
         480.0,

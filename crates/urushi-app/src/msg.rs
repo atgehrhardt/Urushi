@@ -51,6 +51,8 @@ pub enum Msg {
     // ---- sidebar ---------------------------------------------------------------------
     /// Show a thread.
     SelectThread(String),
+    /// Open a web page (a thread's Jira issue or pull request) in the system browser.
+    OpenUrl(String),
     /// The window became narrow (`true`) or wide.
     SetCompact(bool),
     /// In compact mode, go back to the thread list.
@@ -109,6 +111,16 @@ pub enum Msg {
     DragMove(Point),
     /// The drag was released over a drop target.
     DropThread(DropTarget),
+    /// A dragged thread was released over another thread (by id): it takes its place
+    /// and joins its group (project, pin and status).
+    DropOnThread(String),
+    /// Move a thread to `index` in the workspace's list of threads (counted without it).
+    ReorderThread {
+        /// Thread id.
+        thread: String,
+        /// New position.
+        index: u32,
+    },
     /// The drag was released anywhere else.
     DragCancel,
     /// A project's header started being dragged.
@@ -308,7 +320,7 @@ pub enum Msg {
         /// Whether it was dropped over the terminal area.
         over_terminal: bool,
     },
-    /// Hide the error banner.
+    /// Dismiss the error.
     DismissError,
 
     // ---- raw input -----------------------------------------------------------------------
@@ -382,6 +394,10 @@ pub enum Followup {
     JiraBoards,
     /// The issues of this board its quick filters let through.
     QuickFilter(String),
+    /// A quick filter was saved on this board: turn it on, or say why it failed.
+    QuickFilterSaved(String),
+    /// A quick filter was changed: close the dialog, or say why it failed.
+    QuickFilterChanged,
     /// Show this task's issue in full in its editor.
     JiraIssue(String),
     /// Show what this task's editor's picker searched for.

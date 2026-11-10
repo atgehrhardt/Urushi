@@ -9,16 +9,20 @@
 //!   per-user time zones).
 //! - Changes use the issue endpoints: transitions, edit (labels as add/remove
 //!   operations, so labels Urushi can't show are never touched), create and rank.
+//! - A board's quick filters are read from the agile API and written through the
+//!   endpoint Jira's own board settings use (`quick_filters.rs`, ADR 0037).
+//! - An issue's pull requests come from Jira's development info (`cloud/dev.rs`, ADR
+//!   0036).
 
 use std::sync::Arc;
 
 use serde_json::{Value, json};
 use urushi_core::TaskKind;
-use urushi_core::board::{Person, SyncedIssue};
+use urushi_core::board::{JiraQuickFilter, Person, PullRequest, SyncedIssue};
 
 use super::api::{
     BoardConfig, BoardInfo, Fetched, IssueEdit, IssueFields, IssueQuery, JiraApi, JiraError,
-    JiraResult, Me, NewIssue, Rank, Transition,
+    JiraResult, Me, NewIssue, QuickFilterDraft, Rank, Transition,
 };
 use super::details::{Field, IssueDetails, IssueRef};
 use super::{Account, adf, parse};
@@ -31,8 +35,6 @@ const PAGE: usize = 100;
 /// The issue fields the board shows (with the board's own: [`IssueFields`]).
 const FIELDS: &str = "summary,description,issuetype,status,assignee,reporter,priority,parent,\
                       labels,updated,created,duedate,components,fixVersions,issuelinks";
-/// Most quick filters read for a board.
-const QUICK_FILTERS: usize = 50;
 
 /// Jira Cloud.
 pub struct CloudJira {
@@ -182,13 +184,7 @@ impl JiraApi for CloudJira {
         let mut config = parse::config(info, &config)
             .ok_or_else(|| JiraError::Unavailable("Jira sent an odd board configuration".into()))?;
         // Extras: a board shows without them.
-        config.quick_filters = self
-            .get(
-                account,
-                &format!("/rest/agile/1.0/board/{id}/quickfilter?maxResults={QUICK_FILTERS}"),
-            )
-            .map(|v| parse::quick_filters(&v))
-            .unwrap_or_default();
+        config.quick_filters = self.read_quick_filters(account, id).unwrap_or_default();
         config.sprint_field = self.sprint_field(account).ok().flatten();
         Ok(config)
     }
@@ -299,6 +295,34 @@ impl JiraApi for CloudJira {
             .ok_or_else(|| JiraError::Unavailable("Jira didn't say which issue it made".into()))
     }
 
+    fn quick_filters(&self, account: &Account, board: u64) -> JiraResult<Vec<JiraQuickFilter>> {
+        self.read_quick_filters(account, board)
+    }
+
+    fn create_quick_filter(
+        &self,
+        account: &Account,
+        board: u64,
+        filter: &QuickFilterDraft,
+    ) -> JiraResult<Option<u64>> {
+        self.write_quick_filter(account, board, None, filter)
+    }
+
+    fn update_quick_filter(
+        &self,
+        account: &Account,
+        board: u64,
+        id: u64,
+        filter: &QuickFilterDraft,
+    ) -> JiraResult<()> {
+        self.write_quick_filter(account, board, Some(id), filter)
+            .map(drop)
+    }
+
+    fn delete_quick_filter(&self, account: &Account, board: u64, id: u64) -> JiraResult<()> {
+        self.remove_quick_filter(account, board, id)
+    }
+
     fn rank(&self, account: &Account, key: &str, rank: &Rank) -> JiraResult<()> {
         let body = match rank {
             Rank::Before(other) => json!({ "issues": [key], "rankBeforeIssue": other }),
@@ -311,6 +335,11 @@ impl JiraApi for CloudJira {
             Some(&body),
         )
         .map(drop)
+    }
+
+    fn delete_issue(&self, account: &Account, key: &str) -> JiraResult<()> {
+        let path = format!("/rest/api/3/issue/{}?deleteSubtasks=true", segment(key));
+        self.call(account, Method::Delete, &path, None).map(drop)
     }
 
     fn details(&self, account: &Account, key: &str, board: u64) -> JiraResult<IssueDetails> {
@@ -409,9 +438,15 @@ impl JiraApi for CloudJira {
         self.call(account, Method::Post, &path, Some(&body))
             .map(drop)
     }
+
+    fn pull_requests(&self, account: &Account, issue_id: &str) -> JiraResult<Vec<PullRequest>> {
+        self.read_pull_requests(account, issue_id)
+    }
 }
 
 mod details;
+mod dev;
+mod quick_filters;
 mod search;
 
 pub use search::jql;

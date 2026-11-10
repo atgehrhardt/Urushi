@@ -1,4 +1,4 @@
-//! Running agents as the app sees it (ADR 0033): which threads, tabs and task cards have
+//! Running agents as the app sees it (ADR 0039): which threads, tabs and task cards have
 //! a pane whose agent is working, and the one [`Indicator`] each shows, combining that
 //! with attention (ADR 0017). The daemon owns both; they arrive on each tab of the
 //! workspace.

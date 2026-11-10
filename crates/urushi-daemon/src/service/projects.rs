@@ -2,7 +2,7 @@
 //! pins, statuses and which project a thread is filed under. None of this touches
 //! worktrees or branches.
 
-use urushi_core::{Project, ProjectId, ProjectSettings, Status, ThreadId, project};
+use urushi_core::{Project, ProjectId, ProjectSettings, Status, ThreadId, order, project};
 
 use super::{Service, ServiceError, ServiceResult, new_uuid, now};
 
@@ -91,6 +91,17 @@ impl Service {
         self.mutate(|state| {
             state.project(id)?;
             project::move_project(&mut state.projects, id, index);
+            Ok(())
+        })
+    }
+
+    /// Moves a thread to `index` in the list of threads (counted without it; clamped to
+    /// the end). The sidebar shows threads in this order within their project, pin and
+    /// status groups; which group a thread is in doesn't change.
+    pub fn move_thread(&self, id: ThreadId, index: usize) -> ServiceResult<()> {
+        self.mutate(|state| {
+            state.thread(id)?;
+            order::move_where(&mut state.threads, |r| r.thread.id == id, index);
             Ok(())
         })
     }

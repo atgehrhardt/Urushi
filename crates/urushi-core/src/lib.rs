@@ -17,6 +17,7 @@ pub mod board;
 pub mod ids;
 pub mod layout;
 pub mod naming;
+pub mod order;
 pub mod ownership;
 pub mod pane_group;
 pub mod project;
@@ -36,11 +37,12 @@ pub use agent::{
 pub use appearance::{Appearance, LogoStyle, Rgb, Scheme, SchemeColors};
 pub use attention::AttentionKind;
 pub use board::{
-    Board, BoardError, BoardSource, Column, LabelColor, Task, TaskKind, TaskPatch,
-    custom_task_prompt, task_prompt, task_reference_prompt,
+    Board, BoardError, BoardSource, Column, LabelColor, QuickFilter, QuickRule, Task, TaskKind,
+    TaskPatch, custom_task_prompt, task_prompt, task_reference_prompt,
 };
 pub use ids::{
-    AttachmentId, BoardId, ColumnId, PaneId, ProjectId, RepoId, TabId, TaskId, ThreadId,
+    AttachmentId, BoardId, ColumnId, PaneId, ProjectId, QuickFilterId, RepoId, TabId, TaskId,
+    ThreadId,
 };
 pub use layout::{Axis, Direction, Layout, LayoutError};
 pub use naming::{BranchName, BranchPrefix, IssueKey, NamingError, Slug, issue_branch_stem};

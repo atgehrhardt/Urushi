@@ -1,7 +1,7 @@
 //! Merging Jira snapshots into a board, and what a Jira board refuses.
 
 use super::*;
-use crate::board::{LabelColor, TaskKind, TaskPatch};
+use crate::board::{LabelColor, PrStatus, PrUrl, PullRequest, TaskKind, TaskPatch};
 use crate::{ThreadId, Timestamp};
 
 const TODO: &str = "1";
@@ -326,6 +326,13 @@ fn changes_jira_owns_are_refused_and_change_nothing() {
             ..TaskPatch::default()
         }
     )));
+    assert!(follows(b.update_task(
+        one,
+        &TaskPatch {
+            pr_url: Some(PrUrl::parse("https://h/pull/1").ok()),
+            ..TaskPatch::default()
+        }
+    )));
     assert_eq!(b, before);
 }
 
@@ -368,4 +375,120 @@ fn a_jira_move_shows_at_once_and_can_be_put_back() {
     )
     .unwrap();
     assert!(own.show_jira_move(card, ColumnId::from_u128(3), 0).is_err());
+}
+
+#[test]
+fn pull_requests_are_read_for_linked_issues_and_kept_by_syncs() {
+    let mut b = jira_board();
+    b.merge_issues(
+        vec![
+            issue(1, TODO, "0|a"),
+            issue(2, TODO, "0|b"),
+            subtask(3, 2, TODO),
+        ],
+        true,
+        ids(),
+    );
+    assert!(b.linked_issue_ids().is_empty());
+    let sub = b.task_for_issue("ACME-3").unwrap().id;
+    b.link_thread(sub, ThreadId::from_u128(9)).unwrap();
+    assert_eq!(b.linked_issue_ids(), ["10003"]);
+
+    let pr = PullRequest::new(
+        PrUrl::parse("https://github.com/o/r/pull/7").unwrap(),
+        "ACME-3 fix",
+        PrStatus::Open,
+    );
+    assert!(b.set_pull_requests("10003", vec![pr.clone()]));
+    assert!(
+        !b.set_pull_requests("10003", vec![pr.clone()]),
+        "same again"
+    );
+    assert!(
+        !b.set_pull_requests("99999", vec![pr.clone()]),
+        "not on the board"
+    );
+
+    // A sync rewrites the issue from Jira's fields but keeps what dev info said.
+    let mut renamed = subtask(3, 2, DOING);
+    renamed.title = "Renamed".into();
+    let report = b.merge_issues(vec![issue(2, TODO, "0|b"), renamed], false, ids());
+    assert!(report.changed);
+    let issue = b.task_for_issue("ACME-3").unwrap().issue.as_ref().unwrap();
+    assert_eq!(issue.pull_requests, [pr]);
+
+    let many = (0..20)
+        .map(|n| {
+            PullRequest::new(
+                PrUrl::parse(&format!("https://h/pull/{n}")).unwrap(),
+                "",
+                PrStatus::Merged,
+            )
+        })
+        .collect();
+    assert!(b.set_pull_requests("10003", many));
+    let issue = b.task_for_issue("ACME-3").unwrap().issue.as_ref().unwrap();
+    assert_eq!(issue.pull_requests.len(), crate::board::MAX_PULL_REQUESTS);
+}
+
+#[test]
+fn a_deleted_issue_is_forgotten_with_its_subtasks_and_nothing_else() {
+    let mut b = jira_board();
+    let snapshot = vec![
+        issue(1, TODO, "0|a"),
+        subtask(2, 1, TODO),
+        subtask(3, 1, DONE),
+        issue(4, TODO, "0|b"),
+    ];
+    b.merge_issues(snapshot.clone(), true, ids());
+    let card = b.task_for_issue("ACME-1").unwrap().id;
+    let sub = b.task_for_issue("ACME-3").unwrap().id;
+
+    let gone = b.forget_issue(sub).unwrap();
+    assert_eq!(gone.issue.unwrap().key, "ACME-3");
+    let card_subs: Vec<_> = b
+        .task_for_issue("ACME-1")
+        .unwrap()
+        .subtasks
+        .iter()
+        .map(|s| s.issue.as_ref().unwrap().key.as_str())
+        .collect();
+    assert_eq!(card_subs, ["ACME-2"], "a subtask leaves its parent");
+
+    let gone = b.forget_issue(card).unwrap();
+    assert_eq!(gone.subtasks.len(), 1, "a card takes its subtasks");
+    assert_eq!(keys(&b, 0), ["ACME-4"]);
+    assert!(b.task_for_issue("ACME-2").is_none());
+
+    // Jira's next snapshot no longer has them, and changes nothing more.
+    let after = b.clone();
+    let left: Vec<_> = snapshot
+        .into_iter()
+        .filter(|s| s.issue.key == "ACME-4")
+        .collect();
+    assert!(!b.merge_issues(left, true, ids()).changed);
+    assert_eq!(b, after);
+    assert!(matches!(
+        b.forget_issue(card),
+        Err(BoardError::NoSuchTask(_))
+    ));
+}
+
+#[test]
+fn only_a_jira_board_forgets_issues() {
+    let mut own = Board::new(
+        BoardId::from_u128(2),
+        "own",
+        Timestamp::from_unix_millis(1),
+        [3, 4, 5].map(ColumnId::from_u128),
+    )
+    .unwrap();
+    let id = TaskId::from_u128(9);
+    let task = crate::Task::new(id, "Mine", "", Timestamp::from_unix_millis(1)).unwrap();
+    own.add_task(ColumnId::from_u128(3), task).unwrap();
+    assert!(matches!(
+        own.forget_issue(id),
+        Err(BoardError::FollowsJira(_))
+    ));
+    assert!(own.task(id).is_some());
 }

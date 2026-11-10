@@ -231,3 +231,37 @@ fn a_board_holds_a_bounded_number_of_columns() {
         Err(BoardError::TooManyColumns)
     );
 }
+
+#[test]
+fn a_task_at_any_depth_links_a_pull_request_until_cleared() {
+    let mut b = board();
+    let todo = b.columns[0].id;
+    b.add_task(todo, task(1, "a")).unwrap();
+    b.add_subtask(TaskId::from_u128(1), task(2, "b")).unwrap();
+    let sub = TaskId::from_u128(2);
+    let url = PrUrl::parse("https://github.com/o/r/pull/4").unwrap();
+    let set = |url: Option<PrUrl>| TaskPatch {
+        pr_url: Some(url),
+        ..TaskPatch::default()
+    };
+    b.update_task(sub, &set(Some(url.clone()))).unwrap();
+    assert_eq!(b.task(sub).unwrap().pr_url, Some(url));
+    assert_eq!(b.task(TaskId::from_u128(1)).unwrap().pr_url, None);
+    b.update_task(sub, &TaskPatch::default()).unwrap();
+    assert!(b.task(sub).unwrap().pr_url.is_some(), "unset keeps it");
+    b.update_task(sub, &set(None)).unwrap();
+    assert_eq!(b.task(sub).unwrap().pr_url, None);
+}
+
+#[test]
+fn a_task_stored_before_pull_requests_still_loads() {
+    let json = r#"{"id":"00000000-0000-0000-0000-000000000001","title":"old"}"#;
+    let t: Task = serde_json::from_str(json).unwrap();
+    assert_eq!(t.pr_url, None);
+    let mut t = t;
+    t.pr_url = Some(PrUrl::parse("https://h/pull/1").unwrap());
+    let back: Task = serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
+    assert_eq!(back, t);
+    let none = serde_json::to_string(&task(1, "a")).unwrap();
+    assert!(!none.contains("pr_url"), "{none}");
+}

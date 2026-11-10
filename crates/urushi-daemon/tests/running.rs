@@ -1,6 +1,6 @@
 //! End-to-end: an agent's hooks say it works, clients see the pane running on its tab,
 //! and finishing, ending its session, an interrupt key or closing the pane stop it
-//! (ADR 0033).
+//! (ADR 0039).
 #![cfg(unix)]
 #![allow(
     clippy::unwrap_used,

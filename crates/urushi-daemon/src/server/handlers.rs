@@ -321,6 +321,9 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         | Body::ImportJiraBoard(_)
         | Body::SyncBoard(_)
         | Body::QueryJiraFilter(_)) => super::jira::route(service, body).await?,
+        body @ (Body::CreateQuickFilter(_)
+        | Body::UpdateQuickFilter(_)
+        | Body::DeleteQuickFilter(_)) => super::quick_filters::route(service, body).await?,
         body @ (Body::GetJiraIssue(_)
         | Body::GetJiraCreateFields(_)
         | Body::ChangeJiraIssue(_)
@@ -359,6 +362,11 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         Body::MoveFolder(r) => {
             let index = usize::try_from(r.index).unwrap_or(usize::MAX);
             service.move_project(parse(&r.folder_id, "folder_id")?, index)?;
+            ok()
+        }
+        Body::MoveThread(r) => {
+            let index = usize::try_from(r.index).unwrap_or(usize::MAX);
+            service.move_thread(parse(&r.thread_id, "thread_id")?, index)?;
             ok()
         }
         Body::TailnetStatus(_) => Outcome::TailnetStatus(remote::status(service).await),

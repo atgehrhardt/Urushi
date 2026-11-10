@@ -8,6 +8,7 @@ pub(crate) mod handlers;
 mod jira;
 mod jira_issue;
 mod organize;
+mod quick_filters;
 pub(crate) mod remote;
 pub(crate) mod screen;
 mod usage;

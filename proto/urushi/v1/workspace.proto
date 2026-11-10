@@ -22,6 +22,7 @@ message Workspace {
   uint64 revision = 1;
   // Repos (named before the rename; see the note at the top).
   repeated Project projects = 2;
+  // Threads, in display order within their groups (`MoveThread`, since 1.24).
   repeated Thread threads = 3;
   repeated Tab tabs = 4;
   // Projects, in display order. Since protocol 1.2.
@@ -110,8 +111,8 @@ message Tab {
   // types (not stored; lost when the daemon restarts). Since 1.9.
   repeated PaneAttention attention = 6;
   // Panes whose agent is working right now: it took a prompt, uses a tool or runs a
-  // subagent, as its hooks say (ADR 0033). Not stored; lost when the daemon restarts.
-  // Since 1.21.
+  // subagent, as its hooks say (ADR 0039). Not stored; lost when the daemon restarts.
+  // Since 1.25.
   repeated PaneRunning running = 7;
 }
 
@@ -125,7 +126,7 @@ message QuickTerminal {
   string focused_pane_id = 3;
   // As Tab.attention.
   repeated PaneAttention attention = 4;
-  // As Tab.running. Since 1.21.
+  // As Tab.running. Since 1.25.
   repeated PaneRunning running = 5;
 }
 
@@ -150,7 +151,7 @@ message PaneAttention {
   int64 since_ms = 3;
 }
 
-// A pane whose agent is working. Since 1.21.
+// A pane whose agent is working. Since 1.25.
 message PaneRunning {
   string pane_id = 1;
   // When it started working.
@@ -284,6 +285,14 @@ message UpdateFolderSettingsRequest {
 // Folders are listed in this order. Since 1.11.
 message MoveFolderRequest {
   string folder_id = 1;
+  uint32 index = 2;
+}
+
+// Moves a thread to `index` in `Workspace.threads` (counted without it; clamped to the
+// end). Threads are listed in this order inside their project, pin and status groups.
+// Since 1.24.
+message MoveThreadRequest {
+  string thread_id = 1;
   uint32 index = 2;
 }
 

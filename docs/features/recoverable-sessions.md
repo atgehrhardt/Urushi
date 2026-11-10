@@ -53,7 +53,7 @@ When the daemon itself stops (**Restart daemon…**, a reboot, a crash), the pro
 - Manually verified against a throwaway daemon home with zsh and Claude Code 2.1: output, colours and directory restored; Claude typed `--resume` with the id from its session file, and an empty session came back as a fresh Claude; `less "my notes.txt"`, `python3 -m http.server` (serving again) and a `yes | head | sleep` pipeline ran again.
 - `crates/urushi-daemon/tests/restart.rs`: stopping the real `urushid` by request and by signal, and the next daemon restoring the workspace. `tests/e2e.rs`: `ShutdownDaemon` refused over the tailnet.
 - `crates/urushi-daemon/tests/shutdown.rs`: after a stop, the killed shell's pane is still in `workspace.json`, and a client that was connected has been hung up on, without the store being written.
-- `crates/urushi-daemon/tests/mouse.rs`: SGR reports reaching a real program, arrow keys on the alternate screen, scrollback in a plain shell.
+- `crates/urushi-daemon/tests/mouse.rs`: SGR reports reaching a real program, arrow keys on the alternate screen, scrollback in a plain shell, also when output lands after the first frame (the tests ack every update, as clients must; `common::next_screen_update`).
 - `crates/urushi-mux/tests/pty_session.rs`: real processes (output, echo, exit codes, resize, incremental frames, env/cwd).
 - `crates/urushi-daemon/tests/e2e.rs`:
   - screen survives a client disconnect

@@ -439,7 +439,7 @@ fn access_labels(name: &str) -> Vec<String> {
 }
 
 #[test]
-fn jira_subtasks_cant_be_deleted_here() {
+fn jira_issues_and_subtasks_can_be_deleted_after_a_question() {
     let ordinary = access_labels("task");
     assert!(
         ordinary.iter().any(|l| l.starts_with("Delete subtask ")),
@@ -447,13 +447,33 @@ fn jira_subtasks_cant_be_deleted_here() {
     );
     let jira = access_labels("jira-task");
     assert!(
-        jira.iter()
-            .any(|l| l == "Task Template" || l.contains("Template")),
+        jira.iter().any(|l| l == "Delete subtask Template"),
         "{jira:?}"
     );
+    assert!(jira.iter().any(|l| l == "Delete issue"), "{jira:?}");
+
+    let card = dump("jira-delete-issue", 1280.0);
+    for text in [
+        "Delete ACME-139?",
+        "“Invoice PDFs”",
+        "It is deleted in Jira, for everyone.",
+        "Its 2 subtasks go with it.",
+        "This can't be undone.",
+        "Delete from Jira",
+    ] {
+        assert!(card.contains(text), "{text}\n{card}");
+    }
+    let subtask = dump("jira-delete-subtask", 1280.0);
+    for text in [
+        "Delete ACME-141 from Jira for good?",
+        "Keep",
+        "Delete from Jira",
+    ] {
+        assert!(subtask.contains(text), "{text}\n{subtask}");
+    }
     assert!(
-        !jira.iter().any(|l| l.starts_with("Delete subtask ")),
-        "{jira:?}"
+        !subtask.contains("\"Save\""),
+        "the question replaces the buttons"
     );
 }
 

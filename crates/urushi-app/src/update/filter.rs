@@ -25,9 +25,14 @@ impl AppState {
                 a.account_id.as_str()
             }
         });
+        let kept = self
+            .board
+            .board(&self.workspace)
+            .map_or(&[][..], |b| b.quick_filters.as_slice());
         Context {
             me,
             now_ms: self.now_ms,
+            kept,
         }
     }
 
@@ -46,24 +51,37 @@ impl AppState {
                 self.board.quick_asking = false;
                 self.refresh_quick_filter(fx);
             }
+            FilterMsg::Saved(id) => {
+                if !f.saved.remove(&id) {
+                    f.saved.insert(id);
+                }
+                f.quick_matches = None;
+                self.board.quick_asking = false;
+                self.refresh_quick_filter(fx);
+            }
             FilterMsg::Clear => {
                 f.clear();
                 if self.focus == Some(Field::BoardSearch) {
                     self.focus = None;
                 }
             }
+            other => self.quick_filter_msg(other, fx),
         }
     }
 
-    /// Asks which issues the quick filters on let through, unless an answer is on its
-    /// way (then asks again when it comes, if the board changed meanwhile).
+    /// Asks which issues the quick filters in JQL that are on let through, unless an
+    /// answer is on its way (then asks again when it comes, if the board changed
+    /// meanwhile).
     pub(super) fn refresh_quick_filter(&mut self, fx: &mut Vec<Effect>) {
-        if self.board.filter.quick.is_empty() {
-            return;
-        }
-        let Some(board) = self.board.board(&self.workspace).map(|b| b.id.clone()) else {
+        let Some(board) = self.board.board(&self.workspace) else {
             return;
         };
+        let f = &self.board.filter;
+        if !f.needs_jira(&board.quick_filters) {
+            return;
+        }
+        let kept = f.kept_jql(&board.quick_filters);
+        let board = board.id.clone();
         if self.board.quick_asking {
             self.board.quick_stale = true;
             return;
@@ -73,6 +91,7 @@ impl AppState {
         let body = Body::QueryJiraFilter(v1::QueryJiraFilterRequest {
             board_id: board.clone(),
             quick_filter_ids: self.board.filter.quick.iter().copied().collect(),
+            kept_quick_filter_ids: kept,
         });
         fx.push(request(body, Followup::QuickFilter(board)));
     }
@@ -108,8 +127,10 @@ impl AppState {
         fx: &mut Vec<Effect>,
     ) {
         self.board.quick_asking = false;
-        let shown = self.board.board(&self.workspace).map(|b| b.id.as_str());
-        if shown != Some(board) || self.board.filter.quick.is_empty() {
+        let Some(shown) = self.board.board(&self.workspace) else {
+            return;
+        };
+        if shown.id != board || !self.board.filter.needs_jira(&shown.quick_filters) {
             return;
         }
         self.board.filter.quick_matches = ids.map(|ids| ids.into_iter().collect());
