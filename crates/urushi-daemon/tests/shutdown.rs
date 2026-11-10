@@ -1,6 +1,7 @@
 //! End-to-end: a daemon that stops kills its panes' processes, but those kills are not
-//! panes exiting. The stored layout keeps every pane for the next daemon to restore, and
-//! nothing the stopped daemon still holds can change the workspace any more.
+//! panes exiting. The stored layout keeps every pane for the next daemon to restore,
+//! connections are closed, and nothing the stopped daemon still holds can change the
+//! workspace any more.
 #![cfg(unix)]
 #![allow(
     clippy::unwrap_used,
@@ -14,7 +15,6 @@ mod common;
 use std::time::Duration;
 
 use common::*;
-use urushi_client::{ClientError, v1};
 
 /// Whether process `pid` still exists.
 fn alive(pid: &str) -> bool {
@@ -27,7 +27,7 @@ fn alive(pid: &str) -> bool {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn stopping_keeps_the_layout_and_refuses_changes() {
+async fn stopping_keeps_the_layout_and_hangs_up() {
     let home = temp_home();
     let fixture = repo(home.path());
     let daemon_home = home.path().join("home");
@@ -59,7 +59,7 @@ async fn stopping_keeps_the_layout_and_refuses_changes() {
         .expect("the shell printed its pid")
         .to_owned();
 
-    // The client stays connected, so the stopped daemon's connection is still open.
+    // The client is still connected when the daemon stops.
     daemon.stop().await;
 
     // The daemon killed the shell on its way out; by now its exit has been noticed.
@@ -79,18 +79,9 @@ async fn stopping_keeps_the_layout_and_refuses_changes() {
         "the stopped daemon dropped pane {pane} from the stored layout"
     );
 
-    // What the stopped daemon still serves can't change the workspace.
-    let refused = client.create_board("late").await.unwrap_err();
-    assert!(
-        matches!(
-            refused,
-            ClientError::Remote {
-                code: v1::ErrorCode::Unavailable,
-                ..
-            }
-        ),
-        "{refused:?}"
-    );
+    // The stopped daemon hung up on the client still connected to it.
+    let refused = client.create_board("late").await;
+    assert!(refused.is_err(), "{refused:?}");
     let after = std::fs::read_to_string(daemon_home.join("workspace.json")).unwrap();
     assert_eq!(stored, after, "the stopped daemon wrote the workspace");
 }

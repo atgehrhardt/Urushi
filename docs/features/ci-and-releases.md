@@ -20,7 +20,7 @@ publishes it as a GitHub Release.
 | `licenses` | Ubuntu | `cargo deny check` |
 | `proto` | Ubuntu | `buf lint`; on pull requests, also `buf breaking` against `main` |
 
-The toolchain comes from `rust-toolchain.toml`. The daemon's end-to-end tests
+The test jobs time out after 45 minutes, so a hung test fails the run. The toolchain comes from `rust-toolchain.toml`. The daemon's end-to-end tests
 (`crates/urushi-daemon/tests/*.rs`) are Unix-only, because they drive `/bin/sh` and git
 fixtures. On Windows the unit tests and the `cmd.exe` PTY test run.
 

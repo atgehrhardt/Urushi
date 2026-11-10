@@ -41,7 +41,6 @@ mod threads;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -165,10 +164,11 @@ pub struct Service {
     changes: watch::Sender<u64>,
     /// Woken when a client asks the daemon to stop (`ShutdownDaemon`).
     shutdown: tokio::sync::Notify,
-    /// Set once [`Service::shutdown`] begins. From then on the workspace is frozen: the
-    /// panes it kills stay in the layout for the next daemon to restore, and work that
-    /// outlives the daemon (open connections, session watchers) can't change or save it.
-    stopping: AtomicBool,
+    /// `true` once [`Service::shutdown`] begins. From then on the workspace is frozen: the
+    /// panes it kills stay in the layout for the next daemon to restore, work that
+    /// outlives the daemon (session watchers) can't change or save it, and connections
+    /// close (`Service::stopped`).
+    stopping: watch::Sender<bool>,
     me: Weak<Service>,
     /// The `urushi` CLI, for agents in panes (ADR 0024).
     cli: Option<PathBuf>,
@@ -234,7 +234,7 @@ impl Service {
             cli: config.cli,
             changes: watch::channel(revision).0,
             shutdown: tokio::sync::Notify::new(),
-            stopping: AtomicBool::new(false),
+            stopping: watch::channel(false).0,
             me: me.clone(),
         });
         service.restore_sessions();
@@ -310,7 +310,14 @@ impl Service {
 
     /// Whether [`Service::shutdown`] has begun.
     pub(crate) fn is_stopping(&self) -> bool {
-        self.stopping.load(Ordering::SeqCst)
+        *self.stopping.borrow()
+    }
+
+    /// Resolves once [`Service::shutdown`] has begun.
+    pub(crate) async fn stopped(&self) {
+        let mut stopping = self.stopping.subscribe();
+        // The sender lives in `self`, so this only ends when stopping.
+        let _ = stopping.wait_for(|stopping| *stopping).await;
     }
 
     /// Reads the state.
@@ -337,7 +344,7 @@ impl Service {
     /// Freezes the workspace, then kills every session. Called on shutdown. The kills
     /// aren't recorded as panes exiting, so the stored layout keeps every pane.
     pub fn shutdown(&self) {
-        self.stopping.store(true, Ordering::SeqCst);
+        self.stopping.send_replace(true);
         let all: Vec<PaneId> = lock(&self.sessions).keys().copied().collect();
         self.kill_sessions(all);
     }
