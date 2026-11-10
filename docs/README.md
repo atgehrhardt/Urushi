@@ -46,6 +46,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0029 – Give projects a parent branch, and a parent-branch thread that works on it](adr/0029-project-parent-branch-threads.md)
 - [0030 – Draft a task's message by pasting it into the agent once it says it is ready](adr/0030-draft-task-messages-once-the-agent-is-ready.md)
 - [0031 – Keep one thread-less quick terminal per daemon, beside the tabs](adr/0031-thread-less-quick-terminal.md)
+- [0032 – Release macOS builds from a version tag, for Apple Silicon, as an ad-hoc signed zip](adr/0032-tagged-macos-releases.md)
 
 ## Features
 - [_template](features/_template.md)
@@ -63,3 +64,4 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [Agent usage in the status bar](features/agent-usage.md)
 - [Agent attention (finished / needs input)](features/agent-attention.md)
 - [Quick terminal](features/quick-terminal.md)
+- [CI and releases](features/ci-and-releases.md)
