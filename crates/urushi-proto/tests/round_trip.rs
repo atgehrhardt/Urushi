@@ -217,6 +217,33 @@ fn all_request_kinds() {
             pane_ids: vec!["p".into(), "q".into()],
         }),
         B::OpenQuickTerminal(v1::OpenQuickTerminalRequest {}),
+        B::CreateQuickFilter(v1::CreateQuickFilterRequest {
+            board_id: "b".into(),
+            name: "Bugs".into(),
+            rule: Some(v1::QuickFilterRule {
+                search: "login".into(),
+                kinds: vec![v1::TaskKind::Bug.into()],
+                tags: vec!["ui".into()],
+                jql: String::new(),
+            }),
+        }),
+        B::UpdateQuickFilter(v1::UpdateQuickFilterRequest {
+            board_id: "b".into(),
+            filter: Some(v1::QuickFilterRef {
+                filter: Some(v1::quick_filter_ref::Filter::JiraId(4)),
+            }),
+            name: "Mine".into(),
+            rule: Some(v1::QuickFilterRule {
+                jql: "assignee = currentUser()".into(),
+                ..Default::default()
+            }),
+        }),
+        B::DeleteQuickFilter(v1::DeleteQuickFilterRequest {
+            board_id: "b".into(),
+            filter: Some(v1::QuickFilterRef {
+                filter: Some(v1::quick_filter_ref::Filter::Id("q".into())),
+            }),
+        }),
     ];
     for (i, body) in bodies.into_iter().enumerate() {
         round_trip(&envelope::request(i as u64, body));
@@ -317,6 +344,34 @@ fn all_response_kinds() {
         O::QuickTerminal(quick_terminal()),
         O::Workspace(v1::Workspace {
             quick_terminal: Some(quick_terminal()),
+            ..Default::default()
+        }),
+    ];
+    for (i, outcome) in outcomes.into_iter().enumerate() {
+        round_trip(&envelope::response(i as u64, outcome));
+    }
+}
+
+#[test]
+fn quick_filter_answers_round_trip() {
+    use response::Outcome as O;
+    let outcomes = [
+        O::QuickFilterSaved(v1::QuickFilterSaved {
+            filter: Some(v1::QuickFilterRef {
+                filter: Some(v1::quick_filter_ref::Filter::Id("q".into())),
+            }),
+            kept_here: "Jira refused: you need to be a board admin".into(),
+        }),
+        O::Board(v1::Board {
+            id: "b".into(),
+            quick_filters: vec![v1::QuickFilter {
+                id: "q".into(),
+                name: "Bugs".into(),
+                rule: Some(v1::QuickFilterRule {
+                    kinds: vec![v1::TaskKind::Bug.into()],
+                    ..Default::default()
+                }),
+            }],
             ..Default::default()
         }),
     ];

@@ -9,7 +9,7 @@ use urushi_ui::Point;
 /// First protocol minor version that can reorder projects (`MoveFolder`).
 pub const PROJECT_ORDER_SINCE_MINOR: u32 = 11;
 /// First protocol minor version that can reorder threads (`MoveThread`).
-pub const THREAD_ORDER_SINCE_MINOR: u32 = 21;
+pub const THREAD_ORDER_SINCE_MINOR: u32 = 24;
 /// First protocol minor version with project settings: a parent branch and its
 /// parent-branch thread (`UpdateFolderSettings`, ADR 0029).
 pub const PROJECT_SETTINGS_SINCE_MINOR: u32 = 18;
@@ -41,6 +41,8 @@ pub enum MenuTarget {
     Board(String),
     /// The board's filters (by board id).
     Filter(String),
+    /// A quick filter's chip (board id, filter): change or delete it.
+    QuickFilter(String, crate::filter::quick::QuickRef),
     /// The board panel's "+": a new board, or one imported from Jira.
     NewBoard,
     /// A terminal pane (by pane id): split, copy, paste, close.

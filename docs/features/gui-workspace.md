@@ -33,6 +33,12 @@ window. On phones the panels fill the screen edge to edge.
 - **Terminal area:** split, recoverable terminal panes. A right or two-finger click on a pane opens its menu: **Split right**, **Split down**, **Copy**, **Paste**, **Close pane** (see [split-pane layouts](split-pane-layouts.md)). Touch screens have no secondary click, so on mobile the tab bar keeps **→ ↓ ×** buttons for the focused pane. A thread with no tabs (new, or its last tab closed) keeps its tab bar and shows the launcher inline.
 - **Header:** the logo (the app icon's mark, in the chosen style) and the name, a DEV badge in debug builds, and the connection.
 - **Status bar:** under the terminals: the thread's branch, and the [plan usage](agent-usage.md) of the agent running in the focused pane.
+- **Errors:** an error shows on whatever is on top, where the user is looking, with a
+  **Dismiss** button: in the open dialog, between its fields and its buttons (wrapped
+  onto up to six lines); else at the bottom of the quick terminal's panel; else at the
+  bottom of the task board; else (phones showing the thread list) under the list; else
+  under the terminals. An error shown in a dialog goes when the dialog closes, since it
+  was about what that dialog was doing; any other stays until dismissed.
 - **Dialogs:**
   - *Add repo:* **Choose a folder…** opens the system picker and adds the repository straight away. Against a remote daemon (or on mobile) there is no picker, so a path is typed. "Remote over SSH" and "Connect from your phone" are shown as coming soon.
   - *New thread:* **repo**, **project** (or None) and **start from** (chosen from the repo's branches) are selectors; title and **branch** are typed. The branch follows the title as `<prefix><title in lower-case-with-dashes>` until edited, and clearing it makes it follow again. Started from a project (or a task near one), the project is preselected.
@@ -52,6 +58,17 @@ window. On phones the panels fill the screen edge to edge.
   the mark (colored parts in the tint, light strokes kept light, alpha kept) and caches
   it under an id per look so the renderer's image cache doesn't show an old one. Save
   sends `SettingsPatch.appearance` only when the look changed.
+- **Errors** (`errors.rs`, `view/error.rs`, `view/modal.rs`): there is one error,
+  `AppState::error`. `errors::error_place` picks the surface that draws it (dialog →
+  quick terminal → task board → phone thread list → main area) and each surface asks
+  `view::error::for_place` for the banner, so exactly one draws it. Every dialog is
+  built through `view/modal.rs`, which puts the banner under the dialog's body; the task
+  editor shrinks its body by `modal::error_height` so its buttons stay on screen. The
+  view has no text measurer, so a dialog's banner height comes from an estimate of the
+  message's lines. After each `update`, `errors::forget_dialog_error` drops an error
+  that was showing in a dialog the update closed; one set by that same update (the
+  dialog's request failed as it closed) stays and moves to the surface beneath. The
+  Jira connect and import dialogs also keep their own inline errors.
 - **Reopening:** the app shows the thread and tabs it showed when it was closed, for the local daemon (`ui_state.rs`, see [recoverable sessions](recoverable-sessions.md)).
 - **Attach on view:** panes of the visible tab (and of the quick terminal while its panel is out) are attached, sized from their rectangles, and kept up to date with acknowledged `ScreenUpdate`s. Hidden tabs are detached. Which surface takes typing and the mouse is decided in `surface.rs`.
 - **Keyboard:**
@@ -88,20 +105,22 @@ window. On phones the panels fill the screen edge to edge.
 - **Deleting a thread:** the app first requests a `DeletionPlan`. The warning lists everything that will be destroyed. Only the red Delete button sends `DeleteThread{token}`; Enter never does.
   - Confirming closes the warning and hides the thread at once. The daemon deletes in the background while the user keeps working. Logic: `update/deletion.rs`.
   - The app keeps the daemon's workspace as reported and shows it without threads being deleted (`deletions.rs`). Those are threads the daemon reports as `Deleting` (from any client) and threads this app asked to delete that the daemon still lists. If the selected thread goes, the first remaining one is shown. Otherwise selection and focus stay where they are.
-  - The answer to `DeleteThread` never closes a dialog or moves focus. A refusal (e.g. the thread changed since the warning) shows the thread again, and the error banner says why. A deletion that fails partway brings the thread back as "deletion failed".
+  - The answer to `DeleteThread` never closes a dialog or moves focus. A refusal (e.g. the thread changed since the warning) shows the thread again, and the error says why. A deletion that fails partway brings the thread back as "deletion failed".
 
 ## Invariants
 - The app holds no authoritative state. Every change goes through a daemon request.
 - There is no path from the UI to `DeleteThread` without a plan shown in the dialog (`update/tests.rs::deleting_a_thread_always_goes_through_the_warning`).
 - Deleting a thread never blocks the app and never takes focus (`update/tests/deletion.rs`).
+- An error always shows on the surface on top, once, with a reachable Dismiss button: under the terminals, on the task board, in the quick terminal, on the phone's thread list, and in a dialog (`view/error/tests.rs`).
 - A collapsed sidebar always has a visible, clickable button to bring it back, whatever the main area shows (`view/mod.rs::a_collapsed_sidebar_can_always_be_shown_again`).
 
 ## Tests
 - `crates/urushi-app/src/update/tests.rs`: connect, attach, resize, screen updates, typing vs shortcuts, the deletion flow, dialog editing, connect-required mode, selection and copy. `update/tests/fields.rs`: field shortcuts, mouse selection and the field menu; `urushi-ui/tests/fields.rs`: pointer → caret, scrolling, selection painting.
+- `crates/urushi-app/src/errors.rs`: which surface draws the error, and when it goes; `update/tests/errors.rs`: a refused new task keeps its editor open with the reason, and the error's lifetime; `view/error/tests.rs`: the banner is drawn once and reachable on every surface, a long error wraps in a dialog, and the task editor's buttons stay on screen.
 - `crates/urushi-app/src/update/tests/daemon.rs`: the restart confirmation and reconnecting.
 - `crates/urushi-app/src/sidebar.rs` and `update/tests/sidebar.rs`: hiding, the shortcut, resizing within limits, snapping shut, phones ignoring both; `view/mod.rs` tests: the edge, its cursor, and a reachable show button while hidden (with a thread, the launcher, the task panel out, and an empty workspace).
 - `crates/urushi-app/src/update/tests/flows.rs`: launcher, branch name following the title, adding repos, dropped files, agent settings. `update/tests/organize.rs`: menus, prompts, drag and drop, selectors. `update/tests/panes.rs`: the pane menu and focus after a pane closes.
-- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `new-thread-project`, `settings`, `settings-appearance`, `settings-custom`, `logo-hidden`, `menu`, `menu-status`, `drag`, `drag-thread`, `drag-project`, `repos`, `board`, `board-drag`, `board-tab-drag`, `task`, `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `sidebar-collapsed`, `quick-terminal`, `setup`, `setup-mode`, `project-base-thread`, `project-settings`, and the Jira screens) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
+- `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `new-thread-project`, `settings`, `settings-appearance`, `settings-custom`, `logo-hidden`, `menu`, `menu-status`, `drag`, `drag-thread`, `drag-project`, `repos`, `board`, `board-drag`, `board-tab-drag`, `task`, `task-error` and `board-error` (an error in the task editor and on the board), `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `sidebar-collapsed`, `quick-terminal`, `setup`, `setup-mode`, `project-base-thread`, `project-settings`, and the Jira screens) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
 - `crates/urushi-app/src/appearance.rs`: themes from schemes, logo styles, drafts; `snapshot/tests.rs`: the look shown at once, reverted on Close, sent only when changed. Core `appearance.rs`, proto `convert/appearance.rs`, daemon `service/settings.rs`, CLI `look.rs`.
 - `crates/urushi-app/src/terminal.rs`: pane geometry, dividers, selection text, painting.
 - `crates/urushi-ui/tests/layout.rs` and `crates/urushi-render/tests/pixels.rs`: toolkit and GPU.
@@ -110,5 +129,6 @@ window. On phones the panels fill the screen edge to edge.
 - No tab renaming in the UI (the protocol and CLI support it).
 - Dropped file paths are local to the client. Against a remote daemon they're pasted as-is and won't exist there.
 - winit doesn't report the pointer during a drag, so "dropped on a terminal" uses the last known pointer position.
+- A dialog's error banner is sized from an estimate of how many lines the message wraps onto (no text measurer in the view), so it can leave a spare line, and a message longer than six lines is cut short with an ellipsis. Panels show one line.
 - Adding a repo over SSH, and pairing a phone from this dialog, are placeholders.
 - The mobile soft keyboard relies on winit's IME support. A touch key bar provides Esc, Tab, Ctrl chords and arrows.

@@ -1,4 +1,4 @@
-# 0033. Reorder threads by moving them in the one stored list, and let a drop join the target's group
+# 0038. Reorder threads by moving them in the one stored list, and let a drop join the target's group
 
 - **Status:** Accepted
 - **Date:** 2026-11-10
@@ -14,7 +14,7 @@ Two questions: what a reorder request names, and what happens when a thread is d
 on a thread in another group (another status, pinned or not, another project).
 
 ## Decision
-- **`MoveThread{thread_id, index}`** (protocol 1.21) moves a thread in the one stored
+- **`MoveThread{thread_id, index}`** (protocol 1.24) moves a thread in the one stored
   list, the index counted without it and clamped to the end, exactly like `MoveFolder`.
   The client computes the index the way it does for projects: the dragged thread takes
   the target's place (`organize::thread_drop_index`). Each group keeps the list's order,

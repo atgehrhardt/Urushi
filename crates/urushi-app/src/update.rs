@@ -23,6 +23,7 @@ impl AppState {
         reason = "one arm per message kind keeps routing in one place"
     )]
     pub fn update(&mut self, msg: Msg) -> Vec<Effect> {
+        let before = crate::errors::BeforeUpdate::of(self);
         let mut fx = Vec::new();
         match msg {
             // A dialog field's Cut/Copy/Paste menu: `update/fields.rs`.
@@ -73,6 +74,7 @@ impl AppState {
             Msg::Daemon(event) => self.on_event(event, &mut fx),
             Msg::Response { followup, result } => self.on_response(followup, result, &mut fx),
             Msg::SelectThread(id) => self.select_thread(id, &mut fx),
+            Msg::OpenUrl(url) => fx.push(Effect::OpenUrl(url)),
             Msg::SetCompact(compact) => self.compact = compact,
             Msg::WindowHeight(height) => self.window_height = height,
             Msg::LookScheme(scheme) => {
@@ -234,6 +236,8 @@ impl AppState {
         self.want_thumbnails(&mut fx);
         self.watch_shown_board(&mut fx);
         self.attend(&mut fx);
+        // An error shown in a dialog goes with it (`errors.rs`).
+        crate::errors::forget_dialog_error(self, &before);
         fx
     }
 
@@ -466,6 +470,7 @@ impl AppState {
                 return;
             }
             Err(message) if self.jira_failed(&followup, &message) => return,
+            Err(message) if self.quick_filter_failed(&followup, &message) => return,
             Err(message) => {
                 if let Followup::Attached(pane) = &followup {
                     self.attaching.remove(pane);
@@ -606,6 +611,7 @@ impl AppState {
             }
             Some(Dialog::Task { .. }) => self.submit_task(fx),
             Some(Dialog::ConnectJira { .. } | Dialog::ImportJira { .. }) => self.submit_jira(fx),
+            Some(Dialog::QuickFilter(_)) => self.submit_quick_filter(fx),
             Some(Dialog::NewTab { highlighted }) => {
                 let choices = self.launch_choices();
                 let choice = choices[(*highlighted).min(choices.len() - 1)];
@@ -729,6 +735,7 @@ mod fields;
 mod filter;
 mod intake;
 mod issue;
+mod issue_deletion;
 mod jira;
 mod keys;
 mod launcher;
@@ -737,6 +744,7 @@ mod panes;
 mod pointer;
 mod project_settings;
 mod quick;
+mod quick_filter;
 mod setup;
 mod sidebar;
 mod sidebar_drag;

@@ -11,20 +11,20 @@ use crate::http::{HttpError, Response};
 
 /// Answers requests from a script and keeps them.
 #[derive(Default)]
-struct Script {
+pub(super) struct Script {
     answers: Mutex<VecDeque<(u16, Value)>>,
     seen: Mutex<Vec<Request>>,
 }
 
 impl Script {
-    fn answering(answers: impl IntoIterator<Item = (u16, Value)>) -> Arc<Self> {
+    pub(super) fn answering(answers: impl IntoIterator<Item = (u16, Value)>) -> Arc<Self> {
         Arc::new(Self {
             answers: Mutex::new(answers.into_iter().collect()),
             seen: Mutex::default(),
         })
     }
 
-    fn seen(&self) -> Vec<Request> {
+    pub(super) fn seen(&self) -> Vec<Request> {
         self.seen.lock().unwrap().clone()
     }
 }
@@ -50,7 +50,7 @@ impl HttpClient for Script {
     }
 }
 
-fn account() -> Account {
+pub(super) fn account() -> Account {
     Account {
         site: "https://acme.atlassian.net".into(),
         email: "a@b.c".into(),
@@ -493,4 +493,28 @@ fn comments_attachments_links_and_watching_use_their_endpoints() {
     assert_eq!(body(6)["timeSpentSeconds"], 1800);
     // Files are fetched from the site only.
     assert!(jira.download(&me, "https://evil.example/x").is_err());
+}
+
+#[test]
+fn deleting_an_issue_takes_its_subtasks_and_reports_refusals() {
+    let http = Script::answering([
+        (204, Value::Null),
+        (
+            403,
+            json!({ "errorMessages": ["You do not have permission to delete issues in this project."] }),
+        ),
+    ]);
+    let jira = CloudJira::new(http.clone());
+    jira.delete_issue(&account(), "A-1").unwrap();
+    let seen = http.seen();
+    assert_eq!(seen[0].method, Method::Delete);
+    assert_eq!(
+        seen[0].url,
+        "https://acme.atlassian.net/rest/api/3/issue/A-1?deleteSubtasks=true"
+    );
+    assert_eq!(seen[0].json, None);
+    assert!(matches!(
+        jira.delete_issue(&account(), "A-2"),
+        Err(JiraError::Forbidden(m)) if m.contains("permission")
+    ));
 }

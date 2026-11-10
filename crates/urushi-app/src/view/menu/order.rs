@@ -34,7 +34,7 @@ pub(super) fn project_moves(state: &AppState, theme: &Theme, id: &str) -> Vec<No
 
 /// "Move up" and "Move down" for a thread, within its sidebar group (its project, pin
 /// and status), where it has a neighbour that way and the daemon can reorder threads
-/// (protocol 1.21). It takes the neighbour's place in the list of threads.
+/// (protocol 1.24). It takes the neighbour's place in the list of threads.
 pub(super) fn thread_moves(state: &AppState, theme: &Theme, id: &str) -> Vec<Node<Msg>> {
     if !state.daemon_supports_thread_order() {
         return Vec::new();

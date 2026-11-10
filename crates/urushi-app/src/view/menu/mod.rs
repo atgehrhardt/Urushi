@@ -15,6 +15,7 @@ mod filter;
 mod jira;
 mod order;
 mod pane;
+mod quick_filter;
 mod tasks;
 
 const MENU_WIDTH: f32 = 230.0;
@@ -36,6 +37,9 @@ pub(super) fn overlay(
         MenuTarget::Column(id) => tasks::column_items(state, theme, menu, id),
         MenuTarget::Board(id) => boards::board_items(state, theme, id),
         MenuTarget::Filter(board) => filter::filter_items(state, theme, (board, menu.page), scroll),
+        MenuTarget::QuickFilter(board, filter) => {
+            quick_filter::quick_filter_items(state, theme, (board, filter))
+        }
         MenuTarget::NewBoard => jira::new_board_items(theme),
         MenuTarget::Pane(pane) => pane::pane_items(state, theme, pane),
     };

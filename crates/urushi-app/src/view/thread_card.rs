@@ -1,24 +1,35 @@
 //! A thread's card in the sidebar: its title (with a dot when its agent finished or
-//! waits), the repo and branch it's on, and its lifecycle badge. Click to open it,
-//! right-click for its menu, drag it onto a project to file it there, or onto another
-//! thread to take that thread's place and join its group. A project's
+//! waits, and the Jira and GitHub marks of its task's issue and pull request, which
+//! open them in a browser, ADR 0036), the repo and branch it's on, and its lifecycle
+//! badge. Click to open it, right-click for its menu, drag it onto a project to file it
+//! there, or onto another thread to take that thread's place and join its group. A
+//! project's
 //! parent-branch thread (ADR 0029) stays at its project's top: it can't be dragged, and
 //! is closed from its menu rather than a delete button.
 
-use urushi_client::v1;
+use urushi_client::{ThreadLinks, v1};
 use urushi_ui::widgets::icon_button;
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key};
 
+use crate::brand_icons::{Brand, mark};
 use crate::msg::Msg;
 use crate::organize::{Dragged, MenuTarget};
 use crate::state::AppState;
 
 use super::board::drop_line;
 
+/// Size of a brand mark on a card.
+const MARK: f32 = 12.0;
+
 /// A thread: title, then which repo and branch it's on. Click to open, right-click
 /// (two-finger click) for its menu, drag to move it to another project or another
-/// thread's place.
-pub(super) fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) -> Node<Msg> {
+/// thread's place. `links` are its task's Jira issue and pull request.
+pub(super) fn thread_card(
+    state: &AppState,
+    theme: &Theme,
+    thread: &v1::Thread,
+    links: Option<&ThreadLinks>,
+) -> Node<Msg> {
     let selected = state.selected_thread.as_deref() == Some(&thread.id);
     let dragged = state
         .dragging
@@ -34,7 +45,7 @@ pub(super) fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) 
     let mut details = Node::column()
         .width(Length::Fill(1.0))
         .gap(1.0)
-        .child(thread_title(theme, thread, selected, attention))
+        .child(thread_title(theme, thread, (selected, attention), links))
         .child(Node::text(
             thread_meta(state, thread),
             Font::Ui,
@@ -117,7 +128,7 @@ pub(super) fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) 
 }
 
 /// While another thread is dragged, `card` takes it: the dragged thread takes this one's
-/// place (protocol 1.21). Drawn above the project's own drop target, it wins. When this
+/// place (protocol 1.24). Drawn above the project's own drop target, it wins. When this
 /// is where the dragged thread would land, a line above or below shows it.
 fn drop_target(state: &AppState, theme: &Theme, thread: &str, card: Node<Msg>) -> Node<Msg> {
     if !state.daemon_supports_thread_order()
@@ -159,12 +170,13 @@ fn drop_line_at(state: &AppState, thread: &str) -> (bool, bool) {
     }
 }
 
-/// A thread's title, with a dot when its agent finished or waits (ADR 0017).
+/// A thread's title, then the marks of its links (ADR 0036), then a dot when its
+/// agent finished or waits (ADR 0017).
 fn thread_title(
     theme: &Theme,
     thread: &v1::Thread,
-    selected: bool,
-    attention: Option<v1::AttentionKind>,
+    (selected, attention): (bool, Option<v1::AttentionKind>),
+    links: Option<&ThreadLinks>,
 ) -> Node<Msg> {
     let color = if selected {
         theme.text
@@ -179,7 +191,46 @@ fn thread_title(
             Node::text(&thread.title, Font::UiMedium, theme.font_size, color)
                 .width(Length::Fill(1.0)),
         )
+        .children(
+            links
+                .into_iter()
+                .flat_map(|l| link_marks(theme, &thread.id, l)),
+        )
         .children(attention.map(|k| super::attention::indicator(theme, k, super::attention::DOT)))
+}
+
+/// The Jira mark for the thread's issue and the GitHub mark for its pull request. Each
+/// opens its page; a click there doesn't also open the thread.
+fn link_marks(theme: &Theme, thread: &str, links: &ThreadLinks) -> Vec<Node<Msg>> {
+    let issue = links.issue.as_ref().map(|i| {
+        let label = format!("Open {} in Jira", i.key);
+        (Brand::Jira, "jira", label, i.url.clone())
+    });
+    let pr = links.pull_request.as_ref().map(|p| {
+        let label = if p.title.is_empty() {
+            format!("Open pull request {}", p.label)
+        } else {
+            format!("Open pull request {}: {}", p.label, p.title)
+        };
+        (Brand::GitHub, "pr", label, p.url.clone())
+    });
+    issue
+        .into_iter()
+        .chain(pr)
+        .filter_map(|(brand, name, label, url)| {
+            let image = mark(brand, theme.text_muted)?;
+            Some(
+                Node::row()
+                    .padding(Insets::symmetric(3.0, 3.0))
+                    .radius(theme.radius)
+                    .hover_background(theme.hover)
+                    .key(key(&["thread-link", thread, name]))
+                    .on_click(Msg::OpenUrl(url))
+                    .role(Role::Button, label)
+                    .child(Node::image(image, MARK, MARK)),
+            )
+        })
+        .collect()
 }
 
 /// Which repo and branch a thread is on. Pinned threads leave their status section, so
@@ -199,4 +250,155 @@ fn thread_meta(state: &AppState, thread: &v1::Thread) -> String {
         meta = format!("Pinned · {meta}");
     }
     meta
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use urushi_client::v1;
+    use urushi_ui::{CellMetrics, Point, Rect, Role, TextSystem, Theme, build};
+
+    use crate::config::ConnectTarget;
+    use crate::msg::{Effect, Msg};
+    use crate::state::AppState;
+
+    const ISSUE: &str = "https://acme.atlassian.net/browse/ACME-1";
+    const PR: &str = "https://github.com/acme/app/pull/7";
+    const LOCAL_PR: &str = "https://github.com/acme/app/pull/9";
+
+    /// Threads `jira` (started from Jira issue ACME-1, which has an open pull request),
+    /// `local` (from a local task with a pull request link) and `plain` (no task).
+    fn state() -> AppState {
+        let mut state = AppState::new(
+            ConnectTarget::Local(None),
+            CellMetrics {
+                width: 8.0,
+                height: 16.0,
+            },
+        );
+        let thread = |id: &str| v1::Thread {
+            id: id.into(),
+            project_id: "r".into(),
+            title: format!("Thread {id}"),
+            primary_branch: format!("urushi/{id}"),
+            state: v1::ThreadState::Ready.into(),
+            ..Default::default()
+        };
+        let issue = v1::JiraIssue {
+            key: "ACME-1".into(),
+            url: ISSUE.into(),
+            pull_requests: vec![v1::PullRequest {
+                url: PR.into(),
+                title: "ACME-1 fix it".into(),
+                status: v1::PullRequestStatus::Open.into(),
+            }],
+            ..Default::default()
+        };
+        state.update(Msg::Connected {
+            welcome: v1::Welcome::default(),
+            workspace: v1::Workspace {
+                projects: vec![v1::Project {
+                    id: "r".into(),
+                    name: "api".into(),
+                    ..Default::default()
+                }],
+                threads: vec![thread("jira"), thread("local"), thread("plain")],
+                boards: vec![v1::Board {
+                    id: "b".into(),
+                    columns: vec![v1::BoardColumn {
+                        id: "c".into(),
+                        tasks: vec![
+                            v1::Task {
+                                id: "t1".into(),
+                                thread_id: "jira".into(),
+                                issue: Some(Box::new(issue)),
+                                ..Default::default()
+                            },
+                            v1::Task {
+                                id: "t2".into(),
+                                thread_id: "local".into(),
+                                pr_url: LOCAL_PR.into(),
+                                ..Default::default()
+                            },
+                        ],
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        });
+        state
+    }
+
+    fn render(state: &AppState) -> urushi_ui::Frame<Msg> {
+        let mut text = TextSystem::bundled_only();
+        build(
+            &crate::view::view(state, &Theme::dark(), &HashMap::new()),
+            Rect::new(0.0, 0.0, 1200.0, 800.0),
+            &mut text,
+            None::<Point>,
+        )
+    }
+
+    fn labels(frame: &urushi_ui::Frame<Msg>) -> Vec<&str> {
+        frame
+            .access
+            .iter()
+            .filter(|a| {
+                a.role == Role::Button
+                    && (a.label.starts_with("Open pull request") || a.label.ends_with("in Jira"))
+            })
+            .map(|a| a.label.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn cards_show_the_marks_of_their_threads_issue_and_pull_request() {
+        let frame = render(&state());
+        assert_eq!(
+            labels(&frame),
+            [
+                "Open ACME-1 in Jira",
+                "Open pull request #7: ACME-1 fix it",
+                "Open pull request #9",
+            ]
+        );
+        assert!(
+            frame.scene.dump().matches("image").count() >= 3,
+            "{}",
+            frame.scene.dump()
+        );
+    }
+
+    #[test]
+    fn clicking_a_mark_opens_its_page_and_not_the_thread() {
+        let mut state = state();
+        let frame = render(&state);
+        let mark = frame
+            .hits
+            .iter()
+            .find(|h| matches!(&h.on_click, Some(Msg::OpenUrl(u)) if u == ISSUE))
+            .expect("the Jira mark");
+        let center = Point::new(
+            mark.rect.x + mark.rect.width / 2.0,
+            mark.rect.y + mark.rect.height / 2.0,
+        );
+        let msg = frame.click(center).expect("a click");
+        assert!(matches!(&msg, Msg::OpenUrl(u) if u == ISSUE), "{msg:?}");
+        let selected = state.selected_thread.clone();
+        let fx = state.update(msg);
+        assert!(
+            fx.iter()
+                .any(|e| matches!(e, Effect::OpenUrl(u) if u == ISSUE))
+        );
+        assert_eq!(state.selected_thread, selected, "the thread isn't opened");
+        assert!(
+            frame
+                .hits
+                .iter()
+                .any(|h| matches!(&h.on_click, Some(Msg::OpenUrl(u)) if u == LOCAL_PR))
+        );
+    }
 }

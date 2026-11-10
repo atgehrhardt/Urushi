@@ -1,6 +1,7 @@
 //! The board's **Filters** menu: on a Jira board "Only my issues", "Recently updated"
-//! and the board's quick filters, then a page per field with the values the board's
-//! tasks have (several can be chosen), and "Clear filters".
+//! and Jira's quick filters, then the quick filters the board keeps, a page per field
+//! with the values the board's tasks have (several can be chosen), "Clear filters" and
+//! "Save as quick filter…".
 
 use std::collections::HashMap;
 
@@ -72,6 +73,23 @@ fn main_page(state: &AppState, theme: &Theme, board: &urushi_client::v1::Board) 
                 .key(key(&["menu-quick", &q.id.to_string()])),
             );
         }
+        if board.quick_filters.is_empty() {
+            items.push(separator(theme));
+        }
+    }
+    for q in &board.quick_filters {
+        items.push(
+            item(
+                theme,
+                &q.name,
+                check(f.saved.contains(&q.id)),
+                theme.text,
+                Msg::Filter(FilterMsg::Saved(q.id.clone())),
+            )
+            .key(key(&["menu-saved", &q.id])),
+        );
+    }
+    if !board.quick_filters.is_empty() {
         items.push(separator(theme));
     }
     for dim in board_dims(board) {
@@ -92,8 +110,20 @@ fn main_page(state: &AppState, theme: &Theme, board: &urushi_client::v1::Board) 
             Msg::MenuPage(MenuPage::Filter(dim)),
         ));
     }
-    if f.active() {
+    let save = state.can_save_quick_filter(board);
+    if f.active() || save {
         items.push(separator(theme));
+    }
+    if save {
+        items.push(item(
+            theme,
+            "Save as quick filter…",
+            "",
+            theme.text,
+            Msg::Filter(FilterMsg::OpenSave),
+        ));
+    }
+    if f.active() {
         items.push(item(
             theme,
             "Clear filters",

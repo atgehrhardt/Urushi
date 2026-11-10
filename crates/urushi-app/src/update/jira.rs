@@ -188,6 +188,10 @@ impl AppState {
             (Followup::QuickFilter(board), Outcome::JiraIssueIds(ids)) => {
                 self.quick_filter_answered(&board, Some(ids.ids), fx);
             }
+            (Followup::QuickFilterSaved(board), Outcome::QuickFilterSaved(saved)) => {
+                self.quick_filter_saved(&board, saved, fx);
+            }
+            (Followup::QuickFilterChanged, Outcome::Ok(_)) => self.quick_filter_changed(fx),
             other => return self.issue_answered(other.0, other.1),
         }
         None

@@ -2,7 +2,7 @@
 #![allow(clippy::unwrap_used, reason = "test code")]
 
 use prost::Message;
-use urushi_core::board::{JiraColumn, SyncedIssue};
+use urushi_core::board::{JiraColumn, PrStatus, PrUrl, PullRequest, SyncedIssue};
 use urushi_core::{Board, BoardId, ColumnId, TaskId, Timestamp};
 
 use super::*;
@@ -56,10 +56,30 @@ fn issues_and_sources_round_trip() {
             name: "1.0".into(),
         }],
         links: 2,
+        pull_requests: vec![
+            PullRequest::new(
+                PrUrl::parse("https://github.com/acme/app/pull/3").unwrap(),
+                "ACME-1 fix",
+                PrStatus::Open,
+            ),
+            PullRequest::new(
+                PrUrl::parse("https://github.com/acme/app/pull/2").unwrap(),
+                "",
+                PrStatus::Unknown,
+            ),
+        ],
     };
     let wire = issue_to_proto(&issue, Some("https://acme.atlassian.net"));
     assert_eq!(wire.url, "https://acme.atlassian.net/browse/ACME-1");
+    assert_eq!(
+        wire.pull_requests[0].status,
+        v1::PullRequestStatus::Open as i32
+    );
     assert_eq!(issue_from_proto(&wire), issue);
+    // A pull request with an address a client couldn't open is left out.
+    let mut bad = wire.clone();
+    bad.pull_requests[0].url = "ftp://x/pull/3".into();
+    assert_eq!(issue_from_proto(&bad).pull_requests.len(), 1);
 
     let source = BoardSource::Jira(JiraBoard {
         site: "https://acme.atlassian.net".into(),
@@ -70,11 +90,10 @@ fn issues_and_sources_round_trip() {
         rank_field: None,
         points_field: None,
         sprint_field: None,
-        quick_filters: vec![QuickFilter {
+        quick_filters: vec![JiraQuickFilter {
             id: 4,
             name: "Only my issues".into(),
-            // The daemon's: not sent.
-            jql: String::new(),
+            jql: "assignee = currentUser()".into(),
         }],
         sync: SyncState {
             synced_at: Some(urushi_core::Timestamp::from_unix_millis(9)),
@@ -164,6 +183,7 @@ fn jira_messages_round_trip_on_the_wire() {
         Body::QueryJiraFilter(v1::QueryJiraFilterRequest {
             board_id: "1".into(),
             quick_filter_ids: vec![4, 5],
+            kept_quick_filter_ids: vec!["k".into()],
         }),
     ];
     for body in bodies {

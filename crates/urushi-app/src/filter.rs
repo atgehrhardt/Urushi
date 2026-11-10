@@ -1,18 +1,25 @@
 //! Filtering a board the way Jira filters one: a text search, people (with "Only my
 //! issues"), and any of the issue's fields (type, priority, status, labels, epic,
-//! sprint, components, fix versions), "Recently updated", and the board's own quick
-//! filters, which only Jira can evaluate (`QueryJiraFilter`, protocol 1.13).
+//! sprint, components, fix versions), "Recently updated", and quick filters: a Jira
+//! board's own, which only Jira can evaluate (`QueryJiraFilter`, protocol 1.13), and
+//! those the board keeps (protocol 1.23, `quick.rs`), which are JQL on a Jira board and
+//! a search, kinds and tags elsewhere.
 //!
 //! Values chosen in one dimension widen it (any of them); dimensions narrow each other
 //! (all of them), as in Jira. A card shows when it or any of its subtasks passes, so a
-//! subtask assigned to you keeps its card on the board. Everything but quick filters is
-//! decided here, from the fields every task carries; the filter is the window's own and
-//! isn't kept by the daemon.
+//! subtask assigned to you keeps its card on the board. Everything but JQL is decided
+//! here, from the fields every task carries; which filters are on is the window's own
+//! and isn't kept by the daemon. The selection can be saved as a quick filter: as JQL
+//! (`jql.rs`) on a Jira board, as a search, kinds and tags elsewhere.
 
 use std::collections::{BTreeSet, HashSet};
 
 use urushi_client::{TaskRef, v1};
 use urushi_ui::TextField;
+
+pub mod editor;
+pub mod jql;
+pub mod quick;
 
 /// Updated within this long counts as "Recently updated" (as Jira's quick filter).
 pub const RECENT_MS: i64 = 24 * 60 * 60 * 1000;
@@ -93,9 +100,13 @@ pub struct BoardFilter {
     pub mine: bool,
     /// Only issues updated in the last [`RECENT_MS`].
     pub recent: bool,
-    /// The quick filters on (by id), all of which must let an issue through.
+    /// The Jira board's own quick filters on (by id), all of which must let an issue
+    /// through.
     pub quick: BTreeSet<u64>,
-    /// The issues the quick filters let through, as Jira last said (by issue id);
+    /// The quick filters the board keeps that are on (by id), all of which must let a
+    /// task through.
+    pub saved: BTreeSet<String>,
+    /// The issues the quick filters in JQL let through, as Jira last said (by issue id);
     /// `None` until it answers, which shows the board unfiltered by them.
     pub quick_matches: Option<HashSet<String>>,
 }
@@ -107,6 +118,8 @@ pub struct Context<'a> {
     pub me: Option<&'a str>,
     /// Now, in Unix milliseconds.
     pub now_ms: i64,
+    /// The quick filters the board keeps.
+    pub kept: &'a [v1::QuickFilter],
 }
 
 impl BoardFilter {
@@ -117,6 +130,30 @@ impl BoardFilter {
             || self.mine
             || self.recent
             || !self.quick.is_empty()
+            || !self.saved.is_empty()
+    }
+
+    /// Whether anything but quick filters is chosen: what saving the selection as a
+    /// quick filter keeps.
+    pub fn selection_active(&self) -> bool {
+        !self.search.text().trim().is_empty()
+            || self.chosen.values().any(|v| !v.is_empty())
+            || self.mine
+            || self.recent
+    }
+
+    /// Whether some filter on is JQL, which Jira evaluates.
+    pub fn needs_jira(&self, kept: &[v1::QuickFilter]) -> bool {
+        !self.quick.is_empty() || !self.kept_jql(kept).is_empty()
+    }
+
+    /// The kept quick filters on that are JQL, by id.
+    pub fn kept_jql(&self, kept: &[v1::QuickFilter]) -> Vec<String> {
+        kept.iter()
+            .filter(|q| self.saved.contains(&q.id))
+            .filter(|q| q.rule.as_ref().is_some_and(|r| !r.jql.is_empty()))
+            .map(|q| q.id.clone())
+            .collect()
     }
 
     /// How many filters are on (shown on the Filters button), the search aside.
@@ -125,6 +162,7 @@ impl BoardFilter {
             + usize::from(self.mine)
             + usize::from(self.recent)
             + self.quick.len()
+            + self.saved.len()
     }
 
     /// Whether `value` is chosen in `dim`.
@@ -171,10 +209,18 @@ impl BoardFilter {
         if self.recent && issue.is_none_or(|i| cx.now_ms - i.updated_ms > RECENT_MS) {
             return false;
         }
-        if !self.quick.is_empty()
+        if self.needs_jira(cx.kept)
             && let Some(matches) = &self.quick_matches
             && !issue.is_some_and(|i| matches.contains(&i.id))
         {
+            return false;
+        }
+        let kept_rules = cx
+            .kept
+            .iter()
+            .filter(|q| self.saved.contains(&q.id))
+            .filter_map(|q| q.rule.as_ref());
+        if !kept_rules.into_iter().all(|r| quick::passes(r, task)) {
             return false;
         }
         self.chosen

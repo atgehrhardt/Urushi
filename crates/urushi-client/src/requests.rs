@@ -67,7 +67,7 @@ impl Client {
 
     /// Moves a thread to `index` in the workspace's thread list (0 is first; clamped to
     /// the end). The sidebar keeps this order inside each project, pin and status group.
-    /// Needs protocol 1.21.
+    /// Needs protocol 1.24.
     pub async fn move_thread(&self, thread_id: &str, index: u32) -> Result<(), ClientError> {
         let body = Body::MoveThread(v1::MoveThreadRequest {
             thread_id: thread_id.into(),

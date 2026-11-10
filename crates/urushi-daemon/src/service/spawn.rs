@@ -23,12 +23,13 @@ pub(crate) enum PaneHome<'a> {
 /// Variables that describe one pane. A daemon started from inside a pane (a dev daemon,
 /// or one the CLI started) inherits that pane's values; new panes must never see them,
 /// so they are cleared before each pane's own are set.
-const PANE_VARS: [&str; 5] = [
+const PANE_VARS: [&str; 6] = [
     "URUSHI_THREAD_ID",
     "URUSHI_WORKTREE",
     "URUSHI_PANE_ID",
     urushi_core::agent::hooks::TTY_ENV,
     urushi_core::TASK_PROMPT_ENV,
+    crate::cli::CLI_ENV,
 ];
 
 impl<'a> From<&'a Thread> for PaneHome<'a> {

@@ -37,6 +37,7 @@ macro_rules! focused_field {
             (Some(Dialog::Task { notes, .. }), Field::TaskNotes) => Some(notes),
             (Some(Dialog::Task { subtasks, .. }), Field::NewSubtask) => Some($($r)+ subtasks.new),
             (Some(Dialog::Task { labels, .. }), Field::TaskTag) => Some($($r)+ labels.input),
+            (Some(Dialog::Task { labels, .. }), Field::TaskPrUrl) => Some($($r)+ labels.pr_url),
             (Some(Dialog::Task { issue, .. }), Field::JiraSearch) => Some($($r)+ issue.search),
             (Some(Dialog::Task { issue, .. }), Field::JiraComment) => Some($($r)+ issue.comment),
             (Some(Dialog::Task { issue, .. }), Field::JiraWork) => Some($($r)+ issue.work),
@@ -51,6 +52,11 @@ macro_rules! focused_field {
             (Some(Dialog::ConnectJira { site, .. }), Field::JiraSite) => Some(site),
             (Some(Dialog::ConnectJira { email, .. }), Field::JiraEmail) => Some(email),
             (Some(Dialog::ConnectJira { token, .. }), Field::JiraToken) => Some(token),
+            (Some(Dialog::QuickFilter(e)), Field::QuickFilterName) => Some($($r)+ e.name),
+            (Some(Dialog::QuickFilter(e)), Field::QuickFilterJql) => match $($r)+ e.jql {
+                Some(jql) => Some(jql),
+                None => None,
+            },
             _ => None,
         }
     };
@@ -110,10 +116,17 @@ impl AppState {
                 vec![Field::JiraSite, Field::JiraEmail, Field::JiraToken]
             }
             Some(Dialog::ImportJira { .. }) => vec![Field::JiraQuery],
+            Some(Dialog::QuickFilter(e)) if e.jql.is_some() => {
+                vec![Field::QuickFilterName, Field::QuickFilterJql]
+            }
+            Some(Dialog::QuickFilter(_)) => vec![Field::QuickFilterName],
             Some(Dialog::Task { .. }) => {
                 let mut fields = vec![Field::TaskTitle, Field::TaskNotes];
                 if self.daemon_supports_board_extras() {
                     fields.push(Field::TaskTag);
+                }
+                if self.shows_pr_field() {
+                    fields.push(Field::TaskPrUrl);
                 }
                 // A new subtask's editor doesn't list subtasks of its own.
                 if self.daemon_supports_subtasks() && !self.editing_subtask_draft() {

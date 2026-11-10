@@ -41,7 +41,8 @@ pub fn scene(
 /// usage in the `status` bar (and its pane's context menu in `pane-menu`), the same with
 /// the sidebar hidden (`sidebar-collapsed`), the quick terminal dropped down over it
 /// (`quick-terminal`, `snapshot/quick.rs`), the first-run `setup` wizard (its mode
-/// step in `setup-mode`), the Jira screens (`snapshot/jira.rs`), and a project's
+/// step in `setup-mode`), the Jira screens (`snapshot/jira.rs`), quick filters
+/// (`snapshot/quick_filters.rs`), and a project's
 /// parent branch (`snapshot/project_base.rs`).
 pub const SCENARIOS: &[&str] = &[
     "launcher",
@@ -65,6 +66,8 @@ pub const SCENARIOS: &[&str] = &[
     "board-drag",
     "board-tab-drag",
     "task",
+    "task-error",
+    "board-error",
     "task-menu",
     "column-menu",
     "task-nested",
@@ -77,6 +80,7 @@ pub const SCENARIOS: &[&str] = &[
     "quick-terminal",
     "setup",
     "setup-mode",
+    "thread-links",
     "jira-board",
     "jira-task",
     "jira-subtask",
@@ -87,6 +91,11 @@ pub const SCENARIOS: &[&str] = &[
     "jira-new-epic",
     "jira-connect",
     "jira-import",
+    "board-quick-filters",
+    "quick-filter-save",
+    "quick-filter-menu",
+    "jira-delete-issue",
+    "jira-delete-subtask",
     "project-base-thread",
     "project-settings",
 ];
@@ -127,6 +136,8 @@ const BOARD_SCENARIOS: &[&str] = &[
     "board-drag",
     "board-tab-drag",
     "task",
+    "task-error",
+    "board-error",
     "task-menu",
     "column-menu",
     "task-nested",
@@ -204,6 +215,7 @@ fn sample_board() -> v1::Board {
     invoice.tags = vec!["backend".into()];
     // Its agent waits for permission (see `sample_tabs`).
     invoice.thread_id = "t4".into();
+    invoice.pr_url = "https://github.com/acme/web/pull/398".into();
     pricing.subtasks = vec![
         sub("s1", "Draft tiers table", true, ""),
         v1::Subtask {
@@ -411,6 +423,7 @@ fn scenario_frame(
         }
         "quick-terminal" => quick::show(&mut state),
         name if jira::SCENARIOS.contains(&name) => jira::show(&mut state, name),
+        name if quick_filters::SCENARIOS.contains(&name) => quick_filters::show(&mut state, name),
         name if project_base::SCENARIOS.contains(&name) => project_base::show(&mut state, name),
         name if BOARD_SCENARIOS.contains(&name) || name == "status" || name == "pane-menu" => {
             show_board_or_usage(&mut state, name);
@@ -540,9 +553,16 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
                 state.update(Msg::Pointer(urushi_ui::Point::new(760.0, 110.0)));
                 state.update(Msg::OpenMenu(MenuTarget::Column("c2".into())));
             }
-            if name == "task" {
+            if name == "task" || name == "task-error" {
                 state.update(Msg::PressTask("k3".into()));
                 state.update(Msg::PressEnded);
+            }
+            if name.ends_with("-error") {
+                state.error = Some(
+                    "Jira refused the issue: Field 'customfield_10020' cannot be set. It is \
+                     not on the appropriate screen, or unknown."
+                        .into(),
+                );
             }
             if name == "board-tab-drag" {
                 // "Personal" held over "Billing launch": the line shows before it.
@@ -598,6 +618,7 @@ mod jira;
 mod jira_issue;
 mod project_base;
 mod quick;
+mod quick_filters;
 
 #[cfg(test)]
 mod tests;

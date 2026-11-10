@@ -1,4 +1,4 @@
-//! Reordering threads in the sidebar (protocol 1.21): dropping a thread onto another takes
+//! Reordering threads in the sidebar (protocol 1.24): dropping a thread onto another takes
 //! its place and joins its group, the drop line, Move up / Move down, and older daemons.
 
 use urushi_client::v1::{self, request::Body};

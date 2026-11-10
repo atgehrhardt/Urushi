@@ -1,4 +1,4 @@
-//! End-to-end: threads are reordered with `MoveThread` (protocol 1.21), reordering keeps
+//! End-to-end: threads are reordered with `MoveThread` (protocol 1.24), reordering keeps
 //! each thread's project, pin and status, and the order survives a daemon restart.
 #![cfg(unix)]
 #![allow(

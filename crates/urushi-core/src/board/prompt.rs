@@ -2,9 +2,10 @@
 //! (ADR 0014, ADR 0024).
 //!
 //! - [`task_reference_prompt`]: a reference to the task (a Jira issue's key and address,
-//!   or the task's id) and how to read it in full with `urushi board show`, so the
+//!   or the task's id) and how to read it in full with `<cli> board show`, so the
 //!   agent reviews the task as it is, comments and links included, rather than a copy.
-//!   Used when the agent's pane can run the CLI.
+//!   Used when the agent's pane can run the CLI. The CLI is named by its path, as a
+//!   login shell may put another `urushi` first on `PATH` (ADR 0033).
 //! - [`task_prompt`]: the task's title, notes and subtasks, and for a subtask the tasks
 //!   it belongs to, as plain text; when it can't.
 //!
@@ -54,13 +55,14 @@ pub fn task_prompt(board: &Board, id: TaskId) -> Result<String, BoardError> {
     Ok(capped(out.trim_end().to_owned()))
 }
 
-/// The command that prints a task in full: by issue key on a Jira board, else by id.
-pub(super) fn show_command(task: &Task) -> String {
+/// The command that prints a task in full with the CLI `cli` (quoted for a shell as
+/// needed): by issue key on a Jira board, else by id.
+pub(super) fn show_command(task: &Task, cli: &str) -> String {
     let id = task
         .issue
         .as_ref()
         .map_or_else(|| task.id.to_string(), |i| i.key.clone());
-    format!("urushi board show {id}")
+    format!("{} board show {id}", crate::shell::quote(cli))
 }
 
 /// How a task is named in a reference: `UR-1 "Title"`, or `"Title"`.
@@ -72,8 +74,9 @@ fn named(task: &Task) -> String {
 }
 
 /// A prompt that refers to task `id` of `board` (at any depth) and says how to review it
-/// in full with the `urushi` CLI, instead of copying it.
-pub fn task_reference_prompt(board: &Board, id: TaskId) -> Result<String, BoardError> {
+/// in full with Urushi's CLI, instead of copying it. `cli` is the program that runs the
+/// CLI in the agent's pane: its absolute path, so no other `urushi` on `PATH` is run.
+pub fn task_reference_prompt(board: &Board, id: TaskId, cli: &str) -> Result<String, BoardError> {
     let path = board.path_to(id).ok_or(BoardError::NoSuchTask(id))?;
     let (task, ancestors) = path.split_last().ok_or(BoardError::NoSuchTask(id))?;
     let mut out = String::new();
@@ -97,13 +100,13 @@ pub fn task_reference_prompt(board: &Board, id: TaskId) -> Result<String, BoardE
     let _ = write!(
         out,
         "\nStart by reviewing it in full: run `{}`",
-        show_command(task)
+        show_command(task, cli)
     );
     if let Some(parent) = ancestors.last() {
         let _ = write!(
             out,
             " (and `{}` for the task it is part of)",
-            show_command(parent)
+            show_command(parent, cli)
         );
     }
     out.push_str(". It prints ");
@@ -275,12 +278,12 @@ mod tests {
     #[test]
     fn a_reference_says_where_the_task_is_and_how_to_read_it() {
         let b = board("Cards need tags.");
-        let card = task_reference_prompt(&b, TaskId::from_u128(1)).unwrap();
+        let card = task_reference_prompt(&b, TaskId::from_u128(1), "/opt/urushi/urushi").unwrap();
         assert_eq!(
             card,
             format!(
                 "Work on the task \"Add tags\" from my Urushi board.\n\n\
-                 Start by reviewing it in full: run `urushi board show {}`. It prints its \
+                 Start by reviewing it in full: run `/opt/urushi/urushi board show {}`. It prints its \
                  notes, subtasks and attachments.",
                 TaskId::from_u128(1)
             )
@@ -289,12 +292,13 @@ mod tests {
             !card.contains("Cards need tags."),
             "a reference, not a copy"
         );
-        let step = task_reference_prompt(&b, TaskId::from_u128(12)).unwrap();
+        // A CLI whose path the shell would split is quoted.
+        let step = task_reference_prompt(&b, TaskId::from_u128(12), "/My Apps/urushi").unwrap();
         assert!(step.starts_with("Work on the step \"Chips\""), "{step}");
         assert!(step.contains("It is part of \"UI\"."), "{step}");
         assert!(
             step.contains(&format!(
-                "(and `urushi board show {}`",
+                "(and `'/My Apps/urushi' board show {}`",
                 TaskId::from_u128(11)
             )),
             "{step}"
@@ -351,17 +355,20 @@ mod tests {
             TaskId::from_u128(next)
         });
         let sub = b.task_for_issue("UR-3").unwrap().id;
-        let p = task_reference_prompt(&b, sub).unwrap();
+        let cli = "/Applications/Urushi.app/Contents/Resources/bin/urushi";
+        let p = task_reference_prompt(&b, sub, cli).unwrap();
         assert_eq!(
             p,
-            "Work on Jira issue UR-3 \"Issue 3\" from my Urushi board: \
-             https://acme.atlassian.net/browse/UR-3\n\
-             It is part of UR-1 \"Issue 1\".\n\n\
-             Start by reviewing it in full: run `urushi board show UR-3` (and `urushi board \
-             show UR-1` for the task it is part of). It prints the issue's fields, \
-             description, subtasks, comments, links and files. Ask me before changing \
-             anything in Jira. Put UR-3 in commit messages and pull request titles, so \
-             Jira links them to the issue."
+            format!(
+                "Work on Jira issue UR-3 \"Issue 3\" from my Urushi board: \
+                 https://acme.atlassian.net/browse/UR-3\n\
+                 It is part of UR-1 \"Issue 1\".\n\n\
+                 Start by reviewing it in full: run `{cli} board show UR-3` (and `{cli} \
+                 board show UR-1` for the task it is part of). It prints the issue's fields, \
+                 description, subtasks, comments, links and files. Ask me before changing \
+                 anything in Jira. Put UR-3 in commit messages and pull request titles, so \
+                 Jira links them to the issue."
+            )
         );
     }
 }

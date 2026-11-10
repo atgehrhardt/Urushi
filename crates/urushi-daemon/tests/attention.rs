@@ -13,7 +13,7 @@ mod common;
 use common::*;
 use urushi_client::v1;
 use urushi_core::AttentionKind;
-use urushi_core::agent::hooks::signal_command;
+use urushi_core::agent::hooks::{claude_done_command, signal_command};
 
 /// The attention of `pane` in the next workspace where it differs from `previous`.
 async fn attention_change(
@@ -107,4 +107,64 @@ async fn agents_typed_by_the_daemon_load_urushis_hooks() {
     )
     .await;
     wait_for_text(&client, &pane, "tty-ok stop-hooks=1").await;
+}
+
+/// Runs Claude's `Stop` hook command with `input` on stdin, as Claude does, and tells
+/// whether it wrote Urushi's `done` signal to the pane's terminal.
+fn claude_stop_hook_signals(input: &str) -> bool {
+    use std::io::Write as _;
+    let dir = temp_home();
+    let tty = dir.path().join("tty");
+    std::fs::write(&tty, "").unwrap();
+    let mut child = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(claude_done_command())
+        .env("URUSHI_TTY", &tty)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    assert!(child.wait().unwrap().success(), "a hook never fails");
+    let written = std::fs::read_to_string(&tty).unwrap();
+    assert!(
+        written.is_empty() || written == AttentionKind::Done.signal_sequence(),
+        "{written:?}"
+    );
+    !written.is_empty()
+}
+
+/// A `Stop` hook input as Claude Code 2.1 sends it, with these background tasks.
+fn stop_input(background_tasks: &str) -> String {
+    format!(
+        r#"{{"session_id":"s","transcript_path":"/t.jsonl","cwd":"/w","permission_mode":"default","hook_event_name":"Stop","stop_hook_active":false,"last_assistant_message":"Waiting for the agents.","background_tasks":[{background_tasks}],"session_crons":[]}}"#
+    )
+}
+
+#[test]
+fn claude_is_not_done_while_its_background_agents_run() {
+    let subagent = r#"{"id":"a1","type":"subagent","status":"running","description":"Explore the code","agent_type":"Explore"}"#;
+    let workflow = r#"{"id":"w1","type":"workflow","status":"pending","description":"Review","name":"review"}"#;
+    let shell = r#"{"id":"b1","type":"shell","status":"running","description":"Dev server","command":"make dev"}"#;
+    let monitor = r#"{"id":"m1","type":"monitor","status":"running","description":"CI"}"#;
+    // Text in a description is JSON-escaped, so it can't pass for a task's type.
+    let tricky = r#"{"id":"b2","type":"shell","status":"running","description":"echo \"type\":\"subagent\""}"#;
+
+    assert!(!claude_stop_hook_signals(&stop_input(subagent)));
+    assert!(!claude_stop_hook_signals(&stop_input(workflow)));
+    assert!(!claude_stop_hook_signals(&stop_input(&format!(
+        "{shell},{subagent}"
+    ))));
+    // A server or monitor left running doesn't keep the agent from being done.
+    assert!(claude_stop_hook_signals(&stop_input(shell)));
+    assert!(claude_stop_hook_signals(&stop_input(monitor)));
+    assert!(claude_stop_hook_signals(&stop_input(tricky)));
+    assert!(claude_stop_hook_signals(&stop_input("")));
+    // Claude versions that don't list background tasks, or send nothing at all.
+    assert!(claude_stop_hook_signals(r#"{"hook_event_name":"Stop"}"#));
+    assert!(claude_stop_hook_signals(""));
 }
