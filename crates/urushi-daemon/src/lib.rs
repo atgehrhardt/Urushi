@@ -107,7 +107,7 @@ pub async fn run(
 ) -> Result<(), DaemonError> {
     platform::secure_dir(&options.home)?;
     // Canonical paths everywhere, so worktree paths compare equal to what git and shells report.
-    options.home = std::fs::canonicalize(&options.home)?;
+    options.home = platform::canonicalize(&options.home)?;
     let lock_file = File::create(options.home.join("urushid.lock"))?;
     match lock_file.try_lock() {
         Ok(()) => {}

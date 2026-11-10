@@ -1,5 +1,5 @@
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::net::UnixListener;
@@ -7,6 +7,11 @@ use urushi_proto::endpoint::LocalEndpoint;
 
 use crate::server::connection::{self, Peer};
 use crate::service::Service;
+
+/// The absolute path of `path`, with symlinks resolved.
+pub(crate) fn canonicalize(path: &Path) -> std::io::Result<PathBuf> {
+    std::fs::canonicalize(path)
+}
 
 /// Creates `dir` readable only by the current user (it holds the socket and state).
 pub(crate) fn secure_dir(dir: &Path) -> std::io::Result<()> {

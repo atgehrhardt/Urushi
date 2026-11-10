@@ -122,7 +122,8 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
 async fn repo(client: &Client, cmd: RepoCmd) -> Result<()> {
     match cmd {
         RepoCmd::Add { path, name } => {
-            let absolute = std::fs::canonicalize(&path).unwrap_or(path);
+            // Absolute is enough: the daemon resolves the repo's root and canonical path itself.
+            let absolute = std::path::absolute(&path).unwrap_or(path);
             let p = client.add_repo(&absolute.to_string_lossy(), &name).await?;
             out(&format!(
                 "repo {} {} ({})",

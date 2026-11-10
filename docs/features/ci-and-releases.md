@@ -14,7 +14,7 @@ publishes it as a GitHub Release.
 
 | Job | Runs on | What |
 |---|---|---|
-| `test (<os>)` | macOS, Ubuntu, Windows | `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`, `cargo test --workspace --all-targets`, doc tests |
+| `test (<os>)` | macOS, Ubuntu, Windows | `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`, `cargo test --workspace --all-targets --no-fail-fast` (every failing test binary is reported, not just the first), doc tests |
 | `mobile-targets` | macOS | `make check-targets` (iOS and Android client crates) |
 | `docs` | Ubuntu | `scripts/check-docs.sh` |
 | `licenses` | Ubuntu | `cargo deny check` |
@@ -44,6 +44,11 @@ get the same dry run automatically.
 - `#[cfg(target_os/unix/windows)]` stays inside `platform/` modules (ADR 0007). CI
   compiles all three desktop OSes, which catches Unix-only APIs used outside them (e.g.
   `MasterPty::tty_name`, now `urushi_mux::platform::tty_path`).
+- Paths the daemon stores or hands to git are canonicalized with
+  `urushi_daemon::platform::canonicalize`, never `std::fs::canonicalize` directly. On
+  Windows that strips the verbatim `\\?\` prefix, which git can't use.
+- Helper programs' failures read `… failed (exit status: N)` on every OS (`exec::run`), so
+  `http::friendly` recognizes curl's exit codes on Windows too.
 - Daemon integration tests don't depend on timing: the test helpers report a daemon that
   failed to start with its actual error (`tests/common/mod.rs`). Transient states are
   observed by holding the fake service in place (`FakeJira::hold_transitions`), not by
