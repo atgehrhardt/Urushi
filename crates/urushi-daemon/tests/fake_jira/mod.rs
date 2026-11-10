@@ -98,6 +98,9 @@ pub struct FakeJira {
     /// While `true`, asking for an issue's transitions waits (see
     /// [`FakeJira::hold_transitions`]).
     transitions_held: (Mutex<bool>, Condvar),
+    /// While `true`, deleting issues is refused, as for an account without Jira's
+    /// "Delete issues" permission.
+    pub deletes_forbidden: Mutex<bool>,
 }
 
 /// The JQL of the board's one quick filter.
@@ -140,6 +143,7 @@ impl FakeJira {
             ]),
             calls: Mutex::default(),
             transitions_held: (Mutex::new(false), Condvar::new()),
+            deletes_forbidden: Mutex::new(false),
         })
     }
 
@@ -169,6 +173,12 @@ impl FakeJira {
         let remote = issues.iter_mut().find(|i| i.id == id).unwrap();
         f(remote);
         remote.version += 1;
+    }
+
+    /// Whether the issue is still in Jira.
+    pub fn has(&self, key: &str) -> bool {
+        let issues = self.issues.lock().unwrap();
+        issues.iter().any(|i| self::key(i.id) == key)
     }
 
     pub fn remote(&self, key: &str) -> Remote {
@@ -443,6 +453,23 @@ impl JiraApi for FakeJira {
     fn rank(&self, account: &Account, key: &str, rank: &Rank) -> JiraResult<()> {
         Self::check(account)?;
         self.log(format!("rank {key} {rank:?}"));
+        Ok(())
+    }
+
+    fn delete_issue(&self, account: &Account, key: &str) -> JiraResult<()> {
+        Self::check(account)?;
+        if *self.deletes_forbidden.lock().unwrap() {
+            return Err(JiraError::Forbidden(
+                "You do not have permission to delete issues in this project.".into(),
+            ));
+        }
+        let id = Self::id_of(key);
+        let mut issues = self.issues.lock().unwrap();
+        if !issues.iter().any(|i| i.id == id) {
+            return Err(JiraError::NotFound(format!("Issue does not exist: {key}")));
+        }
+        self.log(format!("delete {key}"));
+        issues.retain(|i| i.id != id && i.parent != Some(id));
         Ok(())
     }
 

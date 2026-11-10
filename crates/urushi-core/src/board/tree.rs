@@ -215,7 +215,8 @@ impl Board {
     }
 
     /// Removes a task (a card, or a subtask of any depth) with its subtasks, and
-    /// returns it. Issues aren't deleted from a Jira board.
+    /// returns it. A Jira board refuses: its issues are deleted in Jira first, then
+    /// forgotten with [`Board::forget_issue`].
     pub fn remove_task(&mut self, id: TaskId) -> Result<Task, BoardError> {
         self.local_only("deleting a task")?;
         self.detach(id)

@@ -146,13 +146,13 @@ fn subtask_row(state: &AppState, theme: &Theme, s: &v1::Subtask) -> Node<Msg> {
             Msg::StartThread(link),
         ));
     }
-    // Jira issues are deleted in Jira.
+    // A Jira issue is deleted in Jira, after a question; older daemons can't.
     let on_jira = s.issue.is_some()
         || state
             .workspace
             .find_task(&s.id)
             .is_some_and(|f| f.board.jira.is_some());
-    if on_jira {
+    if on_jira && !state.daemon_supports_jira_deletion() {
         return row;
     }
     row.child(icon_button(

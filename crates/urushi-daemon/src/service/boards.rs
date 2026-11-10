@@ -264,10 +264,10 @@ impl Service {
         self.mutate(|state| Ok(state.board_of_task(task)?.move_task(task, column, index)?))
     }
 
-    /// Deletes a task (never a Jira issue).
-    pub fn delete_task(&self, task: TaskId) -> ServiceResult<()> {
+    /// Deletes a task with its subtasks (on a Jira board, deletes the issue in Jira).
+    pub async fn delete_task(&self, task: TaskId) -> ServiceResult<()> {
         if let Some(t) = self.read(|state| state.jira_task(task))? {
-            return Self::jira_delete_task(&t);
+            return self.jira_delete_task(t).await;
         }
         let removed = self.mutate(|state| Ok(state.board_of_task(task)?.remove_task(task)?))?;
         self.forget_attachments(&super::attachments::of_task(&removed));

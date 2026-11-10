@@ -169,13 +169,7 @@ pub(super) fn editor(
         };
         (body, width)
     };
-    let actions = if nav.confirm_discard {
-        actions::discard_question(theme)
-    } else if draft {
-        actions::draft_actions(theme)
-    } else {
-        actions::editor_actions(state, theme, found.as_ref(), task.is_some())
-    };
+    let actions = actions::footer(state, theme, nav, draft, found.as_ref(), task.is_some());
     let (header, name) = header::header(state, theme, found.as_ref(), nav);
     modal_with_header(
         state,

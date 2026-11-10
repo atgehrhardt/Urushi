@@ -1,5 +1,6 @@
 //! The task editor's buttons: Delete, Start thread, Cancel and Save; a new subtask's
-//! Remove, Done, Cancel and Save; and the question before unsaved edits are dropped.
+//! Remove, Done, Cancel and Save; the question before unsaved edits are dropped; and
+//! the one before a Jira issue is deleted in Jira.
 
 use urushi_client::FoundTask;
 use urushi_ui::widgets::{ButtonKind, button};
@@ -7,7 +8,54 @@ use urushi_ui::{Font, Node, Theme};
 
 use super::super::dialogs::cancel;
 use crate::msg::{BoardMsg, Msg};
-use crate::state::{AppState, TaskLink};
+use crate::state::{AppState, EditorNav, IssueDeletion, TaskLink};
+
+/// The editor's buttons for where it is: a pending question (deleting a Jira issue,
+/// dropping unsaved edits) replaces them until it is answered.
+pub(super) fn footer(
+    state: &AppState,
+    theme: &Theme,
+    nav: &EditorNav,
+    draft: bool,
+    found: Option<&FoundTask<'_>>,
+    editing: bool,
+) -> Vec<Node<Msg>> {
+    if let Some(about) = &nav.confirm_delete {
+        delete_question(theme, about)
+    } else if nav.confirm_discard {
+        discard_question(theme)
+    } else if draft {
+        draft_actions(theme)
+    } else {
+        editor_actions(state, theme, found, editing)
+    }
+}
+
+/// Deleting a Jira issue (the task or one of its subtasks): it goes from Jira for good,
+/// so the editor asks first (ADR 0034).
+pub(super) fn delete_question(theme: &Theme, about: &IssueDeletion) -> Vec<Node<Msg>> {
+    vec![
+        Node::text(
+            format!("Delete {} from Jira for good?", about.what()),
+            Font::UiMedium,
+            theme.font_size,
+            theme.text,
+        ),
+        Node::spacer(),
+        button(
+            theme,
+            "Keep",
+            ButtonKind::Secondary,
+            Msg::Board(BoardMsg::KeepEditing),
+        ),
+        button(
+            theme,
+            "Delete from Jira",
+            ButtonKind::Danger,
+            Msg::Board(BoardMsg::ConfirmDeleteIssue),
+        ),
+    ]
+}
 
 /// Closing with unsaved edits: discard them, or keep editing.
 pub(super) fn discard_question(theme: &Theme) -> Vec<Node<Msg>> {
@@ -65,12 +113,12 @@ pub(super) fn editor_actions(
 ) -> Vec<Node<Msg>> {
     let mut actions = Vec::new();
     if let Some(found) = found {
-        // Jira issues are deleted in Jira; the editor's Jira section opens it there.
-        if found.task().issue().is_none() {
-            let what = if found.task().is_card() {
-                "Delete task"
-            } else {
-                "Delete subtask"
+        // A Jira issue is deleted in Jira, after a question (older daemons can't).
+        if state.can_delete(found.task()) {
+            let what = match (found.task().is_card(), found.task().issue().is_some()) {
+                (false, _) => "Delete subtask",
+                (true, true) => "Delete issue",
+                (true, false) => "Delete task",
             };
             actions.push(button(theme, what, ButtonKind::Danger, Msg::DeleteTask));
         }

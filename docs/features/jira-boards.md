@@ -1,8 +1,8 @@
 # Feature: Jira boards
 
-- **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits, issues in full, epics as cards)
-- **Owners (crates):** `urushi-core` (`board/{jira,sync,kind}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `time.rs`, `jira/{api,cloud,cloud/details,parse,parse/details,details,adf,credentials}.rs`, `service/{jira,jira_write,jira_query,jira_details,jira_edit}.rs`, `server/{jira,jira_issue}.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `jira_issue.proto`, `convert/boards/jira/`), `urushi-client` (`jira.rs`, `jira_issue.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`filter.rs`, `issue.rs`, `update/{jira,filter,issue}.rs`, `msg/{jira,filter,issue}.rs`, `view/jira.rs`, `view/board/{jira,filter}.rs`, `view/tasks/{jira,header}.rs`, `view/tasks/issue/`, `view/menu/{jira,filter}.rs`, `snapshot/{jira,jira_issue}.rs`), `urushi-cli` (`urushi jira`, `urushi board sync`)
-- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0027](../adr/0027-epics-are-cards-on-jira-boards.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits, issues in full, epics as cards, deleting issues)
+- **Owners (crates):** `urushi-core` (`board/{jira,sync,kind}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `time.rs`, `jira/{api,cloud,cloud/details,parse,parse/details,details,adf,credentials}.rs`, `service/{jira,jira_write,jira_query,jira_details,jira_edit}.rs`, `server/{jira,jira_issue}.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `jira_issue.proto`, `convert/boards/jira/`), `urushi-client` (`jira.rs`, `jira_issue.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`filter.rs`, `issue.rs`, `update/{jira,filter,issue}.rs`, `msg/{jira,filter,issue}.rs`, `view/jira.rs`, `view/board/{jira,filter}.rs`, `view/tasks/{jira,header}.rs`, `view/tasks/issue/`, `view/menu/{jira,filter}.rs`, `snapshot/{jira,jira_issue}.rs`, `update/issue_deletion.rs`, `view/board/dialogs.rs::delete_issue`), `urushi-cli` (`urushi jira`, `urushi board sync`, the Jira question in `board rm-task` / `sub rm`)
+- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0027](../adr/0027-epics-are-cards-on-jira-boards.md), [0034](../adr/0034-delete-jira-issues-after-confirming.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 Any Jira Cloud board can be imported into the Tasks panel. It keeps Jira's columns and stays
@@ -82,9 +82,16 @@ moves at once and goes back if Jira refuses.
   Bitbucket integration then lists the branch, its commits and its pull requests on the
   issue; Urushi itself doesn't talk to the code host. Any number of threads, branches
   and pull requests can name one issue.
-- **Left to Jira:** deleting issues, moving them between projects, changing columns and
-  renaming the board. The editor has no Delete; the card menu offers **Open in Jira**
-  instead. A description too long to show whole is read-only, and fields Urushi has no
+- **Deleting issues** (ADR 0034): the editor's **Delete issue** / **Delete subtask**, a
+  Jira subtask row's ×, and **Delete issue…** in the card menu (under **Open in Jira**)
+  delete the issue in Jira, for everyone, with its sub-tasks. They always ask first:
+  the editor's buttons become "Delete ACME-2 and its 2 subtasks from Jira for good?"
+  with **Keep** and **Delete from Jira**, and the card menu opens a dialog that Enter
+  doesn't confirm. If Jira refuses (often: the account may not delete issues), its
+  reason shows and nothing changes. Offered from 1.21 daemons. `urushi board rm-task` and
+  `board sub rm` ask too (`--yes` skips it; without a terminal it's needed).
+- **Left to Jira:** moving issues between projects, changing columns and renaming the
+  board. A description too long to show whole is read-only, and fields Urushi has no
   kind for (e.g. cascading selects) show as text.
 - **Task kinds on every board:** any task can be a task, story, bug or epic (the editor's
   **Type**), shown by the same marker.
@@ -131,7 +138,11 @@ moves at once and goes back if Jira refuses.
   tasks on Jira boards: Jira first (`edit` with label add/remove operations, `transition`,
   `create` with the project's issue type for the kind, `rank`), then `issue` read back and
   merged. Only the color changes locally, and a move shows first
-  (`Board::show_jira_move`, undone with `undo_jira_move` if Jira refuses).
+  (`Board::show_jira_move`, undone with `undo_jira_move` if Jira refuses). Deleting
+  (`jira_delete_task`) calls `JiraApi::delete_issue` (`DELETE /rest/api/3/issue/{key}?deleteSubtasks=true`)
+  under the board's lock, so no sync merges it back, then takes the task and its
+  subtasks off with `Board::forget_issue`, forgets them in `BoardSync.seen` (`unsee`) and
+  pokes a sync. A 404 (already gone) is taken off too.
 - **Daemon, one issue in full** (ADR 0022): `JiraApi::details` (`jira/cloud/details.rs`:
   edit metadata, the values of those fields plus attachments, links and time tracking,
   the board's open sprints, comments, watchers, work log, transitions, link kinds)
@@ -146,6 +157,16 @@ moves at once and goes back if Jira refuses.
   `jira/adf/` converts ADF ⇄ Markdown both ways.
 - **Sign-in** (`jira/credentials.rs`): `site_address` normalizes the site (https only);
   `CredentialStore` keeps it in `<home>/jira-credentials.json` (0600).
+- **Wire (1.21):** no new fields: `DeleteTask`/`DeleteSubtask` on a Jira board delete the
+  issue in Jira (`PERMISSION_DENIED` if Jira refuses for permission); older daemons answer
+  `FAILED_PRECONDITION`. The app checks `daemon_supports_jira_deletion()`
+  (`JIRA_DELETION_SINCE_MINOR = 21`, `AppState::can_delete`).
+- **App, deleting** (`update/issue_deletion.rs`): `AppState::delete_task` sends a delete at
+  once for Urushi's own tasks, and for a Jira issue (`issue_deletion`, an
+  `IssueDeletion{task, key, title, subtasks}`) sets `EditorNav::confirm_delete` in the
+  editor (`actions::delete_question`) or opens `Dialog::DeleteIssue` (`delete_issue`).
+  `BoardMsg::ConfirmDeleteIssue` sends it (closing the editor when its own task goes);
+  `BoardMsg::KeepEditing`, Escape and close drop the question (`EditorNav::settle`).
 - **Wire (1.15):** no new fields: epic issues arrive as cards, and `CreateTask.kind =
   EPIC` is accepted on Jira boards (the app checks `daemon_supports_epic_cards()`,
   `EPIC_CARDS_SINCE_MINOR = 15`, before offering it).
@@ -186,7 +207,12 @@ moves at once and goes back if Jira refuses.
 - An epic never gets sub-tasks: refused before Jira is asked
   (`tests/jira_boards.rs::epics_are_cards_and_can_be_created`).
 - A change Jira refuses changes nothing here
-  (`tests/jira_boards.rs::moves_and_new_cards_take_jiras_transitions`, `what_jira_owns_is_refused`).
+  (`tests/jira_boards.rs::moves_and_new_cards_take_jiras_transitions`, `what_jira_owns_is_refused`,
+  `tests/jira_deletion.rs::issues_and_subtasks_are_deleted_in_jira`).
+- A Jira issue is deleted only after the user answers a question; Enter doesn't answer
+  it (`update/tests/jira_deletion.rs`). A deleted issue takes its sub-tasks and never
+  comes back with a sync (`tests/jira_deletion.rs`,
+  `board/sync/tests.rs::a_deleted_issue_is_forgotten_with_its_subtasks_and_nothing_else`).
 - Jira-owned changes are refused on Jira boards whoever asks
   (`board/sync/tests.rs::changes_jira_owns_are_refused_and_change_nothing`).
 
@@ -205,15 +231,17 @@ moves at once and goes back if Jira refuses.
   `service/jira.rs` (backoff), `service/jira_edit.rs`, and end to end against an
   in-memory Jira (`tests/fake_jira/`): `tests/jira_boards.rs` (sign-in, import, remote
   changes, transitions, refused moves, edits, subtasks, epics, refusals, restart,
-  sign-out, quick filters) and `tests/jira_issues.rs` (any field, comments, files, links,
-  watching, work, searches, required create fields).
+  sign-out, quick filters), `tests/jira_issues.rs` (any field, comments, files, links,
+  watching, work, searches, required create fields) and `tests/jira_deletion.rs`
+  (a card with its sub-tasks, a subtask, a refusal, an issue already gone).
 - UI: `textfield/secret.rs`. App: `filter/tests.rs` (each dimension, how they combine,
   subtasks keeping their card), `issue.rs` (durations, drafts), `update/tests/jira.rs` (a new issue created only on
   Save, field drafts sent with Save, changes made at once, required create fields,
   filters, quick-filter queries, the search's keyboard, a new epic, an epic under its own
-  filter), `view/tasks/jira.rs` (Epic offered only from 1.15 daemons); `snapshot/tests.rs` (`jira-board`, `jira-task`, `jira-subtask` (the top
-  bar), `jira-filters`, `jira-filter-menu`, `jira-issue`, `jira-issue-picker`, `jira-new-epic`, `jira-connect`, `jira-import` scenarios, card sizes, no
-  subtask delete on Jira boards, the Type picker).
+  filter), `update/tests/jira_deletion.rs` (asking first, Keep and Escape, the card
+  menu's dialog, older daemons), `view/tasks/jira.rs` (Epic offered only from 1.15 daemons); `snapshot/tests.rs` (`jira-board`, `jira-task`, `jira-subtask` (the top
+  bar), `jira-filters`, `jira-filter-menu`, `jira-issue`, `jira-issue-picker`, `jira-new-epic`, `jira-connect`, `jira-import`, `jira-delete-issue`, `jira-delete-subtask` scenarios, card sizes, the
+  Delete buttons and questions, the Type picker).
 
 ## Limitations and follow-ups
 - Linking code needs the Jira site's GitHub (GitLab, Bitbucket) integration installed;
@@ -237,3 +265,5 @@ moves at once and goes back if Jira refuses.
 - The sign-in is a file, not the OS keychain (ADR 0021). Claude's usage request still makes
   its own curl call instead of going through `HttpClient`.
 - Opening Jira pages isn't wired to the mobile apps yet.
+- Delete is offered whether or not the account may delete issues; Jira's refusal is the
+  answer. The CLI's question has no test of its own (the CLI has no test harness yet).

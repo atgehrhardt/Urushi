@@ -721,6 +721,7 @@ mod fields;
 mod filter;
 mod intake;
 mod issue;
+mod issue_deletion;
 mod jira;
 mod keys;
 mod launcher;

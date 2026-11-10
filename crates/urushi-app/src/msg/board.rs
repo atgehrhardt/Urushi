@@ -31,8 +31,11 @@ pub enum BoardMsg {
         /// Its new parent.
         parent: String,
     },
-    /// Delete a task right away (from its menu, without opening it).
+    /// Delete a task right away (from its menu, without opening it); a Jira issue asks
+    /// first.
     DeleteTask(String),
+    /// Confirmed: delete the Jira issue the question names, in Jira (ADR 0034).
+    ConfirmDeleteIssue,
     /// Move a task to the bottom of another column.
     MoveTask {
         /// Task id.

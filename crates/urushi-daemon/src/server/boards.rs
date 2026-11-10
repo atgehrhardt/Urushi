@@ -41,7 +41,9 @@ pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcom
             ok()
         }
         Body::DeleteSubtask(r) => {
-            service.delete_task(parse(&r.subtask_id, "subtask_id")?)?;
+            service
+                .delete_task(parse(&r.subtask_id, "subtask_id")?)
+                .await?;
             ok()
         }
         Body::NestTask(r) => {
@@ -81,7 +83,7 @@ pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcom
             ok()
         }
         Body::DeleteTask(r) => {
-            service.delete_task(parse(&r.task_id, "task_id")?)?;
+            service.delete_task(parse(&r.task_id, "task_id")?).await?;
             ok()
         }
         _ => invalid("not a board request"),
