@@ -21,15 +21,25 @@ pub fn locate() -> Option<PathBuf> {
 
 /// [`locate`] for a daemon in `dir`.
 pub fn locate_from(dir: &Path) -> Option<PathBuf> {
+    let name = file_name();
     [
-        dir.join(file_name()),
-        dir.join("..")
-            .join("Resources")
-            .join("bin")
-            .join(file_name()),
+        dir.to_path_buf(),
+        dir.join("..").join("Resources").join("bin"),
     ]
     .into_iter()
-    .find(|p| p.is_file())
+    .find_map(|d| exact_file(&d, &name))
+}
+
+/// `dir/name` if a file of exactly that name is there. On a case-insensitive disk
+/// (macOS) `dir/urushi` also opens the app's `Urushi` binary, so asking the path alone
+/// would take the GUI for the CLI; the directory listing has the real name.
+fn exact_file(dir: &Path, name: &str) -> Option<PathBuf> {
+    let listed = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .any(|e| e.file_name() == name);
+    let path = dir.join(name);
+    (listed && path.is_file()).then_some(path)
 }
 
 /// The variables a pane gets for the CLI: `URUSHI_HOME`, and `PATH` with the CLI's
@@ -71,6 +81,24 @@ mod tests {
         );
         std::fs::write(macos.join(file_name()), b"").unwrap();
         assert_eq!(locate_from(&macos), Some(macos.join(file_name())));
+    }
+
+    /// On a case-insensitive disk (macOS), `Contents/MacOS/urushi` opens the app's own
+    /// `Urushi` binary. That GUI must never be put on panes' `PATH` as the CLI.
+    #[test]
+    fn the_app_binary_is_not_taken_for_the_cli() {
+        let dir = tempfile::tempdir().unwrap();
+        let macos = dir.path().join("Urushi.app/Contents/MacOS");
+        let bin = dir.path().join("Urushi.app/Contents/Resources/bin");
+        std::fs::create_dir_all(&macos).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
+        let app = format!("Urushi{}", std::env::consts::EXE_SUFFIX);
+        std::fs::write(macos.join(&app), b"gui").unwrap();
+        assert_eq!(locate_from(&macos), None, "the GUI alone is no CLI");
+        std::fs::write(bin.join(file_name()), b"cli").unwrap();
+        let found = locate_from(&macos).unwrap();
+        assert_eq!(std::fs::read(&found).unwrap(), b"cli");
+        assert!(found.ends_with(format!("bin/{}", file_name())));
     }
 
     #[test]
