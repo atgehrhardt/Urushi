@@ -281,12 +281,12 @@ impl<M: Clone> Ctx<'_, M> {
         *index += 1;
         let my_index = *index;
         let s = &node.style;
-        let rect = if s.slide == 0.0 {
+        let rect = if s.slide == 0.0 && s.slide_y == 0.0 {
             rect
         } else {
             Rect::new(
                 rect.x - rect.width * s.slide,
-                rect.y,
+                rect.y - rect.height * s.slide_y,
                 rect.width,
                 rect.height,
             )

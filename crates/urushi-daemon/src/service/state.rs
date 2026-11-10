@@ -1,8 +1,8 @@
 //! The in-memory workspace state and its pure helpers (lookups, invariants, wire snapshot).
 
 use urushi_core::{
-    Board, EffectiveSettings, PaneId, Project, ProjectId, Repo, RepoId, Settings, Tab, TabId,
-    ThreadId, ThreadState,
+    Board, EffectiveSettings, PaneGroup, PaneId, Project, ProjectId, QuickTerminal, Repo, RepoId,
+    Settings, Tab, TabId, ThreadId, ThreadState,
 };
 use urushi_proto::{convert, v1};
 
@@ -18,6 +18,8 @@ pub(crate) struct State {
     pub(crate) threads: Vec<ThreadRecord>,
     pub(crate) tabs: Vec<Tab>,
     pub(crate) boards: Vec<Board>,
+    /// The thread-less quick terminal, if one is open (ADR 0031).
+    pub(crate) quick_terminal: Option<QuickTerminal>,
     pub(crate) revision: u64,
 }
 
@@ -30,6 +32,7 @@ impl State {
             threads: doc.threads,
             tabs: doc.tabs,
             boards: doc.boards,
+            quick_terminal: doc.quick_terminal,
             revision: 0,
         }
     }
@@ -43,6 +46,7 @@ impl State {
             threads: self.threads.clone(),
             tabs: self.tabs.clone(),
             boards: self.boards.clone(),
+            quick_terminal: self.quick_terminal.clone(),
         }
     }
 
@@ -62,6 +66,10 @@ impl State {
                 .collect(),
             tabs: self.tabs.iter().map(convert::tab_to_proto).collect(),
             boards: self.boards.iter().map(convert::board_to_proto).collect(),
+            quick_terminal: self
+                .quick_terminal
+                .as_ref()
+                .map(convert::quick_terminal_to_proto),
         }
     }
 
@@ -158,6 +166,41 @@ impl State {
             .ok_or_else(|| ServiceError::NotFound(format!("tab {id}")))
     }
 
+    /// The quick terminal, if `id` is its id.
+    pub(crate) fn quick(&self, id: TabId) -> Option<&QuickTerminal> {
+        self.quick_terminal.as_ref().filter(|q| q.id() == id)
+    }
+
+    /// The panes of the tab or quick terminal with this id: every layout request names
+    /// one of them by a tab id.
+    pub(crate) fn group(&self, id: TabId) -> ServiceResult<&PaneGroup> {
+        match self.quick(id) {
+            Some(q) => Ok(q.group()),
+            None => self.tab(id).map(Tab::group),
+        }
+    }
+
+    /// [`State::group`], mutably.
+    pub(crate) fn group_mut(&mut self, id: TabId) -> ServiceResult<&mut PaneGroup> {
+        if self.quick(id).is_none() {
+            return self.tab_mut(id).map(Tab::group_mut);
+        }
+        self.quick_terminal
+            .as_mut()
+            .map(QuickTerminal::group_mut)
+            .ok_or_else(|| ServiceError::NotFound(format!("tab {id}")))
+    }
+
+    /// Every pane: those of all tabs and of the quick terminal.
+    pub(crate) fn all_panes(&self) -> Vec<PaneId> {
+        self.tabs
+            .iter()
+            .map(Tab::group)
+            .chain(self.quick_terminal.as_ref().map(QuickTerminal::group))
+            .flat_map(|g| g.layout().panes())
+            .collect()
+    }
+
     /// Settings for `repo`, with its overrides applied (globals if it doesn't exist).
     pub(crate) fn effective_settings(&self, repo: RepoId) -> EffectiveSettings {
         let overrides = self
@@ -178,8 +221,16 @@ impl State {
             .collect()
     }
 
-    /// Removes a tab and its reference from its thread. Returns its panes.
+    /// Removes a tab and its reference from its thread, or the quick terminal if `tab`
+    /// is its id. Returns its panes.
     pub(crate) fn remove_tab(&mut self, tab: TabId) -> Vec<PaneId> {
+        if self.quick(tab).is_some() {
+            return self
+                .quick_terminal
+                .take()
+                .map(|q| q.layout().panes())
+                .unwrap_or_default();
+        }
         let Some(index) = self.tabs.iter().position(|t| t.id() == tab) else {
             return Vec::new();
         };
@@ -194,8 +245,21 @@ impl State {
         removed.layout().panes()
     }
 
-    /// Removes a pane wherever it is. If it was a tab's last pane, the tab is removed too.
+    /// Removes a pane wherever it is. If it was the last pane of a tab (or of the quick
+    /// terminal), that is removed too.
     pub(crate) fn remove_pane(&mut self, pane: PaneId) {
+        if let Some(q) = self
+            .quick_terminal
+            .as_mut()
+            .filter(|q| q.layout().contains(pane))
+        {
+            if q.layout().len() == 1 {
+                self.quick_terminal = None;
+            } else {
+                let _ = q.group_mut().close_pane(pane);
+            }
+            return;
+        }
         let Some(tab_id) = self
             .tabs
             .iter()
@@ -214,5 +278,67 @@ impl State {
         } else if let Some(tab) = self.tabs.iter_mut().find(|t| t.id() == tab_id) {
             let _ = tab.close_pane(pane);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use urushi_core::Direction;
+
+    fn p(n: u128) -> PaneId {
+        PaneId::from_u128(n)
+    }
+
+    fn with_quick() -> State {
+        let mut quick = QuickTerminal::new(TabId::from_u128(9), p(1));
+        quick
+            .group_mut()
+            .split(p(1), p(2), Direction::Right)
+            .unwrap();
+        State {
+            quick_terminal: Some(quick),
+            ..State::default()
+        }
+    }
+
+    #[test]
+    fn the_quick_terminal_answers_to_its_tab_id() {
+        let mut state = with_quick();
+        let id = TabId::from_u128(9);
+        assert_eq!(state.group(id).unwrap().layout().len(), 2);
+        state.group_mut(id).unwrap().focus(p(1)).unwrap();
+        assert_eq!(state.group(id).unwrap().focused(), p(1));
+        assert!(state.group(TabId::from_u128(8)).is_err());
+        assert_eq!(state.all_panes(), [p(1), p(2)]);
+        assert!(state.to_proto().quick_terminal.is_some());
+    }
+
+    #[test]
+    fn the_quick_terminal_ends_with_its_last_pane() {
+        let mut state = with_quick();
+        state.remove_pane(p(2));
+        assert_eq!(state.all_panes(), [p(1)]);
+        state.remove_pane(p(1));
+        assert!(state.quick_terminal.is_none());
+        let mut state = with_quick();
+        assert_eq!(state.remove_tab(TabId::from_u128(9)), [p(1), p(2)]);
+        assert!(state.quick_terminal.is_none());
+    }
+
+    #[test]
+    fn repair_and_storage_keep_the_quick_terminal() {
+        let mut state = with_quick();
+        state.repair_interrupted();
+        assert!(state.quick_terminal.is_some());
+        let doc = state.to_document();
+        let json = serde_json::to_string(&doc).unwrap();
+        let back: Document = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            State::from_document(back).quick_terminal,
+            state.quick_terminal
+        );
+        let none: Document = serde_json::from_str(r#"{"format":1}"#).unwrap();
+        assert!(none.quick_terminal.is_none());
     }
 }

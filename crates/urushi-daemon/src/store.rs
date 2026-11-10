@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use urushi_core::{Board, BranchName, Project, Repo, Settings, Tab, Thread};
+use urushi_core::{Board, BranchName, Project, QuickTerminal, Repo, Settings, Tab, Thread};
 
 /// Current document format. Bump it and add a migration in [`JsonFileStore::load`] when
 /// a change isn't backward-compatible.
@@ -55,6 +55,9 @@ pub struct Document {
     /// Task boards, in tab order. Older files have none.
     #[serde(default)]
     pub boards: Vec<Board>,
+    /// The quick terminal, if one is open (ADR 0031). Older files have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quick_terminal: Option<QuickTerminal>,
 }
 
 impl Default for Document {
@@ -67,6 +70,7 @@ impl Default for Document {
             threads: Vec::new(),
             tabs: Vec::new(),
             boards: Vec::new(),
+            quick_terminal: None,
         }
     }
 }

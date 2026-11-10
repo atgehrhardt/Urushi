@@ -46,6 +46,7 @@ pub(super) fn workspace() -> v1::Workspace {
         }],
         folders: Vec::new(),
         boards: Vec::new(),
+        quick_terminal: None,
     }
 }
 
@@ -400,6 +401,7 @@ mod panes;
 mod pointer;
 mod project_order;
 mod project_settings;
+mod quick;
 mod setup;
 mod sidebar;
 mod subtask_drafts;

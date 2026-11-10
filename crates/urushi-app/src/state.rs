@@ -490,6 +490,8 @@ pub struct AppState {
     pub hover: Option<(String, (u16, u16))>,
     /// The task-board panel.
     pub board: crate::board::BoardPanel,
+    /// The quick terminal's drop-down panel.
+    pub quick: crate::quick_terminal::QuickPanel,
     /// Plan usage of the agent in a pane, as last reported: `(pane, usage)`.
     pub usage: Option<(String, v1::AgentUsage)>,
     /// A usage request is in flight (one at a time).
@@ -546,6 +548,7 @@ impl AppState {
             mods: crate::keys::Mods::default(),
             hover: None,
             board: crate::board::BoardPanel::default(),
+            quick: crate::quick_terminal::QuickPanel::default(),
             usage: None,
             usage_pending: false,
             now_ms: 0,
@@ -599,6 +602,11 @@ impl AppState {
         self.daemon_minor >= crate::board::EPIC_CARDS_SINCE_MINOR
     }
 
+    /// Whether the daemon keeps a quick terminal (protocol 1.20).
+    pub fn daemon_supports_quick_terminal(&self) -> bool {
+        self.daemon_minor >= crate::quick_terminal::QUICK_TERMINAL_SINCE_MINOR
+    }
+
     /// Whether the daemon can reorder projects (protocol 1.11).
     pub fn daemon_supports_project_order(&self) -> bool {
         self.daemon_minor >= crate::organize::PROJECT_ORDER_SINCE_MINOR
@@ -645,44 +653,5 @@ impl AppState {
             .find(|t| Some(&t.id) == selected)
             .or_else(|| tabs.first())
             .copied()
-    }
-
-    /// The focused pane of the current tab: the pane focused here if the daemon hasn't
-    /// confirmed it yet and it still exists, otherwise the daemon's choice.
-    pub fn focused_pane(&self) -> Option<String> {
-        let tab = self.current_tab()?;
-        Some(
-            self.focused_override
-                .get(&tab.id)
-                .filter(|pane| self.tab_has_pane(&tab.id, pane))
-                .cloned()
-                .unwrap_or_else(|| tab.focused_pane_id.clone()),
-        )
-    }
-
-    /// Whether `pane` is one of the panes of tab `tab`.
-    pub fn tab_has_pane(&self, tab: &str, pane: &str) -> bool {
-        pane.parse::<urushi_core::PaneId>().is_ok_and(|pane| {
-            self.workspace
-                .tab(tab)
-                .is_some_and(|t| t.layout().contains(pane))
-        })
-    }
-
-    /// Whether something covers the terminals (a dialog or the board panel), so the
-    /// mouse and keyboard don't reach them.
-    pub fn terminals_covered(&self) -> bool {
-        self.dialog.is_some() || self.board.visible()
-    }
-
-    /// Panes of the current tab, with their rectangles in the terminal area.
-    pub fn pane_rects(&self) -> Vec<(String, Rect)> {
-        let (Some(area), Some(tab)) = (self.area, self.current_tab()) else {
-            return Vec::new();
-        };
-        self.workspace
-            .tab(&tab.id)
-            .map(|t| crate::terminal::pane_rects(t.layout(), area))
-            .unwrap_or_default()
     }
 }

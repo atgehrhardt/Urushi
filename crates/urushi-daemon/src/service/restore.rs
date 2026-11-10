@@ -17,7 +17,7 @@ use urushi_core::{PaneId, Thread, ThreadState};
 use urushi_mux::replay::to_ansi;
 use urushi_mux::{AlacrittyEmulator, Emulator as _, TermSize};
 
-use super::{Service, blocking, lock};
+use super::{PaneHome, Service, blocking, lock};
 use crate::restore::{AgentRecord, AgentStart, SCREEN_LINES};
 use crate::usage::process::{agent_process_under, foreground_job};
 
@@ -42,10 +42,18 @@ enum Restart {
 const SEPARATOR: &str = "\x1b[0;2m── restored after the daemon restarted ──\x1b[0m\r\n";
 
 impl Service {
-    /// Starts every pane of every ready thread again, from its restore point.
+    /// Starts every pane of every ready thread, and of the quick terminal, again from its
+    /// restore point.
     pub(super) fn restore_sessions(&self) {
-        let work: Vec<(PaneId, Thread, Option<String>)> = {
+        let work: Vec<(PaneId, Option<Thread>, Option<String>)> = {
             let state = lock(&self.state);
+            let quick = state.quick_terminal.iter().flat_map(|q| {
+                let shell = state.settings.default_shell.clone();
+                q.layout()
+                    .panes()
+                    .into_iter()
+                    .map(move |p| (p, None, shell.clone()))
+            });
             state
                 .tabs
                 .iter()
@@ -59,10 +67,11 @@ impl Service {
                         tab.layout()
                             .panes()
                             .into_iter()
-                            .map(move |p| (p, record.thread.clone(), shell.clone())),
+                            .map(move |p| (p, Some(record.thread.clone()), shell.clone())),
                     )
                 })
                 .flatten()
+                .chain(quick)
                 .collect()
         };
         let mut restarts = Vec::new();
@@ -80,7 +89,8 @@ impl Service {
                 emulator.advance(SEPARATOR.as_bytes());
             }
             let cwd = record.cwd.clone();
-            match self.spawn_session_in(pane, &thread, shell.clone(), cwd, emulator, Vec::new()) {
+            let home = thread.as_ref().map_or(PaneHome::Quick, PaneHome::Thread);
+            match self.spawn_session_in(pane, home, shell.clone(), cwd, emulator, Vec::new()) {
                 Ok(()) => {
                     if let Some(agent) = record.agent.clone() {
                         restarts.push((pane, shell, Restart::Agent(agent)));
@@ -254,11 +264,7 @@ impl Service {
             }
             lock(&self.restore_points).insert(pane, (seen, record));
         }
-        let keep: HashSet<PaneId> = lock(&self.state)
-            .tabs
-            .iter()
-            .flat_map(|t| t.layout().panes())
-            .collect();
+        let keep: HashSet<PaneId> = lock(&self.state).all_panes().into_iter().collect();
         lock(&self.restore_points).retain(|pane, _| keep.contains(pane));
         let store = self.restore.clone();
         let _ = blocking(move || {

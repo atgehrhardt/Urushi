@@ -5,10 +5,10 @@ use std::io::{BufRead, Write};
 use anyhow::{Context, Result, bail};
 use urushi_client::{Client, WorkspaceMirror, v1};
 
-use crate::render::{print_plan, print_settings, print_tailnet, print_tree, short};
+use crate::render::{print_plan, print_quick, print_settings, print_tailnet, print_tree, short};
 use crate::{
-    AgentArg, Command, PaneCmd, ProjectCmd, RepoCmd, SettingsCmd, Side, TabCmd, TailnetCmd,
-    ThreadCmd,
+    AgentArg, Command, PaneCmd, ProjectCmd, QuickCmd, RepoCmd, SettingsCmd, Side, TabCmd,
+    TailnetCmd, ThreadCmd,
 };
 
 /// Resolves an abbreviated id against the current workspace.
@@ -57,6 +57,7 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
         Command::Thread(cmd) => thread(client, cmd).await,
         Command::Tab(cmd) => tab(client, cmd).await,
         Command::Pane(cmd) => pane(client, cmd).await,
+        Command::Quick(cmd) => quick(client, cmd).await,
         Command::Board(cmd) => crate::boards::run(client, cmd).await,
         Command::Jira(cmd) => crate::jira::run(client, cmd).await,
         Command::Usage { pane } => {
@@ -310,10 +311,8 @@ async fn pane(client: &Client, cmd: PaneCmd) -> Result<()> {
                 .resolve(pane)
                 .with_context(|| format!("no unique pane matches {pane:?}"))?;
             let tab = mirror
-                .tab_of_pane(&pane)
-                .context("pane is not in any tab")?
-                .id
-                .clone();
+                .owner_of_pane(&pane)
+                .context("pane is not in any tab")?;
             (pane, tab)
         }
     };
@@ -329,6 +328,17 @@ async fn pane(client: &Client, cmd: PaneCmd) -> Result<()> {
             out(&format!("pane {}", short(&new)))
         }
         PaneCmd::Close { .. } => Ok(client.close_pane(&tab, &pane).await?),
+    }
+}
+
+async fn quick(client: &Client, cmd: QuickCmd) -> Result<()> {
+    match cmd {
+        QuickCmd::Open => print_quick(&client.open_quick_terminal().await?),
+        QuickCmd::Close => {
+            let mirror = client.list_workspace(false).await?;
+            let quick = mirror.quick_terminal.context("no quick terminal is open")?;
+            Ok(client.close_tab(&quick.id).await?)
+        }
     }
 }
 

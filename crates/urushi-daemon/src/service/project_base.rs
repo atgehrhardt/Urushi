@@ -226,7 +226,7 @@ impl Service {
         let tab_id = TabId::from_uuid(new_uuid());
         let pane = PaneId::from_uuid(new_uuid());
         thread.tabs.push(tab_id);
-        self.spawn_session_with_env(pane, thread, shell, TermSize::DEFAULT, Vec::new())?;
+        self.spawn_session_with_env(pane, &*thread, shell, TermSize::DEFAULT, Vec::new())?;
         let tab = Tab::new(tab_id, thread.id, DEFAULT_TAB_TITLE, pane);
         let project = thread.project;
         let result = self.mutate(|state| {

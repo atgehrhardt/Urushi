@@ -20,6 +20,9 @@ pub struct SpawnSpec {
     pub args: Vec<String>,
     /// Working directory.
     pub cwd: Option<PathBuf>,
+    /// Inherited environment variables to leave out (e.g. ones that describe the pane
+    /// the daemon itself was started from). Applied before `env`.
+    pub env_remove: Vec<String>,
     /// Extra environment variables, on top of the inherited environment.
     pub env: Vec<(String, String)>,
     /// Initial size.
@@ -83,6 +86,9 @@ impl Pty for NativePty {
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
         command.env("TERM_PROGRAM", "Urushi");
+        for key in &spec.env_remove {
+            command.env_remove(key);
+        }
         for (key, value) in &spec.env {
             command.env(key, value);
         }

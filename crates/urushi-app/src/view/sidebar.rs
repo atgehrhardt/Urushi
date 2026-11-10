@@ -146,7 +146,8 @@ fn tabs(state: &AppState, theme: &Theme) -> Node<Msg> {
         .child(add)
 }
 
-/// Opens (or closes) the task-board panel. Shows how many tasks are still open.
+/// Opens (or closes) the task-board panel, showing how many tasks are still open, and
+/// beside it the quick terminal's toggle (with daemons that have one).
 fn tasks_button(state: &AppState, theme: &Theme) -> Node<Msg> {
     let open = state.board.open;
     let count = crate::board::open_tasks(&state.workspace);
@@ -158,6 +159,7 @@ fn tasks_button(state: &AppState, theme: &Theme) -> Node<Msg> {
             bottom: 6.0,
             left: 8.0,
         })
+        .gap(6.0)
         .child(
             Node::row()
                 .width(Length::Fill(1.0))
@@ -197,6 +199,50 @@ fn tasks_button(state: &AppState, theme: &Theme) -> Node<Msg> {
                     theme.text_muted,
                 )),
         )
+        .children(
+            state
+                .daemon_supports_quick_terminal()
+                .then(|| terminal_button(state, theme)),
+        )
+}
+
+/// Drops the quick terminal down, or puts it away. A dot shows when one of its panes
+/// wants the user.
+fn terminal_button(state: &AppState, theme: &Theme) -> Node<Msg> {
+    let open = state.quick.open;
+    Node::row()
+        .height(Length::Fixed(30.0))
+        .padding(Insets::symmetric(0.0, 10.0))
+        .gap(6.0)
+        .align(urushi_ui::Align::Center)
+        .radius(theme.radius)
+        .border(1.0, if open { theme.accent } else { theme.border })
+        .background(if open { theme.selected } else { theme.surface })
+        .hover_background(if open { theme.selected } else { theme.hover })
+        .key(key(&["sidebar-quick-terminal"]))
+        .on_click(Msg::Quick(crate::msg::QuickMsg::Toggle))
+        .role(
+            Role::Button,
+            if open {
+                "Hide quick terminal"
+            } else {
+                "Quick terminal"
+            },
+        )
+        .children(
+            state
+                .quick_attention()
+                .map(|k| super::attention::indicator(theme, k, super::attention::DOT)),
+        )
+        .child(Node::text(
+            ">_",
+            Font::Mono {
+                bold: true,
+                italic: false,
+            },
+            theme.font_size_small,
+            theme.text,
+        ))
 }
 
 /// The Repos tab: each repo, with its path, thread count and a "+" for a new thread.

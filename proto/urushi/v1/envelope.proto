@@ -123,6 +123,8 @@ message Request {
     MoveBoardRequest move_board = 70;
     // Since 1.18.
     UpdateFolderSettingsRequest update_folder_settings = 71;
+    // Since 1.20.
+    OpenQuickTerminalRequest open_quick_terminal = 72;
   }
 }
 
@@ -163,6 +165,8 @@ message Response {
     JiraIssueDetails jira_issue_details = 28;
     JiraUsers jira_users = 29;
     JiraIssueRefs jira_issue_refs = 30;
+    // Since 1.20.
+    QuickTerminal quick_terminal = 31;
   }
 }
 

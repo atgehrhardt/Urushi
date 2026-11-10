@@ -620,3 +620,20 @@ fn a_projects_parent_branch_thread_and_its_settings_are_shown() {
         assert!(dialog.contains(text), "{text} missing: {dialog}");
     }
 }
+
+#[test]
+fn the_quick_terminal_drops_down_over_the_thread_with_its_toggles() {
+    let status = dump("status", 1280.0);
+    assert_eq!(
+        status.matches("\">_\"").count(),
+        2,
+        "toggles in the sidebar and the tab bar: {status}"
+    );
+    assert!(!status.contains("\"Quick terminal\""), "{status}");
+    for width in [1280.0, 402.0] {
+        let quick = dump("quick-terminal", width);
+        for text in ["\"Quick terminal\"", "\"Hide\""] {
+            assert!(quick.contains(text), "{text} missing at {width}: {quick}");
+        }
+    }
+}

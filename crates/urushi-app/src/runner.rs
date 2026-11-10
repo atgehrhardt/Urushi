@@ -17,7 +17,7 @@ use winit::window::{Window, WindowId};
 
 use crate::backend::Backend;
 use crate::keys::{KeyPress, Mods};
-use crate::msg::{Effect, Msg, SidebarMsg};
+use crate::msg::{Effect, Msg, QuickMsg, SidebarMsg};
 use crate::platform::{self, Clipboard};
 use crate::state::AppState;
 use crate::{UserEvent, view};
@@ -222,19 +222,23 @@ impl Runner {
         Rect::new(0.0, 0.0, w, h)
     }
 
-    /// Moves the board panel's and the sidebar's slides one frame towards where they're
-    /// heading, and keeps redrawing until both get there.
+    /// Moves the board panel's, the quick terminal's and the sidebar's slides one frame
+    /// towards where they're heading, and keeps redrawing until all get there.
     fn animate(&mut self) {
         let board = (
             self.state.board.reveal,
             if self.state.board.open { 1.0 } else { 0.0 },
+        );
+        let quick = (
+            self.state.quick.reveal,
+            if self.state.quick.open { 1.0 } else { 0.0 },
         );
         let sidebar = (
             self.state.sidebar.reveal(),
             self.state.sidebar.reveal_target(),
         );
         let moving = |(current, target): (f32, f32)| (current - target).abs() >= f32::EPSILON;
-        if !moving(board) && !moving(sidebar) {
+        if !moving(board) && !moving(quick) && !moving(sidebar) {
             self.animated_at = None;
             return;
         }
@@ -256,6 +260,10 @@ impl Runner {
         if moving(board) {
             let next = advance(board, crate::board::SLIDE_SECONDS);
             self.state.update(Msg::BoardReveal(next));
+        }
+        if moving(quick) {
+            let next = advance(quick, crate::quick_terminal::SLIDE_SECONDS);
+            self.state.update(Msg::Quick(QuickMsg::Reveal(next)));
         }
         if moving(sidebar) {
             let next = advance(sidebar, crate::sidebar::SLIDE_SECONDS);
@@ -318,16 +326,28 @@ impl Runner {
             .and_then(|t| self.state.workspace.thread(t))
             .map(|t| format!("{} — {APP_TITLE}", t.title));
         window.set_title(title.as_deref().unwrap_or(APP_TITLE));
-        let area = frame
-            .hits
-            .iter()
-            .find(|h| h.key == Some(view::area_key()))
-            .map(|h| h.rect);
+        let area_of = |key| {
+            frame
+                .hits
+                .iter()
+                .find(|h| h.key == Some(key))
+                .map(|h| h.rect)
+        };
+        let area = area_of(view::area_key());
+        // The quick terminal's size is taken once it is fully down (while it slides,
+        // only part of it is in view).
+        let quick = area_of(view::quick_area_key())
+            .filter(|_| self.state.quick.open && self.state.quick.reveal >= 1.0);
         self.frame = Some(frame);
         if let Some(area) = area
             && self.state.area != Some(area)
         {
             self.dispatch(Msg::AreaChanged(area));
+        }
+        if let Some(quick) = quick
+            && self.state.quick.area != Some(quick)
+        {
+            self.dispatch(Msg::Quick(QuickMsg::Area(quick)));
         }
     }
 
@@ -339,12 +359,7 @@ impl Runner {
         if self.state.sidebar.resizing() {
             // Keep the resize cursor even where the pointer has outrun the edge.
             icon = CursorIcon::ResizeColumn;
-        } else if let (Some(area), Some(tab)) = (self.state.area, self.state.current_tab())
-            && area.contains(p)
-            && self.state.dialog.is_none()
-            && let Some(tab) = self.state.workspace.tab(&tab.id)
-            && let Some(divider) = crate::terminal::divider_at(tab.layout(), area, p)
-        {
+        } else if let Some(divider) = self.state.divider_at(p) {
             icon = match divider.axis {
                 urushi_core::Axis::Row => CursorIcon::ResizeColumn,
                 urushi_core::Axis::Column => CursorIcon::ResizeRow,
@@ -361,8 +376,7 @@ impl Runner {
 
     fn mouse_button(&mut self, state: ElementState, button: MouseButton) {
         let Some(p) = self.pointer else { return };
-        let in_area =
-            self.state.area.is_some_and(|a| a.contains(p)) && !self.state.terminals_covered();
+        let in_area = self.state.terminal_at(p);
         // A secondary click is a right click, or a two-finger click on a trackpad
         // (macOS reports both as the right button). Over a terminal it opens the pane's
         // menu, and the middle button goes to the app (`update/pointer.rs`).
@@ -415,9 +429,7 @@ impl Runner {
                             clicks,
                         });
                     }
-                } else if self.state.area.is_some_and(|a| a.contains(p))
-                    && !self.state.terminals_covered()
-                {
+                } else if self.state.terminal_at(p) {
                     self.pressed_in_area = true;
                     self.dispatch(Msg::AreaPress(p));
                 }
@@ -504,7 +516,7 @@ impl Runner {
                 (px / self.state.cell.height, px)
             }
         };
-        if self.state.area.is_some_and(|a| a.contains(p)) && !self.state.terminals_covered() {
+        if self.state.terminal_at(p) {
             self.wheel_remainder += lines;
             let whole = self.wheel_remainder.trunc();
             self.wheel_remainder -= whole;
@@ -603,10 +615,7 @@ impl ApplicationHandler<UserEvent> for Runner {
                 self.pointer = Some(p);
                 if self.pressed_in_area {
                     self.dispatch(Msg::AreaDrag(p));
-                } else if self.press.is_none()
-                    && !self.state.terminals_covered()
-                    && self.state.area.is_some_and(|a| a.contains(p))
-                {
+                } else if self.press.is_none() && self.state.terminal_at(p) {
                     self.dispatch(Msg::AreaHover(p));
                 }
                 self.drag_to(p);
@@ -656,10 +665,7 @@ impl ApplicationHandler<UserEvent> for Runner {
             WindowEvent::Ime(winit::event::Ime::Commit(text)) => self.dispatch(Msg::Text(text)),
             WindowEvent::DroppedFile(path) => {
                 // The pointer may be stale during a drag; `update` decides what to do.
-                let over_terminal = self
-                    .pointer
-                    .zip(self.state.area)
-                    .is_some_and(|(p, area)| area.contains(p));
+                let over_terminal = self.pointer.is_some_and(|p| self.state.terminal_at(p));
                 self.dispatch(Msg::FileDropped {
                     is_dir: path.is_dir(),
                     path: path.to_string_lossy().into_owned(),

@@ -61,30 +61,60 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
             )?;
             for tab in mirror.tabs_of(&thread.id) {
                 writeln!(o, "    {} {}", short(&tab.id), tab.title)?;
-                if let Some(layout) = tab
-                    .layout
-                    .as_ref()
-                    .and_then(|l| urushi_proto::convert::layout_from_proto(l).ok())
-                {
-                    for pane in layout.panes() {
-                        let pane = pane.to_string();
-                        let marker = if pane == tab.focused_pane_id {
-                            "*"
-                        } else {
-                            " "
-                        };
-                        let attention = tab.attention.iter().find(|a| a.pane_id == pane).map_or(
-                            "",
-                            |a| match a.kind() {
-                                v1::AttentionKind::Done => "  [finished]",
-                                _ => "  [needs input]",
-                            },
-                        );
-                        writeln!(o, "     {marker}{} pane{attention}", short(&pane))?;
-                    }
-                }
+                print_panes(
+                    &mut o,
+                    "     ",
+                    tab.layout.as_ref(),
+                    &tab.focused_pane_id,
+                    &tab.attention,
+                )?;
             }
         }
+    }
+    if let Some(quick) = mirror.quick_terminal_raw() {
+        write_quick(&mut o, quick)?;
+    }
+    Ok(())
+}
+
+/// Prints the quick terminal and its panes.
+pub(crate) fn print_quick(quick: &v1::QuickTerminal) -> Result<()> {
+    write_quick(&mut std::io::stdout().lock(), quick)
+}
+
+fn write_quick(o: &mut impl Write, quick: &v1::QuickTerminal) -> Result<()> {
+    writeln!(o, "quick terminal {}", short(&quick.id))?;
+    print_panes(
+        o,
+        "  ",
+        quick.layout.as_ref(),
+        &quick.focused_pane_id,
+        &quick.attention,
+    )
+}
+
+/// One line per pane: `*` marks the focused one, then any attention.
+fn print_panes(
+    o: &mut impl Write,
+    indent: &str,
+    layout: Option<&v1::LayoutNode>,
+    focused: &str,
+    attention: &[v1::PaneAttention],
+) -> Result<()> {
+    let Some(layout) = layout.and_then(|l| urushi_proto::convert::layout_from_proto(l).ok()) else {
+        return Ok(());
+    };
+    for pane in layout.panes() {
+        let pane = pane.to_string();
+        let marker = if pane == focused { "*" } else { " " };
+        let attention = attention
+            .iter()
+            .find(|a| a.pane_id == pane)
+            .map_or("", |a| match a.kind() {
+                v1::AttentionKind::Done => "  [finished]",
+                _ => "  [needs input]",
+            });
+        writeln!(o, "{indent}{marker}{} pane{attention}", short(&pane))?;
     }
     Ok(())
 }

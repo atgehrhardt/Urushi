@@ -8,7 +8,6 @@ use urushi_client::{ScreenState, WorkspaceMirror, v1};
 use urushi_ui::TextField;
 
 use crate::config::ConnectTarget;
-use crate::keys::{KeyPress, Named};
 use crate::msg::{Effect, Followup, Msg};
 use crate::state::{AppState, Connection, Dialog, Field, SettingToggle, ThreadTarget};
 use crate::terminal;
@@ -121,6 +120,8 @@ impl AppState {
                 }
             }
             Msg::Pane(msg) => self.pane_action(msg, &mut fx),
+            // The quick terminal's panel: `update/quick.rs`.
+            Msg::Quick(msg) => self.quick_msg(msg, &mut fx),
             Msg::AreaChanged(rect) => {
                 if self.area != Some(rect) {
                     self.area = Some(rect);
@@ -319,7 +320,7 @@ impl AppState {
         if let Some(field) = self.field_mut() {
             field.insert(&text);
             self.after_field_edit();
-        } else if !self.terminals_covered()
+        } else if self.keyboard_surface().is_some()
             && let Some(pane) = self.focused_pane()
         {
             fx.push(input(pane, to_terminal(text)));
@@ -367,14 +368,6 @@ impl AppState {
         self.focus = None;
     }
 
-    pub(super) fn reset_panes(&mut self) {
-        self.screens.clear();
-        self.attaching.clear();
-        self.sizes.clear();
-        self.selection = None;
-        self.drag = None;
-    }
-
     fn on_workspace(&mut self, workspace: v1::Workspace, fx: &mut Vec<Effect>) {
         self.deletions.report(workspace);
         self.apply_workspace(fx);
@@ -383,7 +376,9 @@ impl AppState {
     /// Shows the daemon's last reported workspace, without the threads being deleted,
     /// and keeps the selection and attached panes in step with it.
     fn apply_workspace(&mut self, fx: &mut Vec<Effect>) {
+        let had_quick = self.workspace.quick_terminal_raw().is_some();
         self.workspace = self.deletions.visible();
+        self.follow_quick_terminal(had_quick);
         let thread_exists = |id: &String| self.workspace.thread(id).is_some();
         if !self.selected_thread.as_ref().is_some_and(thread_exists) {
             self.selected_thread = self.workspace.raw().threads.first().map(|t| t.id.clone());
@@ -394,64 +389,11 @@ impl AppState {
         self.focused_override = overrides
             .into_iter()
             .filter(|(tab, pane)| {
-                let confirmed = self
-                    .workspace
-                    .raw()
-                    .tabs
-                    .iter()
-                    .any(|t| &t.id == tab && &t.focused_pane_id == pane);
-                !confirmed && self.tab_has_pane(tab, pane)
+                let confirmed = self.confirmed_focus(tab).as_ref() == Some(pane);
+                !confirmed && self.group_has_pane(tab, pane)
             })
             .collect();
         self.sync_panes(fx);
-    }
-
-    /// Attaches the current tab's panes, detaches others, and keeps terminal sizes in step
-    /// with pane rectangles.
-    fn sync_panes(&mut self, fx: &mut Vec<Effect>) {
-        let wanted = self.pane_rects();
-        if self.area.is_none() || !matches!(self.connection, Connection::Connected { .. }) {
-            return;
-        }
-        let wanted_ids: Vec<&String> = wanted.iter().map(|(id, _)| id).collect();
-        let stale: Vec<String> = self
-            .screens
-            .keys()
-            .chain(self.attaching.iter())
-            .filter(|id| !wanted_ids.contains(id))
-            .cloned()
-            .collect();
-        for pane_id in stale {
-            self.screens.remove(&pane_id);
-            self.attaching.remove(&pane_id);
-            self.sizes.remove(&pane_id);
-            fx.push(request(
-                Body::DetachPane(v1::DetachPaneRequest { pane_id }),
-                Followup::None,
-            ));
-        }
-        for (pane, rect) in wanted {
-            let (cols, rows) = terminal::grid_size(rect, self.cell);
-            if self.screens.contains_key(&pane) {
-                if self.sizes.get(&pane) != Some(&(cols, rows)) {
-                    self.sizes.insert(pane.clone(), (cols, rows));
-                    let body = Body::SetPaneSize(v1::SetPaneSizeRequest {
-                        pane_id: pane,
-                        cols: cols.into(),
-                        rows: rows.into(),
-                    });
-                    fx.push(request(body, Followup::None));
-                }
-            } else if self.attaching.insert(pane.clone()) {
-                self.sizes.insert(pane.clone(), (cols, rows));
-                let body = Body::AttachPane(v1::AttachPaneRequest {
-                    pane_id: pane.clone(),
-                    cols: cols.into(),
-                    rows: rows.into(),
-                });
-                fx.push(request(body, Followup::Attached(pane)));
-            }
-        }
     }
 
     fn on_event(&mut self, event: v1::event::Body, fx: &mut Vec<Effect>) {
@@ -483,6 +425,9 @@ impl AppState {
         result: Result<Outcome, String>,
         fx: &mut Vec<Effect>,
     ) {
+        if followup == Followup::QuickTerminal {
+            return self.quick_terminal_answered(result.err(), fx);
+        }
         let followup = match followup {
             Followup::ThreadDeleted(thread) => {
                 self.thread_deleted(&thread, result.err(), fx);
@@ -740,123 +685,6 @@ impl AppState {
             }
         }
     }
-
-    fn on_key(&mut self, key: &KeyPress, fx: &mut Vec<Effect>) {
-        if key.named == Some(Named::Escape) && (self.dismiss_overlay() || self.board_escape()) {
-            return;
-        }
-        if matches!(self.dialog, Some(Dialog::NewTab { .. }))
-            && !(key.mods.is_shortcut() || key.mods.logo)
-        {
-            self.launcher_dialog_key(key, fx);
-        } else if self.dialog.is_some() || self.searching() {
-            self.dialog_key(key, fx);
-        } else if key.mods.is_shortcut() || key.mods.logo {
-            self.shortcut(key, fx);
-        } else if self.board.visible() {
-            // The panel covers the terminals; typing doesn't reach them.
-        } else if self.empty_thread_key(key, fx) {
-        } else if let Some(pane) = self.focused_pane()
-            && let Some(kind) = key.to_terminal()
-        {
-            self.selection = None;
-            fx.push(input(pane, kind));
-        }
-    }
-
-    fn shortcut(&mut self, key: &KeyPress, fx: &mut Vec<Effect>) {
-        let apple = cfg!(any(target_os = "macos", target_os = "ios"));
-        if key.mods.alt
-            && let Some(named) = key.named
-        {
-            let side = match named {
-                Named::Left => urushi_core::Direction::Left,
-                Named::Right => urushi_core::Direction::Right,
-                Named::Up => urushi_core::Direction::Up,
-                Named::Down => urushi_core::Direction::Down,
-                _ => return,
-            };
-            self.focus_towards(side, fx);
-            return;
-        }
-        let Some(c) = key.character.as_deref().map(str::to_lowercase) else {
-            return;
-        };
-        let more = match c.as_str() {
-            "t" => self.update(Msg::NewTab),
-            "w" => self.update(Msg::ClosePane),
-            "d" if apple && key.mods.shift => self.update(Msg::Split(v1::Direction::Down)),
-            "d" => self.update(Msg::Split(v1::Direction::Right)),
-            "e" => self.update(Msg::Split(v1::Direction::Down)),
-            "c" => self.update(Msg::Copy),
-            "v" => vec![Effect::RequestPaste],
-            "," => self.update(Msg::OpenSettings),
-            "b" => self.update(Msg::ToggleBoard),
-            "\\" | "|" => self.update(Msg::Sidebar(crate::msg::SidebarMsg::Toggle)),
-            "n" => {
-                // Same repo and project as the thread on screen.
-                let current = self
-                    .selected_thread
-                    .as_ref()
-                    .and_then(|t| self.workspace.thread(t));
-                let repo = current.map(|t| t.project_id.clone());
-                let project = current
-                    .map(|t| t.folder_id.clone())
-                    .filter(|f| self.workspace.project(f).is_some());
-                self.update(Msg::OpenNewThread { repo, project })
-            }
-            "[" | "{" => self.cycle_tab(-1),
-            "]" | "}" => self.cycle_tab(1),
-            _ => Vec::new(),
-        };
-        fx.extend(more);
-    }
-
-    fn cycle_tab(&mut self, step: isize) -> Vec<Effect> {
-        let Some(thread) = self.selected_thread.clone() else {
-            return Vec::new();
-        };
-        let tabs: Vec<String> = self
-            .workspace
-            .tabs_of(&thread)
-            .iter()
-            .map(|t| t.id.clone())
-            .collect();
-        let Some(current) = self.current_tab().map(|t| t.id.clone()) else {
-            return Vec::new();
-        };
-        let Some(i) = tabs.iter().position(|t| *t == current) else {
-            return Vec::new();
-        };
-        let len = isize::try_from(tabs.len()).unwrap_or(1);
-        let next =
-            usize::try_from((isize::try_from(i).unwrap_or(0) + step).rem_euclid(len)).unwrap_or(0);
-        self.update(Msg::SelectTab(tabs[next].clone()))
-    }
-
-    fn focus_towards(&mut self, side: urushi_core::Direction, fx: &mut Vec<Effect>) {
-        let Some(tab) = self.current_tab().and_then(|t| self.workspace.tab(&t.id)) else {
-            return;
-        };
-        let Some(current) = self.focused_pane().and_then(|p| p.parse().ok()) else {
-            return;
-        };
-        if let Some(next) = tab.layout().focus_neighbour(current, side) {
-            self.focus_pane(&tab.id().to_string(), &next.to_string(), fx);
-        }
-    }
-
-    fn focus_pane(&mut self, tab: &str, pane: &str, fx: &mut Vec<Effect>) {
-        if self.focused_pane().as_deref() != Some(pane) {
-            self.focused_override
-                .insert(tab.to_owned(), pane.to_owned());
-            let body = Body::FocusPane(v1::FocusPaneRequest {
-                tab_id: tab.to_owned(),
-                pane_id: pane.to_owned(),
-            });
-            fx.push(request(body, Followup::None));
-        }
-    }
 }
 
 impl AppState {
@@ -891,11 +719,13 @@ mod filter;
 mod intake;
 mod issue;
 mod jira;
+mod keys;
 mod launcher;
 mod organize;
 mod panes;
 mod pointer;
 mod project_settings;
+mod quick;
 mod setup;
 mod sidebar;
 mod subtask_drafts;

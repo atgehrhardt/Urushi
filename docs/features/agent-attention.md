@@ -34,7 +34,8 @@ has focus) or type into it.
 3. **Daemon.** `watch_session` calls `raise_attention(pane, kind)`. Attention is kept in
    memory per pane with its time. A repeat of the same kind is ignored. Each change wakes
    `WorkspaceChanged` subscribers without a new revision, and `workspace()` lists
-   `Tab.attention[PaneAttention{pane_id, kind, since_ms}]`. Typing or clicking in a pane
+   `Tab.attention[PaneAttention{pane_id, kind, since_ms}]` (and `QuickTerminal.attention`
+   for the quick terminal's panes). Typing or clicking in a pane
    (`Input` key/text/paste/press, `Service::user_acted`, which also counts toward a task
    message waiting to be drafted there) and `ClearAttention{pane_ids}` clear it. Closed panes
    are forgotten.

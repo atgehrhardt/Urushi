@@ -190,6 +190,9 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
                 })
                 .collect(),
         }),
+        Body::OpenQuickTerminal(_) => Outcome::QuickTerminal(convert::quick_terminal_to_proto(
+            &service.open_quick_terminal()?,
+        )),
         Body::CloseTab(r) => {
             service.close_tab(parse::<TabId>(&r.tab_id, "tab_id")?)?;
             ok()

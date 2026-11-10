@@ -134,6 +134,9 @@ pub struct Style {
     /// Shifts the box (and everything in it) left by this fraction of its own width:
     /// 0 is in place, 1 is fully to the left. For panels that slide in.
     pub slide: f32,
+    /// Shifts the box (and everything in it) up by this fraction of its own height:
+    /// 0 is in place, 1 is fully above. For panels that drop down.
+    pub slide_y: f32,
     /// Bottom colour of a top-to-bottom gradient over the background.
     pub gradient: Option<Color>,
     /// A soft shadow drawn under the box.
@@ -173,6 +176,7 @@ impl Default for Style {
             radius: 0.0,
             clip: false,
             slide: 0.0,
+            slide_y: 0.0,
             gradient: None,
             shadow: None,
             backdrop_blur: 0.0,
@@ -521,6 +525,14 @@ impl<M> Node<M> {
     #[must_use]
     pub fn slide_x(mut self, fraction: f32) -> Self {
         self.style.slide = fraction;
+        self
+    }
+
+    /// Shifts this node up by `fraction` of its height (see [`Style::slide_y`]). Put it
+    /// in a clipped parent so the part outside doesn't show.
+    #[must_use]
+    pub fn slide_y(mut self, fraction: f32) -> Self {
+        self.style.slide_y = fraction;
         self
     }
 

@@ -7,7 +7,9 @@
 //! and doesn't change its revision, but every change is broadcast as `WorkspaceChanged`,
 //! with each tab listing its panes' attention.
 
-use urushi_core::{AttentionKind, PaneId, Timestamp};
+use std::collections::HashMap;
+
+use urushi_core::{AttentionKind, Layout, PaneId, Timestamp};
 use urushi_proto::v1;
 
 use super::state::State;
@@ -64,27 +66,18 @@ impl Service {
         }
     }
 
-    /// Adds each tab's attention to `workspace`, which was made from `state` (same tab
-    /// order).
+    /// Adds each tab's (and the quick terminal's) attention to `workspace`, which was
+    /// made from `state` (same tab order).
     pub(super) fn add_attention(&self, workspace: &mut v1::Workspace, state: &State) {
         let attention = lock(&self.attention);
         if attention.is_empty() {
             return;
         }
         for (wire, tab) in workspace.tabs.iter_mut().zip(&state.tabs) {
-            wire.attention = tab
-                .layout()
-                .panes()
-                .into_iter()
-                .filter_map(|pane| {
-                    let a = attention.get(&pane)?;
-                    Some(v1::PaneAttention {
-                        pane_id: pane.to_string(),
-                        kind: kind_to_proto(a.kind).into(),
-                        since_ms: i64::try_from(a.since.unix_millis()).unwrap_or(i64::MAX),
-                    })
-                })
-                .collect();
+            wire.attention = wire_attention(tab.layout(), &attention);
+        }
+        if let (Some(wire), Some(quick)) = (&mut workspace.quick_terminal, &state.quick_terminal) {
+            wire.attention = wire_attention(quick.layout(), &attention);
         }
     }
 
@@ -93,6 +86,25 @@ impl Service {
         let revision = lock(&self.state).revision;
         self.changes.send_replace(revision);
     }
+}
+
+/// The attention of `layout`'s panes, for the wire.
+fn wire_attention(
+    layout: &Layout,
+    attention: &HashMap<PaneId, Attention>,
+) -> Vec<v1::PaneAttention> {
+    layout
+        .panes()
+        .into_iter()
+        .filter_map(|pane| {
+            let a = attention.get(&pane)?;
+            Some(v1::PaneAttention {
+                pane_id: pane.to_string(),
+                kind: kind_to_proto(a.kind).into(),
+                since_ms: i64::try_from(a.since.unix_millis()).unwrap_or(i64::MAX),
+            })
+        })
+        .collect()
 }
 
 fn kind_to_proto(kind: AttentionKind) -> v1::AttentionKind {

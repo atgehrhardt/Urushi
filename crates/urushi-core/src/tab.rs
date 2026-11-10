@@ -1,21 +1,21 @@
-//! A tab: one split-pane layout plus which pane has focus.
+//! A tab: a thread's titled pane group.
 
 use serde::{Deserialize, Serialize};
 
 use crate::layout::{Axis, Direction, Layout, LayoutError};
+use crate::pane_group::PaneGroup;
 use crate::{PaneId, TabId, ThreadId};
 
-/// A tab inside a thread.
+/// A tab inside a thread: a title and a [`PaneGroup`].
 ///
-/// Invariant: `focused` is always a pane in `layout`.
+/// Invariant: the focused pane is always a pane in the layout (kept by [`PaneGroup`]).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "TabData", into = "TabData")]
 pub struct Tab {
     id: TabId,
     thread: ThreadId,
     title: String,
-    layout: Layout,
-    focused: PaneId,
+    group: PaneGroup,
 }
 
 impl Tab {
@@ -25,8 +25,7 @@ impl Tab {
             id,
             thread,
             title: title.into(),
-            layout: Layout::single(first_pane),
-            focused: first_pane,
+            group: PaneGroup::new(first_pane),
         }
     }
 
@@ -39,15 +38,11 @@ impl Tab {
         layout: Layout,
         focused: PaneId,
     ) -> Result<Self, LayoutError> {
-        if !layout.contains(focused) {
-            return Err(LayoutError::PaneNotFound(focused));
-        }
         Ok(Self {
             id,
             thread,
             title: title.into(),
-            layout,
-            focused,
+            group: PaneGroup::from_parts(layout, focused)?,
         })
     }
 
@@ -71,56 +66,49 @@ impl Tab {
         self.title = title.into();
     }
 
+    /// The tab's panes and focus.
+    pub const fn group(&self) -> &PaneGroup {
+        &self.group
+    }
+
+    /// The tab's panes and focus, for layout operations shared with other pane groups.
+    pub const fn group_mut(&mut self) -> &mut PaneGroup {
+        &mut self.group
+    }
+
     /// The pane layout.
     pub const fn layout(&self) -> &Layout {
-        &self.layout
+        self.group.layout()
     }
 
     /// The focused pane.
     pub const fn focused(&self) -> PaneId {
-        self.focused
+        self.group.focused()
     }
 
-    /// Focuses `pane`.
+    /// See [`PaneGroup::focus`].
     pub fn focus(&mut self, pane: PaneId) -> Result<(), LayoutError> {
-        if !self.layout.contains(pane) {
-            return Err(LayoutError::PaneNotFound(pane));
-        }
-        self.focused = pane;
-        Ok(())
+        self.group.focus(pane)
     }
 
-    /// Moves focus to the neighbouring pane towards `side`. Returns `false` at the edge.
+    /// See [`PaneGroup::focus_towards`].
     pub fn focus_towards(&mut self, side: Direction) -> bool {
-        match self.layout.focus_neighbour(self.focused, side) {
-            Some(pane) => {
-                self.focused = pane;
-                true
-            }
-            None => false,
-        }
+        self.group.focus_towards(side)
     }
 
-    /// Splits `target`, adding `new` on `side`. The new pane gets focus.
+    /// See [`PaneGroup::split`].
     pub fn split(
         &mut self,
         target: PaneId,
         new: PaneId,
         side: Direction,
     ) -> Result<(), LayoutError> {
-        self.layout.split(target, new, side)?;
-        self.focused = new;
-        Ok(())
+        self.group.split(target, new, side)
     }
 
-    /// Closes `pane`. If it had focus, focus moves to the pane that took its space.
-    /// Returns [`LayoutError::LastPane`] for the last pane; close the tab instead.
+    /// See [`PaneGroup::close_pane`]. For the last pane, close the tab instead.
     pub fn close_pane(&mut self, pane: PaneId) -> Result<(), LayoutError> {
-        let successor = self.layout.close(pane)?;
-        if self.focused == pane {
-            self.focused = successor;
-        }
-        Ok(())
+        self.group.close_pane(pane)
     }
 
     /// See [`Layout::resize`].
@@ -130,7 +118,7 @@ impl Tab {
         side: Direction,
         amount: f64,
     ) -> Result<(), LayoutError> {
-        self.layout.resize(pane, side, amount)
+        self.group.resize(pane, side, amount)
     }
 
     /// See [`Layout::move_divider`].
@@ -140,12 +128,12 @@ impl Tab {
         axis: Axis,
         position: f64,
     ) -> Result<(), LayoutError> {
-        self.layout.move_divider(anchor, axis, position)
+        self.group.move_divider(anchor, axis, position)
     }
 
     /// See [`Layout::equalize`].
     pub fn equalize(&mut self) {
-        self.layout.equalize();
+        self.group.equalize();
     }
 }
 
@@ -173,8 +161,8 @@ impl From<Tab> for TabData {
             id: t.id,
             thread: t.thread,
             title: t.title,
-            layout: t.layout,
-            focused: t.focused,
+            focused: t.group.focused(),
+            layout: t.group.layout().clone(),
         }
     }
 }
@@ -192,32 +180,13 @@ mod tests {
     }
 
     #[test]
-    fn split_focuses_new_pane_and_close_restores_focus() {
+    fn a_tab_acts_on_its_pane_group() {
         let mut t = tab();
         t.split(p(1), p(2), Direction::Right).unwrap();
         assert_eq!(t.focused(), p(2));
-        t.close_pane(p(2)).unwrap();
+        assert_eq!(t.group().layout().len(), 2);
+        t.group_mut().focus(p(1)).unwrap();
         assert_eq!(t.focused(), p(1));
-        assert_eq!(t.close_pane(p(1)), Err(LayoutError::LastPane));
-    }
-
-    #[test]
-    fn closing_unfocused_pane_keeps_focus() {
-        let mut t = tab();
-        t.split(p(1), p(2), Direction::Right).unwrap();
-        t.split(p(2), p(3), Direction::Down).unwrap();
-        t.focus(p(1)).unwrap();
-        t.close_pane(p(3)).unwrap();
-        assert_eq!(t.focused(), p(1));
-    }
-
-    #[test]
-    fn focus_towards_moves_spatially() {
-        let mut t = tab();
-        t.split(p(1), p(2), Direction::Right).unwrap();
-        assert!(t.focus_towards(Direction::Left));
-        assert_eq!(t.focused(), p(1));
-        assert!(!t.focus_towards(Direction::Left));
         assert_eq!(t.focus(p(9)), Err(LayoutError::PaneNotFound(p(9))));
     }
 
@@ -228,5 +197,14 @@ mod tests {
         assert!(serde_json::from_value::<Tab>(json).is_err());
         let ok: Tab = serde_json::from_value(serde_json::to_value(tab()).unwrap()).unwrap();
         assert_eq!(ok, tab());
+    }
+
+    /// `workspace.json` keeps the same tab keys it always had (ADR 0008).
+    #[test]
+    fn the_stored_form_is_unchanged() {
+        let json = serde_json::to_value(tab()).unwrap();
+        let mut keys: Vec<_> = json.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["focused", "id", "layout", "thread", "title"]);
     }
 }

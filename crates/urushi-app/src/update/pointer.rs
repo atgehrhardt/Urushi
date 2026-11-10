@@ -40,8 +40,12 @@ impl AppState {
         }
     }
 
+    /// The pane under `p`, in the surface that takes the mouse there (the quick
+    /// terminal's panel lies over the main area's panes).
     fn pane_at(&self, p: Point) -> Option<(String, Rect)> {
-        self.pane_rects().into_iter().find(|(_, r)| r.contains(p))
+        self.pane_rects_of(self.surface_at(p)?)
+            .into_iter()
+            .find(|(_, r)| r.contains(p))
     }
 
     /// The cell under `p` in `pane` (clamped to the grid), as `(col, row)`.
@@ -83,16 +87,10 @@ impl AppState {
     }
 
     fn area_press(&mut self, p: Point, fx: &mut Vec<Effect>) {
-        if self.dialog.is_some() {
-            return;
-        }
-        let (Some(area), Some(tab_id)) = (self.area, self.current_tab().map(|t| t.id.clone()))
-        else {
+        let Some((tab_id, _)) = self.surface_at(p).and_then(|s| self.surface_group(s)) else {
             return;
         };
-        if let Some(tab) = self.workspace.tab(&tab_id)
-            && let Some(hit) = terminal::divider_at(tab.layout(), area, p)
-        {
+        if let Some(hit) = self.divider_at(p) {
             self.drag = Some(Drag::Divider {
                 tab: tab_id,
                 anchor: hit.anchor,

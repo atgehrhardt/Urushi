@@ -27,9 +27,11 @@ mod jira_sync;
 mod jira_write;
 mod project_base;
 mod projects;
+mod quick;
 mod repos;
 mod restore;
 mod settings;
+mod spawn;
 mod state;
 mod tabs;
 mod task_agent;
@@ -44,8 +46,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 use tokio::sync::watch;
-use urushi_core::{PaneId, Thread, Timestamp};
-use urushi_mux::{AlacrittyEmulator, MuxError, Pty, SessionHandle, SpawnSpec, TermSize};
+use urushi_core::{PaneId, Timestamp};
+use urushi_mux::{MuxError, Pty, SessionHandle};
 use urushi_proto::v1;
 
 pub use attachments::AttachmentData;
@@ -57,6 +59,7 @@ pub use jira_sync::{ACTIVE_INTERVAL, BoardWatch, FULL_INTERVAL, IDLE_INTERVAL, W
 pub use project_base::ProjectSettingsRequest;
 pub use projects::{Assign, ThreadUpdate};
 pub use repos::BranchList;
+use spawn::PaneHome;
 pub(crate) use state::State;
 pub use threads::ThreadRequest;
 
@@ -313,143 +316,6 @@ impl Service {
         }
         self.changes.send_replace(revision);
         Ok(())
-    }
-
-    /// Starts a terminal session for `pane`, in `thread`'s worktree.
-    fn spawn_session(
-        &self,
-        pane: PaneId,
-        thread: &Thread,
-        shell: Option<String>,
-        size: TermSize,
-    ) -> ServiceResult<()> {
-        self.spawn_session_with_env(pane, thread, shell, size, Vec::new())
-    }
-
-    /// Like [`Self::spawn_session`], with extra environment variables for the shell
-    /// (e.g. a task's prompt, ADR 0014).
-    fn spawn_session_with_env(
-        &self,
-        pane: PaneId,
-        thread: &Thread,
-        shell: Option<String>,
-        size: TermSize,
-        extra_env: Vec<(String, String)>,
-    ) -> ServiceResult<()> {
-        let emulator = AlacrittyEmulator::new(size);
-        self.spawn_session_in(pane, thread, shell, None, emulator, extra_env)
-    }
-
-    /// Starts a terminal session for `pane` in `cwd` (when it's still a directory; else
-    /// `thread`'s worktree), with `emulator` (which may already show earlier output) and
-    /// `extra_env` on top of the variables every pane gets.
-    fn spawn_session_in(
-        &self,
-        pane: PaneId,
-        thread: &Thread,
-        shell: Option<String>,
-        cwd: Option<PathBuf>,
-        emulator: AlacrittyEmulator,
-        extra_env: Vec<(String, String)>,
-    ) -> ServiceResult<()> {
-        use urushi_mux::Emulator as _;
-        let size = emulator.size();
-        let cwd = cwd.filter(|d| d.is_dir()).or_else(|| {
-            thread
-                .worktree_path
-                .is_dir()
-                .then(|| thread.worktree_path.clone())
-        });
-        let mut env = vec![
-            ("URUSHI_THREAD_ID".into(), thread.id.to_string()),
-            ("URUSHI_PANE_ID".into(), pane.to_string()),
-            (
-                "URUSHI_WORKTREE".into(),
-                thread.worktree_path.to_string_lossy().into_owned(),
-            ),
-        ];
-        // Agents started here report when they finish or wait (ADR 0017), and can run
-        // the CLI against this daemon (ADR 0024).
-        env.extend(urushi_core::agent::hooks::hook_env());
-        env.extend(crate::cli::pane_env(
-            &self.home,
-            self.cli.as_deref(),
-            std::env::var_os("PATH"),
-        ));
-        env.extend(extra_env);
-        let spec = SpawnSpec {
-            program: shell,
-            args: Vec::new(),
-            cwd,
-            env,
-            size: Some(size),
-            tty_env: Some(urushi_core::agent::hooks::TTY_ENV.into()),
-        };
-        let handle = SessionHandle::spawn(&*self.pty, &spec, Box::new(emulator))?;
-        lock(&self.sessions).insert(pane, handle.clone());
-        self.watch_session(pane, handle);
-        Ok(())
-    }
-
-    /// Raises attention when the pane's program asks for the user, and closes the pane
-    /// (and its tab, if it was the last one) when its process exits.
-    fn watch_session(&self, pane: PaneId, handle: SessionHandle) {
-        let me = self.me.clone();
-        tokio::spawn(async move {
-            let mut status = handle.status();
-            let mut alerts = status.borrow().alerts;
-            loop {
-                let now = *status.borrow_and_update();
-                if now.alerts > alerts {
-                    alerts = now.alerts;
-                    if let (Some(kind), Some(service)) = (now.alert, me.upgrade()) {
-                        service.raise_attention(pane, kind);
-                    }
-                }
-                if now.exit_code.is_some() {
-                    break;
-                }
-                if status.changed().await.is_err() {
-                    break;
-                }
-            }
-            drop(handle);
-            if let Some(service) = me.upgrade() {
-                service.on_pane_exited(pane);
-            }
-        });
-    }
-
-    fn on_pane_exited(&self, pane: PaneId) {
-        self.forget_attention(&[pane]);
-        let removed = lock(&self.sessions).remove(&pane);
-        if let Some(session) = removed {
-            tokio::spawn(async move {
-                let _ = session.kill().await;
-            });
-        }
-        let result = self.mutate(|state| {
-            state.remove_pane(pane);
-            Ok(())
-        });
-        if let Err(e) = result {
-            tracing::error!(%pane, error = %e, "failed to record pane exit");
-        }
-    }
-
-    /// Kills the sessions of `panes` and forgets them.
-    fn kill_sessions(&self, panes: impl IntoIterator<Item = PaneId>) {
-        let panes: Vec<PaneId> = panes.into_iter().collect();
-        self.forget_attention(&panes);
-        let handles: Vec<SessionHandle> = {
-            let mut sessions = lock(&self.sessions);
-            panes.iter().filter_map(|p| sessions.remove(p)).collect()
-        };
-        for handle in handles {
-            tokio::spawn(async move {
-                let _ = handle.kill().await;
-            });
-        }
     }
 
     /// Kills every session. Called on shutdown.
