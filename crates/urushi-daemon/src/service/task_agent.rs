@@ -61,11 +61,12 @@ impl Service {
         link: (TaskId, Option<TaskId>),
         shell: Option<String>,
     ) -> ServiceResult<TaskAgent> {
+        let by_reference = self.cli.is_some();
         let (choice, prompt) = self.read(|s| {
             let agents = &s.settings.agents;
             Ok((
                 agents.task_agent.map(|a| (a, agents.task_mode)),
-                s.task_prompt(link)?,
+                s.task_prompt(link, by_reference)?,
             ))
         })?;
         let (agent, mode) = choice.ok_or_else(|| {

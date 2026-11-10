@@ -236,7 +236,9 @@ restarts.
     wheel and typing away from the terminals.
   - Subtask controls and Start thread need a 1.6 daemon (`daemon_supports_subtasks`);
     colors, tags and column changes a 1.8 one (`daemon_supports_board_extras`).
-- **CLI:** `urushi board ls|new|rename|rm|add|edit|mv|nest|rm-task` (`ls` prints
+- **CLI:** `urushi board show <task|KEY>` prints a task in full (where it is, notes,
+  subtasks, attachments; a Jira issue's fields, comments, links and files), as agents
+  started from a task read it (ADR 0024). `urushi board ls|new|rename|rm|add|edit|mv|nest|rm-task` (`ls` prints
   subtasks as an indented tree; `mv` takes a subtask out onto the board; `edit`,
   `rm-task` and `sub add` take subtask ids), `urushi board attach <task> <file>`,
   `urushi board attachment get <id> [--thumbnail] [-o file]|rm <id>` (`add --color --tag`,

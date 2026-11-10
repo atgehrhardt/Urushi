@@ -346,3 +346,73 @@ async fn a_task_that_cant_start_in_a_thread_leaves_nothing_behind() {
     assert_eq!(w.boards[0].columns[0].tasks[0].thread_id, "");
     daemon.stop().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn with_the_cli_beside_it_a_task_starts_by_reference() {
+    let home = temp_home();
+    let fixture = repo(home.path());
+    let agents = home.path().join("agents bin");
+    std::fs::create_dir_all(&agents).unwrap();
+    // An agent that also says where the CLI is and which daemon it would reach.
+    let script = "#!/bin/sh\nwhile [ \"$1\" = --settings ] || [ \"$1\" = -c ]; do shift 2; done\nfor a in \"$@\"; do printf 'ARG[%s]\\n' \"$a\"; done\nprintf 'CLI[%s]\\n' \"$(command -v urushi)\"\nprintf 'HOME[%s]\\n' \"$URUSHI_HOME\"\necho AGENT-DONE\n";
+    std::fs::write(agents.join("claude"), script).unwrap();
+    std::fs::set_permissions(
+        agents.join("claude"),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    let cli_dir = home.path().join("cli bin");
+    std::fs::create_dir_all(&cli_dir).unwrap();
+    std::fs::write(cli_dir.join("urushi"), "#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(
+        cli_dir.join("urushi"),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    let mut options = urushi_daemon::DaemonOptions::new(home.path().join("home"));
+    options.tailscale =
+        std::sync::Arc::new(urushi_daemon::tailscale::StaticTailscale::not_installed());
+    options.agents =
+        std::sync::Arc::new(urushi_daemon::agents::AgentLocator::in_dirs(vec![agents]));
+    options.cli = Some(cli_dir.join("urushi"));
+    let daemon = Daemon::start_options(options).await;
+    let (client, _events) = daemon.connect().await;
+    let repo_id = client
+        .add_repo(fixture.repo.to_str().unwrap(), "")
+        .await
+        .unwrap()
+        .id;
+    let (task, _) = task(&client).await;
+    choose(&client, v1::Agent::Claude, v1::AgentMode::Normal).await;
+    let thread = client
+        .create_thread_with(start(&repo_id, &task.id, ""))
+        .await
+        .unwrap();
+    let pane = panes_of(&first_tab(&client, &thread.id).await)[0].clone();
+    let screen = wait_for_text(&client, &pane, "AGENT-DONE").await;
+    let text = screen.join("\n");
+    assert!(
+        text.contains("ARG[Work on the task \"Ship search\" from my Urushi board."),
+        "{text}"
+    );
+    // The terminal wraps long lines; read them as one.
+    let unwrapped = screen.concat();
+    assert!(
+        unwrapped.contains(&format!("urushi board show {}", task.id)),
+        "{text}"
+    );
+    assert!(
+        !text.contains("Index titles."),
+        "a reference, not a copy: {text}"
+    );
+    assert!(
+        text.contains(&format!("CLI[{}]", cli_dir.join("urushi").display())),
+        "{text}"
+    );
+    let daemon_home = std::fs::canonicalize(home.path().join("home")).unwrap();
+    assert!(
+        text.contains(&format!("HOME[{}]", daemon_home.display())),
+        "{text}"
+    );
+    daemon.stop().await;
+}

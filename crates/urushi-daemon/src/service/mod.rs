@@ -119,6 +119,8 @@ pub struct ServiceConfig {
     pub usage: Arc<UsageMonitor>,
     /// Jira, for boards that follow it.
     pub jira: Arc<dyn crate::jira::JiraApi>,
+    /// The `urushi` CLI next to the daemon, if found.
+    pub cli: Option<PathBuf>,
 }
 
 /// The workspace service. Always used as `Arc<Service>`.
@@ -150,6 +152,8 @@ pub struct Service {
     /// Woken when a client asks the daemon to stop (`ShutdownDaemon`).
     shutdown: tokio::sync::Notify,
     me: Weak<Service>,
+    /// The `urushi` CLI, for agents in panes (ADR 0024).
+    cli: Option<PathBuf>,
 }
 
 /// Locks a mutex, recovering the data if a previous holder panicked. Critical sections
@@ -208,6 +212,7 @@ impl Service {
             restore_points: Mutex::new(HashMap::new()),
             attention: Mutex::new(HashMap::new()),
             home: config.home,
+            cli: config.cli,
             changes: watch::channel(revision).0,
             shutdown: tokio::sync::Notify::new(),
             me: me.clone(),
@@ -353,8 +358,14 @@ impl Service {
                 thread.worktree_path.to_string_lossy().into_owned(),
             ),
         ];
-        // Agents started here report when they finish or wait (ADR 0017).
+        // Agents started here report when they finish or wait (ADR 0017), and can run
+        // the CLI against this daemon (ADR 0024).
         env.extend(urushi_core::agent::hooks::hook_env());
+        env.extend(crate::cli::pane_env(
+            &self.home,
+            self.cli.as_deref(),
+            std::env::var_os("PATH"),
+        ));
         env.extend(extra_env);
         let spec = SpawnSpec {
             program: shell,

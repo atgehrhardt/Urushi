@@ -1,6 +1,6 @@
 # 0014. Start a task's agent with the task as its prompt, passed through the pane's environment
 
-- **Status:** Accepted
+- **Status:** Accepted; what the prompt says is amended by [0024](0024-task-prompts-by-reference.md)
 - **Date:** 2026-11-09
 
 ## Context

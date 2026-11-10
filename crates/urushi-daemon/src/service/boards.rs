@@ -77,15 +77,24 @@ impl State {
         }
     }
 
-    /// The first prompt for an agent started for this task (or subtask of it).
-    pub(super) fn task_prompt(&self, link: (TaskId, Option<TaskId>)) -> ServiceResult<String> {
+    /// The first prompt for an agent started for this task (or subtask of it): a
+    /// reference to it when the agent can run the CLI (`by_reference`), else a copy.
+    pub(super) fn task_prompt(
+        &self,
+        link: (TaskId, Option<TaskId>),
+        by_reference: bool,
+    ) -> ServiceResult<String> {
         let id = self.link_target(link)?;
         let board = self
             .boards
             .iter()
             .find(|b| b.task(id).is_some())
             .ok_or_else(|| ServiceError::NotFound(format!("task {id}")))?;
-        Ok(urushi_core::task_prompt(board, id)?)
+        Ok(if by_reference {
+            urushi_core::task_reference_prompt(board, id)?
+        } else {
+            urushi_core::task_prompt(board, id)?
+        })
     }
 
     /// Checks that a thread could be linked to this task (and subtask of it), and

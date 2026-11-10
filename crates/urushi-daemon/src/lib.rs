@@ -14,6 +14,7 @@
 
 pub mod agents;
 mod attachments;
+pub mod cli;
 mod exec;
 pub mod git;
 pub mod http;
@@ -75,6 +76,9 @@ pub struct DaemonOptions {
     pub usage: Arc<dyn UsageSource>,
     /// Jira, for boards that follow it.
     pub jira: Arc<dyn JiraApi>,
+    /// The `urushi` CLI, for agents in panes (`None`: not found; prompts then copy
+    /// tasks instead of referring to them).
+    pub cli: Option<PathBuf>,
 }
 
 impl DaemonOptions {
@@ -88,6 +92,7 @@ impl DaemonOptions {
             agents: Arc::new(AgentLocator::system()),
             usage: Arc::new(SystemUsage),
             jira: Arc::new(CloudJira::new(Arc::new(CurlHttp::default()))),
+            cli: cli::locate(),
         }
     }
 }
@@ -123,6 +128,7 @@ pub async fn run(
         agents: options.agents,
         usage: Arc::new(UsageMonitor::new(options.usage)),
         jira: options.jira,
+        cli: options.cli,
     })?;
 
     server::remote::reconcile(&service).await;

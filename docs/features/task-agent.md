@@ -1,13 +1,18 @@
 # Feature: Task agent and first-run setup
 
 - **Status:** Shipped
-- **Owners (crates):** `urushi-core` (`agent/mode.rs`, `board/prompt.rs`, `AgentSettings`), `urushi-daemon` (`service/task_agent.rs`, `service/threads.rs`, `service/settings.rs`), `urushi-proto` (`agents.proto`, `convert::agent_mode_*`), `urushi-app` (`task_agent.rs`, `update/setup.rs`, `view/setup.rs`, `view/new_thread.rs`, `update/task_threads.rs`, `view/task_in_thread.rs`), `urushi-cli`
-- **Related ADRs:** [0018](../adr/0018-start-tasks-in-existing-threads.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Owners (crates):** `urushi-core` (`agent/mode.rs`, `board/prompt.rs`, `AgentSettings`), `urushi-daemon` (`cli.rs`, `service/task_agent.rs`, `service/threads.rs`, `service/settings.rs`), `urushi-proto` (`agents.proto`, `convert::agent_mode_*`), `urushi-app` (`task_agent.rs`, `update/setup.rs`, `view/setup.rs`, `view/new_thread.rs`, `update/task_threads.rs`, `view/task_in_thread.rs`), `urushi-cli` (`urushi board show`)
+- **Related ADRs:** [0018](../adr/0018-start-tasks-in-existing-threads.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0024](../adr/0024-task-prompts-by-reference.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 **Start thread** on a task or subtask opens a thread that runs the user's **task agent**
-(Claude, Codex or Cursor) in their **task mode** (Normal or Plan). The task's title,
-notes and checklist are the agent's first prompt. The new-thread dialog still opens
+(Claude, Codex or Cursor) in their **task mode** (Normal or Plan). The agent's first
+prompt refers to the task, a Jira issue by its key and address, and tells it to review
+the task in full first with `urushi board show <KEY or id>` (which prints its notes,
+subtasks and attachments, and for a Jira issue its fields, comments, links and files),
+and for Jira to ask before changing it there. Panes can run that CLI against their
+daemon. If the daemon can't find its CLI, the task's title, notes and checklist are
+pasted in instead. The new-thread dialog still opens
 first, prefilled, and says what will start, e.g. "Starts Claude in plan mode with this
 task as its prompt."
 
@@ -28,7 +33,12 @@ choice under **Tasks start with**.
   daemon's document. On the wire, `AgentSettings.task_agent` / `task_mode` and
   `SettingsPatch.task_agent` / `task_mode` (`AGENT_UNSPECIFIED` clears the choice). The
   CLI sets them with `urushi settings set task-agent claude` and `task-mode plan`.
-- **The prompt:** `urushi_core::task_prompt(board, task)`, for a task at any depth.
+- **The prompt** (ADR 0024): `urushi_core::task_reference_prompt(board, task)` when the
+  daemon found its CLI (`cli::locate`: beside `urushid`, or in the bundle's
+  `Resources/bin`; `DaemonOptions::cli`), else `urushi_core::task_prompt(board, task)`,
+  for a task at any depth (`State::task_prompt(link, by_reference)`). Every pane gets
+  `URUSHI_HOME` and the CLI's directory first on `PATH` (`cli::pane_env`).
+- **The copy** (`task_prompt`):
   - A card gives `Task:`, its `Notes:` and its `Subtasks:` checklist.
   - A subtask gives `Step:`, its own notes and subtasks, the tasks it is part of
     ("Card › Subtask"), its parent's notes, and its parent's subtasks with the step
@@ -84,14 +94,18 @@ choice under **Tasks start with**.
 ## Tests
 - **Core:**
   - `agent/mode.rs`: flags per agent × mode × skip.
-  - `board/prompt.rs`: task, subtask, a deeper subtask, empty notes and truncation.
+  - `board/prompt.rs`: task, subtask, a deeper subtask, empty notes and truncation, and
+    references to a task, a step and a Jira subtask.
   - `agent.rs`: older settings load.
 - **Proto:** `convert/tests.rs` (modes, unknown values mean Normal) and
   `tests/round_trip.rs`.
 - **Daemon:**
   - `service/settings.rs` (choose and clear).
   - `tests/task_agents.rs`, with a fake `claude` that prints each argument, for both a new
-    thread and an existing one (`a_task_starts_in_an_existing_thread_in_a_new_tab`).
+    thread and an existing one (`a_task_starts_in_an_existing_thread_in_a_new_tab`), and
+    by reference with a CLI beside the daemon, which the pane finds on `PATH` with
+    `URUSHI_HOME` set (`with_the_cli_beside_it_a_task_starts_by_reference`).
+  - `cli.rs`: finding the CLI, the pane environment.
 - **App:**
   - `update/tests/setup.rs`: the wizard, the Settings choices, and Start thread with and
     without a task agent or a 1.7 daemon.
@@ -101,6 +115,8 @@ choice under **Tasks start with**.
 
 ## Limitations and follow-ups
 - The prompt is fixed text. There is no per-repo or per-board template yet.
+- Reviewing the task costs the agent a command (and in plan mode maybe a permission
+  prompt).
 - After a daemon restart, a resumed agent isn't put back into plan mode (ADR 0013, ADR 0014).
 - PowerShell can't expand `"$URUSHI_TASK_PROMPT"`. Agent launching assumes a POSIX-style
   shell.

@@ -32,6 +32,7 @@ pub use agent::{
 pub use attention::AttentionKind;
 pub use board::{
     Board, BoardError, BoardSource, Column, LabelColor, Task, TaskKind, TaskPatch, task_prompt,
+    task_reference_prompt,
 };
 pub use ids::{
     AttachmentId, BoardId, ColumnId, PaneId, ProjectId, RepoId, TabId, TaskId, ThreadId,

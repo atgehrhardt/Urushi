@@ -38,6 +38,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0021 – Make HTTPS requests through `curl --config -`, and keep the Jira sign-in in a private file](adr/0021-https-through-curl-and-a-private-credentials-file.md)
 - [0022 – Read a Jira issue in full when its editor opens, and edit any field from Jira's own metadata](adr/0022-jira-issues-in-full-on-demand.md)
 - [0023 – Read a Jira board someone looks at every 3 s, look before reading, and show moves at once](adr/0023-near-real-time-jira-sync.md)
+- [0024 – Start a task's agent with a reference to the task and the CLI to read it, not a copy](adr/0024-task-prompts-by-reference.md)
 
 ## Features
 - [_template](features/_template.md)

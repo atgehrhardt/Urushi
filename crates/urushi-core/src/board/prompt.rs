@@ -1,6 +1,12 @@
-//! The first prompt an agent gets when a thread is started from a task or subtask: the
-//! task's title, notes and subtasks, and for a subtask the tasks it belongs to, as plain
-//! text (ADR 0014).
+//! The first prompt an agent gets when a thread is started from a task or subtask
+//! (ADR 0014, ADR 0024).
+//!
+//! - [`task_reference_prompt`]: a reference to the task (a Jira issue's key and address,
+//!   or the task's id) and how to read it in full with `urushi board show`, so the
+//!   agent reviews the task as it is, comments and links included, rather than a copy.
+//!   Used when the agent's pane can run the CLI.
+//! - [`task_prompt`]: the task's title, notes and subtasks, and for a subtask the tasks
+//!   it belongs to, as plain text; when it can't.
 //!
 //! The daemon passes it to the agent through the pane's environment, so it is capped at
 //! [`MAX_PROMPT_BYTES`], well under the per-string limits operating systems put on
@@ -46,6 +52,70 @@ pub fn task_prompt(board: &Board, id: TaskId) -> Result<String, BoardError> {
         }
     }
     Ok(capped(out.trim_end().to_owned()))
+}
+
+/// The command that prints a task in full: by issue key on a Jira board, else by id.
+fn show_command(task: &Task) -> String {
+    let id = task
+        .issue
+        .as_ref()
+        .map_or_else(|| task.id.to_string(), |i| i.key.clone());
+    format!("urushi board show {id}")
+}
+
+/// How a task is named in a reference: `UR-1 "Title"`, or `"Title"`.
+fn named(task: &Task) -> String {
+    match &task.issue {
+        Some(issue) => format!("{} \"{}\"", issue.key, task.title),
+        None => format!("\"{}\"", task.title),
+    }
+}
+
+/// A prompt that refers to task `id` of `board` (at any depth) and says how to review it
+/// in full with the `urushi` CLI, instead of copying it.
+pub fn task_reference_prompt(board: &Board, id: TaskId) -> Result<String, BoardError> {
+    let path = board.path_to(id).ok_or(BoardError::NoSuchTask(id))?;
+    let (task, ancestors) = path.split_last().ok_or(BoardError::NoSuchTask(id))?;
+    let mut out = String::new();
+    let what = if task.issue.is_some() {
+        "Jira issue"
+    } else if ancestors.is_empty() {
+        "the task"
+    } else {
+        "the step"
+    };
+    let _ = write!(out, "Work on {what} {} from my Urushi board", named(task));
+    match (board.jira(), &task.issue) {
+        (Some(jira), Some(issue)) => {
+            let _ = writeln!(out, ": {}", jira.issue_url(&issue.key));
+        }
+        _ => out.push_str(".\n"),
+    }
+    if let Some(parent) = ancestors.last() {
+        let _ = writeln!(out, "It is part of {}.", named(parent));
+    }
+    let _ = write!(
+        out,
+        "\nStart by reviewing it in full: run `{}`",
+        show_command(task)
+    );
+    if let Some(parent) = ancestors.last() {
+        let _ = write!(
+            out,
+            " (and `{}` for the task it is part of)",
+            show_command(parent)
+        );
+    }
+    out.push_str(". It prints ");
+    out.push_str(if task.issue.is_some() {
+        "the issue's fields, description, subtasks, comments, links and files."
+    } else {
+        "its notes, subtasks and attachments."
+    });
+    if task.issue.is_some() {
+        out.push_str(" Ask me before changing anything in Jira.");
+    }
+    Ok(capped(out))
 }
 
 fn push_subtasks(out: &mut String, task: &Task) {
@@ -193,5 +263,97 @@ mod tests {
         assert!(p.len() <= MAX_PROMPT_BYTES);
         assert!(p.ends_with(CUT_NOTICE));
         assert!(p.starts_with("Work on this task"));
+    }
+
+    #[test]
+    fn a_reference_says_where_the_task_is_and_how_to_read_it() {
+        let b = board("Cards need tags.");
+        let card = task_reference_prompt(&b, TaskId::from_u128(1)).unwrap();
+        assert_eq!(
+            card,
+            format!(
+                "Work on the task \"Add tags\" from my Urushi board.\n\n\
+                 Start by reviewing it in full: run `urushi board show {}`. It prints its \
+                 notes, subtasks and attachments.",
+                TaskId::from_u128(1)
+            )
+        );
+        assert!(
+            !card.contains("Cards need tags."),
+            "a reference, not a copy"
+        );
+        let step = task_reference_prompt(&b, TaskId::from_u128(12)).unwrap();
+        assert!(step.starts_with("Work on the step \"Chips\""), "{step}");
+        assert!(step.contains("It is part of \"UI\"."), "{step}");
+        assert!(
+            step.contains(&format!(
+                "(and `urushi board show {}`",
+                TaskId::from_u128(11)
+            )),
+            "{step}"
+        );
+    }
+
+    #[test]
+    fn a_jira_issue_is_referred_to_by_key_and_address() {
+        use crate::board::{Issue, JiraBoard, JiraColumn, SyncedIssue, TaskKind};
+        let mut b = Board::new_jira(
+            crate::BoardId::from_u128(5),
+            JiraBoard {
+                site: "https://acme.atlassian.net".into(),
+                board_id: 34,
+                name: "UR".into(),
+                project_key: "UR".into(),
+                scrum: false,
+                rank_field: None,
+                points_field: None,
+                sprint_field: None,
+                quick_filters: Vec::new(),
+                sync: crate::board::SyncState::default(),
+            },
+            &[JiraColumn {
+                name: "To Do".into(),
+                statuses: vec!["1".into()],
+            }],
+            Timestamp::from_unix_millis(0),
+            || ColumnId::from_u128(50),
+        )
+        .unwrap();
+        let synced = |n: u32, parent: Option<u32>| SyncedIssue {
+            issue: Issue {
+                id: format!("{n}"),
+                key: format!("UR-{n}"),
+                status_id: "1".into(),
+                parent: parent.map(|p| format!("{p}")),
+                ..Issue::default()
+            },
+            title: format!("Issue {n}"),
+            notes: "Long notes".into(),
+            labels: Vec::new(),
+            kind: if parent.is_some() {
+                TaskKind::Subtask
+            } else {
+                TaskKind::Story
+            },
+            epic_summary: None,
+            created: Timestamp::from_unix_millis(0),
+        };
+        let mut next = 60u128;
+        b.merge_issues(vec![synced(1, None), synced(3, Some(1))], true, || {
+            next += 1;
+            TaskId::from_u128(next)
+        });
+        let sub = b.task_for_issue("UR-3").unwrap().id;
+        let p = task_reference_prompt(&b, sub).unwrap();
+        assert_eq!(
+            p,
+            "Work on Jira issue UR-3 \"Issue 3\" from my Urushi board: \
+             https://acme.atlassian.net/browse/UR-3\n\
+             It is part of UR-1 \"Issue 1\".\n\n\
+             Start by reviewing it in full: run `urushi board show UR-3` (and `urushi board \
+             show UR-1` for the task it is part of). It prints the issue's fields, \
+             description, subtasks, comments, links and files. Ask me before changing \
+             anything in Jira."
+        );
     }
 }

@@ -11,6 +11,7 @@ use crate::render::short;
 mod attachments;
 mod columns;
 mod print;
+mod show;
 
 use attachments::AttachmentCmd;
 use columns::{ColCmd, color_arg};
@@ -20,6 +21,12 @@ use print::print_boards;
 pub(crate) enum BoardCmd {
     /// List boards, their columns and tasks.
     Ls,
+    /// Print a task in full: where it is, its notes and subtasks, and for a Jira issue
+    /// its fields, comments, links and files (what agents read to review a task).
+    Show {
+        /// A task or subtask id (or its start), or a Jira issue key like UR-12.
+        task: String,
+    },
     /// Create a board (with To do, In progress and Done columns).
     New {
         /// Name.
@@ -175,6 +182,7 @@ pub(crate) enum SubCmd {
 pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
     match cmd {
         BoardCmd::Ls => print_boards(&WorkspaceMirror::new(client.list_workspace(false).await?)),
+        BoardCmd::Show { task } => show::show(client, &task).await,
         BoardCmd::New { name } => {
             let board = client.create_board(&name).await?;
             out(&format!("board {} {}", short(&board.id), board.name))
