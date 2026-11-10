@@ -422,10 +422,29 @@ fn a_new_jira_task_is_created_only_on_save() {
     );
 }
 
-/// The Jira board on a 1.13 daemon, the editor open on ACME-1, its issue answered.
-fn editing_issue() -> AppState {
+/// The Jira board shown by a 1.13 daemon, which is told the panel shows it (so it
+/// reads it every few seconds), and told again when that changes.
+fn with_jira_13() -> AppState {
     let mut s = with_jira();
     s.daemon_minor = 13;
+    let fx = s.update(Msg::SelectBoard("jb".into()));
+    assert!(
+        matches!(&bodies(&fx)[..], [Body::WatchBoard(r)] if r.board_id == "jb"),
+        "{fx:?}"
+    );
+    assert!(
+        s.update(Msg::SelectBoard("jb".into())).is_empty(),
+        "told once"
+    );
+    let fx = s.update(Msg::SelectBoard("b".into()));
+    assert!(matches!(&bodies(&fx)[..], [Body::WatchBoard(r)] if r.board_id.is_empty()));
+    s.update(Msg::SelectBoard("jb".into()));
+    s
+}
+
+/// The Jira board on a 1.13 daemon, the editor open on ACME-1, its issue answered.
+fn editing_issue() -> AppState {
+    let mut s = with_jira_13();
     s.jira = Some(signed_in());
     let fx = s.update(Msg::Board(BoardMsg::OpenTask("j1".into())));
     assert!(
@@ -588,8 +607,7 @@ fn comments_links_work_and_files_go_to_jira_at_once() {
 
 #[test]
 fn a_new_jira_task_needs_its_required_fields() {
-    let mut s = with_jira();
-    s.daemon_minor = 13;
+    let mut s = with_jira_13();
     let fx = s.update(Msg::NewTask {
         board: "jb".into(),
         column: "todo".into(),

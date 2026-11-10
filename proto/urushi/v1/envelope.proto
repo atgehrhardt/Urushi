@@ -118,6 +118,7 @@ message Request {
     GetJiraAttachmentRequest get_jira_attachment = 66;
     SearchJiraUsersRequest search_jira_users = 67;
     SearchJiraIssuesRequest search_jira_issues = 68;
+    WatchBoardRequest watch_board = 69;
   }
 }
 

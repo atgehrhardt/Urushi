@@ -307,3 +307,44 @@ fn changes_jira_owns_are_refused_and_change_nothing() {
     )));
     assert_eq!(b, before);
 }
+
+#[test]
+fn a_jira_move_shows_at_once_and_can_be_put_back() {
+    let mut b = jira_board();
+    b.merge_issues(
+        vec![
+            issue(1, TODO, "0|a"),
+            issue(2, TODO, "0|b"),
+            issue(3, DOING, "0|c"),
+        ],
+        true,
+        ids(),
+    );
+    let card = b.columns[0].tasks[0].id;
+    let doing = b.columns[1].id;
+    let from = b.show_jira_move(card, doing, 0).unwrap();
+    assert_eq!(
+        (keys(&b, 0), keys(&b, 1)),
+        (vec!["ACME-2"], vec!["ACME-1", "ACME-3"])
+    );
+    b.undo_jira_move(card, from).unwrap();
+    assert_eq!(
+        (keys(&b, 0), keys(&b, 1)),
+        (vec!["ACME-1", "ACME-2"], vec!["ACME-3"])
+    );
+    // Only on a board that follows Jira, and only to a column it has.
+    assert!(b.show_jira_move(card, ColumnId::from_u128(999), 0).is_err());
+    assert_eq!(
+        keys(&b, 0),
+        ["ACME-1", "ACME-2"],
+        "a refused move changes nothing"
+    );
+    let mut own = Board::new(
+        BoardId::from_u128(2),
+        "own",
+        Timestamp::from_unix_millis(1),
+        [3, 4, 5].map(ColumnId::from_u128),
+    )
+    .unwrap();
+    assert!(own.show_jira_move(card, ColumnId::from_u128(3), 0).is_err());
+}

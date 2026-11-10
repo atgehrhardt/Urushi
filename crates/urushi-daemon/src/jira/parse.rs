@@ -160,16 +160,13 @@ pub(super) fn search(v: &Value, fields: &IssueFields) -> (Vec<SyncedIssue>, Opti
     (issues, next_page(v))
 }
 
-/// The issue ids of a search answer, and the token for the next page.
-pub(super) fn search_ids(v: &Value) -> (Vec<String>, Option<String>) {
-    let ids = v["issues"]
-        .as_array()
-        .map(|a| a.iter().filter_map(|i| some_text(&i["id"])).collect())
-        .unwrap_or_default();
-    (ids, next_page(v))
+/// An issue's id and when it last changed, from a search for `updated` only.
+pub(super) fn stamp(v: &Value) -> Option<(String, Timestamp)> {
+    Some((some_text(&v["id"])?, time(&v["fields"]["updated"])))
 }
 
-fn next_page(v: &Value) -> Option<String> {
+/// The token for a search answer's next page, if there is one.
+pub(super) fn next_page(v: &Value) -> Option<String> {
     some_text(&v["nextPageToken"]).filter(|_| v["isLast"].as_bool() != Some(true))
 }
 

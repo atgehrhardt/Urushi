@@ -41,6 +41,8 @@ pub struct BoardPanel {
     pub quick_asking: bool,
     /// The board changed while it was: ask again when it answers.
     pub quick_stale: bool,
+    /// The Jira board the daemon was told this window shows (`WatchBoard`).
+    pub watching: Option<String>,
     /// Image attachments' thumbnails, fetched from the daemon as they come into view.
     pub thumbnails: Thumbnails,
 }

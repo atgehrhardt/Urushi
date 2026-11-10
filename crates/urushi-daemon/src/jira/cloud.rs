@@ -197,8 +197,24 @@ impl JiraApi for CloudJira {
         self.search_issues(account, query)
     }
 
+    fn changed(
+        &self,
+        account: &Account,
+        query: &IssueQuery,
+    ) -> JiraResult<Vec<(String, urushi_core::Timestamp)>> {
+        Ok(self
+            .search_fields(account, query, "updated")?
+            .iter()
+            .filter_map(parse::stamp)
+            .collect())
+    }
+
     fn issue_ids(&self, account: &Account, query: &IssueQuery) -> JiraResult<Vec<String>> {
-        self.search_ids(account, query)
+        Ok(self
+            .search_fields(account, query, "id")?
+            .iter()
+            .filter_map(|i| i["id"].as_str().map(str::to_owned))
+            .collect())
     }
 
     fn issue(&self, account: &Account, key: &str, fields: &IssueFields) -> JiraResult<SyncedIssue> {

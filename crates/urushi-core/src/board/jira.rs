@@ -290,6 +290,49 @@ impl Board {
         self.epics.iter().find(|e| e.key == key)
     }
 
+    /// Shows a card of a Jira board in `column` at `index` before Jira has moved it
+    /// (ADR 0023), so the move shows at once. Returns where it was, to put it back if
+    /// Jira refuses ([`Board::undo_jira_move`]). Only cards of a board that follows
+    /// Jira; the next merge places them where Jira says.
+    pub fn show_jira_move(
+        &mut self,
+        id: super::TaskId,
+        column: super::ColumnId,
+        index: usize,
+    ) -> Result<(super::ColumnId, usize), BoardError> {
+        if self.source.is_none() {
+            return Err(BoardError::FollowsJira("showing a Jira move"));
+        }
+        let from = self
+            .columns
+            .iter()
+            .find_map(|c| Some((c.id, c.tasks.iter().position(|t| t.id == id)?)))
+            .ok_or(BoardError::NoSuchTask(id))?;
+        self.column_mut(column)?;
+        let task = self.column_mut(from.0)?.tasks.remove(from.1);
+        let tasks = &mut self.column_mut(column)?.tasks;
+        tasks.insert(index.min(tasks.len()), task);
+        Ok(from)
+    }
+
+    /// Puts a card back where [`Board::show_jira_move`] took it from.
+    pub fn undo_jira_move(
+        &mut self,
+        id: super::TaskId,
+        (column, index): (super::ColumnId, usize),
+    ) -> Result<(), BoardError> {
+        let now = self
+            .columns
+            .iter()
+            .find_map(|c| Some((c.id, c.tasks.iter().position(|t| t.id == id)?)))
+            .ok_or(BoardError::NoSuchTask(id))?;
+        self.column_mut(column)?;
+        let task = self.column_mut(now.0)?.tasks.remove(now.1);
+        let tasks = &mut self.column_mut(column)?.tasks;
+        tasks.insert(index.min(tasks.len()), task);
+        Ok(())
+    }
+
     /// The task showing the issue with this Jira id or key.
     pub fn task_for_issue(&self, id_or_key: &str) -> Option<&super::Task> {
         self.all_tasks().find(|t| {

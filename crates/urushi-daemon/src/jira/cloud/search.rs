@@ -4,6 +4,8 @@
 
 use std::collections::HashSet;
 
+use serde_json::Value;
+
 use super::{CloudJira, PAGE};
 use crate::http::encode_query;
 use crate::jira::api::{Fetched, IssueQuery};
@@ -77,40 +79,48 @@ impl CloudJira {
         Ok(fetched)
     }
 
-    pub(super) fn search_ids(
+    /// The board's issues the query matches (at most its limit) with only `fields`, as
+    /// Jira sent them: for cheap looks (ids, update times).
+    pub(super) fn search_fields(
         &self,
         account: &Account,
         query: &IssueQuery,
-    ) -> JiraResult<Vec<String>> {
+        fields: &str,
+    ) -> JiraResult<Vec<Value>> {
         let base = format!(
-            "/rest/api/3/search/jql?jql={}&fields=id&maxResults={PAGE}",
+            "/rest/api/3/search/jql?jql={}&fields={}&maxResults={PAGE}",
             encode_query(&jql(query)),
+            encode_query(fields),
         );
-        let mut ids: Vec<String> = Vec::new();
+        let mut found: Vec<Value> = Vec::new();
+        let mut seen = HashSet::new();
         let mut token: Option<String> = None;
         for _ in 0..=query.limit / PAGE + 1 {
             let path = match &token {
                 Some(t) => format!("{base}&nextPageToken={}", encode_query(t)),
                 None => base.clone(),
             };
-            let (page, next) = parse::search_ids(&self.get(account, &path)?);
-            let before = ids.len();
-            ids.extend(
-                page.into_iter()
-                    .filter(|id| !ids.contains(id))
-                    .collect::<Vec<_>>(),
+            let page = self.get(account, &path)?;
+            let before = found.len();
+            found.extend(
+                page["issues"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|i| seen.insert(i["id"].to_string()))
+                    .cloned(),
             );
-            if ids.len() >= query.limit {
-                ids.truncate(query.limit);
+            if found.len() >= query.limit {
+                found.truncate(query.limit);
                 break;
             }
-            match next {
-                Some(next) if ids.len() > before && token.as_ref() != Some(&next) => {
+            match parse::next_page(&page) {
+                Some(next) if found.len() > before && token.as_ref() != Some(&next) => {
                     token = Some(next);
                 }
                 _ => break,
             }
         }
-        Ok(ids)
+        Ok(found)
     }
 }

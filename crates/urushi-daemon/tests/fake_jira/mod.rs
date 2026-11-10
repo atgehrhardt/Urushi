@@ -42,6 +42,8 @@ pub struct Remote {
     pub rank: String,
     /// What the editor shows beyond the board.
     pub extra: Extra,
+    /// Bumped by every change: the issue's `updated`.
+    pub version: u64,
 }
 
 /// An issue's fields beyond the board's, and its comments, files, links…
@@ -123,6 +125,7 @@ impl FakeJira {
             labels: Vec::new(),
             rank: format!("0|{id:04}"),
             extra: Extra::default(),
+            version: 1,
         };
         Arc::new(Self {
             issues: Mutex::new(vec![
@@ -146,7 +149,9 @@ impl FakeJira {
 
     pub fn with(&self, id: u32, f: impl FnOnce(&mut Remote)) {
         let mut issues = self.issues.lock().unwrap();
-        f(issues.iter_mut().find(|i| i.id == id).unwrap());
+        let remote = issues.iter_mut().find(|i| i.id == id).unwrap();
+        f(remote);
+        remote.version += 1;
     }
 
     pub fn remote(&self, key: &str) -> Remote {
@@ -187,6 +192,7 @@ impl FakeJira {
                 epic: epic.map(|e| key(e.id)),
                 parent: r.parent.map(|p| format!("100{p}")),
                 rank: r.rank.clone(),
+                updated: Timestamp::from_unix_millis(r.version),
                 ..Issue::default()
             },
             title: r.summary.clone(),
@@ -263,17 +269,56 @@ impl JiraApi for FakeJira {
 
     fn issues(&self, account: &Account, query: &IssueQuery) -> JiraResult<Fetched> {
         Self::check(account)?;
-        self.log(format!(
-            "issues full={}",
-            query.updated_within_minutes.is_none()
-        ));
+        // A sync reads in full only the issues whose time changed: `id in (…)`.
+        let only: Option<Vec<String>> = query.extra_jql.iter().find_map(|q| {
+            let ids = q.strip_prefix("id in (")?.strip_suffix(')')?;
+            Some(ids.split(", ").map(str::to_owned).collect())
+        });
         let remote = self.issues.lock().unwrap().clone();
-        let mut issues: Vec<_> = remote.iter().map(|r| self.synced(r)).collect();
+        let mut issues: Vec<_> = remote
+            .iter()
+            .map(|r| self.synced(r))
+            .filter(|i| only.as_ref().is_none_or(|ids| ids.contains(&i.issue.id)))
+            .collect();
+        match &only {
+            Some(_) => self.log(format!(
+                "issues of {}",
+                issues
+                    .iter()
+                    .map(|i| i.issue.key.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+            None => self.log(format!(
+                "issues full={}",
+                query.updated_within_minutes.is_none()
+            )),
+        }
         issues.sort_by(|a, b| a.issue.rank.cmp(&b.issue.rank));
         Ok(Fetched {
             issues,
             more: false,
         })
+    }
+
+    fn changed(
+        &self,
+        account: &Account,
+        query: &IssueQuery,
+    ) -> JiraResult<Vec<(String, Timestamp)>> {
+        Self::check(account)?;
+        self.log("changed".into());
+        let remote = self.issues.lock().unwrap().clone();
+        Ok(remote
+            .iter()
+            .map(|r| {
+                (
+                    format!("100{}", r.id),
+                    Timestamp::from_unix_millis(r.version),
+                )
+            })
+            .take(query.limit)
+            .collect())
     }
 
     fn issue_ids(&self, account: &Account, query: &IssueQuery) -> JiraResult<Vec<String>> {
@@ -362,6 +407,7 @@ impl JiraApi for FakeJira {
             labels: issue.labels.clone(),
             rank: format!("0|{id:04}"),
             extra: Extra::default(),
+            version: 1,
         });
         drop(issues);
         for (field, value) in &issue.fields {

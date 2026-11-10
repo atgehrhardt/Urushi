@@ -37,6 +37,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0020 – Follow Jira boards from the daemon: Jira is the source of truth, edits write through, polling keeps them current](adr/0020-jira-boards-as-daemon-mirrors.md)
 - [0021 – Make HTTPS requests through `curl --config -`, and keep the Jira sign-in in a private file](adr/0021-https-through-curl-and-a-private-credentials-file.md)
 - [0022 – Read a Jira issue in full when its editor opens, and edit any field from Jira's own metadata](adr/0022-jira-issues-in-full-on-demand.md)
+- [0023 – Read a Jira board someone looks at every 3 s, look before reading, and show moves at once](adr/0023-near-real-time-jira-sync.md)
 
 ## Features
 - [_template](features/_template.md)

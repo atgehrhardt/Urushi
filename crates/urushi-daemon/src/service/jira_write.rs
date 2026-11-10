@@ -148,14 +148,18 @@ impl Service {
         board: BoardId,
         issues: Vec<SyncedIssue>,
     ) -> ServiceResult<()> {
+        self.saw(board, &issues);
         self.mutate_if_changed(|state| {
             let b = state.board_mut(board)?;
             Ok(
                 b.merge_issues(issues, false, || TaskId::from_uuid(new_uuid()))
                     .changed,
             )
-        })
-        .map(drop)
+        })?;
+        // Jira's automation may have changed more (a parent's status, links): look again
+        // at once.
+        self.poke(board);
+        Ok(())
     }
 
     /// Changes a Jira task: its fields and check mark in Jira, its color here.
@@ -284,6 +288,12 @@ impl Service {
         let account = self.jira_account()?;
         let guard = self.jira.lock(t.board);
         let _one_at_a_time = guard.lock().await;
+        // The card moves at once (ADR 0023); if Jira refuses, it goes back.
+        let from = self.mutate(|state| {
+            Ok(state
+                .board_mut(t.board)?
+                .show_jira_move(t.task.id, column, index)?)
+        })?;
         let api = self.jira.api.clone();
         let (key, fields) = (t.key.clone(), IssueFields::of(&t.jira));
         let read = blocking(move || {
@@ -308,8 +318,16 @@ impl Service {
             }
             Ok(api.issue(&account, &key, &fields)?)
         })
-        .await?;
-        self.merge_written(t.board, vec![read])
+        .await;
+        match read {
+            Ok(read) => self.merge_written(t.board, vec![read]),
+            Err(e) => {
+                let _ = self.mutate(|state| {
+                    Ok(state.board_mut(t.board)?.undo_jira_move(t.task.id, from)?)
+                });
+                Err(e)
+            }
+        }
     }
 
     /// Creates an issue (and its subtasks) for a new card in `column`, moved there.

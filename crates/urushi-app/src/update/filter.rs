@@ -77,6 +77,29 @@ impl AppState {
         fx.push(request(body, Followup::QuickFilter(board)));
     }
 
+    /// Tells the daemon which Jira board the panel shows, when that changes, so it is
+    /// read every few seconds while on screen.
+    pub(super) fn watch_shown_board(&mut self, fx: &mut Vec<Effect>) {
+        if !self.daemon_supports_jira_issues()
+            || !matches!(self.connection, crate::state::Connection::Connected { .. })
+        {
+            return;
+        }
+        let shown = self
+            .board
+            .board(&self.workspace)
+            .filter(|b| self.board.open && b.jira.is_some())
+            .map(|b| b.id.clone());
+        if shown == self.board.watching {
+            return;
+        }
+        self.board.watching.clone_from(&shown);
+        let body = Body::WatchBoard(v1::WatchBoardRequest {
+            board_id: shown.unwrap_or_default(),
+        });
+        fx.push(request(body, Followup::None));
+    }
+
     /// The daemon's answer to a quick-filter query.
     pub(super) fn quick_filter_answered(
         &mut self,

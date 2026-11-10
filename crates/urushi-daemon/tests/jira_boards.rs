@@ -362,3 +362,83 @@ async fn quick_filters_are_listed_and_evaluated_by_jira() {
     assert_eq!(bug.priority_id, "2");
     daemon.stop().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_watched_board_follows_jira_within_seconds_reading_only_what_changed() {
+    let home = temp_home();
+    let jira = FakeJira::new();
+    let daemon = start(home.path(), jira.clone()).await;
+    let (client, mut events) = daemon.connect().await;
+    client.list_workspace(true).await.unwrap();
+    client.connect_jira("acme", "a@b.c", TOKEN).await.unwrap();
+    let imported = client.import_jira_board(7).await.unwrap();
+    client.sync_board(&imported.id).await.unwrap();
+    client.watch_board(Some(&imported.id)).await.unwrap();
+    let before = jira.calls().len();
+    jira.with(1, |r| r.summary = "Checkout, now with cards".into());
+    let started = std::time::Instant::now();
+    common::next_event(&mut events, |e| match e {
+        v1::event::Body::WorkspaceChanged(w) => w
+            .boards
+            .iter()
+            .flat_map(|b| &b.columns)
+            .flat_map(|c| &c.tasks)
+            .any(|t| t.title == "Checkout, now with cards")
+            .then_some(()),
+        _ => None,
+    })
+    .await;
+    assert!(
+        started.elapsed() <= urushi_daemon::service::WATCHED_INTERVAL * 2,
+        "{:?}",
+        started.elapsed()
+    );
+    let calls = jira.calls()[before..].to_vec();
+    assert!(calls.contains(&"changed".to_owned()), "{calls:?}");
+    assert!(calls.contains(&"issues of ACME-1".to_owned()), "{calls:?}");
+    assert!(
+        !calls.iter().any(|c| c.starts_with("issues full")),
+        "only what changed is read in full: {calls:?}"
+    );
+    // Nothing changed: a look, and no read.
+    let quiet = jira.calls().len();
+    tokio::time::sleep(
+        urushi_daemon::service::WATCHED_INTERVAL + std::time::Duration::from_secs(1),
+    )
+    .await;
+    let calls = jira.calls()[quiet..].to_vec();
+    assert!(calls.iter().all(|c| c == "changed"), "{calls:?}");
+    // Watching nothing: back to the slow pace.
+    client.watch_board(None).await.unwrap();
+    let unwatched = client.watch_board(Some("not-a-board")).await.unwrap_err();
+    assert_eq!(code(&unwatched), Some(v1::ErrorCode::InvalidArgument));
+    daemon.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_move_shows_at_once_then_goes_back() {
+    let home = temp_home();
+    let (daemon, client, _jira, b) = signed_in(home.path()).await;
+    let (watcher, mut events) = daemon.connect().await;
+    watcher.list_workspace(true).await.unwrap();
+    let checkout = task(&b, "ACME-1").id.clone();
+    // To Do → Done isn't in the workflow.
+    let refused = client
+        .move_task(&checkout, &b.columns[2].id, 0)
+        .await
+        .unwrap_err();
+    assert_eq!(code(&refused), Some(v1::ErrorCode::FailedPrecondition));
+    // Watchers saw it move, and come back.
+    common::next_event(&mut events, |e| match e {
+        v1::event::Body::WorkspaceChanged(w) => w
+            .boards
+            .iter()
+            .filter(|b| b.jira.is_some())
+            .any(|b| b.columns[2].tasks.iter().any(|t| t.id == checkout))
+            .then_some(()),
+        _ => None,
+    })
+    .await;
+    assert_eq!(keys(&board(&client).await, 0), ["ACME-1", "ACME-4"]);
+    daemon.stop().await;
+}

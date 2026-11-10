@@ -38,6 +38,8 @@ pub(crate) struct Connection {
     pub(crate) out: mpsc::Sender<Envelope>,
     pub(crate) attachments: Mutex<HashMap<PaneId, attach::Attachment>>,
     pub(crate) subscription: Mutex<Option<JoinHandle<()>>>,
+    /// The Jira board this connection shows (`WatchBoard`), read every few seconds.
+    pub(crate) watching: Mutex<Option<crate::service::BoardWatch>>,
     /// See [`Peer::local`].
     pub(crate) local: bool,
 }
@@ -70,6 +72,7 @@ impl Connection {
         for (_, attachment) in lock(&self.attachments).drain() {
             attachment.stop();
         }
+        lock(&self.watching).take();
     }
 }
 
@@ -115,6 +118,7 @@ where
         out,
         attachments: Mutex::new(HashMap::new()),
         subscription: Mutex::new(None),
+        watching: Mutex::new(None),
         local: peer.local,
     });
     loop {

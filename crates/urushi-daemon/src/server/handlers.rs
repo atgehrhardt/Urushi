@@ -11,7 +11,7 @@ use urushi_proto::v1::{self, ErrorCode, request::Body, response::Outcome};
 
 use super::connection::Connection;
 use super::remote;
-use crate::service::{DeletionPlan, ServiceError, ServiceResult, ThreadRequest};
+use crate::service::{DeletionPlan, ServiceError, ServiceResult, ThreadRequest, lock};
 
 /// An error outcome for a malformed request.
 pub(crate) fn invalid(message: &str) -> Outcome {
@@ -92,6 +92,16 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
                 connection.subscribe_workspace();
             }
             Outcome::Workspace(service.workspace())
+        }
+        Body::WatchBoard(r) => {
+            // The old watch goes first, so watching the same board again doesn't
+            // count it twice.
+            lock(&connection.watching).take();
+            if !r.board_id.is_empty() {
+                let watch = service.watch_board(parse(&r.board_id, "board_id")?)?;
+                *lock(&connection.watching) = Some(watch);
+            }
+            ok()
         }
         // `*Project*` on the wire is a repo (ADR 0010).
         Body::AddProject(r) => {

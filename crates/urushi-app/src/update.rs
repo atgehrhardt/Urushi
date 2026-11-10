@@ -62,6 +62,8 @@ impl AppState {
             Msg::Disconnected(reason) => {
                 self.connection = Connection::Disconnected(reason);
                 self.reset_panes();
+                // A new connection watches nothing until told.
+                self.board.watching = None;
             }
             Msg::Daemon(event) => self.on_event(event, &mut fx),
             Msg::Response { followup, result } => self.on_response(followup, result, &mut fx),
@@ -196,6 +198,7 @@ impl AppState {
             Msg::Copy => self.copy(&mut fx),
         }
         self.want_thumbnails(&mut fx);
+        self.watch_shown_board(&mut fx);
         self.attend(&mut fx);
         fx
     }

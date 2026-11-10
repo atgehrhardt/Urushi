@@ -2,12 +2,13 @@
 
 - **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits, issues in full)
 - **Owners (crates):** `urushi-core` (`board/{jira,sync,kind}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `time.rs`, `jira/{api,cloud,cloud/details,parse,parse/details,details,adf,credentials}.rs`, `service/{jira,jira_write,jira_query,jira_details,jira_edit}.rs`, `server/{jira,jira_issue}.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `jira_issue.proto`, `convert/boards/jira/`), `urushi-client` (`jira.rs`, `jira_issue.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`filter.rs`, `issue.rs`, `update/{jira,filter,issue}.rs`, `msg/{jira,filter,issue}.rs`, `view/jira.rs`, `view/board/{jira,filter}.rs`, `view/tasks/{jira,header}.rs`, `view/tasks/issue/`, `view/menu/{jira,filter}.rs`, `snapshot/{jira,jira_issue}.rs`), `urushi-cli` (`urushi jira`, `urushi board sync`)
-- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 Any Jira Cloud board can be imported into the Tasks panel. It keeps Jira's columns and stays
-in sync both ways: changes made in Jira show within about 15 s while the app is open, and
-changes made here go to Jira first.
+in sync both ways: changes made in Jira show within about 3 s on the board on screen (15 s
+on others while the app is open), and changes made here go to Jira first; a dragged card
+moves at once and goes back if Jira refuses.
 
 - **Sign in:** the board panel's **+** offers **New board…** and **Import from Jira…**.
   The first time, **Connect Jira** asks for the site (`acme`, `acme.atlassian.net`), the
@@ -92,18 +93,25 @@ changes made here go to Jira first.
   the same query with `IssueQuery.extra_jql` (the chosen quick filters) for ids only
   (`service/jira_query.rs`, `QueryJiraFilter`). `jira/parse.rs` reads
   answers leniently; `jira/adf.rs` turns ADF into plain notes and back.
-- **Daemon, syncing** (`service/jira.rs`): `keep_jira_synced` ticks every 5 s and reads the
-  boards that are due (`ACTIVE_INTERVAL` 15 s while a client subscribes, `IDLE_INTERVAL`
-  2 min otherwise; a full read every `FULL_INTERVAL` 5 min, on import and on `SyncBoard`).
-  Reads happen off the state lock; the merge runs in `mutate_if_changed`, which persists
-  and wakes clients only if the board changed. Failures are written to
-  `JiraBoard.sync.error` and back off (`backoff`: `Retry-After` within 1 min–1 h for a
-  429). A per-board async lock keeps one sync or write at a time.
+- **Daemon, syncing** (`service/jira_sync.rs`, ADR 0023): `keep_jira_synced` ticks every
+  second and starts a sync for each board that is due and not already syncing, side by
+  side: every `WATCHED_INTERVAL` (3 s) while a connection shows it (`WatchBoard`; a
+  `BoardWatch` the connection drops when it asks for another or closes),
+  `ACTIVE_INTERVAL` (15 s) while a client subscribes, `IDLE_INTERVAL` (2 min) otherwise,
+  and at once after a write (`poke`). A sync first asks `JiraApi::changed` (ids and
+  update times, `fields=updated`), compares with `BoardSync.seen`, and reads in full only
+  the issues whose time is new (`id in (…)`); a full read every `FULL_INTERVAL` (5 min),
+  on import and on `SyncBoard` reads the configuration and everything. Reads happen off
+  the state lock; the merge runs in `mutate_if_changed`, which persists and wakes
+  clients only if the board changed. Failures are written to `JiraBoard.sync.error` and
+  back off (`backoff`: `Retry-After` within 1 min–1 h for a 429). A per-board async lock
+  keeps one sync or write at a time.
 - **Daemon, writing** (`service/jira_write.rs`): `update_task`, `move_task`,
   `create_task`, `create_subtask` and `delete_task` in `service/boards.rs` branch to it for
   tasks on Jira boards: Jira first (`edit` with label add/remove operations, `transition`,
   `create` with the project's issue type for the kind, `rank`), then `issue` read back and
-  merged. Only the color changes locally.
+  merged. Only the color changes locally, and a move shows first
+  (`Board::show_jira_move`, undone with `undo_jira_move` if Jira refuses).
 - **Daemon, one issue in full** (ADR 0022): `JiraApi::details` (`jira/cloud/details.rs`:
   edit metadata, the values of those fields plus attachments, links and time tracking,
   the board's open sprints, comments, watchers, work log, transitions, link kinds)
@@ -179,8 +187,9 @@ changes made here go to Jira first.
 ## Limitations and follow-ups
 - Jira Cloud with an API token only: no Data Center/Server (personal access tokens, API
   v2) and no OAuth sign-in.
-- Polling, not webhooks: changes take up to 15 s (2 min with no app open) to arrive.
-- Moves wait for Jira (about a second) before the card settles.
+- Polling, not webhooks: changes take up to 3 s on the board on screen, 15 s on others,
+  and 2 min with no app open, to arrive.
+- Field edits other than moves wait for Jira (about a second) before the card changes.
 - Sprint and backlog views aren't here; an issue's sprint is a field.
 - Markdown can't say everything ADF can: panels, colors and mentions as links read as
   text and are written back as text when edited. Jira attachments don't show as

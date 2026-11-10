@@ -228,6 +228,13 @@ pub trait JiraApi: Send + Sync {
     fn board(&self, account: &Account, id: u64) -> JiraResult<BoardConfig>;
     /// A board's issues, in rank order.
     fn issues(&self, account: &Account, query: &IssueQuery) -> JiraResult<Fetched>;
+    /// Which of a board's issues the query matches (at most its limit), each with when
+    /// it last changed: the cheap first look of a sync.
+    fn changed(
+        &self,
+        account: &Account,
+        query: &IssueQuery,
+    ) -> JiraResult<Vec<(String, urushi_core::Timestamp)>>;
     /// The ids of a board's issues the query matches (at most its limit), without
     /// their fields.
     fn issue_ids(&self, account: &Account, query: &IssueQuery) -> JiraResult<Vec<String>>;

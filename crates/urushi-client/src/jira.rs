@@ -92,4 +92,13 @@ impl Client {
             _ => Err(unexpected("QueryJiraFilter")),
         }
     }
+
+    /// Says which Jira board this connection shows (`None`: none), so the daemon reads
+    /// it every few seconds (1.13).
+    pub async fn watch_board(&self, board_id: Option<&str>) -> Result<(), ClientError> {
+        let body = Body::WatchBoard(v1::WatchBoardRequest {
+            board_id: board_id.unwrap_or_default().into(),
+        });
+        self.ok(body, "WatchBoard").await
+    }
 }

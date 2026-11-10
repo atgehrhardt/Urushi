@@ -77,3 +77,10 @@ message QueryJiraFilterRequest {
 message JiraIssueIds {
   repeated string ids = 1;
 }
+
+// The Jira board this connection shows (empty: none). The daemon reads a watched
+// board every few seconds, and stops when the connection asks for another or closes.
+// Answered with Empty. Since 1.13.
+message WatchBoardRequest {
+  string board_id = 1;
+}
