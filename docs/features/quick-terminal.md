@@ -26,7 +26,7 @@ that daemon. It ends when its last pane closes or exits.
     `ResizePaneEdge`, `Equalize` and `CloseTab` work on it unchanged.
   - Its panes start through `spawn_session_in` with `PaneHome::Quick` (`service/spawn.rs`):
     the PTY's default directory (the user's home), the global default shell,
-    `URUSHI_PANE_ID`, `URUSHI_TTY`, the agent hooks, `URUSHI_HOME` and `PATH`, but no
+    `URUSHI_PANE_ID`, `URUSHI_TTY`, the agent hooks, `URUSHI_HOME`, `URUSHI_CLI` and `PATH`, but no
     `URUSHI_THREAD_ID` or `URUSHI_WORKTREE`. Per-pane variables inherited from where the
     daemon was started are cleared first (`PANE_VARS`).
   - `State::remove_pane` drops the quick terminal with its last pane. Restore points

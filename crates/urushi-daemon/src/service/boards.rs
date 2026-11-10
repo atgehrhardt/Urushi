@@ -120,11 +120,11 @@ impl State {
 
     /// The first prompt for an agent started for this task (or subtask of it): the
     /// user's own message filled in for it (`custom`), else a reference to it when the
-    /// agent can run the CLI (`by_reference`), else a copy.
+    /// agent can run the CLI at path `cli`, else a copy.
     pub(super) fn task_prompt(
         &self,
         link: (TaskId, Option<TaskId>),
-        by_reference: bool,
+        cli: Option<&str>,
         custom: Option<&str>,
     ) -> ServiceResult<String> {
         let id = self.link_target(link)?;
@@ -134,9 +134,9 @@ impl State {
             .find(|b| b.task(id).is_some())
             .ok_or_else(|| ServiceError::NotFound(format!("task {id}")))?;
         Ok(if let Some(template) = custom {
-            urushi_core::custom_task_prompt(board, id, template)?
-        } else if by_reference {
-            urushi_core::task_reference_prompt(board, id)?
+            urushi_core::custom_task_prompt(board, id, template, cli.unwrap_or("urushi"))?
+        } else if let Some(cli) = cli {
+            urushi_core::task_reference_prompt(board, id, cli)?
         } else {
             urushi_core::task_prompt(board, id)?
         })

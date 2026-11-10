@@ -2,17 +2,17 @@
 
 - **Status:** Shipped
 - **Owners (crates):** `urushi-core` (`agent/mode.rs`, `agent/message.rs`, `agent/hooks.rs`, `board/prompt.rs`, `board/message.rs`, `AgentSettings`), `urushi-mux` (`SessionStatus.ready`), `urushi-daemon` (`cli.rs`, `service/task_agent.rs`, `service/task_draft.rs`, `service/threads.rs`, `service/settings.rs`), `urushi-proto` (`agents.proto`, `settings.proto`, `convert::agent_mode_*`), `urushi-app` (`task_agent.rs`, `update/setup.rs`, `view/setup.rs`, `view/new_thread.rs`, `update/task_threads.rs`, `view/task_in_thread.rs`), `urushi-cli` (`urushi board show`, `settings set task-*`)
-- **Related ADRs:** [0030](../adr/0030-draft-task-messages-once-the-agent-is-ready.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0018](../adr/0018-start-tasks-in-existing-threads.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0024](../adr/0024-task-prompts-by-reference.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Related ADRs:** [0030](../adr/0030-draft-task-messages-once-the-agent-is-ready.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0018](../adr/0018-start-tasks-in-existing-threads.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0024](../adr/0024-task-prompts-by-reference.md), [0033](../adr/0033-task-prompts-name-the-cli-by-path.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 **Start thread** on a task or subtask opens a thread that runs the user's **task agent**
 (Claude, Codex or Cursor) in their **task mode** (Normal or Plan). The agent's first
 prompt refers to the task, a Jira issue by its key and address, and tells it to review
-the task in full first with `urushi board show <KEY or id>` (which prints its notes,
+the task in full first with `<CLI path> board show <KEY or id>` (which prints its notes,
 subtasks and attachments, and for a Jira issue its fields, comments, links and files),
 and for Jira to ask before changing it there and to put the issue's key in commit
-messages and pull request titles (ADR 0026). Panes can run that CLI against their
-daemon. If the daemon can't find its CLI, the task's title, notes and checklist are
+messages and pull request titles (ADR 0026). The CLI is named by its path, so the
+agent runs this daemon's CLI whatever its shell puts first on `PATH`. If the daemon can't find its CLI, the task's title, notes and checklist are
 pasted in instead. The new-thread dialog still opens
 first, prefilled, and says what will start, e.g. "Starts Claude in plan mode with this
 task as its prompt."
@@ -25,7 +25,7 @@ Two switches in Settings (under the mode, protocol 1.19) change the message (UR-
 - **Use my own task message** (off by default, shown whatever the other switch says).
   On, a box takes the user's message, saved with **Save**. It replaces the default
   message, with `{key}` (issue key or task id), `{title}`, `{url}` (the Jira address)
-  and `{show}` (`urushi board show …`) filled in per task. Left empty, the default is
+  and `{show}` (`<CLI path> board show …`) filled in per task. Left empty, the default is
   used.
 
 The dialog can also send the task to an **existing thread** ("New thread | Existing
@@ -50,14 +50,18 @@ choice under **Tasks start with**.
   `task_message`; CLI `task-send on|off`, `task-message-custom on|off`, `task-message
   "<text>"`). `TaskMessage::template` is the text only when on and not blank; the daemon
   refuses one over `MAX_TASK_MESSAGE` (10 000) characters.
-- **The prompt** (ADR 0024): `urushi_core::custom_task_prompt(board, task, template)`
+- **The prompt** (ADR 0024): `urushi_core::custom_task_prompt(board, task, template, cli)`
   when the user's own message is on (placeholders filled in in one pass, so filled-in
   text is never read again; unknown `{…}` kept), else
-  `urushi_core::task_reference_prompt(board, task)` when the
+  `urushi_core::task_reference_prompt(board, task, cli)` when the
   daemon found its CLI (`cli::locate`: beside `urushid`, or in the bundle's
   `Resources/bin`; `DaemonOptions::cli`), else `urushi_core::task_prompt(board, task)`,
-  for a task at any depth (`State::task_prompt(link, by_reference)`). Every pane gets
-  `URUSHI_HOME` and the CLI's directory first on `PATH` (`cli::pane_env`).
+  for a task at any depth (`State::task_prompt(link, cli, custom)`). The prompt and
+  `{show}` name the CLI by its absolute path, shell-quoted (`show_command`, ADR 0033):
+  a login shell rebuilds `PATH` and may put another `urushi` first, even the app's
+  `Urushi` GUI on a case-insensitive disk (UR-32). Without a CLI, `{show}` says
+  `urushi`. Every pane gets `URUSHI_HOME`, `URUSHI_CLI` (the CLI's path) and the CLI's
+  directory first on `PATH` (`cli::pane_env`).
 - **The copy** (`task_prompt`):
   - A card gives `Task:`, its `Notes:` and its `Subtasks:` checklist.
   - A subtask gives `Step:`, its own notes and subtasks, the tasks it is part of
@@ -154,9 +158,12 @@ choice under **Tasks start with**.
     reference message sat unsent in its input.
   - `urushi-mux`: `notices.rs` (`ready` is not attention), `pty_session.rs` (counted).
   - `tests/task_agents.rs`, with a fake `claude` that prints each argument, for both a new
-    thread and an existing one (`a_task_starts_in_an_existing_thread_in_a_new_tab`), and
-    by reference with a CLI beside the daemon, which the pane finds on `PATH` with
-    `URUSHI_HOME` set (`with_the_cli_beside_it_a_task_starts_by_reference`).
+    thread and an existing one (`a_task_starts_in_an_existing_thread_in_a_new_tab`).
+  - `tests/task_cli.rs`: by reference with a CLI beside the daemon, named by its quoted
+    path, with `URUSHI_CLI` and `URUSHI_HOME` set
+    (`with_the_cli_beside_it_a_task_starts_by_reference`); and the prompt's command runs
+    that CLI even when the pane's shell puts a decoy `urushi` first on `PATH`
+    (`the_prompts_command_runs_this_cli_whatever_comes_first_on_path`).
   - `cli.rs`: finding the CLI, the pane environment.
 - **App:**
   - `update/tests/setup.rs`: the wizard, the Settings choices, and Start thread with and
