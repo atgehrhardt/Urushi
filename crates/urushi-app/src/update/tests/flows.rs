@@ -264,6 +264,37 @@ fn dropped_files_are_pasted_into_the_terminal_and_folders_become_projects() {
 }
 
 #[test]
+fn updating_bases_from_their_remote_is_toggled() {
+    let mut s = with_agents();
+    s.settings = Some(v1::Settings {
+        update_base_from_remote: true,
+        ..Default::default()
+    });
+    let fx = s.update(Msg::Toggle(SettingToggle::UpdateBaseFromRemote));
+    assert!(matches!(
+        bodies(&fx)[..],
+        [Body::UpdateSettings(v1::UpdateSettingsRequest {
+            patch: Some(v1::SettingsPatch {
+                update_base_from_remote: Some(false),
+                delete_remote_branches: None,
+                ..
+            })
+        })]
+    ));
+    let fx = s.update(Msg::Toggle(SettingToggle::DeleteRemoteBranches));
+    assert!(matches!(
+        bodies(&fx)[..],
+        [Body::UpdateSettings(v1::UpdateSettingsRequest {
+            patch: Some(v1::SettingsPatch {
+                delete_remote_branches: Some(true),
+                update_base_from_remote: None,
+                ..
+            })
+        })]
+    ));
+}
+
+#[test]
 fn skip_permissions_is_toggled_per_agent() {
     let mut s = with_agents();
     s.settings = Some(v1::Settings {

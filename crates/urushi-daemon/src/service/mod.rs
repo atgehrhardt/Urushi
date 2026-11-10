@@ -17,6 +17,7 @@ mod attention;
 mod boards;
 mod columns;
 mod deletion;
+mod fresh_base;
 mod jira;
 mod jira_create;
 mod jira_details;

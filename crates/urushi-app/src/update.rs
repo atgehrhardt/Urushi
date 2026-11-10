@@ -664,15 +664,14 @@ impl AppState {
 
     fn toggle(&mut self, toggle: SettingToggle, fx: &mut Vec<Effect>) {
         match toggle {
-            SettingToggle::DeleteRemoteBranches => {
-                let current = self
-                    .settings
-                    .as_ref()
-                    .is_some_and(|s| s.delete_remote_branches);
-                let patch = v1::SettingsPatch {
-                    delete_remote_branches: Some(!current),
-                    ..Default::default()
-                };
+            SettingToggle::DeleteRemoteBranches | SettingToggle::UpdateBaseFromRemote => {
+                let s = self.settings.clone().unwrap_or_default();
+                let mut patch = v1::SettingsPatch::default();
+                if toggle == SettingToggle::DeleteRemoteBranches {
+                    patch.delete_remote_branches = Some(!s.delete_remote_branches);
+                } else {
+                    patch.update_base_from_remote = Some(!s.update_base_from_remote);
+                }
                 fx.push(request(
                     Body::UpdateSettings(v1::UpdateSettingsRequest { patch: Some(patch) }),
                     Followup::Settings,

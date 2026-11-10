@@ -18,6 +18,10 @@ message Settings {
   AgentSettings agents = 6;
   // How the app looks; unset from an older daemon (the original look). Since 1.13.
   Appearance appearance = 7;
+  // Before making a new thread's worktree, fetch its base from the base's remote and
+  // start from the newer commit (ADR 0028). Unset from an older daemon, which doesn't.
+  // Since 1.16.
+  bool update_base_from_remote = 8;
 }
 
 // How the app looks: the backdrop's colors and the accent, and the logo. Since 1.13.
@@ -104,6 +108,8 @@ message SettingsPatch {
   optional AgentMode task_mode = 14;
   // Replaces the appearance when set. Since 1.13.
   Appearance appearance = 15;
+  // Since 1.16.
+  optional bool update_base_from_remote = 16;
 }
 
 message UpdateSettingsRequest {

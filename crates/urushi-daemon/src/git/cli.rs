@@ -13,6 +13,9 @@ use super::{Git, GitError, StatusCounts, Upstream, WorktreeInfo};
 const LOCAL_TIMEOUT: Duration = Duration::from_secs(60);
 /// Network operations (pushes to delete remote branches).
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(120);
+/// Fetching a new thread's base. Thread creation waits for it, and falls back to the
+/// local commit when it fails, so it is kept short.
+const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL: Duration = Duration::from_millis(5);
 
 /// Runs `git` from `PATH` (or an explicit binary).
@@ -338,6 +341,55 @@ impl Git for CliGit {
             repo,
             &["push", "--no-verify", remote, &refspec],
             NETWORK_TIMEOUT,
+        )
+        .map(drop)
+    }
+
+    fn fetch_branch(&self, repo: &Path, remote: &str, branch: &str) -> Result<(), GitError> {
+        let refspec = format!("+refs/heads/{branch}:refs/remotes/{remote}/{branch}");
+        self.run_with_timeout(
+            repo,
+            &[
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                "--no-write-fetch-head",
+                "--end-of-options",
+                remote,
+                &refspec,
+            ],
+            FETCH_TIMEOUT,
+        )
+        .map(drop)
+    }
+
+    fn is_ancestor(&self, repo: &Path, ancestor: &str, descendant: &str) -> Result<bool, GitError> {
+        // Commits reachable from `ancestor` but not from `descendant`: none iff it's an
+        // ancestor. Unlike `merge-base --is-ancestor`, failures and "no" don't share an
+        // exit code.
+        let range = format!("{descendant}..{ancestor}");
+        let out = self.run(repo, &["rev-list", "--count", "--end-of-options", &range])?;
+        Ok(out.trim() == "0")
+    }
+
+    fn fast_forward_branch(
+        &self,
+        repo: &Path,
+        branch: &BranchName,
+        new: &str,
+        old: &str,
+    ) -> Result<(), GitError> {
+        let reference = format!("refs/heads/{}", branch.as_str());
+        self.run(
+            repo,
+            &[
+                "update-ref",
+                "-m",
+                "urushi: update from remote",
+                &reference,
+                new,
+                old,
+            ],
         )
         .map(drop)
     }

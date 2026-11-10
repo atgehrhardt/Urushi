@@ -201,3 +201,82 @@ fn remote_facts_and_deletion() {
         .unwrap();
     assert_eq!(git.local_branches(&f.repo).unwrap(), vec!["main"]);
 }
+
+/// Clones `origin` into `<root>/<name>`, commits `file` on `branch` there and pushes it.
+/// Returns the pushed commit.
+fn push_from_another_clone(f: &Fixture, name: &str, branch: &str, file: &str) -> String {
+    let clone = f.root.join(name);
+    if !clone.exists() {
+        sh(
+            &f.root,
+            &[
+                "clone",
+                "-q",
+                f.remote.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ],
+        );
+    }
+    sh(&clone, &["fetch", "-q", "origin"]);
+    sh(
+        &clone,
+        &["checkout", "-q", "-B", branch, &format!("origin/{branch}")],
+    );
+    commit_file(&clone, file);
+    sh(&clone, &["push", "-q", "origin", branch]);
+    sh(&clone, &["rev-parse", "HEAD"]).trim().to_owned()
+}
+
+#[test]
+fn fetching_one_branch_updates_only_its_remote_tracking_ref() {
+    let f = fixture();
+    let git = CliGit::default();
+    let before = git.resolve_commit(&f.repo, "main").unwrap();
+    let pushed = push_from_another_clone(&f, "other", "main", "new.txt");
+
+    git.fetch_branch(&f.repo, "origin", "main").unwrap();
+    assert_eq!(git.resolve_commit(&f.repo, "origin/main").unwrap(), pushed);
+    assert_eq!(
+        git.resolve_commit(&f.repo, "main").unwrap(),
+        before,
+        "the local branch doesn't move"
+    );
+    assert!(
+        !f.repo.join("new.txt").exists(),
+        "the checkout isn't touched"
+    );
+
+    assert!(
+        git.fetch_branch(&f.repo, "origin", "no-such-branch")
+            .is_err()
+    );
+    assert!(git.fetch_branch(&f.repo, "nowhere", "main").is_err());
+}
+
+#[test]
+fn ancestry_and_fast_forwards() {
+    let f = fixture();
+    let git = CliGit::default();
+    let old = git.resolve_commit(&f.repo, "main").unwrap();
+    let new = push_from_another_clone(&f, "other", "main", "new.txt");
+    git.fetch_branch(&f.repo, "origin", "main").unwrap();
+
+    assert!(git.is_ancestor(&f.repo, &old, &new).unwrap());
+    assert!(
+        git.is_ancestor(&f.repo, &old, &old).unwrap(),
+        "a commit is its own"
+    );
+    assert!(!git.is_ancestor(&f.repo, &new, &old).unwrap());
+
+    git_in(&f.repo, &["branch", "release", &old]);
+    let release = branch("release");
+    assert!(
+        git.fast_forward_branch(&f.repo, &release, &new, &new)
+            .is_err(),
+        "refused: the branch isn't where the caller thinks"
+    );
+    assert_eq!(git.resolve_commit(&f.repo, "release").unwrap(), old);
+    git.fast_forward_branch(&f.repo, &release, &new, &old)
+        .unwrap();
+    assert_eq!(git.resolve_commit(&f.repo, "release").unwrap(), new);
+}

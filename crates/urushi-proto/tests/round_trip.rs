@@ -159,6 +159,7 @@ fn all_request_kinds() {
                 codex_skip_permissions: Some(false),
                 task_agent: Some(v1::Agent::Claude.into()),
                 task_mode: Some(v1::AgentMode::Plan.into()),
+                update_base_from_remote: Some(false),
                 ..Default::default()
             }),
         }),
@@ -243,6 +244,7 @@ fn all_response_kinds() {
         }),
         O::Screen(screen()),
         O::Settings(v1::Settings {
+            update_base_from_remote: true,
             agents: Some(v1::AgentSettings {
                 cursor_skip_permissions: true,
                 task_agent: v1::Agent::Codex.into(),

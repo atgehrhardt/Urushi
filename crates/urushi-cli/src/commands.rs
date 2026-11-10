@@ -326,6 +326,7 @@ fn patch(key: &str, value: &str) -> Result<v1::SettingsPatch> {
         "branch-prefix" => p.branch_prefix = Some(value.into()),
         "default-shell" => p.default_shell = Some(value.into()),
         "worktree-root" => p.worktree_root = Some(value.into()),
+        "update-base-from-remote" => p.update_base_from_remote = Some(flag(value)?),
         "tailnet-port" => p.tailnet_port = Some(value.parse().context("expected a port number")?),
         "allowed-logins" => {
             p.set_allowed_logins = true;

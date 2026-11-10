@@ -45,7 +45,8 @@ pub struct ThreadRequest {
 impl Service {
     /// Creates a thread: a new branch and worktree from the requested base (or the
     /// repo's default base, or its current branch), plus, if asked, a first tab with a
-    /// shell in the worktree.
+    /// shell in the worktree. With `update_base_from_remote` on, the base is first
+    /// fetched from its remote (ADR 0028).
     ///
     /// All-or-nothing: if anything fails after the worktree was created, the worktree
     /// and branch are removed again and no thread is recorded.
@@ -65,7 +66,7 @@ impl Service {
         } = request;
         let branch = parse_branch(branch)?;
         let title = thread_title(&title);
-        let (project, settings, worktree_root, issue_key) = self.read(|s| {
+        let (project, settings, worktree_root, issue_key, refresh) = self.read(|s| {
             if let Some(id) = project_id {
                 s.project(id)?;
             }
@@ -78,7 +79,8 @@ impl Service {
                 .worktree_root
                 .clone()
                 .unwrap_or_else(|| self.home().join("worktrees"));
-            Ok((project, settings, root, issue_key))
+            let refresh = s.settings.update_base_from_remote;
+            Ok((project, settings, root, issue_key, refresh))
         })?;
         // Resolve the agent and the prompt before making a worktree, so a refusal
         // leaves nothing behind.
@@ -98,7 +100,7 @@ impl Service {
         let branch = issue_branch(branch, issue_key.as_ref(), &prefix, &title, id)?;
         let created_at = now();
         let (mut thread, preexisting) = blocking(move || {
-            let (base, base_commit) = resolve_base(&*git, &repo, base_ref)?;
+            let (base, base_commit) = start_point(&*git, &repo, base_ref, refresh)?;
             let preexisting: BTreeSet<BranchName> = git
                 .local_branches(&repo)?
                 .into_iter()
@@ -301,6 +303,23 @@ fn parse_branch(branch: Option<String>) -> ServiceResult<Option<BranchName>> {
         .map(BranchName::new)
         .transpose()
         .map_err(|e| ServiceError::Invalid(e.to_string()))
+}
+
+/// The base and the commit a new thread starts from: [`resolve_base`], then, with
+/// `refresh`, updated from the base's remote so it doesn't start from a stale local copy
+/// (ADR 0028).
+fn start_point(
+    git: &dyn crate::git::Git,
+    repo: &std::path::Path,
+    base_ref: Option<String>,
+    refresh: bool,
+) -> ServiceResult<(String, String)> {
+    let (base, commit) = resolve_base(git, repo, base_ref)?;
+    if !refresh {
+        return Ok((base, commit));
+    }
+    let commit = super::fresh_base::fresh_base(git, repo, &base, commit);
+    Ok((base, commit))
 }
 
 /// The ref to branch from (`base_ref`, else the repo's current branch, else `HEAD`) and

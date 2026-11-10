@@ -300,7 +300,8 @@ enum SettingsCmd {
     /// Print all settings.
     Get,
     /// Change one setting: delete-remote-branches, branch-prefix, default-shell,
-    /// worktree-root, tailnet-port, allowed-logins (comma-separated), allow-tagged-nodes,
+    /// worktree-root, update-base-from-remote (fetch a new thread's base from its remote
+    /// first), tailnet-port, allowed-logins (comma-separated), allow-tagged-nodes,
     /// claude-skip-permissions, codex-skip-permissions, cursor-skip-permissions,
     /// task-agent (claude, codex, cursor or none), task-mode (normal or plan), colors (a
     /// preset: urushi, ocean, forest, dusk, ember, mono; or five #rrggbb colors:

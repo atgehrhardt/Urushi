@@ -446,10 +446,28 @@ mod tests {
                 .any(|h| matches!(h.on_click, Some(Msg::OpenRestartDaemon))),
             "and offer the restart"
         );
+        let base_switch = |frame: &urushi_ui::Frame<Msg>| {
+            frame.hits.iter().any(|h| {
+                matches!(
+                    h.on_click,
+                    Some(Msg::Toggle(
+                        crate::state::SettingToggle::UpdateBaseFromRemote
+                    ))
+                )
+            })
+        };
+        assert!(!base_switch(&frame), "an older daemon doesn't update bases");
 
         state.daemon_minor = urushi_proto::PROTOCOL_MINOR;
         let frame = render(&state, &mut text);
         assert!(!frame.scene.dump().contains("older than this app"));
+        assert!(base_switch(&frame));
+        assert!(
+            frame
+                .scene
+                .dump()
+                .contains("Update the base branch from its remote")
+        );
         assert!(frame.hits.iter().any(|h| matches!(
             h.on_click,
             Some(Msg::Toggle(crate::state::SettingToggle::SkipPermissions(_)))

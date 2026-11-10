@@ -30,4 +30,4 @@ pub mod v1 {
 /// Major protocol version. Clients with a different major version are rejected.
 pub const PROTOCOL_MAJOR: u32 = 1;
 /// Minor protocol version. Increases with each additive change that clients may detect.
-pub const PROTOCOL_MINOR: u32 = 15;
+pub const PROTOCOL_MINOR: u32 = 16;

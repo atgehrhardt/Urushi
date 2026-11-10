@@ -110,4 +110,20 @@ pub trait Git: Send + Sync {
     /// Deletes a branch on a remote (`git push <remote> --delete <branch>`).
     fn delete_remote_branch(&self, repo: &Path, remote: &str, branch: &str)
     -> Result<(), GitError>;
+    /// Fetches one branch of a remote into its remote-tracking ref
+    /// (`refs/remotes/<remote>/<branch>`), and nothing else: no other branches, no tags.
+    /// Local branches and checkouts are untouched.
+    fn fetch_branch(&self, repo: &Path, remote: &str, branch: &str) -> Result<(), GitError>;
+    /// Whether `ancestor` is reachable from `descendant` (a commit is its own ancestor).
+    fn is_ancestor(&self, repo: &Path, ancestor: &str, descendant: &str) -> Result<bool, GitError>;
+    /// Moves local `branch` from `old` to `new`, refusing if it no longer points at `old`.
+    /// The caller checks that this is a fast-forward and that no worktree has the branch
+    /// checked out: the ref moves, no files do.
+    fn fast_forward_branch(
+        &self,
+        repo: &Path,
+        branch: &BranchName,
+        new: &str,
+        old: &str,
+    ) -> Result<(), GitError>;
 }

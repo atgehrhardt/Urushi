@@ -42,6 +42,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0025 – Write a new subtask in an editor of its own, kept as a draft until Save](adr/0025-new-subtasks-in-their-own-editor.md)
 - [0026 – Name a Jira issue's thread branch after its key, and let Jira's integration link the code](adr/0026-issue-keys-in-branch-names.md)
 - [0027 – Show a Jira board's epics as cards, and create them like any issue](adr/0027-epics-are-cards-on-jira-boards.md)
+- [0028 – Start a new thread from its base's state on the remote, without touching the user's checkout](adr/0028-start-threads-from-the-bases-remote-state.md)
 
 ## Features
 - [_template](features/_template.md)
