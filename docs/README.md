@@ -49,6 +49,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0032 – Release macOS builds from a version tag, for Apple Silicon, as an ad-hoc signed zip](adr/0032-tagged-macos-releases.md)
 - [0033 – Name the CLI by its absolute path in task prompts](adr/0033-task-prompts-name-the-cli-by-path.md)
 - [0034 – Delete Jira issues from Urushi, with their sub-tasks, after confirming](adr/0034-delete-jira-issues-after-confirming.md)
+- [0035 – Treat Claude as finished only when no background agent of its own still runs](adr/0035-claude-is-done-when-no-background-agent-runs.md)
 
 ## Features
 - [_template](features/_template.md)
