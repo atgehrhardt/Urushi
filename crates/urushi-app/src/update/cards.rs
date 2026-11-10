@@ -60,7 +60,10 @@ impl AppState {
             }
             BoardMsg::FilterTag(tag) => self.board.tag_filter = tag,
             BoardMsg::FilterEpic(epic) => self.board.epic_filter = epic,
-            BoardMsg::OpenTask(task) => self.edit_task(&task, fx),
+            BoardMsg::OpenTask(task) => self.edit_task(&task),
+            BoardMsg::EditorBack => self.editor_back(),
+            BoardMsg::KeepEditing => self.keep_editing(),
+            BoardMsg::DiscardEdits => self.discard_editor(),
             BoardMsg::MakeStandalone(task) => {
                 if let Some(found) = self.workspace.find_task(&task) {
                     let body = Body::MoveTask(v1::MoveTaskRequest {

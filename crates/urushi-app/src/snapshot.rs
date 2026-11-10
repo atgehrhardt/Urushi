@@ -66,6 +66,7 @@ pub const SCENARIOS: &[&str] = &[
     "setup-mode",
     "jira-board",
     "jira-task",
+    "jira-subtask",
     "jira-connect",
     "jira-import",
 ];

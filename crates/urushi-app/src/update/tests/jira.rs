@@ -329,3 +329,26 @@ fn the_new_board_button_offers_an_import_on_a_jira_daemon() {
     );
     assert!(matches!(bodies(&fx)[..], [Body::ListJiraBoards(_)]));
 }
+
+#[test]
+fn a_new_jira_task_is_created_only_on_save() {
+    let mut s = with_jira();
+    s.update(Msg::NewTask {
+        board: "jb".into(),
+        column: "todo".into(),
+    });
+    s.update(Msg::Text("Half typed".into()));
+    // Enter in the title goes on to the notes: no issue is created in Jira yet.
+    let fx = s.update(Msg::Key(super::named(crate::keys::Named::Enter)));
+    assert!(fx.is_empty(), "{fx:?}");
+    assert_eq!(s.focus, Some(Field::TaskNotes));
+    // Closing asks before throwing it away; keep editing, then save.
+    s.update(Msg::CloseDialog);
+    assert!(matches!(&s.dialog, Some(Dialog::Task { nav, .. }) if nav.confirm_discard));
+    s.update(Msg::Board(BoardMsg::KeepEditing));
+    let fx = s.update(Msg::Submit);
+    assert!(
+        matches!(bodies(&fx)[..], [Body::CreateTask(v1::CreateTaskRequest { title, .. })] if title == "Half typed"),
+        "{fx:?}"
+    );
+}

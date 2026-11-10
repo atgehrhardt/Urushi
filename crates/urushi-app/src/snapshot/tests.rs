@@ -364,3 +364,16 @@ fn jira_subtasks_cant_be_deleted_here() {
         "{jira:?}"
     );
 }
+
+#[test]
+fn a_subtask_opened_from_its_parent_heads_its_editor_with_where_it_is() {
+    for width in [1280.0, 402.0] {
+        let sub = dump("jira-subtask", width);
+        for text in ["\"‹\"", "\"Billing\"", "\"ACME-139\"", "\"ACME-141\""] {
+            assert!(sub.contains(text), "{text} missing at {width}: {sub}");
+        }
+    }
+    let task = dump("jira-task", 1280.0);
+    // The parent's editor lists its subtasks with their keys.
+    assert!(task.contains("\"ACME-141\""), "{task}");
+}

@@ -39,7 +39,7 @@ impl AppState {
             Msg::PressTask(task) => self.board.pressed = Some(task),
             Msg::PressEnded => {
                 if let Some(task) = self.board.pressed.take() {
-                    self.edit_task(&task, fx);
+                    self.edit_task(&task);
                 }
             }
             Msg::DragTask(task) => {

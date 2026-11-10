@@ -321,6 +321,10 @@ impl AppState {
         {
             return;
         }
+        // Unsaved task edits: ask first.
+        if self.hold_editor_close() {
+            return;
+        }
         // Closing the setup wizard means "not now".
         if matches!(self.dialog, Some(Dialog::Setup { .. })) {
             self.setup.dismissed = true;
@@ -833,6 +837,7 @@ mod panes;
 mod pointer;
 mod setup;
 mod sidebar;
+mod task_nav;
 mod task_threads;
 mod tasks;
 mod usage;

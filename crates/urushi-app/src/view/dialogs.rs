@@ -63,10 +63,11 @@ pub(super) fn view(
             notes,
             subtasks,
             labels,
+            nav,
         } => super::tasks::editor(
             state,
             (theme, scroll),
-            (board, column, task.as_deref()),
+            (board, column, task.as_deref(), nav),
             (title, notes, subtasks, labels),
         ),
         Dialog::DeleteBoard { board, name, tasks } => {

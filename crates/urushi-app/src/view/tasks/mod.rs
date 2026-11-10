@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use urushi_ui::widgets::{ButtonKind, button, modal};
+use urushi_ui::widgets::{ButtonKind, button, modal_with_header};
 use urushi_ui::{Align, Color, Font, Insets, Key, Length, Node, Role, TextField, Theme, key};
 
 use super::dialogs::{area, cancel, field, hint, label};
@@ -13,9 +13,10 @@ use urushi_client::{FoundTask, TaskRef};
 
 use crate::board::TaskLabels;
 use crate::msg::{BoardMsg, Msg};
-use crate::state::{AppState, Field, SubtaskEditor, TaskLink};
+use crate::state::{AppState, EditorNav, Field, SubtaskEditor, TaskLink};
 
 mod attachments;
+mod header;
 mod jira;
 mod labels;
 mod nest;
@@ -30,8 +31,6 @@ pub(crate) fn subtasks_scroll_key() -> Key {
     key(&["task-subtasks"])
 }
 
-/// Longest task title shown whole in the breadcrumb.
-const CRUMB_CHARS: usize = 28;
 /// Width of the editor with its two columns (desktop).
 const WIDE: f32 = 780.0;
 /// Width of the one-column editor (phones).
@@ -50,17 +49,15 @@ pub(crate) fn editor_scroll_key() -> Key {
 pub(super) fn editor(
     state: &AppState,
     (theme, scroll): (&Theme, &HashMap<Key, f32>),
-    (board, column, task): (&str, &str, Option<&str>),
+    (board, column, task, nav): (&str, &str, Option<&str>, &EditorNav),
     (title, notes, subtasks, labels): (&TextField, &TextField, &SubtaskEditor, &TaskLabels),
 ) -> Node<Msg> {
     let found = task.and_then(|t| state.workspace.find_task(t));
     let current = found.as_ref().map(FoundTask::task);
     let issue = current.and_then(TaskRef::issue);
-    let mut text = Node::column().width(Length::Fill(1.0)).gap(8.0);
-    if let Some(found) = found.as_ref().filter(|f| f.path.len() > 1) {
-        text = text.child(breadcrumb(theme, found));
-    }
-    text = text
+    let mut text = Node::column()
+        .width(Length::Fill(1.0))
+        .gap(8.0)
         .child(label(theme, "Title"))
         .child(field(
             state,
@@ -78,7 +75,7 @@ pub(super) fn editor(
     let organize = organize(state, (theme, scroll), (board, column, current), labels);
     let hint_text = if state.daemon_supports_subtasks() {
         format!(
-            "Enter adds a subtask, a tag or a notes line, or saves from the title. {} saves.",
+            "Enter adds a subtask, a tag or a notes line. Nothing is saved until Save ({}).",
             save_keys()
         )
     } else {
@@ -112,14 +109,15 @@ pub(super) fn editor(
             .child(hint(theme, &hint_text));
         (body, WIDE)
     };
-    let actions = editor_actions(state, theme, found.as_ref(), task.is_some());
-    modal(
+    let actions = if nav.confirm_discard {
+        discard_question(theme)
+    } else {
+        editor_actions(state, theme, found.as_ref(), task.is_some())
+    };
+    let (header, name) = header::header(state, theme, found.as_ref(), nav);
+    modal_with_header(
         theme,
-        match current {
-            None => "New task",
-            Some(c) if c.is_card() => "Edit task",
-            Some(_) => "Edit subtask",
-        },
+        (header, &name),
         width,
         body,
         actions,
@@ -209,39 +207,6 @@ fn organize(
         organize = organize.children(attachments::section(state, (theme, scroll), current));
     }
     organize
-}
-
-/// Where a subtask is: its card and the tasks between, each opening that task.
-fn breadcrumb(theme: &Theme, found: &FoundTask<'_>) -> Node<Msg> {
-    let mut row = Node::row().width(Length::Fill(1.0)).gap(4.0).clip();
-    for (i, t) in found.path.iter().enumerate() {
-        if i + 1 == found.path.len() {
-            break;
-        }
-        row = row
-            .child(
-                Node::row()
-                    .padding(Insets::symmetric(1.0, 4.0))
-                    .radius(4.0)
-                    .hover_background(theme.hover)
-                    .key(key(&["breadcrumb", t.id()]))
-                    .on_click(Msg::Board(BoardMsg::OpenTask(t.id().to_owned())))
-                    .role(Role::Button, format!("Open {}", t.title()))
-                    .child(Node::text(
-                        super::board::shorten(t.title(), CRUMB_CHARS),
-                        Font::UiMedium,
-                        theme.font_size_small,
-                        theme.accent,
-                    )),
-            )
-            .child(Node::text(
-                "›",
-                Font::Ui,
-                theme.font_size_small,
-                theme.text_muted,
-            ));
-    }
-    row
 }
 
 /// For a subtask, instead of the column: its check mark, and (unless Jira owns where
@@ -344,6 +309,31 @@ fn side_width(state: &AppState) -> f32 {
     } else {
         (WIDE - 40.0 - 24.0) / 2.4
     }
+}
+
+/// Closing with unsaved edits: discard them, or keep editing.
+fn discard_question(theme: &Theme) -> Vec<Node<Msg>> {
+    vec![
+        Node::text(
+            "Discard unsaved changes?",
+            Font::UiMedium,
+            theme.font_size,
+            theme.text,
+        ),
+        Node::spacer(),
+        button(
+            theme,
+            "Keep editing",
+            ButtonKind::Secondary,
+            Msg::Board(BoardMsg::KeepEditing),
+        ),
+        button(
+            theme,
+            "Discard",
+            ButtonKind::Danger,
+            Msg::Board(BoardMsg::DiscardEdits),
+        ),
+    ]
 }
 
 /// Delete and Start thread (for an existing task), Cancel, and Save or Add task.

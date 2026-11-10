@@ -140,13 +140,14 @@ fn notes_take_several_lines_and_the_shortcut_saves() {
         ),
         "{fx:?}"
     );
-    // Enter in the title still saves.
-    s.update(Msg::CloseDialog);
+    // Enter in the title moves on to the notes and saves nothing.
+    s.update(Msg::Board(crate::msg::BoardMsg::DiscardEdits));
     s.update(Msg::PressTask("b".into()));
     s.update(Msg::PressEnded);
     s.update(Msg::Text("!".into()));
     let fx = s.update(Msg::Key(named(Named::Enter)));
-    assert!(matches!(bodies(&fx)[..], [Body::UpdateTask(_)]), "{fx:?}");
+    assert!(fx.is_empty(), "{fx:?}");
+    assert_eq!(s.focus, Some(Field::TaskNotes));
 }
 
 /// The dialogs' command modifier: Cmd on Apple platforms, Ctrl elsewhere.

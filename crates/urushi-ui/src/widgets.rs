@@ -268,8 +268,8 @@ pub fn divider<M>(theme: &Theme, vertical: bool) -> Node<M> {
     }
 }
 
-/// A centred dialog over a dimmed backdrop. `on_dismiss` is sent when the backdrop is
-/// clicked (pass `None` to make the dialog modal-only).
+/// A centred dialog over a dimmed backdrop, headed by `title`. `on_dismiss` is sent
+/// when the backdrop is clicked (pass `None` to make the dialog modal-only).
 pub fn modal<M: Clone>(
     theme: &Theme,
     title: &str,
@@ -279,6 +279,19 @@ pub fn modal<M: Clone>(
     on_dismiss: Option<M>,
 ) -> Node<M> {
     let header = Node::text(title, Font::UiSemibold, theme.font_size + 2.0, theme.text);
+    modal_with_header(theme, (header, title), width, body, actions, on_dismiss)
+}
+
+/// [`modal`] with a header of its own (e.g. a breadcrumb with buttons) in place of the
+/// plain title; `label` names the dialog for accessibility and keys it.
+pub fn modal_with_header<M: Clone>(
+    theme: &Theme,
+    (header, label): (Node<M>, &str),
+    width: f32,
+    body: Node<M>,
+    actions: Vec<Node<M>>,
+    on_dismiss: Option<M>,
+) -> Node<M> {
     let footer = Node::row()
         .gap(8.0)
         .justify(Align::End)
@@ -297,8 +310,8 @@ pub fn modal<M: Clone>(
             blur: 40.0,
             offset: 12.0,
         })
-        .key(crate::node::key(&["modal", title]))
-        .role(Role::Dialog, title)
+        .key(crate::node::key(&["modal", label]))
+        .role(Role::Dialog, label)
         .child(header)
         .child(body)
         .child(footer);

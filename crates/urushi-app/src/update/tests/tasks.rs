@@ -48,7 +48,7 @@ fn open_task(s: &mut AppState, id: &str) {
 }
 
 #[test]
-fn an_existing_tasks_subtasks_change_right_away() {
+fn an_existing_tasks_subtasks_are_checked_right_away_and_added_on_save() {
     let mut s = with_subtasks();
     open_task(&mut s, "a");
     let fx = s.update(Msg::ToggleSubtask("s1".into()));
@@ -66,20 +66,26 @@ fn an_existing_tasks_subtasks_change_right_away() {
     open_task(&mut s, "a");
     s.update(Msg::FocusField(Field::NewSubtask));
     s.update(Msg::Text("Third".into()));
+    // Enter keeps it as a draft: nothing reaches the board (or Jira) before Save.
     let fx = s.update(Msg::Key(named(Named::Enter)));
+    assert!(fx.is_empty(), "{fx:?}");
     assert!(matches!(
-        bodies(&fx)[..],
-        [Body::CreateSubtask(v1::CreateSubtaskRequest { task_id, title })]
-            if task_id == "a" && title == "Third"
+        &s.dialog,
+        Some(Dialog::Task { subtasks, .. })
+            if subtasks.new.text().is_empty() && subtasks.drafts == ["Third"]
     ));
-    assert!(
-        matches!(&s.dialog, Some(Dialog::Task { subtasks, .. }) if subtasks.new.text().is_empty())
-    );
     let fx = s.update(Msg::DeleteSubtask("s2".into()));
     assert!(matches!(
         bodies(&fx)[..],
         [Body::DeleteSubtask(v1::DeleteSubtaskRequest { subtask_id })] if subtask_id == "s2"
     ));
+    let fx = s.update(Msg::Submit);
+    assert!(matches!(
+        bodies(&fx)[..],
+        [Body::CreateSubtask(v1::CreateSubtaskRequest { task_id, title })]
+            if task_id == "a" && title == "Third"
+    ));
+    assert!(s.dialog.is_none());
 }
 
 #[test]
@@ -278,21 +284,8 @@ fn with_nested() -> AppState {
     s
 }
 
-#[test]
-fn a_subtask_opens_as_a_task_after_saving_its_parent() {
-    let mut s = with_nested();
-    open_task(&mut s, "a");
-    s.update(Msg::Paste(" edited".into()));
-    // Opening "s1" saves "a" first, without closing anything.
-    let fx = s.update(Msg::Board(BoardMsg::OpenTask("s1".into())));
-    assert!(
-        matches!(
-            &fx[..],
-            [Effect::Request { body: Body::UpdateTask(v1::UpdateTaskRequest { task_id, title: Some(t), .. }), followup: Followup::None }]
-                if task_id == "a" && t == "A edited"
-        ),
-        "{fx:?}"
-    );
+/// The task on screen in the editor, and its title as typed.
+fn editing(s: &AppState) -> (String, String) {
     let Some(Dialog::Task {
         task: Some(t),
         title,
@@ -301,15 +294,38 @@ fn a_subtask_opens_as_a_task_after_saving_its_parent() {
     else {
         panic!("{:?}", s.dialog)
     };
-    assert_eq!((t.as_str(), title.text()), ("s1", "First"));
-    // Edited like a task; no column move for a subtask.
+    (t.clone(), title.text().to_owned())
+}
+
+#[test]
+fn a_subtask_opens_from_its_parent_and_back_returns_with_the_edits() {
+    let mut s = with_nested();
+    open_task(&mut s, "a");
+    s.update(Msg::Paste(" edited".into()));
+    // Opening "s1" saves nothing; "a" waits, edits and all, for Back or Save.
+    let fx = s.update(Msg::Board(BoardMsg::OpenTask("s1".into())));
+    assert!(fx.is_empty(), "{fx:?}");
+    assert_eq!(editing(&s), ("s1".into(), "First".into()));
+    assert!(matches!(&s.dialog, Some(Dialog::Task { nav, .. }) if nav.back.len() == 1));
+    s.update(Msg::Board(BoardMsg::EditorBack));
+    assert_eq!(editing(&s), ("a".into(), "A edited".into()));
+    assert!(matches!(&s.dialog, Some(Dialog::Task { nav, .. }) if nav.back.is_empty()));
+    // Down again; the crumb for "a" goes back to its editor as it was left.
+    s.update(Msg::Board(BoardMsg::OpenTask("s1".into())));
+    s.update(Msg::Board(BoardMsg::OpenTask("a".into())));
+    assert_eq!(editing(&s), ("a".into(), "A edited".into()));
+    s.update(Msg::Board(BoardMsg::OpenTask("s1".into())));
+    // Edited like a task; no column move for a subtask. Save saves both editors.
     s.update(Msg::Board(BoardMsg::AddTag("deep".into())));
     s.update(Msg::PickColumn("done".into()));
     let fx = s.update(Msg::Submit);
     assert!(
         matches!(
-            bodies(&fx)[..],
-            [Body::UpdateTask(v1::UpdateTaskRequest { task_id, title: None, tags: Some(_), .. })] if task_id == "s1"
+            &fx[..],
+            [
+                Effect::Request { body: Body::UpdateTask(v1::UpdateTaskRequest { task_id: a, title: Some(t), .. }), followup: Followup::None },
+                Effect::Request { body: Body::UpdateTask(v1::UpdateTaskRequest { task_id: s1, title: None, tags: Some(_), .. }), followup: Followup::CloseDialog },
+            ] if a == "a" && t == "A edited" && s1 == "s1"
         ),
         "{fx:?}"
     );
@@ -366,4 +382,25 @@ fn a_subtasks_menu_opens_over_its_tasks_editor() {
             subtask: Some("s3".into())
         }
     );
+}
+
+#[test]
+fn closing_with_unsaved_edits_asks_first() {
+    let mut s = with_nested();
+    // Nothing edited: closes at once.
+    open_task(&mut s, "a");
+    s.update(Msg::CloseDialog);
+    assert!(s.dialog.is_none());
+    // Edited in a parent left behind: still asks, from the subtask's editor.
+    open_task(&mut s, "a");
+    s.update(Msg::Paste(" edited".into()));
+    s.update(Msg::Board(BoardMsg::OpenTask("s1".into())));
+    s.update(Msg::CloseDialog);
+    assert!(matches!(&s.dialog, Some(Dialog::Task { nav, .. }) if nav.confirm_discard));
+    // A second close (Escape) keeps editing; Discard closes without a request.
+    s.update(Msg::Key(named(Named::Escape)));
+    assert!(matches!(&s.dialog, Some(Dialog::Task { nav, .. }) if !nav.confirm_discard));
+    s.update(Msg::CloseDialog);
+    assert!(bodies(&s.update(Msg::Board(BoardMsg::DiscardEdits))).is_empty());
+    assert!(s.dialog.is_none());
 }

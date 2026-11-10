@@ -1,7 +1,7 @@
 # Feature: Task boards
 
 - **Status:** Shipped (manual boards, columns, colors, tags, kinds, nested subtasks, attachments, threads started from tasks; Jira boards in [jira-boards](jira-boards.md))
-- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,prompt}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/`, `view/tasks/`, `view/labels.rs`, `view/menu/tasks.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
+- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,prompt}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_nav.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/`, `view/tasks/`, `view/labels.rs`, `view/menu/tasks.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
 - **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
 
 ## What it does
@@ -32,19 +32,29 @@ it back.
   phones); **Start thread**, and Delete. Color and tags are saved with Save, like the
   title and notes.
 - **Notes** take several lines: the box is five lines tall, wraps, and scrolls. Enter
-  starts a new line there; Cmd+Enter (Ctrl+Enter elsewhere) saves from any field, and
-  Enter in the title still saves.
+  starts a new line there; Cmd+Enter (Ctrl+Enter elsewhere) saves from any field. Enter
+  in the title moves on to the notes: it never saves, so a half-typed task is never
+  created (on a Jira board, never created in Jira).
+- **Nothing is saved before Save.** Closing an editor with unsaved edits (Cancel,
+  Escape, a click outside) asks **Discard unsaved changes?** with **Keep editing** and
+  **Discard**; closing again keeps editing.
 - **Cards are all the same size** whatever they hold: the title on one line, up to two
   lines of notes (blank lines skipped, an ellipsis when there's more), and a footer row
   for subtask progress and the thread chip. The copy that follows the pointer while
   dragging is the same card.
 - **Subtasks** are tasks too, kept inside their parent (ADR 0015). In the editor: type
-  in "Add a subtask…" and press Enter; click the box to check one off, × to delete it. A
-  new task's subtasks are created with it. Cards show progress ("✓ 1/3", green when all
-  are done), and subtask rows their own.
+  in "Add a subtask…" and press Enter to add it to the list; added subtasks are created
+  on Save (with a new task, or under an existing one). Click the box to check one off
+  and × to delete one; those are immediate. Cards show progress ("✓ 1/3", green when
+  all are done), and subtask rows their own (with the kind and key of a Jira issue).
   - **Clicking a subtask's title opens it** as a task of its own ("Edit subtask"), with
-    notes, color, tags, its own subtasks and thread, saving what changed in the task on
-    screen first. A breadcrumb ("Card › Subtask ›") leads back up. Instead of a column, a
+    notes, color, tags, its own subtasks and thread. The editor it came from is kept,
+    unsaved edits and all: the top bar shows **‹** (back to it, as it was left) and
+    where the task is, as Jira does: the epic on a Jira board (opening it in Jira), then
+    each task it is part of (an issue's kind and key, otherwise its title), each opening
+    that editor again, then the task itself. On a phone only the parent shows
+    (`‹ … / PARENT-1 / SUB-2`). **Save** saves every editor on the way; **Discard**
+    drops them all. Instead of a column, a
     subtask has **Done / Not done** and **Make standalone**, which moves it onto the
     board in its card's column, unchecked, with its subtasks. Subtasks nest up to five
     levels under a card.
@@ -165,18 +175,27 @@ restarts.
   - **No flicker:** each card sits in a slot that includes the gap under it, and the drop
     line in a slot with the same target (`view/board/column.rs::slot`), so the pointer is always
     over a target and the line doesn't jump as it moves the cards.
-  - **Editor** (`update/tasks.rs`): `Dialog::Task` edits a card or a subtask alike; the
-    app reads both through `urushi_client::{TaskRef, FoundTask}`
-    (`WorkspaceMirror::find_task`, which also gives the path for the breadcrumb).
-    `BoardMsg::OpenTask` from the editor first sends what changed (`task_changes`, the
-    same requests Save sends, without closing). A subtask's check mark changes right
-    away; a subtask is deleted with `DeleteSubtask`. An existing task's subtasks change
-    right away (each is a request); a new task's are drafts in `SubtaskEditor` until
-    `CreateTask`. Enter in "Add a subtask…" or "Add a tag…" adds; Enter in the notes (a
-    `TextField::multiline`, drawn with the toolkit's `text_area`) adds a line; Enter
-    elsewhere, or Cmd/Ctrl+Enter anywhere, saves the task (a subtask still typed in the
-    field goes with it). Notes are sent only if they differ from the task's notes as the
-    editor shows them, so opening and saving changes nothing.
+  - **Editor** (`update/tasks.rs`, `update/task_nav.rs`): `Dialog::Task` edits a card or
+    a subtask alike; the app reads both through `urushi_client::{TaskRef, FoundTask}`
+    (`WorkspaceMirror::find_task`, which also gives the path for the top bar,
+    `view/tasks/header.rs`, drawn with `widgets::modal_with_header`).
+    `BoardMsg::OpenTask` from the editor sends nothing: the editor on screen goes onto
+    `EditorNav::back` with its edits, and opening a task already there returns to it
+    (those opened after it go); `BoardMsg::EditorBack` pops one. Save
+    (`editor_changes`) sends `task_changes` for every editor in `back` and then the one
+    on screen, whose `UpdateTask` carries `Followup::CloseDialog`, and clears the
+    earlier editors' drafts so saving again can't add a subtask twice. Closing with
+    edits (`editor_dirty`) sets `EditorNav::confirm_discard` instead
+    (`hold_editor_close`); `BoardMsg::{KeepEditing, DiscardEdits}` answer it. A
+    subtask's check mark changes right away; a subtask is deleted with `DeleteSubtask`.
+    Subtasks added in the editor are drafts in `SubtaskEditor` until Save:
+    `CreateTask.subtasks` for a new task, a `CreateSubtask` each for an existing one.
+    Enter in "Add a subtask…" or "Add a tag…" adds; Enter in the notes (a
+    `TextField::multiline`, drawn with the toolkit's `text_area`) adds a line; Enter in
+    the title moves to the notes (`task_editor_enter`); Enter elsewhere, or
+    Cmd/Ctrl+Enter anywhere, saves (a subtask still typed in the field goes with it).
+    Notes are sent only if they differ from the task's notes as the editor shows them,
+    so opening and saving changes nothing.
   - **Cards** (`view/board/card.rs::card_body`): a fixed `card_height` from the theme's line
     heights; the notes are a `widgets::wrapped_text` filling the room between the title
     and the footer.
@@ -262,7 +281,8 @@ restarts.
   menu, editor,
   multiline notes and Cmd+Enter, the board shortcut, drag and drop, prompts, deletion,
   keyboard) and `update/tests/tasks.rs` (subtasks,
-  drafts, opening subtasks, making them standalone, nesting, starting and going to
+  drafts saved only on Save, opening subtasks, Back and the crumbs keeping unsaved edits,
+  asking before discarding them, making them standalone, nesting, starting and going to
   threads, the drop line, older daemons) and
   `update/tests/labels.rs` (colors, tags, columns, the filter) and
   `update/tests/attachments.rs` (picking, dropping, opening, deleting, thumbnails);

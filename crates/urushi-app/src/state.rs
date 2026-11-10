@@ -60,15 +60,27 @@ pub enum ThreadTarget {
     Existing(Option<String>),
 }
 
-/// The subtask part of the task editor. An existing task's subtasks change right away
-/// (each check, add or delete is a request); a new task's are kept here as drafts and
-/// created with it.
+/// The subtask part of the task editor. Subtasks added in the editor are kept here as
+/// drafts and created on Save (with a new task, or one by one for an existing one), so
+/// nothing reaches the board, or Jira, before Save. Checking an existing subtask off
+/// and deleting one are immediate.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SubtaskEditor {
-    /// Titles of subtasks for a task not created yet.
+    /// Titles of subtasks to create on Save.
     pub drafts: Vec<String>,
     /// The "add a subtask" field.
     pub new: TextField,
+}
+
+/// How the task editor got to the task on screen. Opening a subtask (or any other task)
+/// from the editor keeps the editor it came from, unsaved edits included, so **Back**
+/// returns to it as it was; Save saves every editor here, Cancel discards them all.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct EditorNav {
+    /// The editors opened before this one, oldest first (each a `Dialog::Task`).
+    pub back: Vec<Dialog>,
+    /// Closing was asked with unsaved edits: the editor asks to confirm.
+    pub confirm_discard: bool,
 }
 
 /// A dialog field that can take keyboard focus.
@@ -244,6 +256,8 @@ pub enum Dialog {
         subtasks: Box<SubtaskEditor>,
         /// The color and tags, sent with Save.
         labels: Box<crate::board::TaskLabels>,
+        /// The editors this one was opened from, and whether closing asks first.
+        nav: Box<EditorNav>,
     },
     /// The first-run setup wizard: which agent (and mode) threads started from tasks run.
     Setup {

@@ -28,7 +28,12 @@ changes made here go to Jira first.
   the workflow doesn't allow is refused with a message and the card stays. Title, notes
   and tags (labels; no spaces) are edited in Jira. Checking a subtask off transitions it to
   a done status, unchecking to a to-do one. **+** on a column creates an issue of the type
-  picked in the editor (task, story or bug), with its subtasks, moved to that column.
+  picked in the editor (task, story or bug), with its subtasks, moved to that column, and
+  only on **Save**: Enter in the title moves on to the notes, and subtasks added in the
+  editor are created in Jira on Save too.
+- **Where an issue is:** a subtask opened from its parent's editor is headed like a Jira
+  issue: **‹** back to the parent (edits kept), the epic, `PARENT-1 /`, then its own kind
+  and key. The parent's subtask rows show each subtask's kind and key.
 - **Urushi's own:** a card's color and the thread started for it stay here and survive every
   sync; threads start from Jira cards like any other.
 - **Left to Jira:** deleting issues, nesting them, changing their type, changing columns,
@@ -105,8 +110,9 @@ changes made here go to Jira first.
   `jira/credentials.rs`, `service/jira.rs` (backoff), and `tests/jira_boards.rs` end to end
   against an in-memory Jira (sign-in, import, remote changes, transitions, refused moves,
   edits, subtasks, refusals, restart, sign-out).
-- UI: `textfield/secret.rs`. App: `update/tests/jira.rs`; `snapshot/tests.rs`
-  (`jira-board`, `jira-task`, `jira-connect`, `jira-import` scenarios, card sizes, no
+- UI: `textfield/secret.rs`. App: `update/tests/jira.rs` (including a new issue created
+  only on Save); `snapshot/tests.rs` (`jira-board`, `jira-task`, `jira-subtask` (the top
+  bar), `jira-connect`, `jira-import` scenarios, card sizes, no
   subtask delete on Jira boards, the Type picker).
 
 ## Limitations and follow-ups

@@ -1,6 +1,6 @@
-//! The task editor's subtasks: an existing task's (checked off in place, each change
-//! a request, and each opening as a task of its own) or the drafts of a new one, and
-//! the field that adds one.
+//! The task editor's subtasks: an existing task's (checked off in place, each check a
+//! request, and each opening as a task of its own), the drafts added here (created on
+//! Save), and the field that adds one.
 
 use urushi_client::{TaskRef, v1};
 use urushi_ui::widgets::icon_button;
@@ -34,17 +34,14 @@ pub(super) fn checklist(
         }
         _ => "Subtasks".to_owned(),
     };
-    match task {
-        Some(t) => {
-            for s in t.subtasks() {
-                rows.push(subtask_row(state, theme, s));
-            }
+    if let Some(t) = task {
+        for s in t.subtasks() {
+            rows.push(subtask_row(state, theme, s));
         }
-        None => {
-            for (i, title) in editor.drafts.iter().enumerate() {
-                rows.push(draft_row(theme, i, title));
-            }
-        }
+    }
+    // Added here, created on Save.
+    for (i, title) in editor.drafts.iter().enumerate() {
+        rows.push(draft_row(theme, i, title));
     }
     let mut out = vec![label(theme, &heading)];
     if !rows.is_empty() {
@@ -77,40 +74,7 @@ fn subtask_row(state: &AppState, theme: &Theme, s: &v1::Subtask) -> Node<Msg> {
         .as_ref()
         .is_some_and(|l| state.linked_thread(l).is_some());
     let openable = state.daemon_supports_board_extras();
-    let mut title = Node::row()
-        .width(Length::Fill(1.0))
-        .height(Length::Fill(1.0))
-        .gap(6.0)
-        .align(Align::Center);
-    if let Some(c) = super::super::labels::color(theme, s.color) {
-        title = title.child(super::super::labels::dot(theme, Some(c), 8.0));
-    }
-    title = title.child(
-        Node::text(
-            &s.title,
-            Font::Ui,
-            theme.font_size,
-            if s.done { theme.text_muted } else { theme.text },
-        )
-        // Fill, so a long title is cut short instead of running over the row.
-        .width(Length::Fill(1.0)),
-    );
-    let sub = TaskRef::Sub(s);
-    if !s.subtasks.is_empty() {
-        let (done, all) = sub.progress();
-        title = title.child(Node::text(
-            format!("✓ {done}/{all}"),
-            Font::UiMedium,
-            theme.font_size_small,
-            theme.text_muted,
-        ));
-    }
-    if openable {
-        title = title
-            .key(key(&["subtask-title", &s.id]))
-            .on_click(Msg::Board(BoardMsg::OpenTask(s.id.clone())))
-            .role(Role::Button, format!("Open subtask {}", s.title));
-    }
+    let title = subtask_title(theme, s, openable);
     let mut row = Node::row()
         .width(Length::Fill(1.0))
         .height(Length::Fixed(SUBTASK_ROW))
@@ -164,6 +128,57 @@ fn subtask_row(state: &AppState, theme: &Theme, s: &v1::Subtask) -> Node<Msg> {
         &format!("Delete subtask {}", s.title),
         Msg::DeleteSubtask(s.id.clone()),
     ))
+}
+
+/// A subtask's title row: its color, kind and key (a Jira issue), title and progress;
+/// it opens the subtask when `openable`.
+fn subtask_title(theme: &Theme, s: &v1::Subtask, openable: bool) -> Node<Msg> {
+    let mut title = Node::row()
+        .width(Length::Fill(1.0))
+        .height(Length::Fill(1.0))
+        .gap(6.0)
+        .align(Align::Center);
+    if let Some(c) = super::super::labels::color(theme, s.color) {
+        title = title.child(super::super::labels::dot(theme, Some(c), 8.0));
+    }
+    if let Some(issue) = s.issue.as_deref() {
+        if let Some(marker) = super::super::board::jira::kind_marker(theme, s.kind, 9.0) {
+            title = title.child(marker);
+        }
+        title = title.child(Node::text(
+            &issue.key,
+            Font::UiMedium,
+            theme.font_size_small,
+            theme.text_muted,
+        ));
+    }
+    title = title.child(
+        Node::text(
+            &s.title,
+            Font::Ui,
+            theme.font_size,
+            if s.done { theme.text_muted } else { theme.text },
+        )
+        // Fill, so a long title is cut short instead of running over the row.
+        .width(Length::Fill(1.0)),
+    );
+    let sub = TaskRef::Sub(s);
+    if !s.subtasks.is_empty() {
+        let (done, all) = sub.progress();
+        title = title.child(Node::text(
+            format!("✓ {done}/{all}"),
+            Font::UiMedium,
+            theme.font_size_small,
+            theme.text_muted,
+        ));
+    }
+    if openable {
+        title = title
+            .key(key(&["subtask-title", &s.id]))
+            .on_click(Msg::Board(BoardMsg::OpenTask(s.id.clone())))
+            .role(Role::Button, format!("Open subtask {}", s.title));
+    }
+    title
 }
 
 fn draft_row(theme: &Theme, i: usize, title: &str) -> Node<Msg> {

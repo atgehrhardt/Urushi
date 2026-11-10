@@ -2,11 +2,11 @@
 //! notes, color, tags, its column or check mark), its subtasks, and moving between
 //! a task and its subtasks.
 //!
-//! An existing task's subtasks change right away (each check, add or delete is a
-//! request). A new task's subtasks are drafts until the task is created with them
-//! (`CreateTask.subtasks`). Opening a subtask from the editor first saves what changed
-//! in the task on screen, so moving down and back up loses nothing. Threads are in
-//! `task_threads.rs`.
+//! Nothing is saved before **Save**: Enter in the title moves on to the notes, and
+//! subtasks typed in the editor are drafts, created with a new task
+//! (`CreateTask.subtasks`) or one by one for an existing one. Checking an existing
+//! subtask off and deleting one are immediate. Moving between a task and its subtasks
+//! keeps every editor's unsaved edits (`task_nav.rs`). Threads are in `task_threads.rs`.
 
 use urushi_client::FoundTask;
 use urushi_client::v1::{self, request::Body};
@@ -87,33 +87,23 @@ impl AppState {
                 notes: TextField::multiline(""),
                 subtasks: Box::default(),
                 labels: Box::default(),
+                nav: Box::default(),
             },
             Some(Field::TaskTitle),
         );
     }
 
-    /// Opens the editor on an existing task or subtask. From the editor of another
-    /// task, what changed there is saved first.
-    pub(super) fn edit_task(&mut self, id: &str, fx: &mut Vec<Effect>) {
-        let Some(found) = self.workspace.find_task(id) else {
-            return;
-        };
-        let dialog = editor_for(&found);
-        if matches!(self.dialog, Some(Dialog::Task { task: Some(_), .. })) {
-            fx.extend(self.task_changes(Followup::None));
-        }
-        self.open(dialog, Some(Field::TaskTitle));
-    }
-
-    /// Enter in the task editor's tag or subtask field: add what's typed. Returns
-    /// whether it did (otherwise Enter saves the task).
-    pub(super) fn task_editor_enter(&mut self, fx: &mut Vec<Effect>) -> bool {
+    /// Enter in the task editor: in the title it moves on to the notes (it never saves,
+    /// so a task isn't created, in Jira too, half typed); in the tag or subtask field it
+    /// adds what's typed. Returns whether it did something (otherwise Enter saves).
+    pub(super) fn task_editor_enter(&mut self) -> bool {
         let focus = self.focus;
+        if focus == Some(Field::TaskTitle) && matches!(self.dialog, Some(Dialog::Task { .. })) {
+            self.focus = Some(Field::TaskNotes);
+            return true;
+        }
         let Some(Dialog::Task {
-            task,
-            subtasks,
-            labels,
-            ..
+            subtasks, labels, ..
         }) = &mut self.dialog
         else {
             return false;
@@ -128,16 +118,7 @@ impl AppState {
             Some(Field::NewSubtask) if !subtasks.new.text().trim().is_empty() => {
                 let title = subtasks.new.text().trim().to_owned();
                 subtasks.new.clear();
-                match task {
-                    Some(task_id) => {
-                        let body = Body::CreateSubtask(v1::CreateSubtaskRequest {
-                            task_id: task_id.clone(),
-                            title,
-                        });
-                        fx.push(request(body, Followup::None));
-                    }
-                    None => subtasks.drafts.push(title),
-                }
+                subtasks.drafts.push(title);
                 true
             }
             _ => false,
@@ -154,6 +135,7 @@ impl AppState {
             notes,
             subtasks,
             labels,
+            ..
         }) = &self.dialog
         else {
             return;
@@ -177,7 +159,7 @@ impl AppState {
             fx.push(request(body, Followup::CloseDialog));
             return;
         }
-        let changes = self.task_changes(Followup::CloseDialog);
+        let changes = self.editor_changes();
         let closes = changes.iter().any(|e| {
             matches!(
                 e,
@@ -194,11 +176,12 @@ impl AppState {
         }
     }
 
-    /// The requests that save the existing task on screen: a subtask still typed in its
-    /// field, a new column, and its changed fields (the last one carries `last`, so the
-    /// editor closes when it is done). Nothing if it was deleted meanwhile.
-    fn task_changes(&self, last: Followup) -> Vec<Effect> {
-        let Some(Dialog::Task {
+    /// The requests that save an existing task's editor: its draft subtasks (and one
+    /// still typed in its field), a new column, and its changed fields (the last one
+    /// carries `last`, so the editor closes when it is done). Nothing for a new task's
+    /// editor, or a task deleted meanwhile.
+    pub(super) fn task_changes(&self, dialog: &Dialog, last: Followup) -> Vec<Effect> {
+        let Dialog::Task {
             column,
             task: Some(task),
             title,
@@ -206,7 +189,7 @@ impl AppState {
             subtasks,
             labels,
             ..
-        }) = &self.dialog
+        } = dialog
         else {
             return Vec::new();
         };
@@ -215,11 +198,11 @@ impl AppState {
         };
         let current = found.task();
         let mut out = Vec::new();
-        let typed = subtasks.new.text().trim().to_owned();
-        if !typed.is_empty() {
+        let typed = Some(subtasks.new.text().trim().to_owned()).filter(|t| !t.is_empty());
+        for title in subtasks.drafts.iter().cloned().chain(typed) {
             let body = Body::CreateSubtask(v1::CreateSubtaskRequest {
                 task_id: task.clone(),
-                title: typed,
+                title,
             });
             out.push(request(body, Followup::None));
         }
@@ -260,7 +243,7 @@ impl AppState {
 }
 
 /// The editor on an existing task or subtask, filled in from the workspace.
-fn editor_for(found: &FoundTask<'_>) -> Dialog {
+pub(super) fn editor_for(found: &FoundTask<'_>) -> Dialog {
     let task = found.task();
     Dialog::Task {
         board: found.board.id.clone(),
@@ -275,5 +258,6 @@ fn editor_for(found: &FoundTask<'_>) -> Dialog {
             tags: task.tags().to_vec(),
             input: TextField::default(),
         }),
+        nav: Box::default(),
     }
 }

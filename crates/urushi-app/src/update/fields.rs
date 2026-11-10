@@ -100,7 +100,7 @@ impl AppState {
             Some(Named::Enter) => {
                 if self.field_mut().is_some_and(TextField::newline) {
                     self.after_field_edit();
-                } else if !self.task_editor_enter(fx) {
+                } else if !self.task_editor_enter() {
                     self.submit(fx);
                 }
             }

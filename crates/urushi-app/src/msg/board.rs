@@ -5,9 +5,15 @@
 /// Something done to a card on the board.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BoardMsg {
-    /// Open a task or subtask in the editor (from another task's editor, saving what
-    /// changed there first).
+    /// Open a task or subtask in the editor (from another task's editor, keeping that
+    /// editor, unsaved edits too, for Back).
     OpenTask(String),
+    /// In the task editor: back to the task it was opened from.
+    EditorBack,
+    /// In the task editor, asked whether to discard unsaved edits: no, keep editing.
+    KeepEditing,
+    /// In the task editor, asked whether to discard unsaved edits: yes, close.
+    DiscardEdits,
     /// Take a subtask out of its parent, onto the board in its card's column.
     MakeStandalone(String),
     /// Ask which task to put a task under ("Make subtask of…").

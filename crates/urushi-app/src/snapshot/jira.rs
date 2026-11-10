@@ -1,5 +1,6 @@
 //! The Jira scenarios: a board that follows Jira (`jira-board`), a Jira issue in the
-//! editor (`jira-task`), signing in (`jira-connect`) and choosing a board to import
+//! editor (`jira-task`), one of its subtasks opened from it, under the epic and the
+//! parent in the top bar (`jira-subtask`), signing in (`jira-connect`) and choosing a board to import
 //! (`jira-import`).
 
 use urushi_client::v1;
@@ -8,7 +9,13 @@ use crate::msg::{JiraMsg, Msg};
 use crate::state::AppState;
 
 /// The Jira scenarios.
-pub(super) const SCENARIOS: &[&str] = &["jira-board", "jira-task", "jira-connect", "jira-import"];
+pub(super) const SCENARIOS: &[&str] = &[
+    "jira-board",
+    "jira-task",
+    "jira-subtask",
+    "jira-connect",
+    "jira-import",
+];
 
 const SITE: &str = "https://acme.atlassian.net";
 
@@ -63,20 +70,25 @@ fn board() -> v1::Board {
         "ACME-8",
     );
     invoices.title = "Invoice PDFs".into();
+    let subtask = |key: &str, title: &str, done: bool| {
+        let task = issue(
+            key,
+            (v1::TaskKind::Subtask, if done { "Done" } else { "To Do" }),
+            "",
+            "",
+        );
+        v1::Subtask {
+            id: task.id,
+            title: title.into(),
+            done,
+            kind: task.kind,
+            issue: task.issue,
+            ..Default::default()
+        }
+    };
     invoices.subtasks = vec![
-        v1::Subtask {
-            id: "acme-140".into(),
-            title: "Template".into(),
-            done: true,
-            kind: v1::TaskKind::Subtask.into(),
-            ..Default::default()
-        },
-        v1::Subtask {
-            id: "acme-141".into(),
-            title: "Email them".into(),
-            kind: v1::TaskKind::Subtask.into(),
-            ..Default::default()
-        },
+        subtask("ACME-140", "Template", true),
+        subtask("ACME-141", "Email them", false),
     ];
     let mut keys = issue(
         "ACME-120",
@@ -136,9 +148,14 @@ pub(super) fn show(state: &mut AppState, name: &str) {
     state.update(Msg::BoardReveal(1.0));
     state.update(Msg::SelectBoard("jb".into()));
     match name {
-        "jira-task" => {
+        "jira-task" | "jira-subtask" => {
             state.update(Msg::PressTask("acme-139".into()));
             state.update(Msg::PressEnded);
+            if name == "jira-subtask" {
+                state.update(Msg::Board(crate::msg::BoardMsg::OpenTask(
+                    "acme-141".into(),
+                )));
+            }
         }
         "jira-connect" => {
             state.update(Msg::Jira(JiraMsg::OpenConnect));
