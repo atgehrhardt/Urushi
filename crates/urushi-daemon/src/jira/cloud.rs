@@ -9,12 +9,14 @@
 //!   per-user time zones).
 //! - Changes use the issue endpoints: transitions, edit (labels as add/remove
 //!   operations, so labels Urushi can't show are never touched), create and rank.
+//! - An issue's pull requests come from Jira's development info (`cloud/dev.rs`, ADR
+//!   0033).
 
 use std::sync::Arc;
 
 use serde_json::{Value, json};
 use urushi_core::TaskKind;
-use urushi_core::board::{Person, SyncedIssue};
+use urushi_core::board::{Person, PullRequest, SyncedIssue};
 
 use super::api::{
     BoardConfig, BoardInfo, Fetched, IssueEdit, IssueFields, IssueQuery, JiraApi, JiraError,
@@ -409,9 +411,14 @@ impl JiraApi for CloudJira {
         self.call(account, Method::Post, &path, Some(&body))
             .map(drop)
     }
+
+    fn pull_requests(&self, account: &Account, issue_id: &str) -> JiraResult<Vec<PullRequest>> {
+        self.read_pull_requests(account, issue_id)
+    }
 }
 
 mod details;
+mod dev;
 mod search;
 
 pub use search::jql;

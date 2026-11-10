@@ -14,6 +14,9 @@
 //   apps/ios/icons/AppIcon*.png          iOS: full bleed (iOS rounds the corners)
 //   apps/android/res/mipmap-*/ic_launcher_foreground.png
 //                                        Android adaptive icon: the mark in the safe zone
+//   assets/brands/{jira,github}-48.rgba  Thread cards' Jira and GitHub marks (ADR 0033):
+//                                        white on transparent, raw 48×48 RGBA, tinted
+//                                        by the app. From assets/brands/*.svg.
 
 import AppKit
 import Foundation
@@ -115,4 +118,9 @@ for (density, pixels) in [("mdpi", 108), ("hdpi", 162), ("xhdpi", 216), ("xxhdpi
     writePNG(render(android, viewBox: 108, pixels: pixels),
              "apps/android/res/mipmap-\(density)/ic_launcher_foreground.png")
 }
-print("rendered icons from assets/icon/icon.svg")
+// Brand marks for thread cards: Simple Icons' 24×24 glyphs, white, for the app to tint.
+for brand in ["jira", "github"] {
+    let glyph = "<g fill=\"#ffffff\">\(inner("assets/brands/\(brand).svg"))</g>"
+    writeRGBA(render(glyph, viewBox: 24, pixels: 48), "assets/brands/\(brand)-48.rgba")
+}
+print("rendered icons from assets/icon/icon.svg and assets/brands/")

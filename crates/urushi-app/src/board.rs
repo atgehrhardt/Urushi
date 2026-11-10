@@ -19,6 +19,9 @@ pub const JIRA_SINCE_MINOR: u32 = 12;
 pub const EPIC_CARDS_SINCE_MINOR: u32 = 15;
 /// First protocol minor version that can reorder boards (`MoveBoard`).
 pub const BOARD_ORDER_SINCE_MINOR: u32 = 17;
+/// First protocol minor version that links pull requests to tasks and reads a Jira
+/// issue's from Jira (ADR 0033).
+pub const PR_LINKS_SINCE_MINOR: u32 = 21;
 
 /// How long the panel takes to slide fully in or out, in seconds.
 pub const SLIDE_SECONDS: f32 = 0.18;
@@ -98,7 +101,8 @@ pub fn wanted_thumbnails(
     out
 }
 
-/// The color, tags and kind part of the task editor, kept as drafts and sent with Save.
+/// The color, tags, kind and pull request part of the task editor, kept as drafts and
+/// sent with Save.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TaskLabels {
     /// The chosen color, as a wire `LabelColor` value (0: none).
@@ -109,6 +113,8 @@ pub struct TaskLabels {
     pub tags: Vec<String>,
     /// The "add a tag" field.
     pub input: urushi_ui::TextField,
+    /// The pull request link field (a local board's existing task, ADR 0033).
+    pub pr_url: urushi_ui::TextField,
 }
 
 impl TaskLabels {

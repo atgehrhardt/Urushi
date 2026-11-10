@@ -51,6 +51,8 @@ pub enum Msg {
     // ---- sidebar ---------------------------------------------------------------------
     /// Show a thread.
     SelectThread(String),
+    /// Open a web page (a thread's Jira issue or pull request) in the system browser.
+    OpenUrl(String),
     /// The window became narrow (`true`) or wide.
     SetCompact(bool),
     /// In compact mode, go back to the thread list.

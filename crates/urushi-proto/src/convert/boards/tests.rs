@@ -40,6 +40,7 @@ fn sample() -> Board {
     board
         .add_subtask(TaskId::from_u128(7), step(11, "deeper", ""))
         .unwrap();
+    link_pull_requests(&mut board);
     board
         .update_task(
             sub,
@@ -102,6 +103,20 @@ fn sample() -> Board {
     board
 }
 
+/// Links pull requests to the card (5) and a deep subtask (11).
+fn link_pull_requests(board: &mut Board) {
+    for (task, url) in [
+        (5, "https://github.com/o/r/pull/5"),
+        (11, "https://h/pull/11"),
+    ] {
+        let patch = urushi_core::TaskPatch {
+            pr_url: Some(urushi_core::board::PrUrl::parse(url).ok()),
+            ..Default::default()
+        };
+        board.update_task(TaskId::from_u128(task), &patch).unwrap();
+    }
+}
+
 #[test]
 fn boards_round_trip() {
     let board = sample();
@@ -119,6 +134,17 @@ fn subtasks_carry_every_task_field_at_any_depth() {
     assert_eq!(two.notes, "its notes");
     assert_eq!(two.subtasks[0].title, "deeper");
     assert!(!two.subtasks[0].thread_id.is_empty());
+    assert_eq!(task.pr_url, "https://github.com/o/r/pull/5");
+    assert_eq!(two.subtasks[0].pr_url, "https://h/pull/11");
+    assert!(one.pr_url.is_empty());
+}
+
+#[test]
+fn an_invalid_pull_request_link_reads_as_none() {
+    let mut wire = board_to_proto(&sample());
+    wire.columns[1].tasks[0].pr_url = "http://insecure/pull/1".into();
+    let board = board_from_proto(&wire).unwrap();
+    assert_eq!(board.task(TaskId::from_u128(5)).unwrap().pr_url, None);
 }
 
 #[test]
@@ -248,6 +274,7 @@ fn messages_round_trip_on_the_wire() {
                 tags: vec!["a".into(), "b".into()],
             }),
             kind: Some(v1::TaskKind::Story.into()),
+            pr_url: Some("https://github.com/o/r/pull/1".into()),
         }),
         Body::MoveTask(v1::MoveTaskRequest {
             task_id: "3".into(),
@@ -308,9 +335,18 @@ fn unset_fields_are_told_apart_from_empty_ones() {
         color: None,
         tags: None,
         kind: None,
+        pr_url: None,
     };
     let decoded = v1::UpdateTaskRequest::decode(keep.encode_to_vec().as_slice()).unwrap();
     assert!(decoded.notes.is_none());
+    // An unset pull request link keeps it; an empty one unlinks it.
+    assert!(decoded.pr_url.is_none());
+    let unlink = v1::UpdateTaskRequest {
+        pr_url: Some(String::new()),
+        ..keep.clone()
+    };
+    let decoded = v1::UpdateTaskRequest::decode(unlink.encode_to_vec().as_slice()).unwrap();
+    assert_eq!(decoded.pr_url.as_deref(), Some(""));
     // Unset color and tags keep them; a set "unspecified" color and empty tags clear them.
     assert!(decoded.color.is_none() && decoded.tags.is_none());
     let clear = v1::UpdateTaskRequest {

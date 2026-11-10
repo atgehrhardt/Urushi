@@ -34,7 +34,8 @@ The multiplexer is **invisible infrastructure**. It exists so terminal sessions 
    restore           per-pane restore points: output, directory, agent conversation or running program (ADR 0013)
    attachments       files attached to board tasks, and image thumbnails as raw RGBA (ADR 0016)
    jira              boards that follow Jira Cloud: polling sync (watched boards every 3 s), edits
-                     written through, issues read in full on demand (ADR 0020, 0022, 0023)
+                     written through, issues read in full on demand, pull requests of issues
+                     linked to threads from Jira's development info (ADR 0020, 0022, 0023, 0033)
    http              HTTPS through the system's curl, request on stdin (ADR 0021)
    remote            Tailscale provider (status/whois) + tailnet listener
 ```
@@ -73,7 +74,7 @@ urushi-cli ─► urushi-client
 | **Tab** | A layout tree of panes inside a thread. |
 | **Quick terminal** | At most one per daemon: a layout of panes in **no** thread, shown as a drop-down panel over the workspace (ADR 0031, [quick terminal](features/quick-terminal.md)). Its id is a tab id, so the tab layout requests act on it; it ends when its last pane closes. |
 | **Layout** | An n-ary tree. Leaves are panes. Splits have an axis and child ratios that sum to 1. |
-| **Board** | A kanban board of **tasks** in columns (To do, In progress, Done). A task's **subtasks** are tasks nested inside it (ADR 0015), a task can have a kind (task, story, bug, epic) and files attached (kept by the daemon, ADR 0016), and any task can name the thread started for it (ADR 0012). A board can follow a Jira board (`Board.source`): Jira is then its source of truth, and changes are written to Jira first (ADR 0020); its epics are cards too (ADR 0027). Only organization: it never touches git or terminals. |
+| **Board** | A kanban board of **tasks** in columns (To do, In progress, Done). A task's **subtasks** are tasks nested inside it (ADR 0015), a task can have a kind (task, story, bug, epic) and files attached (kept by the daemon, ADR 0016), and any task can name the thread started for it (ADR 0012) and, on a local board, its pull request (ADR 0033). A board can follow a Jira board (`Board.source`): Jira is then its source of truth, and changes are written to Jira first (ADR 0020); its epics are cards too (ADR 0027). Only organization: it never touches git or terminals. |
 | **Pane** | One terminal session. Its shell starts in the thread's worktree (a quick-terminal pane: the home directory, without the thread variables), with `URUSHI_THREAD_ID`, `URUSHI_PANE_ID`, `URUSHI_WORKTREE`, `URUSHI_TTY` (its terminal device), the agent hook settings, `URUSHI_HOME` and the `urushi` CLI's directory first on `PATH` (ADR 0024) in its environment; values the daemon inherited from a pane it was started in are cleared first (`service/spawn.rs`). A pane whose agent finished or waits for the user carries **attention**, kept in the daemon's memory ([agent attention](features/agent-attention.md)). A tab opened for an agent (Claude, Codex, Cursor) is the same, with the agent's command typed into the shell. |
 
 The pure model lives in `urushi-core`. The daemon persists it and applies changes.

@@ -82,6 +82,12 @@ moves at once and goes back if Jira refuses.
   Bitbucket integration then lists the branch, its commits and its pull requests on the
   issue; Urushi itself doesn't talk to the code host. Any number of threads, branches
   and pull requests can name one issue.
+- **Pull requests back on the thread** (ADR 0033, 1.21 daemons): while a thread is
+  linked to an issue, the daemon reads the issue's GitHub pull requests from Jira's
+  development info. The thread's card then shows GitHub's mark, which opens the open
+  one (else the newest), beside Jira's mark for the issue
+  ([thread organization](thread-organization.md)). `urushi board show` lists them with
+  their status.
 - **Left to Jira:** deleting issues, moving them between projects, changing columns and
   renaming the board. The editor has no Delete; the card menu offers **Open in Jira**
   instead. A description too long to show whole is read-only, and fields Urushi has no
@@ -173,6 +179,19 @@ moves at once and goes back if Jira refuses.
   (the quick filters, or the issues they let through), `urushi board sync <board>`,
   `board add|edit --kind`; `board ls` shows keys, kinds, epics, assignees and sync state.
 
+- **Pull requests** (ADR 0033): `JiraApi::pull_requests(account, issue_id)`
+  (`jira/cloud/dev.rs`) asks `/rest/dev-status/latest/issue/summary` and, only when it
+  names GitHub hosts with pull requests (`parse/dev.rs::github_instance_types`), each
+  one's `…/issue/detail?dataType=pullrequest`. `parse/dev.rs::pull_requests` keeps
+  `https://` ones, newest first, each once, at most `MAX_PULL_REQUESTS`. A 403 or 404
+  reads as none. `service/jira_dev.rs` reads issues whose task is linked to a thread
+  (`Board::linked_issue_ids`): one just linked at once, then every `PR_ACTIVE_INTERVAL`
+  (60 s) with a client subscribed, else every `PR_IDLE_INTERVAL` (10 min), at most
+  `PR_PER_ROUND` per round, backing off on errors without touching `sync.error`. It
+  stores through `Board::set_pull_requests` with `mutate_if_changed`, and clears the
+  pull requests of issues no longer linked. `sync.rs::refresh` carries an issue's
+  `pull_requests` over, since searches never return them.
+
 ## Invariants
 - The API token never leaves the daemon: not in settings, the workspace, its document, logs
   or `Debug` output; its file is 0600
@@ -186,14 +205,20 @@ moves at once and goes back if Jira refuses.
   (`tests/jira_boards.rs::epics_are_cards_and_can_be_created`).
 - A change Jira refuses changes nothing here
   (`tests/jira_boards.rs::moves_and_new_cards_take_jiras_transitions`, `what_jira_owns_is_refused`).
-- Jira-owned changes are refused on Jira boards whoever asks
-  (`board/sync/tests.rs::changes_jira_owns_are_refused_and_change_nothing`).
+- Jira-owned changes are refused on Jira boards whoever asks, a typed pull request link
+  included (`board/sync/tests.rs::changes_jira_owns_are_refused_and_change_nothing`).
+- Only issues linked to a thread are asked about, and a failing read never marks the
+  board as failing (`tests/jira_pull_requests.rs`).
 
 ## Tests
 - Core: `board/sync/tests.rs`, `board/kind.rs`, `tests/jira_sync_props.rs`,
   `naming.rs` (`issue_keys_are_jiras_shape`,
   `issue_branches_start_with_the_key_as_jira_writes_it`), `board/prompt.rs`.
 - Daemon: `tests/jira_boards.rs::threads_for_issues_get_branches_named_after_them`.
+- Pull requests: `board/sync/tests.rs::pull_requests_are_read_for_linked_issues_and_kept_by_syncs`,
+  `jira/parse/dev.rs` and `jira/cloud/dev.rs` tests (which hosts, newest first, one
+  request without pull requests, 403/404), `tests/jira_pull_requests.rs` (a linked
+  issue gets them until its thread goes, a failing read leaves the board alone).
 - App: `update/tests/jira.rs::a_thread_for_an_issue_suggests_a_branch_led_by_its_key`.
 - Proto: `convert/boards/jira/tests.rs` (round trips, wire messages, issue addresses).
 - Daemon: `http/tests.rs` (config quoting, uploads and redirects, a fake and the real
@@ -228,6 +253,9 @@ moves at once and goes back if Jira refuses.
   text and are written back as text when edited. Jira attachments don't show as
   thumbnails on cards.
 - Opening an issue takes several requests (about a second) before its fields show.
+- Pull requests come from Jira's undocumented dev-status endpoints (what its Development
+  panel reads); a change there shows as no pull requests. They take up to a minute to
+  appear, and only GitHub ones are read (ADR 0033).
 - Issues whose status no column shows, and done issues older than 14 days, aren't on the
   board; a board shows at most 500 tasks, epics included. A board whose filter leaves
   epics out can't show a new epic ("Jira made KEY, but this board doesn't show it").

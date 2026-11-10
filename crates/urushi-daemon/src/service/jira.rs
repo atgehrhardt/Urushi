@@ -27,6 +27,8 @@ pub(crate) struct JiraLink {
     pub(super) kinds: Mutex<HashMap<String, HashMap<String, crate::jira::details::FieldKind>>>,
     /// How many connections watch each board (`WatchBoard`).
     pub(super) watched: Arc<Mutex<HashMap<BoardId, usize>>>,
+    /// Reading linked issues' pull requests (ADR 0033).
+    pub(super) dev: Mutex<super::jira_dev::DevReads>,
 }
 
 /// Who the daemon is signed in to Jira as (never the token).
@@ -53,6 +55,7 @@ impl JiraLink {
             boards: Mutex::new(HashMap::new()),
             kinds: Mutex::new(HashMap::new()),
             watched: Arc::default(),
+            dev: Mutex::default(),
         }
     }
 

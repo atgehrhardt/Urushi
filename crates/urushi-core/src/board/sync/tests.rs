@@ -1,7 +1,7 @@
 //! Merging Jira snapshots into a board, and what a Jira board refuses.
 
 use super::*;
-use crate::board::{LabelColor, TaskKind, TaskPatch};
+use crate::board::{LabelColor, PrStatus, PrUrl, PullRequest, TaskKind, TaskPatch};
 use crate::{ThreadId, Timestamp};
 
 const TODO: &str = "1";
@@ -326,6 +326,13 @@ fn changes_jira_owns_are_refused_and_change_nothing() {
             ..TaskPatch::default()
         }
     )));
+    assert!(follows(b.update_task(
+        one,
+        &TaskPatch {
+            pr_url: Some(PrUrl::parse("https://h/pull/1").ok()),
+            ..TaskPatch::default()
+        }
+    )));
     assert_eq!(b, before);
 }
 
@@ -368,4 +375,58 @@ fn a_jira_move_shows_at_once_and_can_be_put_back() {
     )
     .unwrap();
     assert!(own.show_jira_move(card, ColumnId::from_u128(3), 0).is_err());
+}
+
+#[test]
+fn pull_requests_are_read_for_linked_issues_and_kept_by_syncs() {
+    let mut b = jira_board();
+    b.merge_issues(
+        vec![
+            issue(1, TODO, "0|a"),
+            issue(2, TODO, "0|b"),
+            subtask(3, 2, TODO),
+        ],
+        true,
+        ids(),
+    );
+    assert!(b.linked_issue_ids().is_empty());
+    let sub = b.task_for_issue("ACME-3").unwrap().id;
+    b.link_thread(sub, ThreadId::from_u128(9)).unwrap();
+    assert_eq!(b.linked_issue_ids(), ["10003"]);
+
+    let pr = PullRequest::new(
+        PrUrl::parse("https://github.com/o/r/pull/7").unwrap(),
+        "ACME-3 fix",
+        PrStatus::Open,
+    );
+    assert!(b.set_pull_requests("10003", vec![pr.clone()]));
+    assert!(
+        !b.set_pull_requests("10003", vec![pr.clone()]),
+        "same again"
+    );
+    assert!(
+        !b.set_pull_requests("99999", vec![pr.clone()]),
+        "not on the board"
+    );
+
+    // A sync rewrites the issue from Jira's fields but keeps what dev info said.
+    let mut renamed = subtask(3, 2, DOING);
+    renamed.title = "Renamed".into();
+    let report = b.merge_issues(vec![issue(2, TODO, "0|b"), renamed], false, ids());
+    assert!(report.changed);
+    let issue = b.task_for_issue("ACME-3").unwrap().issue.as_ref().unwrap();
+    assert_eq!(issue.pull_requests, [pr]);
+
+    let many = (0..20)
+        .map(|n| {
+            PullRequest::new(
+                PrUrl::parse(&format!("https://h/pull/{n}")).unwrap(),
+                "",
+                PrStatus::Merged,
+            )
+        })
+        .collect();
+    assert!(b.set_pull_requests("10003", many));
+    let issue = b.task_for_issue("ACME-3").unwrap().issue.as_ref().unwrap();
+    assert_eq!(issue.pull_requests.len(), crate::board::MAX_PULL_REQUESTS);
 }

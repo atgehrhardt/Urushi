@@ -313,12 +313,18 @@ impl AppState {
             // Jira owns an issue's type.
             kind: (labels.kind != current.kind() && current.issue().is_none())
                 .then_some(labels.kind),
+            // Jira names an issue's pull requests (ADR 0033).
+            pr_url: (self.daemon_supports_pr_links()
+                && current.issue().is_none()
+                && labels.pr_url.text().trim() != current.pr_url())
+            .then(|| labels.pr_url.text().trim().to_owned()),
         };
         if update.title.is_some()
             || update.notes.is_some()
             || update.color.is_some()
             || update.tags.is_some()
             || update.kind.is_some()
+            || update.pr_url.is_some()
         {
             out.push(request(Body::UpdateTask(update), last));
         }
@@ -341,6 +347,7 @@ pub(super) fn editor_for(found: &FoundTask<'_>) -> Dialog {
             kind: task.kind(),
             tags: task.tags().to_vec(),
             input: TextField::default(),
+            pr_url: TextField::new(task.pr_url().to_owned()),
         }),
         nav: Box::default(),
         issue: Box::default(),

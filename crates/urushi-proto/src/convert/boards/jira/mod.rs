@@ -7,7 +7,7 @@ use urushi_core::board::{
     TaskKind,
 };
 
-use super::{color_from_proto, color_to_proto};
+use super::{color_from_proto, color_to_proto, pull_request_to_proto, pull_requests_from_proto};
 use crate::convert::{millis_from_proto, millis_to_proto};
 use crate::v1;
 
@@ -157,6 +157,7 @@ pub fn issue_to_proto(i: &Issue, site: Option<&str>) -> v1::JiraIssue {
         components: i.components.iter().map(named_to_proto).collect(),
         fix_versions: i.fix_versions.iter().map(named_to_proto).collect(),
         links: i.links,
+        pull_requests: i.pull_requests.iter().map(pull_request_to_proto).collect(),
     }
 }
 
@@ -204,6 +205,7 @@ pub fn issue_from_proto(i: &v1::JiraIssue) -> Issue {
         components: i.components.iter().map(named_from_proto).collect(),
         fix_versions: i.fix_versions.iter().map(named_from_proto).collect(),
         links: i.links,
+        pull_requests: pull_requests_from_proto(&i.pull_requests),
     }
 }
 

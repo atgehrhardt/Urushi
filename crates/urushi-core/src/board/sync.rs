@@ -263,10 +263,12 @@ fn blank(id: TaskId, created_at: Timestamp) -> Task {
         thread: None,
         kind: None,
         issue: None,
+        pr_url: None,
     }
 }
 
-/// `task` with Jira's fields from `synced`; its id, link and color are kept.
+/// `task` with Jira's fields from `synced`; its id, link and color are kept, and so
+/// are its issue's pull requests, which a search never reads (ADR 0033).
 fn refresh(mut task: Task, synced: SyncedIssue) -> Task {
     let title = clip(
         &synced
@@ -283,6 +285,9 @@ fn refresh(mut task: Task, synced: SyncedIssue) -> Task {
     };
     let notes = synced.notes.trim_end();
     let mut issue = synced.issue;
+    if let Some(old) = task.issue.take() {
+        issue.pull_requests = old.pull_requests;
+    }
     issue.notes_editable = notes.chars().count() <= MAX_NOTES;
     task.notes = clip(notes, MAX_NOTES);
     task.tags = labels(&synced.labels);

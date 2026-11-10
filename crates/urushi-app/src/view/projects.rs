@@ -229,11 +229,14 @@ fn group(
     project: Option<&str>,
     threads: &[&v1::Thread],
 ) -> Vec<Node<Msg>> {
+    // Each thread's Jira issue and pull request (ADR 0033), read in one pass.
+    let links = state.workspace.thread_links();
+    let thread_card = |t: &v1::Thread| thread_card(state, theme, t, links.get(&t.id));
     let mut out: Vec<Node<Msg>> = threads
         .iter()
         .filter(|t| t.project_base)
         .chain(threads.iter().filter(|t| t.pinned && !t.project_base))
-        .map(|t| thread_card(state, theme, t))
+        .map(|t| thread_card(t))
         .collect();
     let rest: Vec<&v1::Thread> = threads
         .iter()
@@ -280,13 +283,13 @@ fn group(
                 .child(count(theme, members.len())),
         );
         if !collapsed {
-            out.extend(members.iter().map(|t| thread_card(state, theme, t)));
+            out.extend(members.iter().map(|t| thread_card(t)));
         }
     }
     out.extend(
         rest.iter()
             .filter(|t| t.status.is_empty())
-            .map(|t| thread_card(state, theme, t)),
+            .map(|t| thread_card(t)),
     );
     out
 }

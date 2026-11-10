@@ -90,7 +90,7 @@ impl Drop for BoardWatch {
 }
 
 /// When to try again after `error`, the `failures`-th in a row.
-fn backoff(error: &JiraError, failures: u32) -> Duration {
+pub(super) fn backoff(error: &JiraError, failures: u32) -> Duration {
     let doubled = |base: u64, max: u64| {
         Duration::from_secs(base.saturating_mul(1 << failures.min(10)).min(max))
     };
