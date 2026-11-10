@@ -141,6 +141,10 @@ pub enum Field {
     LookColor(u8),
     /// Settings: the user's own task message.
     TaskMessage,
+    /// Quick filter: its name.
+    QuickFilterName,
+    /// Quick filter (Jira board): its JQL.
+    QuickFilterJql,
 }
 
 /// An editing command on the focused text field, from a shortcut or its context menu.
@@ -344,6 +348,17 @@ pub enum Dialog {
         boards: Option<Vec<v1::JiraBoardInfo>>,
         /// Why listing or importing failed.
         error: Option<String>,
+    },
+    /// Save what is chosen on the board as a quick filter, or change one (ADR 0033).
+    QuickFilter(Box<crate::filter::editor::QuickFilterEditor>),
+    /// Confirm deleting a quick filter.
+    DeleteQuickFilter {
+        /// Board id.
+        board: String,
+        /// The filter.
+        filter: crate::filter::quick::QuickRef,
+        /// Its name, for the heading.
+        name: String,
     },
     /// Confirm deleting a board and its tasks.
     DeleteBoard {
@@ -610,6 +625,11 @@ impl AppState {
     /// Whether the daemon can reorder projects (protocol 1.11).
     pub fn daemon_supports_project_order(&self) -> bool {
         self.daemon_minor >= crate::organize::PROJECT_ORDER_SINCE_MINOR
+    }
+
+    /// Whether the daemon keeps quick filters and writes them to Jira (protocol 1.21).
+    pub fn daemon_supports_quick_filters(&self) -> bool {
+        self.daemon_minor >= urushi_client::QUICK_FILTERS_SINCE_MINOR
     }
 
     /// Whether the daemon can reorder boards (protocol 1.17).

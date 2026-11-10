@@ -402,6 +402,7 @@ mod pointer;
 mod project_order;
 mod project_settings;
 mod quick;
+mod quick_filters;
 mod setup;
 mod sidebar;
 mod subtask_drafts;

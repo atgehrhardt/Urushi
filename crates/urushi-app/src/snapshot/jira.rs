@@ -134,10 +134,12 @@ fn board() -> v1::Board {
                 v1::JiraQuickFilter {
                     id: 1,
                     name: "Bugs".into(),
+                    jql: "type = Bug".into(),
                 },
                 v1::JiraQuickFilter {
                     id: 2,
                     name: "Blocked".into(),
+                    jql: "status = Blocked".into(),
                 },
             ],
             ..Default::default()

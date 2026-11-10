@@ -145,7 +145,7 @@ impl CloudJira {
         limit: usize,
     ) -> JiraResult<Vec<IssueRef>> {
         let query = query.trim();
-        let quoted = query.replace('\\', "\\\\").replace('"', "\\\"");
+        let quoted = urushi_core::board::jql::escape(query);
         let mut jql = format!("project = \"{}\"", project.replace('"', ""));
         if !query.is_empty() {
             let looks_like_key = query.contains('-')

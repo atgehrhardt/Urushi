@@ -1,8 +1,8 @@
 # Feature: Jira boards
 
-- **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits, issues in full, epics as cards)
-- **Owners (crates):** `urushi-core` (`board/{jira,sync,kind}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `time.rs`, `jira/{api,cloud,cloud/details,parse,parse/details,details,adf,credentials}.rs`, `service/{jira,jira_write,jira_query,jira_details,jira_edit}.rs`, `server/{jira,jira_issue}.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `jira_issue.proto`, `convert/boards/jira/`), `urushi-client` (`jira.rs`, `jira_issue.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`filter.rs`, `issue.rs`, `update/{jira,filter,issue}.rs`, `msg/{jira,filter,issue}.rs`, `view/jira.rs`, `view/board/{jira,filter}.rs`, `view/tasks/{jira,header}.rs`, `view/tasks/issue/`, `view/menu/{jira,filter}.rs`, `snapshot/{jira,jira_issue}.rs`), `urushi-cli` (`urushi jira`, `urushi board sync`)
-- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0027](../adr/0027-epics-are-cards-on-jira-boards.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits, issues in full, epics as cards, quick filters made here)
+- **Owners (crates):** `urushi-core` (`board/{jira,sync,kind,quick,jql}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `time.rs`, `jira/{api,cloud,cloud/details,cloud/quick_filters,parse,parse/details,details,adf,credentials}.rs`, `service/{jira,jira_write,jira_query,jira_details,jira_edit,quick_filters}.rs`, `server/{jira,jira_issue,quick_filters}.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `jira_issue.proto`, `convert/boards/jira/`), `urushi-client` (`jira.rs`, `jira_issue.rs`, `quick_filters.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`filter.rs`, `filter/{quick,jql,editor}.rs`, `issue.rs`, `update/{jira,filter,issue,quick_filter}.rs`, `msg/{jira,filter,issue}.rs`, `view/jira.rs`, `view/board/{jira,filter,quick_filter}.rs`, `view/tasks/{jira,header}.rs`, `view/tasks/issue/`, `view/menu/{jira,filter,quick_filter}.rs`, `snapshot/{jira,jira_issue,quick_filters}.rs`), `urushi-cli` (`urushi jira`, `urushi board sync`, `urushi board quick`)
+- **Related ADRs:** [0033](../adr/0033-quick-filters-written-to-jira-or-kept-here.md), [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0027](../adr/0027-epics-are-cards-on-jira-boards.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 Any Jira Cloud board can be imported into the Tasks panel. It keeps Jira's columns and stays
@@ -40,6 +40,16 @@ moves at once and goes back if Jira refuses.
   whenever the board changes while one is on); everything else is filtered here.
   Columns count "shown/all". On a phone the bar is the search and **Filters ▾**.
   Boards of Urushi's own get the search, type and label.
+- **Making quick filters** (ADR 0033, 1.21 daemons): **Save filter…** in the bar (or
+  **Save as quick filter…** in **Filters ▾**) saves what is chosen. The dialog asks for a
+  name and shows the JQL built from the selection (people, fields, "Only my issues",
+  "Recently updated", the search, and quick filters that are on), which can be changed.
+  **Save** checks the JQL with Jira, then makes the quick filter on the board in Jira, so
+  it shows there too. The board then shows just that filter, on. Right-click any quick
+  filter chip, Jira's own included, for **Edit…** (name and JQL) and **Delete…**, which
+  asks first and deletes it in Jira. If Jira won't take a new one (the account isn't a
+  board admin, or Jira's endpoint for it changed), Urushi keeps it on the board, Jira
+  still evaluates its JQL, and the banner says why.
 - **Everything a Jira issue has, in its editor** (ADR 0022): opening an issue reads it
   in full. On the right: its key with **Watch**/**Watching (n)** and **Open in Jira**,
   **Status** (the transitions it can take, made at once), then every field Jira lets the
@@ -132,6 +142,19 @@ moves at once and goes back if Jira refuses.
   `create` with the project's issue type for the kind, `rank`), then `issue` read back and
   merged. Only the color changes locally, and a move shows first
   (`Board::show_jira_move`, undone with `undo_jira_move` if Jira refuses).
+- **Daemon, quick filters** (ADR 0033, `service/quick_filters.rs`): `create_quick_filter`
+  on a Jira board needs JQL (`BoardError::WrongQuickRule` otherwise). It checks the JQL
+  with a one-issue `issue_ids` search (Jira's `Rejected` becomes `Invalid`), then calls
+  `JiraApi::create_quick_filter`, all under the board's lock. Writes go through
+  `jira/cloud/quick_filters.rs` to the board-settings endpoint
+  (`POST|PUT|DELETE /rest/greenhopper/1.0/quickfilters/{board}[/{id}]`, with `name`,
+  `query` and `description`). Afterwards `JiraApi::quick_filters` (the agile API) is read
+  back into `JiraBoard.quick_filters` and the cached `BoardSync.config`, so syncs keep
+  it. On `NotFound`, `Forbidden` or `Rejected` the filter goes into `Board.quick_filters`
+  as `QuickRule::Jql` and `QuickFilterSaved.kept_here` says why. Other errors are
+  returned. Edits and deletes of Jira's own filters go to Jira the same way, with no
+  fallback. `query_jira_filter` also takes the board's own JQL filters
+  (`kept_quick_filter_ids`).
 - **Daemon, one issue in full** (ADR 0022): `JiraApi::details` (`jira/cloud/details.rs`:
   edit metadata, the values of those fields plus attachments, links and time tracking,
   the board's open sprints, comments, watchers, work log, transitions, link kinds)
@@ -146,6 +169,10 @@ moves at once and goes back if Jira refuses.
   `jira/adf/` converts ADF ⇄ Markdown both ways.
 - **Sign-in** (`jira/credentials.rs`): `site_address` normalizes the site (https only);
   `CredentialStore` keeps it in `<home>/jira-credentials.json` (0600).
+- **Wire (1.21):** `CreateQuickFilter` → `QuickFilterSaved`, `UpdateQuickFilter`,
+  `DeleteQuickFilter` (`QuickFilterRef`: Jira's id or a kept one's), `Board.quick_filters`,
+  `JiraQuickFilter.jql`, `QueryJiraFilter.kept_quick_filter_ids`
+  (`daemon_supports_quick_filters()`, `QUICK_FILTERS_SINCE_MINOR = 21`).
 - **Wire (1.15):** no new fields: epic issues arrive as cards, and `CreateTask.kind =
   EPIC` is accepted on Jira boards (the app checks `daemon_supports_epic_cards()`,
   `EPIC_CARDS_SINCE_MINOR = 15`, before offering it).
@@ -162,7 +189,13 @@ moves at once and goes back if Jira refuses.
   the window's own), `update/filter.rs` (`FilterMsg`, the search as `Field::BoardSearch`
   outside any dialog, quick-filter queries with `BoardPanel.{quick_asking,
   quick_stale}`), `view/board/filter.rs` (the bar), `view/menu/filter.rs` (the menu, a
-  `MenuPage::Filter(Dim)` page per field, scrolling past ten values).
+  `MenuPage::Filter(Dim)` page per field, scrolling past ten values). Quick filters:
+  `filter/jql.rs` (`selection_jql`: each dimension one `x in (…)` clause, values quoted
+  with `urushi_core::board::jql`), `filter/quick.rs` (`QuickRef`), `filter/editor.rs`
+  (`QuickFilterEditor` in `Dialog::QuickFilter`), `update/quick_filter.rs` (open, submit,
+  answers, `Dialog::DeleteQuickFilter`), `view/board/quick_filter.rs`, and a chip's
+  `MenuTarget::QuickFilter` (`view/menu/quick_filter.rs`). Kept JQL filters on
+  (`BoardFilter.saved`) join the `QueryJiraFilter` request.
   `AppState.jira` (asked with `GetJiraAccount` on connect and when Settings
   opens), `Dialog::{ConnectJira, ImportJira}` (their errors show in the dialog, not the
   banner; `update/jira.rs::jira_failed`),
@@ -170,7 +203,9 @@ moves at once and goes back if Jira refuses.
   `daemon_supports_jira()` (`JIRA_SINCE_MINOR = 12`).
 - **CLI:** `urushi jira connect --site --email` (token from `URUSHI_JIRA_TOKEN` or stdin),
   `jira status|disconnect|boards [query]|import <id>`, `jira quick <board> [ids…]`
-  (the quick filters, or the issues they let through), `urushi board sync <board>`,
+  (the quick filters, or the issues they let through), `board quick
+  ls|add|edit|rm` (`add <board> <name> --jql …`; prints whether it went to Jira or was
+  kept here), `urushi board sync <board>`,
   `board add|edit --kind`; `board ls` shows keys, kinds, epics, assignees and sync state.
 
 ## Invariants
@@ -186,6 +221,9 @@ moves at once and goes back if Jira refuses.
   (`tests/jira_boards.rs::epics_are_cards_and_can_be_created`).
 - A change Jira refuses changes nothing here
   (`tests/jira_boards.rs::moves_and_new_cards_take_jiras_transitions`, `what_jira_owns_is_refused`).
+- A quick filter Jira refuses changes nothing in Jira; one with JQL Jira can't read is
+  never written or kept; one Jira wouldn't take is kept and survives syncs; a Jira write
+  survives the next full sync (`tests/quick_filters.rs`).
 - Jira-owned changes are refused on Jira boards whoever asks
   (`board/sync/tests.rs::changes_jira_owns_are_refused_and_change_nothing`).
 
@@ -193,8 +231,15 @@ moves at once and goes back if Jira refuses.
 - Core: `board/sync/tests.rs`, `board/kind.rs`, `tests/jira_sync_props.rs`,
   `naming.rs` (`issue_keys_are_jiras_shape`,
   `issue_branches_start_with_the_key_as_jira_writes_it`), `board/prompt.rs`.
-- Daemon: `tests/jira_boards.rs::threads_for_issues_get_branches_named_after_them`.
-- App: `update/tests/jira.rs::a_thread_for_an_issue_suggests_a_branch_led_by_its_key`.
+- Daemon: `tests/jira_boards.rs::threads_for_issues_get_branches_named_after_them`;
+  `tests/quick_filters.rs` (made, changed and deleted in Jira; JQL checked first; kept
+  here when Jira refuses, evaluated by Jira, through syncs; errors with no fallback);
+  `jira/cloud/quick_filters.rs` (the requests sent and refusals).
+- Core: `board/quick/tests.rs`, `tests/quick_filter_props.rs`, `board/jql.rs`.
+- App: `update/tests/jira.rs::a_thread_for_an_issue_suggests_a_branch_led_by_its_key`;
+  `update/tests/quick_filters.rs` (saving JQL, Jira's refusal in the banner, errors in
+  the dialog, a chip's Edit and Delete, older daemons), `filter/jql.rs` (every
+  dimension, quoting), and the `quick-filter-save` and `quick-filter-menu` snapshots.
 - Proto: `convert/boards/jira/tests.rs` (round trips, wire messages, issue addresses).
 - Daemon: `http/tests.rs` (config quoting, uploads and redirects, a fake and the real
   curl), `jira/cloud/tests.rs` (requests, status mapping, paging, opening an issue,
@@ -236,3 +281,8 @@ moves at once and goes back if Jira refuses.
 - The sign-in is a file, not the OS keychain (ADR 0021). Claude's usage request still makes
   its own curl call instead of going through `HttpClient`.
 - Opening Jira pages isn't wired to the mobile apps yet.
+- Quick filters are written through an endpoint Jira doesn't document (ADR 0033): only
+  board admins can write them, and if Atlassian changes the endpoint, new filters are
+  kept here instead (edits and deletes fail with Jira's message). A filter kept here
+  isn't moved to Jira later. Phones have no right-click, so they can't edit or delete
+  quick filters yet.

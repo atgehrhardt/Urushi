@@ -17,6 +17,37 @@ message Board {
   // The epics its issues belong to, by key. Since 1.12; since 1.15 also every
   // epic shown as a card (ADR 0027).
   repeated Epic epics = 6;
+  // Quick filters Urushi keeps for the board (ADR 0033): on a board of Urushi's own,
+  // all of them; on a Jira board, only those Jira wouldn't take (its own are in
+  // jira.quick_filters). Since 1.21.
+  repeated QuickFilter quick_filters = 7;
+}
+
+// A named filter shown as a chip above a board, which turns on and off. Since 1.21.
+message QuickFilter {
+  string id = 1;
+  string name = 2;
+  QuickFilterRule rule = 3;
+}
+
+// What a quick filter lets through. On a Jira board, `jql` (Jira evaluates it with
+// QueryJiraFilter); on a board of Urushi's own, tasks passing every criterion given:
+// `search` in the title or notes (ignoring case), one of `kinds`, one of `tags`
+// (ignoring case). Clients evaluate those themselves. Since 1.21.
+message QuickFilterRule {
+  string search = 1;
+  repeated TaskKind kinds = 2;
+  repeated string tags = 3;
+  string jql = 4;
+}
+
+// One quick filter of a board: a Jira board's own, by Jira's id, or one Urushi keeps.
+// Since 1.21.
+message QuickFilterRef {
+  oneof filter {
+    uint64 jira_id = 1;
+    string id = 2;
+  }
 }
 
 // The Jira board a board follows. Since 1.12.
@@ -47,6 +78,8 @@ message JiraBoardSource {
 message JiraQuickFilter {
   uint64 id = 1;
   string name = 2;
+  // Its JQL. Since 1.21.
+  string jql = 3;
 }
 
 // Something Jira names and identifies: a sprint, a component, a version. Since 1.13.

@@ -69,6 +69,10 @@ pub(super) fn view(
             (title, notes, subtasks, labels),
             issue,
         ),
+        Dialog::QuickFilter(e) => super::board::quick_filter::editor(state, theme, e),
+        Dialog::DeleteQuickFilter { filter, name, .. } => {
+            super::board::quick_filter::delete(theme, name, filter)
+        }
         Dialog::DeleteBoard { board, name, tasks } => {
             let jira = state
                 .workspace

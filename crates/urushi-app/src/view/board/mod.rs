@@ -33,6 +33,7 @@ mod column;
 mod dialogs;
 mod filter;
 pub(in crate::view) mod jira;
+pub(in crate::view) mod quick_filter;
 mod tabs;
 
 pub(in crate::view) use card::drag_ghost;

@@ -455,6 +455,7 @@ impl AppState {
                 return;
             }
             Err(message) if self.jira_failed(&followup, &message) => return,
+            Err(message) if self.quick_filter_failed(&followup, &message) => return,
             Err(message) => {
                 if let Followup::Attached(pane) = &followup {
                     self.attaching.remove(pane);
@@ -595,6 +596,7 @@ impl AppState {
             }
             Some(Dialog::Task { .. }) => self.submit_task(fx),
             Some(Dialog::ConnectJira { .. } | Dialog::ImportJira { .. }) => self.submit_jira(fx),
+            Some(Dialog::QuickFilter(_)) => self.submit_quick_filter(fx),
             Some(Dialog::NewTab { highlighted }) => {
                 let choices = self.launch_choices();
                 let choice = choices[(*highlighted).min(choices.len() - 1)];
@@ -726,6 +728,7 @@ mod panes;
 mod pointer;
 mod project_settings;
 mod quick;
+mod quick_filter;
 mod setup;
 mod sidebar;
 mod subtask_drafts;

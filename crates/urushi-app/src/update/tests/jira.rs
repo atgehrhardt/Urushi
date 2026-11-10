@@ -290,7 +290,7 @@ fn quick_filters_ask_jira_and_ask_again_when_the_board_changes() {
     let fx = s.update(Msg::Filter(FilterMsg::Quick(4)));
     assert!(matches!(
         &fx[..],
-        [Effect::Request { body: Body::QueryJiraFilter(v1::QueryJiraFilterRequest { board_id, quick_filter_ids }), followup: Followup::QuickFilter(b) }]
+        [Effect::Request { body: Body::QueryJiraFilter(v1::QueryJiraFilterRequest { board_id, quick_filter_ids, .. }), followup: Followup::QuickFilter(b) }]
             if board_id == "jb" && quick_filter_ids == &[4] && b == "jb"
     ));
     // The board changes before Jira answers: asked again once the answer comes.

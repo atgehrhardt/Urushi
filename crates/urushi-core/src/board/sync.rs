@@ -52,6 +52,7 @@ impl Board {
             columns: Vec::new(),
             source: Some(BoardSource::Jira(jira)),
             epics: Vec::new(),
+            quick_filters: Vec::new(),
         };
         board.set_jira_columns(columns, new_column_id)?;
         Ok(board)

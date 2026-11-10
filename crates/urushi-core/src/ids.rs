@@ -101,6 +101,10 @@ define_id!(
     /// Identifies a file attached to a task ([`crate::board::Attachment`]).
     AttachmentId
 );
+define_id!(
+    /// Identifies a quick filter a board keeps ([`crate::board::QuickFilter`]).
+    QuickFilterId
+);
 
 #[cfg(test)]
 mod tests {

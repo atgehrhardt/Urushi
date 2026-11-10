@@ -40,7 +40,8 @@ pub fn scene(
 /// usage in the `status` bar (and its pane's context menu in `pane-menu`), the same with
 /// the sidebar hidden (`sidebar-collapsed`), the quick terminal dropped down over it
 /// (`quick-terminal`, `snapshot/quick.rs`), the first-run `setup` wizard (its mode
-/// step in `setup-mode`), the Jira screens (`snapshot/jira.rs`), and a project's
+/// step in `setup-mode`), the Jira screens (`snapshot/jira.rs`), quick filters
+/// (`snapshot/quick_filters.rs`), and a project's
 /// parent branch (`snapshot/project_base.rs`).
 pub const SCENARIOS: &[&str] = &[
     "launcher",
@@ -85,6 +86,9 @@ pub const SCENARIOS: &[&str] = &[
     "jira-new-epic",
     "jira-connect",
     "jira-import",
+    "board-quick-filters",
+    "quick-filter-save",
+    "quick-filter-menu",
     "project-base-thread",
     "project-settings",
 ];
@@ -409,6 +413,7 @@ fn scenario_frame(
         }
         "quick-terminal" => quick::show(&mut state),
         name if jira::SCENARIOS.contains(&name) => jira::show(&mut state, name),
+        name if quick_filters::SCENARIOS.contains(&name) => quick_filters::show(&mut state, name),
         name if project_base::SCENARIOS.contains(&name) => project_base::show(&mut state, name),
         name if BOARD_SCENARIOS.contains(&name) || name == "status" || name == "pane-menu" => {
             show_board_or_usage(&mut state, name);
@@ -588,6 +593,7 @@ mod jira;
 mod jira_issue;
 mod project_base;
 mod quick;
+mod quick_filters;
 
 #[cfg(test)]
 mod tests;

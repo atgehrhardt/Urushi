@@ -51,7 +51,7 @@ pub struct JiraBoard {
     pub sprint_field: Option<String>,
     /// The board's quick filters, as Jira shows them above the board.
     #[serde(default)]
-    pub quick_filters: Vec<QuickFilter>,
+    pub quick_filters: Vec<JiraQuickFilter>,
     /// How the last sync went.
     #[serde(default)]
     pub sync: SyncState,
@@ -76,7 +76,7 @@ impl JiraBoard {
 /// A board's quick filter: a named JQL clause that narrows the board (Jira evaluates
 /// it).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct QuickFilter {
+pub struct JiraQuickFilter {
     /// Its id in Jira.
     pub id: u64,
     /// Its name ("Only my issues", "Recently updated").

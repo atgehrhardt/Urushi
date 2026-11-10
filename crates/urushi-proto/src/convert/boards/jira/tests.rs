@@ -70,11 +70,10 @@ fn issues_and_sources_round_trip() {
         rank_field: None,
         points_field: None,
         sprint_field: None,
-        quick_filters: vec![QuickFilter {
+        quick_filters: vec![JiraQuickFilter {
             id: 4,
             name: "Only my issues".into(),
-            // The daemon's: not sent.
-            jql: String::new(),
+            jql: "assignee = currentUser()".into(),
         }],
         sync: SyncState {
             synced_at: Some(urushi_core::Timestamp::from_unix_millis(9)),
@@ -164,6 +163,7 @@ fn jira_messages_round_trip_on_the_wire() {
         Body::QueryJiraFilter(v1::QueryJiraFilterRequest {
             board_id: "1".into(),
             quick_filter_ids: vec![4, 5],
+            kept_quick_filter_ids: vec!["k".into()],
         }),
     ];
     for body in bodies {
