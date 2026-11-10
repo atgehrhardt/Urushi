@@ -2,11 +2,12 @@
 
 - **Status:** Shipped
 - **Owners (crates):** `urushi-core` (`attention`, `agent::hooks`), `urushi-mux` (`emulator/notices.rs`, `SessionStatus.alerts`, `SpawnSpec.tty_env`), `urushi-daemon` (`service/attention.rs`), `urushi-app` (`attention.rs`, `update/attention.rs`, `view/attention.rs`, `platform::notify`), `urushi-cli`
-- **Related ADRs:** [0017](../adr/0017-agent-attention-through-the-pane-terminal.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0014](../adr/0014-task-prompt-via-pane-environment.md)
+- **Related ADRs:** [0017](../adr/0017-agent-attention-through-the-pane-terminal.md), [0033](../adr/0033-claude-is-done-when-no-background-agent-runs.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0014](../adr/0014-task-prompt-via-pane-environment.md)
 
 ## What it does
 When an agent in a pane **finishes its response**, its thread gets a green dot and
-"finished" in the sidebar. When it **waits for you** (a permission prompt, a question, or
+"finished" in the sidebar. A Claude agent that is still waiting for its own background
+agents (subagents, workflows) is not finished yet. When it **waits for you** (a permission prompt, a question, or
 any program ringing the bell), it gets an amber dot and "needs input". The same dot shows
 on the tab, and task cards linked to the thread (directly or through a subtask at any
 depth) get a **Finished** or **Needs input** badge and a border in that color. While Urushi is in the
@@ -18,7 +19,10 @@ has focus) or type into it.
 1. **Hooks.** Every pane's environment has `URUSHI_TTY` (its terminal device, set by the
    mux) and the hook configuration (`agent::hooks::hook_env`). Agent command lines start
    with `Agent::hook_args`:
-   - Claude: `--settings "$URUSHI_CLAUDE_SETTINGS"`, with `Stop` → done,
+   - Claude: `--settings "$URUSHI_CLAUDE_SETTINGS"`, with `Stop` → done
+     (`claude_done_command`). It stays quiet while the hook input's `background_tasks`
+     lists a running agent (`CLAUDE_AGENT_TASK_TYPES`: subagent, workflow, teammate,
+     cloud session), because Claude also ends a turn while those run (ADR 0033).
      `Notification` (permission prompt, question) → waiting, and `SessionStart`
      (`startup`) → `ready` (`ready_command`). `ready` is **not attention**: it says
      Claude reads input, so a drafted task message can be pasted in
@@ -65,7 +69,7 @@ has focus) or type into it.
 ## Tests
 - `urushi-core`:
   - `attention.rs`: signal words, urgency order.
-  - `agent/hooks.rs`: the exact shell command, Claude's settings JSON, Codex's TOML, and
+  - `agent/hooks.rs`: the exact shell commands, Claude's settings JSON, Codex's TOML, and
     the options on each command line.
 - `urushi-mux`:
   - `emulator/notices.rs`: OSC 9 and 777, Urushi's signal, ConEmu's `9;4` progress
@@ -75,6 +79,9 @@ has focus) or type into it.
   - The real hook command and a bell raise attention.
   - Typing and `ClearAttention` clear it, without changing the revision.
   - Every pane gets `URUSHI_TTY` and the settings.
+  - `claude_is_not_done_while_its_background_agents_run`: Claude's `Stop` command, fed
+    Claude 2.1's hook input, stays quiet for a running subagent or workflow, and signals
+    for shells, monitors, no tasks, and input without `background_tasks`.
 - `urushi-app`:
   - `update/tests/attention.rs`: clearing what's visible, announcing in the background
     only and once, not announcing old raises, older daemons, and cards counting nested
@@ -83,6 +90,8 @@ has focus) or type into it.
     card badges.
 - Manually: real Claude Code 2.1 started through `urushi tab new --agent claude` in a
   throwaway home. Its `Stop` hook marked the pane `[finished]`, and typing cleared it.
+  With two background subagents (Claude 2.1.322), the pane stayed unmarked through the
+  main agent's two interim turns, and became `[finished]` after its final answer.
   notify-rust's call returned `Ok` from an unbundled process on macOS 26 (not seen on
   screen).
 
@@ -96,3 +105,12 @@ has focus) or type into it.
 - Windows: ConPTY has no device path, so hooks can't signal. Bells and OSC notifications
   work.
 - There is no setting to turn notifications off yet.
+- A Claude subagent that moves its own command into a background shell and waits on it
+  drops out of `background_tasks`; only its shell is listed, and shells aren't
+  attributed to an agent there. "finished" then shows while that subagent waits
+  (measured with Claude Code 2.1.322). Telling such a shell from a server the main agent
+  left running would need the transcripts (`transcript_path`).
+- Claude versions whose `Stop` input has no `background_tasks` still show "finished"
+  while background subagents run. Codex isn't filtered either: its `notify` runs after
+  every turn.
+- Panes started before the daemon picked up the new settings keep the old `Stop` hook.
