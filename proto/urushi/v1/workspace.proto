@@ -22,6 +22,7 @@ message Workspace {
   uint64 revision = 1;
   // Repos (named before the rename; see the note at the top).
   repeated Project projects = 2;
+  // Threads, in display order within their groups (`MoveThread`, since 1.21).
   repeated Thread threads = 3;
   repeated Tab tabs = 4;
   // Projects, in display order. Since protocol 1.2.
@@ -271,6 +272,14 @@ message UpdateFolderSettingsRequest {
 // Folders are listed in this order. Since 1.11.
 message MoveFolderRequest {
   string folder_id = 1;
+  uint32 index = 2;
+}
+
+// Moves a thread to `index` in `Workspace.threads` (counted without it; clamped to the
+// end). Threads are listed in this order inside their project, pin and status groups.
+// Since 1.21.
+message MoveThreadRequest {
+  string thread_id = 1;
   uint32 index = 2;
 }
 

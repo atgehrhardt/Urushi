@@ -291,6 +291,9 @@ async fn thread(client: &Client, cmd: ThreadCmd) -> Result<()> {
             };
             update_thread(client, &thread, |r| r.folder_id = Some(folder)).await
         }
+        ThreadCmd::Reorder { thread, index } => Ok(client
+            .move_thread(&resolve(client, &thread).await?, index)
+            .await?),
         ThreadCmd::Rm { thread, yes } => {
             let id = resolve(client, &thread).await?;
             let plan = client.plan_thread_deletion(&id).await?;

@@ -1,6 +1,7 @@
 //! A thread's card in the sidebar: its title (with a dot when its agent finished or
 //! waits), the repo and branch it's on, and its lifecycle badge. Click to open it,
-//! right-click for its menu, drag to file it under another project. A project's
+//! right-click for its menu, drag it onto a project to file it there, or onto another
+//! thread to take that thread's place and join its group. A project's
 //! parent-branch thread (ADR 0029) stays at its project's top: it can't be dragged, and
 //! is closed from its menu rather than a delete button.
 
@@ -12,8 +13,11 @@ use crate::msg::Msg;
 use crate::organize::{Dragged, MenuTarget};
 use crate::state::AppState;
 
+use super::board::drop_line;
+
 /// A thread: title, then which repo and branch it's on. Click to open, right-click
-/// (two-finger click) for its menu, drag to move it to another project.
+/// (two-finger click) for its menu, drag to move it to another project or another
+/// thread's place.
 pub(super) fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) -> Node<Msg> {
     let selected = state.selected_thread.as_deref() == Some(&thread.id);
     let dragged = state
@@ -101,13 +105,58 @@ pub(super) fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) 
     if thread.project_base {
         return card;
     }
-    card.on_drag(Msg::DragThread(thread.id.clone()))
+    let card = card
+        .on_drag(Msg::DragThread(thread.id.clone()))
         .child(icon_button(
             theme,
             "×",
             &format!("Delete thread {}", thread.title),
             Msg::RequestDeleteThread(thread.id.clone()),
-        ))
+        ));
+    drop_target(state, theme, &thread.id, card)
+}
+
+/// While another thread is dragged, `card` takes it: the dragged thread takes this one's
+/// place (protocol 1.21). Drawn above the project's own drop target, it wins. When this
+/// is where the dragged thread would land, a line above or below shows it.
+fn drop_target(state: &AppState, theme: &Theme, thread: &str, card: Node<Msg>) -> Node<Msg> {
+    if !state.daemon_supports_thread_order()
+        || !matches!(&state.dragging, Some((Dragged::Thread(t), _)) if t != thread)
+    {
+        return card;
+    }
+    let drop = Msg::DropOnThread(thread.to_owned());
+    let card = card.on_drop(drop.clone());
+    let (above, below) = drop_line_at(state, thread);
+    if !above && !below {
+        return card;
+    }
+    // The line takes the drop too, so the card shifting under the pointer to make room
+    // for it doesn't lose the target.
+    Node::column()
+        .width(Length::Fill(1.0))
+        .gap(2.0)
+        .on_drop(drop)
+        .children(above.then(|| drop_line(theme)))
+        .child(card)
+        .children(below.then(|| drop_line(theme)))
+}
+
+/// While a thread is dragged over `thread`: whether the line showing where it would land
+/// goes above it (the dragged thread comes from further down the list) or below it.
+fn drop_line_at(state: &AppState, thread: &str) -> (bool, bool) {
+    let Some((Dragged::Thread(dragged), _)) = &state.dragging else {
+        return (false, false);
+    };
+    if state.thread_over.as_deref() != Some(thread) {
+        return (false, false);
+    }
+    let threads = &state.workspace.raw().threads;
+    let at = |id: &str| threads.iter().position(|t| t.id == id);
+    match (at(dragged), at(thread)) {
+        (Some(from), Some(to)) => (to < from, to > from),
+        _ => (false, false),
+    }
 }
 
 /// A thread's title, with a dot when its agent finished or waits (ADR 0017).

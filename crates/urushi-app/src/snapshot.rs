@@ -30,8 +30,9 @@ pub fn scene(
 /// `picker`, the `add-repo` and `new-thread` dialogs (`new-thread-base` with the branch
 /// list open, `new-thread-project` with the project list open), `settings` (with task
 /// messages drafted and the user's own message on in `settings-task-message`), the thread
-/// `menu` and its `menu-status` page, a thread being dragged (`drag`), a project being
-/// dragged above another (`drag-project`), the `repos` tab, the task `board` (a task
+/// `menu` and its `menu-status` page, a thread being dragged (`drag`), a thread being
+/// dragged onto another to take its place (`drag-thread`), a project being dragged above
+/// another (`drag-project`), the `repos` tab, the task `board` (a task
 /// being dragged across it in `board-drag`, the "Personal" board's tab dragged onto the
 /// first in `board-tab-drag`, a `task` with subtasks being edited, and a card's context menu in
 /// `task-menu`, a column's in `column-menu`, a subtask opened as a task in
@@ -57,6 +58,7 @@ pub const SCENARIOS: &[&str] = &[
     "menu",
     "menu-status",
     "drag",
+    "drag-thread",
     "drag-project",
     "repos",
     "board",
@@ -401,7 +403,7 @@ fn scenario_frame(
                 state.update(Msg::MenuPage(MenuPage::Status));
             }
         }
-        "drag" | "drag-project" => show_drag(&mut state, name),
+        "drag" | "drag-thread" | "drag-project" => show_drag(&mut state, name),
         "sidebar-collapsed" => {
             show_board_or_usage(&mut state, "status");
             state.update(Msg::Sidebar(crate::msg::SidebarMsg::Toggle));
@@ -457,12 +459,20 @@ fn show_look(state: &mut AppState, name: &str) {
     }
 }
 
-/// The `drag` (a thread) and `drag-project` (a project, over the one above) scenarios.
+/// The `drag` (a thread), `drag-thread` (a thread, over the one above it in its status
+/// section) and `drag-project` (a project, over the one above) scenarios.
 fn show_drag(state: &mut AppState, name: &str) {
     if name == "drag" {
         state.update(Msg::Pointer(Point::new(120.0, 470.0)));
         state.update(Msg::DragThread("t6".into()));
         state.update(Msg::DragMove(Point::new(140.0, 400.0)));
+    } else if name == "drag-thread" {
+        state.update(Msg::Pointer(Point::new(120.0, 400.0)));
+        state.update(Msg::DragThread("t3".into()));
+        state.update(Msg::DragMove(Point::new(140.0, 345.0)));
+        state.update(Msg::DragOver(Some(Box::new(Msg::DropOnThread(
+            "t2".into(),
+        )))));
     } else {
         state.update(Msg::Pointer(Point::new(120.0, 300.0)));
         state.update(Msg::DragProject("f2".into()));

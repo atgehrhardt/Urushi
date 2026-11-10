@@ -197,6 +197,10 @@ fn all_request_kinds() {
             folder_id: "f".into(),
             index: 2,
         }),
+        B::MoveThread(v1::MoveThreadRequest {
+            thread_id: "t".into(),
+            index: 4,
+        }),
         B::MoveBoard(v1::MoveBoardRequest {
             board_id: "b".into(),
             index: 3,

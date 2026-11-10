@@ -65,6 +65,17 @@ impl Client {
         self.ok(body, "MoveFolder").await
     }
 
+    /// Moves a thread to `index` in the workspace's thread list (0 is first; clamped to
+    /// the end). The sidebar keeps this order inside each project, pin and status group.
+    /// Needs protocol 1.21.
+    pub async fn move_thread(&self, thread_id: &str, index: u32) -> Result<(), ClientError> {
+        let body = Body::MoveThread(v1::MoveThreadRequest {
+            thread_id: thread_id.into(),
+            index,
+        });
+        self.ok(body, "MoveThread").await
+    }
+
     /// Stops the daemon (it answers first). Every running terminal closes. Daemons
     /// before protocol 1.4 don't know this request; see [`crate::stop_local_daemon`].
     pub async fn shutdown_daemon(&self) -> Result<(), ClientError> {

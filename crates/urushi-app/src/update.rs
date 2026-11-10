@@ -49,6 +49,8 @@ impl AppState {
             | Msg::DragThread(_)
             | Msg::DragMove(_)
             | Msg::DropThread(_)
+            | Msg::DropOnThread(_)
+            | Msg::ReorderThread { .. }
             | Msg::DragCancel
             | Msg::DragProject(_)
             | Msg::DropProject(_)
@@ -136,6 +138,15 @@ impl AppState {
                 ) =>
             {
                 self.project_drag_over(target.map(|m| *m));
+            }
+            // A dragged thread shows where it would land: `update/organize.rs`.
+            Msg::DragOver(target)
+                if matches!(
+                    self.dragging,
+                    Some((crate::organize::Dragged::Thread(_), _))
+                ) =>
+            {
+                self.thread_drag_over(target.map(|m| *m));
             }
             // A dragged board tab shows where it would land: `update/board.rs`.
             Msg::DragOver(target)
@@ -728,6 +739,7 @@ mod project_settings;
 mod quick;
 mod setup;
 mod sidebar;
+mod sidebar_drag;
 mod subtask_drafts;
 mod task_nav;
 mod task_threads;

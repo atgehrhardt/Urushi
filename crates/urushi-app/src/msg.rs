@@ -109,6 +109,16 @@ pub enum Msg {
     DragMove(Point),
     /// The drag was released over a drop target.
     DropThread(DropTarget),
+    /// A dragged thread was released over another thread (by id): it takes its place
+    /// and joins its group (project, pin and status).
+    DropOnThread(String),
+    /// Move a thread to `index` in the workspace's list of threads (counted without it).
+    ReorderThread {
+        /// Thread id.
+        thread: String,
+        /// New position.
+        index: u32,
+    },
     /// The drag was released anywhere else.
     DragCancel,
     /// A project's header started being dragged.
