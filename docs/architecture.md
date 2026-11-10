@@ -33,7 +33,8 @@ The multiplexer is **invisible infrastructure**. It exists so terminal sessions 
    store             JSON document (ADR 0008): repos, projects, threads, layouts, boards, settings
    restore           per-pane restore points: output, directory, agent conversation or running program (ADR 0013)
    attachments       files attached to board tasks, and image thumbnails as raw RGBA (ADR 0016)
-   jira              boards that follow Jira Cloud: polling sync, edits written through (ADR 0020)
+   jira              boards that follow Jira Cloud: polling sync (watched boards every 3 s), edits
+                     written through, issues read in full on demand (ADR 0020, 0022, 0023)
    http              HTTPS through the system's curl, request on stdin (ADR 0021)
    remote            Tailscale provider (status/whois) + tailnet listener
 ```
@@ -72,7 +73,7 @@ urushi-cli ─► urushi-client
 | **Tab** | A layout tree of panes inside a thread. |
 | **Layout** | An n-ary tree. Leaves are panes. Splits have an axis and child ratios that sum to 1. |
 | **Board** | A kanban board of **tasks** in columns (To do, In progress, Done). A task's **subtasks** are tasks nested inside it (ADR 0015), a task can have a kind (task, story, bug, epic) and files attached (kept by the daemon, ADR 0016), and any task can name the thread started for it (ADR 0012). A board can follow a Jira board (`Board.source`): Jira is then its source of truth, and changes are written to Jira first (ADR 0020). Only organization: it never touches git or terminals. |
-| **Pane** | One terminal session. Its shell starts in the thread's worktree, with `URUSHI_THREAD_ID`, `URUSHI_PANE_ID`, `URUSHI_WORKTREE`, `URUSHI_TTY` (its terminal device) and the agent hook settings in its environment. A pane whose agent finished or waits for the user carries **attention**, kept in the daemon's memory ([agent attention](features/agent-attention.md)). A tab opened for an agent (Claude, Codex, Cursor) is the same, with the agent's command typed into the shell. |
+| **Pane** | One terminal session. Its shell starts in the thread's worktree, with `URUSHI_THREAD_ID`, `URUSHI_PANE_ID`, `URUSHI_WORKTREE`, `URUSHI_TTY` (its terminal device), the agent hook settings, `URUSHI_HOME` and the `urushi` CLI's directory first on `PATH` (ADR 0024) in its environment. A pane whose agent finished or waits for the user carries **attention**, kept in the daemon's memory ([agent attention](features/agent-attention.md)). A tab opened for an agent (Claude, Codex, Cursor) is the same, with the agent's command typed into the shell. |
 
 The pure model lives in `urushi-core`. The daemon persists it and applies changes.
 
@@ -90,7 +91,7 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
   1. Snapshot the existing branches.
   2. `git worktree add -b <branch> <data>/worktrees/<repo>/<thread> <base>`
   3. Persist the thread.
-  4. Spawn the first tab, unless the client asked for none (the GUI then shows the agent launcher). A thread started from a task with `start_task_agent` runs the user's task agent there, with the task as its prompt in `URUSHI_TASK_PROMPT` (ADR 0014); that agent and prompt are resolved before step 2.
+  4. Spawn the first tab, unless the client asked for none (the GUI then shows the agent launcher). A thread started from a task with `start_task_agent` runs the user's task agent there, with its prompt in `URUSHI_TASK_PROMPT` (ADR 0014): a reference to the task and `urushi board show` to read it, or a copy of it without a CLI (ADR 0024); that agent and prompt are resolved before step 2.
 
   A task can also start in an existing thread: `CreateTab{task_id, start_task_agent}` opens a tab running the task agent there and links the task in the same mutation (ADR 0018).
 
