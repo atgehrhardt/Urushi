@@ -117,7 +117,8 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
 - Local IPC is authorized by OS user:
   - On Unix, the socket is mode 0600 inside a 0700 home, and the peer's user id is checked.
   - The socket lives at `<home>/urushid.sock`. Homes too long for a socket path use `~/.urushi/sockets/<hash>.sock` instead.
-  - On Windows, a named pipe that rejects remote clients.
+  - On Windows, a named pipe that rejects remote clients. Its name is a hash of the home path's text (`urushi_proto::endpoint::local_endpoint`).
+  - The daemon derives its endpoint from the home exactly as it was given (the spelling clients use), before canonicalizing the home for everything else. Otherwise a Windows client would look for a different pipe. One daemon per home is still enforced by the lock file inside the home.
 
 ## Platform strategy
 

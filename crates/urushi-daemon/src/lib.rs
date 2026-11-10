@@ -106,7 +106,12 @@ pub async fn run(
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), DaemonError> {
     platform::secure_dir(&options.home)?;
-    // Canonical paths everywhere, so worktree paths compare equal to what git and shells report.
+    // Listen where clients look: they derive the endpoint from the home as they spell it,
+    // and on Windows the pipe's name is a hash of that text, so the canonical spelling
+    // (short names expanded, `..` resolved) would be a different pipe. One daemon per
+    // home still holds, through the lock file inside it.
+    let endpoint = local_endpoint(&options.home);
+    // Canonical paths everywhere else, so worktree paths compare equal to what git and shells report.
     options.home = platform::canonicalize(&options.home)?;
     let lock_file = File::create(options.home.join("urushid.lock"))?;
     match lock_file.try_lock() {
@@ -134,7 +139,6 @@ pub async fn run(
     server::remote::reconcile(&service).await;
     let watchdog = server::remote::spawn_watchdog(Arc::downgrade(&service));
 
-    let endpoint = local_endpoint(&options.home);
     let result = tokio::select! {
         result = platform::serve_local(service.clone(), &endpoint) => result.map_err(DaemonError::from),
         () = shutdown => Ok(()),
