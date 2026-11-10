@@ -306,7 +306,7 @@ pub enum Msg {
         /// Whether it was dropped over the terminal area.
         over_terminal: bool,
     },
-    /// Hide the error banner.
+    /// Dismiss the error.
     DismissError,
 
     // ---- raw input -----------------------------------------------------------------------

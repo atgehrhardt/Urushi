@@ -19,7 +19,7 @@ pub const JIRA_SINCE_MINOR: u32 = 12;
 pub const EPIC_CARDS_SINCE_MINOR: u32 = 15;
 /// First protocol minor version that can reorder boards (`MoveBoard`).
 pub const BOARD_ORDER_SINCE_MINOR: u32 = 17;
-/// First protocol minor version that deletes Jira issues (ADR 0033).
+/// First protocol minor version that deletes Jira issues (ADR 0034).
 pub const JIRA_DELETION_SINCE_MINOR: u32 = 21;
 
 /// How long the panel takes to slide fully in or out, in seconds.

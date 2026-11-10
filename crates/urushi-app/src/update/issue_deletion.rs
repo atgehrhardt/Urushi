@@ -1,4 +1,4 @@
-//! Deleting a Jira issue from Urushi (ADR 0033). The daemon deletes it in Jira, for
+//! Deleting a Jira issue from Urushi (ADR 0034). The daemon deletes it in Jira, for
 //! good and for everyone, with its sub-tasks, so the app always asks first: in the
 //! editor, in place of its buttons (for the issue or one of its subtasks); from a
 //! card's menu, in a dialog. Tasks of Urushi's own are deleted right away, as before.

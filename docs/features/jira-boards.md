@@ -2,7 +2,7 @@
 
 - **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits, issues in full, epics as cards, deleting issues)
 - **Owners (crates):** `urushi-core` (`board/{jira,sync,kind}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `time.rs`, `jira/{api,cloud,cloud/details,parse,parse/details,details,adf,credentials}.rs`, `service/{jira,jira_write,jira_query,jira_details,jira_edit}.rs`, `server/{jira,jira_issue}.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `jira_issue.proto`, `convert/boards/jira/`), `urushi-client` (`jira.rs`, `jira_issue.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`filter.rs`, `issue.rs`, `update/{jira,filter,issue}.rs`, `msg/{jira,filter,issue}.rs`, `view/jira.rs`, `view/board/{jira,filter}.rs`, `view/tasks/{jira,header}.rs`, `view/tasks/issue/`, `view/menu/{jira,filter}.rs`, `snapshot/{jira,jira_issue}.rs`, `update/issue_deletion.rs`, `view/board/dialogs.rs::delete_issue`), `urushi-cli` (`urushi jira`, `urushi board sync`, the Jira question in `board rm-task` / `sub rm`)
-- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0027](../adr/0027-epics-are-cards-on-jira-boards.md), [0033](../adr/0033-delete-jira-issues-after-confirming.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0027](../adr/0027-epics-are-cards-on-jira-boards.md), [0034](../adr/0034-delete-jira-issues-after-confirming.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 Any Jira Cloud board can be imported into the Tasks panel. It keeps Jira's columns and stays
@@ -82,7 +82,7 @@ moves at once and goes back if Jira refuses.
   Bitbucket integration then lists the branch, its commits and its pull requests on the
   issue; Urushi itself doesn't talk to the code host. Any number of threads, branches
   and pull requests can name one issue.
-- **Deleting issues** (ADR 0033): the editor's **Delete issue** / **Delete subtask**, a
+- **Deleting issues** (ADR 0034): the editor's **Delete issue** / **Delete subtask**, a
   Jira subtask row's ×, and **Delete issue…** in the card menu (under **Open in Jira**)
   delete the issue in Jira, for everyone, with its sub-tasks. They always ask first:
   the editor's buttons become "Delete ACME-2 and its 2 subtasks from Jira for good?"
@@ -185,8 +185,9 @@ moves at once and goes back if Jira refuses.
   quick_stale}`), `view/board/filter.rs` (the bar), `view/menu/filter.rs` (the menu, a
   `MenuPage::Filter(Dim)` page per field, scrolling past ten values).
   `AppState.jira` (asked with `GetJiraAccount` on connect and when Settings
-  opens), `Dialog::{ConnectJira, ImportJira}` (their errors show in the dialog, not the
-  banner; `update/jira.rs::jira_failed`),
+  opens), `Dialog::{ConnectJira, ImportJira}` (their sign-in and listing errors show
+  in their own error line, `update/jira.rs::jira_failed`; any other error shows in the
+  dialog too, as everywhere, see [the workspace GUI](gui-workspace.md)),
   `TaskLabels.kind`, `Effect::OpenUrl` (`platform::open_url`, https only). Gated on
   `daemon_supports_jira()` (`JIRA_SINCE_MINOR = 12`).
 - **CLI:** `urushi jira connect --site --email` (token from `URUSHI_JIRA_TOKEN` or stdin),

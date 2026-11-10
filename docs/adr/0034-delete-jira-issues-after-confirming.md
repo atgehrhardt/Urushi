@@ -1,4 +1,4 @@
-# 0033. Delete Jira issues from Urushi, with their sub-tasks, after confirming
+# 0034. Delete Jira issues from Urushi, with their sub-tasks, after confirming
 
 - **Status:** Accepted; amends [0020](0020-jira-boards-as-daemon-mirrors.md)
 - **Date:** 2026-11-10

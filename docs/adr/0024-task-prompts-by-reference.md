@@ -1,6 +1,6 @@
 # 0024. Start a task's agent with a reference to the task and the CLI to read it, not a copy
 
-- **Status:** Accepted
+- **Status:** Accepted; the prompt names the CLI by its absolute path, and panes get `URUSHI_CLI`, since [0033](0033-task-prompts-name-the-cli-by-path.md)
 - **Date:** 2026-11-09
 - **Amends:** [0014](0014-task-prompt-via-pane-environment.md) (what the prompt says;
   how it travels is unchanged)

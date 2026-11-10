@@ -115,6 +115,12 @@ pub(super) fn panel(
     .children(filter_bar)
     .child(urushi_ui::widgets::divider(theme, false))
     .child(body)
+    .children(super::error::for_place(
+        state,
+        theme,
+        crate::errors::ErrorPlace::Board,
+        None,
+    ))
 }
 
 /// Board tabs, "+", and the shown board's actions.

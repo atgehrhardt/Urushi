@@ -86,7 +86,7 @@ pub struct EditorNav {
     /// Closing was asked with unsaved edits: the editor asks to confirm.
     pub confirm_discard: bool,
     /// Deleting a Jira issue (this task or one of its subtasks) was asked: the editor
-    /// asks to confirm (ADR 0033).
+    /// asks to confirm (ADR 0034).
     pub confirm_delete: Option<IssueDeletion>,
     /// This editor writes a new subtask of the editor it was opened from (the last in
     /// `back`), to go at this place in its drafts. Back and Save put it there.
@@ -102,7 +102,7 @@ impl EditorNav {
 }
 
 /// A Jira issue about to be deleted, as the question before it names it. Deleting it
-/// in Jira is for good and for everyone, so Urushi always asks (ADR 0033).
+/// in Jira is for good and for everyone, so Urushi always asks (ADR 0034).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IssueDeletion {
     /// The task showing it.
@@ -478,7 +478,7 @@ pub struct AppState {
     pub dialog: Option<Dialog>,
     /// The focused dialog field.
     pub focus: Option<Field>,
-    /// An error to show in the banner.
+    /// The error to show, on whatever surface is on top (`errors.rs`).
     pub error: Option<String>,
     /// Text selection: pane and range.
     pub selection: Option<(String, Selection)>,
@@ -640,7 +640,7 @@ impl AppState {
         self.daemon_minor >= crate::board::EPIC_CARDS_SINCE_MINOR
     }
 
-    /// Whether the daemon deletes Jira issues (protocol 1.21, ADR 0033).
+    /// Whether the daemon deletes Jira issues (protocol 1.21, ADR 0034).
     pub fn daemon_supports_jira_deletion(&self) -> bool {
         self.daemon_minor >= crate::board::JIRA_DELETION_SINCE_MINOR
     }
@@ -702,5 +702,11 @@ impl AppState {
             .find(|t| Some(&t.id) == selected)
             .or_else(|| tabs.first())
             .copied()
+    }
+
+    /// On phones (`compact`), whether the page shown is the thread list rather than the
+    /// terminals: it was asked for, or there is nothing else to show.
+    pub fn shows_thread_list_page(&self) -> bool {
+        self.sidebar_open || self.current_tab().is_none() && self.selected_thread.is_none()
     }
 }

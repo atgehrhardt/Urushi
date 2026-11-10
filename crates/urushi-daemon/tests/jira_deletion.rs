@@ -1,6 +1,6 @@
 //! Deleting Jira issues end to end, against an in-memory Jira: a card goes with its
 //! sub-tasks, a subtask leaves its parent, a refusal changes nothing, and an issue
-//! already gone from Jira is taken off the board too (ADR 0033).
+//! already gone from Jira is taken off the board too (ADR 0034).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

@@ -1,4 +1,4 @@
-//! Deleting Jira issues in the app (ADR 0033): Delete always asks first, in the editor
+//! Deleting Jira issues in the app (ADR 0034): Delete always asks first, in the editor
 //! or in a dialog from the card's menu; only "Delete from Jira" sends anything, and a
 //! daemon older than 1.21 isn't offered it.
 

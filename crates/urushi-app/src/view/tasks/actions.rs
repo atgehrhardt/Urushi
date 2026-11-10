@@ -8,10 +8,31 @@ use urushi_ui::{Font, Node, Theme};
 
 use super::super::dialogs::cancel;
 use crate::msg::{BoardMsg, Msg};
-use crate::state::{AppState, IssueDeletion, TaskLink};
+use crate::state::{AppState, EditorNav, IssueDeletion, TaskLink};
+
+/// The editor's buttons for where it is: a pending question (deleting a Jira issue,
+/// dropping unsaved edits) replaces them until it is answered.
+pub(super) fn footer(
+    state: &AppState,
+    theme: &Theme,
+    nav: &EditorNav,
+    draft: bool,
+    found: Option<&FoundTask<'_>>,
+    editing: bool,
+) -> Vec<Node<Msg>> {
+    if let Some(about) = &nav.confirm_delete {
+        delete_question(theme, about)
+    } else if nav.confirm_discard {
+        discard_question(theme)
+    } else if draft {
+        draft_actions(theme)
+    } else {
+        editor_actions(state, theme, found, editing)
+    }
+}
 
 /// Deleting a Jira issue (the task or one of its subtasks): it goes from Jira for good,
-/// so the editor asks first (ADR 0033).
+/// so the editor asks first (ADR 0034).
 pub(super) fn delete_question(theme: &Theme, about: &IssueDeletion) -> Vec<Node<Msg>> {
     vec![
         Node::text(

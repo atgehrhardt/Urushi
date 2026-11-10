@@ -1,6 +1,6 @@
 # 0020. Follow Jira boards from the daemon: Jira is the source of truth, edits write through, polling keeps them current
 
-- **Status:** Accepted; its polling and write-through moves are amended by [0023](0023-near-real-time-jira-sync.md), and epics are cards since [0027](0027-epics-are-cards-on-jira-boards.md), and issues are deleted from Urushi since [0033](0033-delete-jira-issues-after-confirming.md)
+- **Status:** Accepted; its polling and write-through moves are amended by [0023](0023-near-real-time-jira-sync.md), and epics are cards since [0027](0027-epics-are-cards-on-jira-boards.md), and issues are deleted from Urushi since [0034](0034-delete-jira-issues-after-confirming.md)
 - **Date:** 2026-11-09
 
 ## Context

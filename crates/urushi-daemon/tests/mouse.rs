@@ -53,11 +53,7 @@ async fn scrolling_an_attached_pane_sends_history() {
     let first = client.attach_pane(&pane, 40, 10).await.unwrap();
     client.ack_screen(&pane, first.seq).await.unwrap();
     client.scroll_pane(&pane, 20, false).await.unwrap();
-    let update = next_event(&mut events, |e| match e {
-        v1::event::Body::ScreenUpdate(u) if u.display_offset > 0 => Some(u),
-        _ => None,
-    })
-    .await;
+    let update = next_screen_update(&client, &mut events, &pane, |u| u.display_offset > 0).await;
     assert_eq!(update.display_offset, 20);
     assert!(text(&update).contains("row4"), "{}", text(&update));
     daemon.stop().await;
@@ -156,6 +152,11 @@ async fn the_wheel_scrolls_history_in_a_plain_shell() {
     wait_for_text(&client, &pane, "row60").await;
     let first = client.attach_pane(&pane, 40, 10).await.unwrap();
     client.ack_screen(&pane, first.seq).await.unwrap();
+    // Output after the first frame (under load, the shell's prompt or its redraw after
+    // the resize) is an update the client must ack before the scroll can follow (UR-33).
+    // No newline, so the scrollback stays put.
+    send(&client, &pane, v1::input::Kind::Text("zzz".into())).await;
+    wait_for_text(&client, &pane, "zzz").await;
     send(
         &client,
         &pane,
@@ -168,11 +169,7 @@ async fn the_wheel_scrolls_history_in_a_plain_shell() {
         }),
     )
     .await;
-    let update = next_event(&mut events, |e| match e {
-        v1::event::Body::ScreenUpdate(u) if u.display_offset > 0 => Some(u),
-        _ => None,
-    })
-    .await;
+    let update = next_screen_update(&client, &mut events, &pane, |u| u.display_offset > 0).await;
     assert_eq!(update.display_offset, 15);
     daemon.stop().await;
 }

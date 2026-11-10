@@ -47,7 +47,8 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0030 – Draft a task's message by pasting it into the agent once it says it is ready](adr/0030-draft-task-messages-once-the-agent-is-ready.md)
 - [0031 – Keep one thread-less quick terminal per daemon, beside the tabs](adr/0031-thread-less-quick-terminal.md)
 - [0032 – Release macOS builds from a version tag, for Apple Silicon, as an ad-hoc signed zip](adr/0032-tagged-macos-releases.md)
-- [0033 – Delete Jira issues from Urushi, with their sub-tasks, after confirming](adr/0033-delete-jira-issues-after-confirming.md)
+- [0033 – Name the CLI by its absolute path in task prompts](adr/0033-task-prompts-name-the-cli-by-path.md)
+- [0034 – Delete Jira issues from Urushi, with their sub-tasks, after confirming](adr/0034-delete-jira-issues-after-confirming.md)
 
 ## Features
 - [_template](features/_template.md)

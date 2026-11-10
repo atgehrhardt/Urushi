@@ -364,7 +364,7 @@ pub(crate) async fn usage(client: &Client, pane: &str) -> Result<()> {
 }
 
 /// Deleting a Jira issue deletes it in Jira, for everyone and for good, so it asks first
-/// (ADR 0033); `--yes` skips the question. Run without a terminal to answer, it needs
+/// (ADR 0034); `--yes` skips the question. Run without a terminal to answer, it needs
 /// `--yes`. Tasks of Urushi's own are deleted without asking.
 pub(super) async fn confirm_jira_delete(client: &Client, id: &str, yes: bool) -> Result<()> {
     use std::io::IsTerminal;

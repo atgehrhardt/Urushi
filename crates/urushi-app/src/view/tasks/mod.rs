@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use urushi_ui::widgets::{ButtonKind, button, modal_with_header};
+use urushi_ui::widgets::{ButtonKind, button};
 use urushi_ui::{Align, Color, Font, Insets, Key, Length, Node, Role, TextField, Theme, key};
 
 use super::dialogs::{area, field, hint, label};
@@ -15,6 +15,7 @@ use crate::board::TaskLabels;
 use crate::issue::IssueEditor;
 use crate::msg::{BoardMsg, Msg};
 use crate::state::{AppState, EditorNav, Field, SubtaskEditor};
+use crate::view::modal::{error_height, modal_with_header};
 
 mod actions;
 mod attachments;
@@ -132,7 +133,10 @@ pub(super) fn editor(
         let offset = scroll.get(&editor_scroll_key()).copied().unwrap_or(0.0);
         let body = Node::column()
             .width(Length::Fill(1.0))
-            .height(Length::Fixed(NARROW_BODY))
+            // Less the error, if one shows, so the buttons stay on screen.
+            .height(Length::Fixed(
+                NARROW_BODY - error_height(state, theme, NARROW),
+            ))
             .gap(14.0)
             .scroll(editor_scroll_key(), offset)
             .child(text)
@@ -154,25 +158,21 @@ pub(super) fn editor(
             .child(hint(theme, &hint_text))
             .scroll(editor_scroll_key(), offset);
         // A Jira issue in full keeps one height while it loads; any other task's
-        // editor is as tall as it needs, up to what keeps its buttons on screen.
+        // editor is as tall as it needs, up to what keeps its buttons (and an error
+        // above them) on screen.
+        let width = if full { FULL } else { WIDE };
+        let height = full_height(state) - error_height(state, theme, width);
         body = if full {
-            body.height(Length::Fixed(full_height(state)))
+            body.height(Length::Fixed(height))
         } else {
-            body.max_height(full_height(state))
+            body.max_height(height)
         };
-        (body, if full { FULL } else { WIDE })
+        (body, width)
     };
-    let actions = if let Some(about) = &nav.confirm_delete {
-        actions::delete_question(theme, about)
-    } else if nav.confirm_discard {
-        actions::discard_question(theme)
-    } else if draft {
-        actions::draft_actions(theme)
-    } else {
-        actions::editor_actions(state, theme, found.as_ref(), task.is_some())
-    };
+    let actions = actions::footer(state, theme, nav, draft, found.as_ref(), task.is_some());
     let (header, name) = header::header(state, theme, found.as_ref(), nav);
     modal_with_header(
+        state,
         theme,
         (header, &name),
         width,

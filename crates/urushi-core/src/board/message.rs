@@ -6,10 +6,16 @@ use super::{Board, BoardError};
 use crate::TaskId;
 
 /// The user's `template` filled in for task `id` of `board` (at any depth):
-/// `{key}`, `{title}`, `{url}` and `{show}`. Anything else in braces is kept as written,
-/// and text filled in is never read again for placeholders. Capped like the default
-/// prompts.
-pub fn custom_task_prompt(board: &Board, id: TaskId, template: &str) -> Result<String, BoardError> {
+/// `{key}`, `{title}`, `{url}` and `{show}` (the command that prints the task with the
+/// CLI `cli`, as in `task_reference_prompt`). Anything else in braces is kept as
+/// written, and text filled in is never read again for placeholders. Capped like the
+/// default prompts.
+pub fn custom_task_prompt(
+    board: &Board,
+    id: TaskId,
+    template: &str,
+    cli: &str,
+) -> Result<String, BoardError> {
     let task = board.task(id).ok_or(BoardError::NoSuchTask(id))?;
     let key = task
         .issue
@@ -19,7 +25,7 @@ pub fn custom_task_prompt(board: &Board, id: TaskId, template: &str) -> Result<S
         (Some(jira), Some(issue)) => jira.issue_url(&issue.key),
         _ => String::new(),
     };
-    let show = show_command(task);
+    let show = show_command(task, cli);
     let value = |name: &str| match name {
         "key" => Some(key.as_str()),
         "title" => Some(task.title.as_str()),
@@ -121,11 +127,12 @@ mod tests {
             custom_task_prompt(
                 &b,
                 id,
-                "Pick up {key} \"{title}\" ({url}).\nRead it with `{show}`.\n"
+                "Pick up {key} \"{title}\" ({url}).\nRead it with `{show}`.\n",
+                "/opt/urushi/urushi"
             )
             .unwrap(),
             "Pick up UR-30 \"Task Starting\" (https://acme.atlassian.net/browse/UR-30).\n\
-             Read it with `urushi board show UR-30`."
+             Read it with `/opt/urushi/urushi board show UR-30`."
         );
     }
 
@@ -134,8 +141,13 @@ mod tests {
         let b = plain_board();
         let id = TaskId::from_u128(7);
         assert_eq!(
-            custom_task_prompt(&b, id, "{key}|{url}|{show}").unwrap(),
+            custom_task_prompt(&b, id, "{key}|{url}|{show}", "urushi").unwrap(),
             format!("{id}||urushi board show {id}")
+        );
+        assert_eq!(
+            custom_task_prompt(&b, id, "{show}", "/it's here/urushi").unwrap(),
+            format!("'/it'\\''s here/urushi' board show {id}"),
+            "a CLI path is quoted for the shell"
         );
     }
 
@@ -144,15 +156,15 @@ mod tests {
         let b = plain_board();
         let id = TaskId::from_u128(7);
         assert_eq!(
-            custom_task_prompt(&b, id, "{title} {nope} {url {").unwrap(),
+            custom_task_prompt(&b, id, "{title} {nope} {url {", "urushi").unwrap(),
             "Add {tags} {nope} {url {"
         );
         assert_eq!(
-            custom_task_prompt(&b, id, "no placeholders").unwrap(),
+            custom_task_prompt(&b, id, "no placeholders", "urushi").unwrap(),
             "no placeholders"
         );
         assert_eq!(
-            custom_task_prompt(&b, TaskId::from_u128(99), "x"),
+            custom_task_prompt(&b, TaskId::from_u128(99), "x", "urushi"),
             Err(BoardError::NoSuchTask(TaskId::from_u128(99)))
         );
     }

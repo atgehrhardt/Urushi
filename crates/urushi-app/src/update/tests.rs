@@ -392,6 +392,7 @@ mod board;
 mod board_order;
 mod daemon;
 mod deletion;
+mod errors;
 mod fields;
 mod flows;
 mod jira;

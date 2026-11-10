@@ -7,7 +7,7 @@
 //! nothing changes here. Only a task's color is Urushi's own, and changes without Jira.
 //!
 //! Creating issues is in `jira_create.rs`. Nesting issues and changing their type are
-//! left to Jira. Deleting one is confirmed by the client first (ADR 0033).
+//! left to Jira. Deleting one is confirmed by the client first (ADR 0034).
 
 use urushi_core::board::{
     JiraBoard, StatusCategory, SyncedIssue, task_notes, task_tags, task_title,

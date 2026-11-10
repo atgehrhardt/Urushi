@@ -364,7 +364,7 @@ impl AppState {
         None
     }
 
-    /// A failed issue request: the editor stops waiting (the banner says why).
+    /// A failed issue request: the editor stops waiting (the error, shown in the editor, says why).
     pub(super) fn issue_failed(&mut self, followup: &Followup) {
         if let Followup::JiraIssue(task) = followup
             && let Some(editor) = editor_of(&mut self.dialog, task)
