@@ -1,13 +1,13 @@
 //! The task agent's screens: the first-run setup wizard (agent, then mode), and the rows
-//! in Settings that change the choice later.
+//! in Settings that change the choice later, with how tasks get their message.
 
 use urushi_core::{Agent, AgentMode};
-use urushi_ui::widgets::{ButtonKind, button, modal};
-use urushi_ui::{Font, Insets, Length, Node, Role, Theme, key};
+use urushi_ui::widgets::{ButtonKind, button, modal, toggle};
+use urushi_ui::{Font, Insets, Length, Node, Role, TextField, Theme, key};
 
-use super::dialogs::{hint, label};
+use super::dialogs::{area, hint, label};
 use crate::msg::Msg;
-use crate::state::AppState;
+use crate::state::{AppState, Field, SettingToggle};
 use crate::task_agent::{SetupMsg, SetupStep, mode_detail};
 
 /// The setup wizard, on `step`, with `agent` and `mode` chosen so far.
@@ -95,8 +95,16 @@ pub(super) fn wizard(
     )
 }
 
-/// Settings rows for the task agent and its mode (a 1.7 daemon only).
-pub(super) fn settings_rows(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
+/// Lines the task message box shows.
+const MESSAGE_LINES: u8 = 4;
+
+/// Settings rows for the task agent and its mode (a 1.7 daemon only), and how tasks get
+/// their message (1.19), with `message` the user's own being edited.
+pub(super) fn settings_rows(
+    state: &AppState,
+    theme: &Theme,
+    message: &TextField,
+) -> Vec<Node<Msg>> {
     if !state.daemon_supports_task_agent() {
         return Vec::new();
     }
@@ -129,11 +137,61 @@ pub(super) fn settings_rows(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
             );
             rows.push(modes);
             rows.push(hint(theme, mode_detail(mode)));
+            rows.extend(message_rows(state, theme, agent, message));
         }
         None => rows.push(hint(
             theme,
             "None yet: threads started from tasks open on the launcher.",
         )),
+    }
+    rows
+}
+
+/// Whether a task's message is sent or drafted, and the user's own message: two
+/// switches, independent of each other, and the message while it is on (UR-30).
+fn message_rows(
+    state: &AppState,
+    theme: &Theme,
+    agent: Agent,
+    message: &TextField,
+) -> Vec<Node<Msg>> {
+    if !state.daemon_supports_task_message() {
+        return Vec::new();
+    }
+    let send = !state.task_delivery().is_draft();
+    let mut rows = vec![toggle(
+        theme,
+        send,
+        "Send the task's message when the agent starts",
+        Msg::Toggle(SettingToggle::TaskSend),
+    )];
+    if !send {
+        rows.push(hint(
+            theme,
+            &format!("Off: the message is typed into {agent} for you to edit and send."),
+        ));
+    }
+    let custom = state.task_message().0;
+    rows.push(toggle(
+        theme,
+        custom,
+        "Use my own task message",
+        Msg::Toggle(SettingToggle::TaskMessageCustom),
+    ));
+    if custom {
+        rows.push(area(
+            state,
+            theme,
+            message,
+            Field::TaskMessage,
+            ("Pick up {key} \"{title}\": {url}", MESSAGE_LINES),
+        ));
+        rows.push(hint(
+            theme,
+            "Saved with Save. Filled in per task: {key} (issue key or task id), {title}, \
+             {url} (the Jira issue's address) and {show} (the command that prints the task). \
+             Left empty, the default message is used.",
+        ));
     }
     rows
 }

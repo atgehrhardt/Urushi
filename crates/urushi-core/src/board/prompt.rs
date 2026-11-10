@@ -55,7 +55,7 @@ pub fn task_prompt(board: &Board, id: TaskId) -> Result<String, BoardError> {
 }
 
 /// The command that prints a task in full: by issue key on a Jira board, else by id.
-fn show_command(task: &Task) -> String {
+pub(super) fn show_command(task: &Task) -> String {
     let id = task
         .issue
         .as_ref()
@@ -151,7 +151,7 @@ fn push_checklist(out: &mut String, subtasks: &[Task], current: Option<TaskId>) 
     }
 }
 
-fn capped(mut prompt: String) -> String {
+pub(super) fn capped(mut prompt: String) -> String {
     if prompt.len() <= MAX_PROMPT_BYTES {
         return prompt;
     }

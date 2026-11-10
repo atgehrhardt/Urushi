@@ -226,6 +226,14 @@ fn settings_round_trip() {
     s.agents.task_agent = Some(urushi_core::Agent::Claude);
     s.agents.task_mode = urushi_core::AgentMode::Plan;
     s.update_base_from_remote = false;
+    s.agents.task_delivery = urushi_core::PromptDelivery::Draft;
+    s.agents.task_message = urushi_core::TaskMessage {
+        custom: true,
+        text: "Pick up {key}".into(),
+    };
+    assert_eq!(settings_from_proto(&settings_to_proto(&s)).unwrap(), s);
+    // Kept while off.
+    s.agents.task_message.custom = false;
     assert_eq!(settings_from_proto(&settings_to_proto(&s)).unwrap(), s);
     assert_eq!(
         settings_from_proto(&settings_to_proto(&Settings::default())).unwrap(),

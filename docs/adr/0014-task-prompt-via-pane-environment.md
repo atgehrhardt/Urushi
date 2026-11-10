@@ -1,6 +1,6 @@
 # 0014. Start a task's agent with the task as its prompt, passed through the pane's environment
 
-- **Status:** Accepted; what the prompt says is amended by [0024](0024-task-prompts-by-reference.md)
+- **Status:** Accepted; what the prompt says is amended by [0024](0024-task-prompts-by-reference.md); a drafted (unsent) prompt is pasted in instead, by [0030](0030-draft-task-messages-once-the-agent-is-ready.md)
 - **Date:** 2026-11-09
 
 ## Context

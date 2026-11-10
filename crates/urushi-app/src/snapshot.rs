@@ -28,7 +28,8 @@ pub fn scene(
 
 /// Named screens for [`scenario`]: a thread with no tabs (`launcher`), the new-tab
 /// `picker`, the `add-repo` and `new-thread` dialogs (`new-thread-base` with the branch
-/// list open, `new-thread-project` with the project list open), `settings`, the thread
+/// list open, `new-thread-project` with the project list open), `settings` (with task
+/// messages drafted and the user's own message on in `settings-task-message`), the thread
 /// `menu` and its `menu-status` page, a thread being dragged (`drag`), a project being
 /// dragged above another (`drag-project`), the `repos` tab, the task `board` (a task
 /// being dragged across it in `board-drag`, the "Personal" board's tab dragged onto the
@@ -50,6 +51,7 @@ pub const SCENARIOS: &[&str] = &[
     "settings",
     "settings-appearance",
     "settings-custom",
+    "settings-task-message",
     "logo-hidden",
     "menu",
     "menu-status",
@@ -140,6 +142,16 @@ fn sample_settings() -> v1::Settings {
         }),
         ..Default::default()
     }
+}
+
+/// Settings, with task messages drafted and the user's own message on.
+fn own_drafted_message(state: &mut AppState) {
+    if let Some(a) = state.settings.as_mut().and_then(|s| s.agents.as_mut()) {
+        a.task_draft = true;
+        a.task_message_custom = true;
+        a.task_message = "Pick up {key} \"{title}\": {url}\nPlan first.".into();
+    }
+    state.update(Msg::OpenSettings);
 }
 
 /// The setup wizard on its first step (`setup`) or its mode step (`setup-mode`).
@@ -377,6 +389,7 @@ fn scenario_frame(
             open_new_thread(&mut state, name);
         }
         "settings" => drop(state.update(Msg::OpenSettings)),
+        "settings-task-message" => own_drafted_message(&mut state),
         "settings-appearance" | "settings-custom" | "logo-hidden" => show_look(&mut state, name),
         "setup" | "setup-mode" => state.dialog = Some(setup_wizard(name)),
         "menu" | "menu-status" => {

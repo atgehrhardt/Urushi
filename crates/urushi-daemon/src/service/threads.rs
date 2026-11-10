@@ -157,21 +157,21 @@ impl Service {
                 return Err(e);
             }
         };
-        if let Some((pane, command_line)) = started {
-            self.start_task_agent(thread.id, pane, &command_line).await;
+        if let Some((pane, agent)) = started {
+            self.start_task_agent(thread.id, pane, agent).await;
         }
         self.adopt_project_base(&thread).await;
         Ok(thread)
     }
 
-    /// Records the thread, and opens its first tab if asked. Returns the pane and command
-    /// line of a task agent still to be typed in.
+    /// Records the thread, and opens its first tab if asked. Returns the pane and the
+    /// task agent still to be started in it.
     fn finish_thread_creation(
         &self,
         thread: &mut Thread,
         preexisting: BTreeSet<BranchName>,
         first: FirstTab,
-    ) -> ServiceResult<Option<(PaneId, String)>> {
+    ) -> ServiceResult<Option<(PaneId, TaskAgent)>> {
         thread
             .mark_ready()
             .map_err(|e| ServiceError::Internal(e.to_string()))?;
@@ -189,7 +189,7 @@ impl Service {
                 .as_ref()
                 .map_or(DEFAULT_TAB_TITLE, |a| a.agent.display_name());
             first_tab = Some(Tab::new(tab_id, thread.id, title, pane));
-            to_type = first.agent.map(|a| (pane, a.command_line));
+            to_type = first.agent.map(|a| (pane, a));
         }
         let record = ThreadRecord {
             thread: thread.clone(),

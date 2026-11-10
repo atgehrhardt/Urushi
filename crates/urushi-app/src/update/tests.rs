@@ -404,4 +404,5 @@ mod setup;
 mod sidebar;
 mod subtask_drafts;
 mod task_in_thread;
+mod task_message;
 mod tasks;

@@ -2,7 +2,8 @@
 
 use std::path::PathBuf;
 
-use urushi_core::{Agent, BranchPrefix, RepoId, RepoSettingsOverrides, Settings};
+use urushi_core::agent::MAX_TASK_MESSAGE;
+use urushi_core::{Agent, BranchPrefix, PromptDelivery, RepoId, RepoSettingsOverrides, Settings};
 use urushi_proto::{convert, v1};
 
 use super::{Service, ServiceError, ServiceResult};
@@ -86,6 +87,21 @@ fn apply_patch(settings: &mut Settings, patch: &v1::SettingsPatch) -> ServiceRes
     if let Some(mode) = patch.task_mode {
         settings.agents.task_mode = convert::agent_mode_from_proto(mode);
     }
+    if let Some(draft) = patch.task_draft {
+        settings.agents.task_delivery = PromptDelivery::drafting(draft);
+    }
+    if let Some(custom) = patch.task_message_custom {
+        settings.agents.task_message.custom = custom;
+    }
+    if let Some(text) = &patch.task_message {
+        if text.chars().count() > MAX_TASK_MESSAGE {
+            return Err(ServiceError::Invalid(format!(
+                "the task message is longer than {MAX_TASK_MESSAGE} characters"
+            )));
+        }
+        text.trim_end()
+            .clone_into(&mut settings.agents.task_message.text);
+    }
     if let Some(appearance) = &patch.appearance {
         settings.appearance = convert::appearance_from_proto(Some(appearance));
     }
@@ -120,6 +136,43 @@ mod tests {
         apply_patch(&mut s, &clear).unwrap();
         assert_eq!(s.agents.task_agent, None);
         assert_eq!(s.agents.task_mode, urushi_core::AgentMode::Plan);
+    }
+
+    #[test]
+    fn the_task_message_is_drafted_or_custom_by_choice() {
+        let mut s = Settings::default();
+        assert_eq!(s.agents.task_delivery, PromptDelivery::Send);
+        assert_eq!(s.agents.task_message.template(), None);
+        let patch = v1::SettingsPatch {
+            task_draft: Some(true),
+            task_message_custom: Some(true),
+            task_message: Some("Pick up {key}\n\n".into()),
+            ..Default::default()
+        };
+        apply_patch(&mut s, &patch).unwrap();
+        assert_eq!(s.agents.task_delivery, PromptDelivery::Draft);
+        assert_eq!(s.agents.task_message.template(), Some("Pick up {key}"));
+        let off = v1::SettingsPatch {
+            task_draft: Some(false),
+            task_message_custom: Some(false),
+            ..Default::default()
+        };
+        apply_patch(&mut s, &off).unwrap();
+        assert_eq!(s.agents.task_delivery, PromptDelivery::Send);
+        assert_eq!(s.agents.task_message.template(), None);
+        assert_eq!(
+            s.agents.task_message.text, "Pick up {key}",
+            "kept while off"
+        );
+        let long = v1::SettingsPatch {
+            task_message: Some("x".repeat(MAX_TASK_MESSAGE + 1)),
+            ..Default::default()
+        };
+        assert!(matches!(
+            apply_patch(&mut s, &long),
+            Err(ServiceError::Invalid(_))
+        ));
+        assert_eq!(s.agents.task_message.text, "Pick up {key}");
     }
 
     #[test]

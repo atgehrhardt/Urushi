@@ -3,9 +3,10 @@
 //! Everything that can fail (no task agent chosen, the agent not installed, the task
 //! gone) is checked by [`Service::prepare_task_agent`] before the thread's worktree is
 //! made, so a refused request leaves nothing behind. The prompt travels in the first
-//! pane's environment, and the typed command line refers to it.
+//! pane's environment, and the typed command line refers to it; or, when the user drafts
+//! task messages, it is pasted into the agent once it is ready (`task_draft.rs`).
 
-use urushi_core::{Agent, PaneId, TASK_PROMPT_ENV, TaskId, ThreadId};
+use urushi_core::{Agent, PaneId, PromptDelivery, TASK_PROMPT_ENV, TaskId, ThreadId};
 
 use super::{Service, ServiceError, ServiceResult};
 
@@ -18,6 +19,8 @@ pub(super) struct TaskAgent {
     pub(super) command_line: String,
     /// The task's prompt, put in the pane's environment as [`TASK_PROMPT_ENV`].
     pub(super) prompt: String,
+    /// Whether the prompt is sent (on the command line) or drafted (pasted later).
+    pub(super) delivery: PromptDelivery,
 }
 
 impl TaskAgent {
@@ -45,28 +48,41 @@ impl Service {
         }
     }
 
-    /// Types the task agent's command into the new thread's first pane. The thread stands
-    /// on its own once recorded: if this fails it keeps its shell, and the user can start
-    /// the agent by hand.
-    pub(super) async fn start_task_agent(&self, thread: ThreadId, pane: PaneId, line: &str) {
-        if let Err(e) = self.type_command(pane, line).await {
+    /// Types the task agent's command into the thread's new pane, and drafts its
+    /// message there once it is ready if the user drafts them. The thread stands on its
+    /// own once recorded: if this fails it keeps its shell, and the user can start the
+    /// agent by hand.
+    pub(super) async fn start_task_agent(&self, thread: ThreadId, pane: PaneId, agent: TaskAgent) {
+        let draft = if agent.delivery.is_draft() {
+            self.expect_draft(pane)
+        } else {
+            None
+        };
+        if let Err(e) = self.type_command(pane, &agent.command_line).await {
             tracing::warn!(%thread, error = %e, "couldn't start the task agent");
+            return;
+        }
+        if let Some(draft) = draft {
+            self.draft_when_ready(draft, agent.agent, agent.prompt);
         }
     }
 
-    /// Resolves the user's task agent, its mode and the prompt for `link`. Fails if no
-    /// task agent is chosen, it isn't installed, or the task or subtask doesn't exist.
+    /// Resolves the user's task agent, its mode and the prompt for `link` (the user's
+    /// own message when they have one, else the default), and whether it is sent or
+    /// drafted. Fails if no task agent is chosen, it isn't installed, or the task or
+    /// subtask doesn't exist.
     pub(super) async fn prepare_task_agent(
         &self,
         link: (TaskId, Option<TaskId>),
         shell: Option<String>,
     ) -> ServiceResult<TaskAgent> {
         let by_reference = self.cli.is_some();
-        let (choice, prompt) = self.read(|s| {
+        let (choice, prompt, delivery) = self.read(|s| {
             let agents = &s.settings.agents;
             Ok((
                 agents.task_agent.map(|a| (a, agents.task_mode)),
-                s.task_prompt(link, by_reference)?,
+                s.task_prompt(link, by_reference, agents.task_message.template())?,
+                agents.task_delivery,
             ))
         })?;
         let (agent, mode) = choice.ok_or_else(|| {
@@ -74,11 +90,12 @@ impl Service {
                 "no agent is chosen for tasks yet; pick one in Settings".into(),
             )
         })?;
-        let command_line = self.agent_task_line(agent, shell, mode).await?;
+        let command_line = self.agent_task_line(agent, shell, mode, delivery).await?;
         Ok(TaskAgent {
             agent,
             command_line,
             prompt,
+            delivery,
         })
     }
 }

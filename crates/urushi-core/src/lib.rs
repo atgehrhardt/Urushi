@@ -28,13 +28,14 @@ pub mod thread;
 pub mod time;
 
 pub use agent::{
-    Agent, AgentMode, AgentSessionId, AgentSettings, InvalidSessionId, TASK_PROMPT_ENV,
+    Agent, AgentMode, AgentSessionId, AgentSettings, InvalidSessionId, PromptDelivery,
+    TASK_PROMPT_ENV, TaskMessage,
 };
 pub use appearance::{Appearance, LogoStyle, Rgb, Scheme, SchemeColors};
 pub use attention::AttentionKind;
 pub use board::{
-    Board, BoardError, BoardSource, Column, LabelColor, Task, TaskKind, TaskPatch, task_prompt,
-    task_reference_prompt,
+    Board, BoardError, BoardSource, Column, LabelColor, Task, TaskKind, TaskPatch,
+    custom_task_prompt, task_prompt, task_reference_prompt,
 };
 pub use ids::{
     AttachmentId, BoardId, ColumnId, PaneId, ProjectId, RepoId, TabId, TaskId, ThreadId,

@@ -23,6 +23,9 @@ pub enum EmulatorEvent {
     /// The application posted a terminal notification (OSC 9 or 777), or Urushi's own
     /// signal that an agent finished or waits (`urushi_core::attention`).
     Attention(urushi_core::AttentionKind),
+    /// An agent's hook said it has started and reads input (Urushi's `ready` signal).
+    /// Not attention.
+    Ready,
 }
 
 /// Which viewport lines changed since the last [`Emulator::take_damage`].

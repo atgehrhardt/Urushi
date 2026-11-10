@@ -8,8 +8,11 @@
 //! (ADR 0014) it travels in the pane's environment and the typed command line only
 //! refers to it:
 //!
-//! - Claude: `--settings "$URUSHI_CLAUDE_SETTINGS"`, adding a `Stop` hook (done) and a
-//!   `Notification` hook for permission prompts and questions (waiting).
+//! - Claude: `--settings "$URUSHI_CLAUDE_SETTINGS"`, adding a `Stop` hook (done), a
+//!   `Notification` hook for permission prompts and questions (waiting), and a
+//!   `SessionStart` hook on startup (ready: it runs once Claude's own startup dialogs,
+//!   such as folder trust, are answered, so a drafted task message can be typed in; ADR
+//!   0030).
 //! - Codex: its `notify` program on turn completion (done), and its own terminal
 //!   notifications (OSC 9) for approval requests (waiting).
 //! - Cursor has no command-line hooks; bells and notifications still count.
@@ -17,7 +20,7 @@
 use std::fmt::Write as _;
 
 use super::Agent;
-use crate::attention::{AttentionKind, SIGNAL_NAMESPACE, SIGNAL_OSC};
+use crate::attention::{AttentionKind, READY_SIGNAL, SIGNAL_NAMESPACE, SIGNAL_OSC};
 
 /// Environment variable holding the path of the pane's terminal device.
 pub const TTY_ENV: &str = "URUSHI_TTY";
@@ -29,9 +32,19 @@ pub const CODEX_NOTIFY_ENV: &str = "URUSHI_CODEX_NOTIFY";
 /// A shell command that raises `kind` on the pane's terminal. It does nothing outside
 /// an Urushi pane, and always succeeds, so a hook never shows up as an error.
 pub fn signal_command(kind: AttentionKind) -> String {
+    word_command(kind.signal())
+}
+
+/// A shell command that tells the pane's terminal the agent reads input now
+/// ([`READY_SIGNAL`]). Like [`signal_command`], harmless outside an Urushi pane.
+pub fn ready_command() -> String {
+    word_command(READY_SIGNAL)
+}
+
+/// A shell command writing Urushi's signal with `word` to the pane's terminal.
+fn word_command(word: &str) -> String {
     format!(
-        "[ -w \"${TTY_ENV}\" ] && printf '\\033]{SIGNAL_OSC};{SIGNAL_NAMESPACE};{}\\007' > \"${TTY_ENV}\"; true",
-        kind.signal()
+        "[ -w \"${TTY_ENV}\" ] && printf '\\033]{SIGNAL_OSC};{SIGNAL_NAMESPACE};{word}\\007' > \"${TTY_ENV}\"; true"
     )
 }
 
@@ -44,6 +57,13 @@ pub fn hook_env() -> Vec<(String, String)> {
 }
 
 impl Agent {
+    /// Whether Urushi's hooks make this agent say when it reads input (the `ready`
+    /// signal, from Claude's `SessionStart` hook). Codex only runs hooks the user has
+    /// trusted, and Cursor has none on its command line.
+    pub const fn says_when_ready(self) -> bool {
+        matches!(self, Self::Claude)
+    }
+
     /// Options that load Urushi's hooks, right after the program name (before any
     /// subcommand). They refer to [`hook_env`]'s variables.
     pub const fn hook_args(self) -> &'static [&'static str] {
@@ -66,16 +86,17 @@ impl Agent {
 
 /// Claude settings adding Urushi's hooks. Claude merges them with the user's own.
 fn claude_settings() -> String {
-    let hook = |kind| {
+    let hook = |command: String| {
         format!(
             r#"[{{"type":"command","command":{}}}]"#,
-            json_string(&signal_command(kind))
+            json_string(&command)
         )
     };
     format!(
-        r#"{{"hooks":{{"Stop":[{{"hooks":{}}}],"Notification":[{{"matcher":"permission_prompt|elicitation_dialog","hooks":{}}}]}}}}"#,
-        hook(AttentionKind::Done),
-        hook(AttentionKind::Waiting)
+        r#"{{"hooks":{{"Stop":[{{"hooks":{}}}],"Notification":[{{"matcher":"permission_prompt|elicitation_dialog","hooks":{}}}],"SessionStart":[{{"matcher":"startup","hooks":{}}}]}}}}"#,
+        hook(signal_command(AttentionKind::Done)),
+        hook(signal_command(AttentionKind::Waiting)),
+        hook(ready_command())
     )
 }
 
@@ -123,6 +144,14 @@ mod tests {
     }
 
     #[test]
+    fn the_ready_command_writes_the_ready_signal() {
+        assert_eq!(
+            ready_command(),
+            r#"[ -w "$URUSHI_TTY" ] && printf '\033]777;urushi;ready\007' > "$URUSHI_TTY"; true"#
+        );
+    }
+
+    #[test]
     fn claude_gets_stop_and_permission_hooks_as_json() {
         let settings: serde_json::Value = serde_json::from_str(&claude_settings()).unwrap();
         let command = |event: &str| {
@@ -141,6 +170,9 @@ mod tests {
             settings["hooks"]["Notification"][0]["matcher"],
             "permission_prompt|elicitation_dialog"
         );
+        // Ready once it has started, not again on /clear, resume or compaction.
+        assert_eq!(command("SessionStart"), ready_command());
+        assert_eq!(settings["hooks"]["SessionStart"][0]["matcher"], "startup");
     }
 
     #[test]

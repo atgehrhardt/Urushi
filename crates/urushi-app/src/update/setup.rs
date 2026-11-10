@@ -1,5 +1,6 @@
 //! The task agent: the first-run setup wizard that chooses it, and the Settings rows
-//! that change it. Both just send `UpdateSettings`; the daemon keeps the choice.
+//! that change it, with how tasks get their message (sent or drafted, the default or
+//! the user's own). All just send `UpdateSettings`; the daemon keeps the choice.
 
 use urushi_client::v1::{self, request::Body};
 use urushi_core::{Agent, AgentMode};
@@ -7,7 +8,7 @@ use urushi_proto::convert;
 
 use super::request;
 use crate::msg::{Effect, Followup};
-use crate::state::{AppState, Dialog};
+use crate::state::{AppState, Dialog, Field, SettingToggle};
 use crate::task_agent::{SetupMsg, SetupStep};
 
 impl AppState {
@@ -70,6 +71,33 @@ impl AppState {
         if self.daemon_supports_task_agent() {
             save(Some(agent), None, fx);
         }
+    }
+
+    /// Settings: switch between sending and drafting task messages, or the user's own
+    /// task message on and off. Applied at once, like the other switches; turning the
+    /// message on puts the cursor in it. Nothing on daemons older than 1.19.
+    pub(super) fn toggle_task_message(&mut self, toggle: SettingToggle, fx: &mut Vec<Effect>) {
+        if !self.daemon_supports_task_message() {
+            return;
+        }
+        let mut patch = v1::SettingsPatch::default();
+        match toggle {
+            SettingToggle::TaskSend => {
+                patch.task_draft = Some(!self.task_delivery().is_draft());
+            }
+            SettingToggle::TaskMessageCustom => {
+                let on = !self.task_message().0;
+                patch.task_message_custom = Some(on);
+                if on && matches!(self.dialog, Some(Dialog::Settings { .. })) {
+                    self.focus = Some(Field::TaskMessage);
+                }
+            }
+            _ => return,
+        }
+        fx.push(request(
+            Body::UpdateSettings(v1::UpdateSettingsRequest { patch: Some(patch) }),
+            Followup::Settings,
+        ));
     }
 
     /// Settings: start the task agent in `mode`.

@@ -102,12 +102,10 @@ impl Emulator for AlacrittyEmulator {
             .into_iter()
             .filter_map(|e| self.translate(e))
             .collect();
-        events.extend(
-            self.notices
-                .advance(bytes)
-                .into_iter()
-                .map(EmulatorEvent::Attention),
-        );
+        events.extend(self.notices.advance(bytes).into_iter().map(|n| match n {
+            super::notices::Notice::Attention(kind) => EmulatorEvent::Attention(kind),
+            super::notices::Notice::Ready => EmulatorEvent::Ready,
+        }));
         events
     }
 

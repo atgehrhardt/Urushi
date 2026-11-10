@@ -44,6 +44,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0027 – Show a Jira board's epics as cards, and create them like any issue](adr/0027-epics-are-cards-on-jira-boards.md)
 - [0028 – Start a new thread from its base's state on the remote, without touching the user's checkout](adr/0028-start-threads-from-the-bases-remote-state.md)
 - [0029 – Give projects a parent branch, and a parent-branch thread that works on it](adr/0029-project-parent-branch-threads.md)
+- [0030 – Draft a task's message by pasting it into the agent once it says it is ready](adr/0030-draft-task-messages-once-the-agent-is-ready.md)
 
 ## Features
 - [_template](features/_template.md)

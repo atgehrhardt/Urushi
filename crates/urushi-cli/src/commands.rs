@@ -376,6 +376,9 @@ fn patch(key: &str, value: &str) -> Result<v1::SettingsPatch> {
             };
             p.task_mode = Some(mode.into());
         }
+        "task-send" => p.task_draft = Some(!flag(value)?),
+        "task-message-custom" => p.task_message_custom = Some(flag(value)?),
+        "task-message" => p.task_message = Some(value.into()),
         other => bail!("unknown setting {other:?}"),
     }
     Ok(p)

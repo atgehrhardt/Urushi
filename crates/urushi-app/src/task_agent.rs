@@ -5,7 +5,7 @@
 //! `task_mode`), so every client shares it. This module only reads it and holds what the
 //! wizard needs between steps.
 
-use urushi_core::{Agent, AgentMode};
+use urushi_core::{Agent, AgentMode, PromptDelivery};
 use urushi_proto::convert;
 
 use crate::state::AppState;
@@ -17,6 +17,10 @@ pub const TASK_AGENT_SINCE_MINOR: u32 = 7;
 /// First protocol minor version that starts a task in an existing thread
 /// (`CreateTab.{task_id, subtask_id, start_task_agent}`, ADR 0018).
 pub const TASK_IN_THREAD_SINCE_MINOR: u32 = 10;
+
+/// First protocol minor version that drafts task messages and takes the user's own
+/// (`AgentSettings.task_draft`, `task_message_custom`, `task_message`; UR-30).
+pub const TASK_MESSAGE_SINCE_MINOR: u32 = 19;
 
 /// A step of the setup wizard.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,13 +69,53 @@ impl AppState {
         self.daemon_minor >= TASK_IN_THREAD_SINCE_MINOR
     }
 
+    /// Whether the daemon can draft task messages and use the user's own (1.19).
+    pub fn daemon_supports_task_message(&self) -> bool {
+        self.daemon_minor >= TASK_MESSAGE_SINCE_MINOR
+    }
+
+    /// Whether a task's message is sent to the task agent or drafted there. Always sent
+    /// on daemons older than 1.19.
+    pub fn task_delivery(&self) -> PromptDelivery {
+        let draft = self.daemon_supports_task_message()
+            && self
+                .settings
+                .as_ref()
+                .and_then(|s| s.agents.as_ref())
+                .is_some_and(|a| a.task_draft);
+        PromptDelivery::drafting(draft)
+    }
+
+    /// The user's own task message, and whether it is on (1.19; else off and empty).
+    pub fn task_message(&self) -> (bool, &str) {
+        match self.settings.as_ref().and_then(|s| s.agents.as_ref()) {
+            Some(a) if self.daemon_supports_task_message() => {
+                (a.task_message_custom, a.task_message.as_str())
+            }
+            _ => (false, ""),
+        }
+    }
+
+    /// How the task agent gets the task, to end "Starts Claude …": "with this task as
+    /// its prompt", or drafted, or with the user's own message.
+    pub fn task_message_phrase(&self) -> &'static str {
+        let (custom, text) = self.task_message();
+        let custom = custom && !text.trim().is_empty();
+        match (self.task_delivery(), custom) {
+            (PromptDelivery::Send, false) => "with this task as its prompt",
+            (PromptDelivery::Send, true) => "with your task message",
+            (PromptDelivery::Draft, false) => "with this task's message drafted for you to send",
+            (PromptDelivery::Draft, true) => "with your task message drafted for you to send",
+        }
+    }
+
     /// The task agent and the mode it actually starts in, if the user chose one and the
     /// daemon can start it.
     pub fn task_agent(&self) -> Option<(Agent, AgentMode)> {
         if !self.daemon_supports_task_agent() {
             return None;
         }
-        let a = self.settings.as_ref()?.agents?;
+        let a = self.settings.as_ref()?.agents.as_ref()?;
         let agent = convert::agent_from_proto(a.task_agent)?;
         let mode = agent.effective_mode(convert::agent_mode_from_proto(a.task_mode));
         Some((agent, mode))
@@ -81,7 +125,7 @@ impl AppState {
     pub fn task_mode_setting(&self) -> AgentMode {
         self.settings
             .as_ref()
-            .and_then(|s| s.agents)
+            .and_then(|s| s.agents.as_ref())
             .map_or(AgentMode::Normal, |a| {
                 convert::agent_mode_from_proto(a.task_mode)
             })
@@ -98,7 +142,7 @@ impl AppState {
             && self
                 .settings
                 .as_ref()
-                .is_some_and(|s| s.agents.is_some_and(|a| a.task_agent == 0))
+                .is_some_and(|s| s.agents.as_ref().is_some_and(|a| a.task_agent == 0))
     }
 }
 

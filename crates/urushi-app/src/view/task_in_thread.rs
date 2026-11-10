@@ -91,8 +91,9 @@ fn what_starts(state: &AppState, picked: bool) -> String {
     }
     match state.task_agent() {
         Some((agent, mode)) => format!(
-            "A new tab there starts {} with this task as its prompt.",
-            crate::task_agent::describe(agent, mode)
+            "A new tab there starts {} {}.",
+            crate::task_agent::describe(agent, mode),
+            state.task_message_phrase()
         ),
         None => "No agent is set for tasks (Settings): a terminal tab opens there.".to_owned(),
     }
