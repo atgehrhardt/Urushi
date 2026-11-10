@@ -44,15 +44,20 @@ macro_rules! focused_field {
 }
 
 impl AppState {
-    /// The focused text field, if a dialog has one.
+    /// The focused text field, if a dialog (or the board's search) has one.
     pub(crate) fn field(&self) -> Option<&TextField> {
-        focused_field!(&self.dialog, self.focus?, &)
+        match self.focus? {
+            Field::BoardSearch if self.dialog.is_none() => Some(&self.board.filter.search),
+            focus => focused_field!(&self.dialog, focus, &),
+        }
     }
 
     /// The focused text field, to edit.
     pub(super) fn field_mut(&mut self) -> Option<&mut TextField> {
-        let focus = self.focus?;
-        focused_field!(&mut self.dialog, focus, &mut)
+        match self.focus? {
+            Field::BoardSearch if self.dialog.is_none() => Some(&mut self.board.filter.search),
+            focus => focused_field!(&mut self.dialog, focus, &mut),
+        }
     }
 
     /// The fields Tab cycles through, in order.
@@ -96,7 +101,8 @@ impl AppState {
             return;
         }
         match key.named {
-            Some(Named::Escape) => self.close_dialog(),
+            Some(Named::Escape) if self.dialog.is_some() => self.close_dialog(),
+            Some(Named::Escape) => {}
             Some(Named::Enter) => {
                 if self.field_mut().is_some_and(TextField::newline) {
                     self.after_field_edit();

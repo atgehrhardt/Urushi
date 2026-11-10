@@ -10,11 +10,13 @@ use crate::organize::{DropTarget, MenuPage, MenuTarget, Prompt, Select, SidebarT
 use crate::state::{Field, FieldCommand, Launch, SettingToggle, TaskLink};
 
 mod board;
+mod filter;
 mod jira;
 mod pane;
 mod sidebar;
 
 pub use board::BoardMsg;
+pub use filter::FilterMsg;
 pub use jira::JiraMsg;
 pub use pane::PaneMsg;
 pub use sidebar::SidebarMsg;
@@ -180,6 +182,8 @@ pub enum Msg {
     Board(BoardMsg),
     /// Jira: signing in, importing and syncing boards (`update/jira.rs`).
     Jira(JiraMsg),
+    /// Filtering the shown board (`update/filter.rs`).
+    Filter(FilterMsg),
     /// Ask to delete a board.
     OpenDeleteBoard(String),
     /// Confirmed: delete the board.
@@ -340,6 +344,8 @@ pub enum Followup {
     JiraConnected,
     /// Show the site's boards in the import dialog.
     JiraBoards,
+    /// The issues of this board its quick filters let through.
+    QuickFilter(String),
 }
 
 /// Something the app needs done.

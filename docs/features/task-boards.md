@@ -24,9 +24,12 @@ it back.
 - **Tags** are free text. Each tag has a color picked from its name, so the same tag
   looks the same everywhere. Cards show up to three tags in their footer, then "+n". In
   the editor, type in "Add a tag…" and press Enter, × removes one, and the board's other
-  tags are offered under "On this board". The **All tags ▾** button in the header
-  filters the board to one tag; the column counts then read "shown/all". Choosing
-  another board clears the filter.
+  tags are offered under "On this board".
+- **Filtering:** under the tabs, a search field (title and notes; Escape clears it) and
+  **Filters ▾**, with a page for the types and one for the tags the board's tasks have;
+  several can be chosen, and a card shows when it or a subtask passes. The column
+  counts then read "shown/all", and **Clear** drops every filter. Choosing another board
+  clears them. Jira boards filter by much more ([jira-boards](jira-boards.md)).
 - **+** on a column adds a task. Clicking a card opens the editor: title, notes and
   subtasks on the left; column, color and tags on the right (one scrolling column on
   phones); **Start thread**, and Delete. Color and tags are saved with Save, like the
@@ -215,9 +218,9 @@ restarts.
     `TaskLink::of` names the card and the subtask for `CreateThread`.
   - **Menus:** the card's (or a subtask row's) `on_secondary_click` opens
     `MenuTarget::Task` (the only menu that opens over a dialog, the task editor), a column's
-    header or ⋯ `MenuTarget::Column`, and the header's filter button
-    `MenuTarget::TagFilter` (all in `view/menu/tasks.rs`; colors are a `MenuPage::Color`
-    page). Their actions are `Msg::Board(BoardMsg::…)`, handled in `update/cards.rs`.
+    header or ⋯ `MenuTarget::Column` (both in `view/menu/tasks.rs`; colors are a
+    `MenuPage::Color` page), and the filter bar's **Filters ▾** `MenuTarget::Filter`
+    (`view/menu/filter.rs`). Their actions are `Msg::Board(BoardMsg::…)`, handled in `update/cards.rs`.
     Moving a card there sends `MoveTask` to the bottom of the column. Column names go
     through `Prompt::{NewColumn, RenameColumn}`, and removal through
     `Dialog::DeleteColumn`, which names the same neighbour the daemon picks.
@@ -225,7 +228,7 @@ restarts.
     (`board.rs`), sent with Save only when they changed; a tag still typed in the field
     goes too. `view/labels.rs` maps wire colors to `Theme::labels` and draws swatches
     and tag chips, wrapping chips into rows by their approximate width (the layout
-    doesn't wrap). The tag filter (`BoardPanel.tag_filter`, `board::shows`) only
+    doesn't wrap). The filter (`BoardPanel.filter`, `filter.rs`) only
     changes what is drawn; drops still use task ids, so they land right.
   - **Shortcut:** `B` in `update.rs::shortcut` sends `Msg::ToggleBoard`, the same message
     as the button.

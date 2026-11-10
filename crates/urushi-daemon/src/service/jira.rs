@@ -24,7 +24,8 @@ use urushi_core::{Board, BoardId, ColumnId, TaskId};
 
 use super::{Service, ServiceError, ServiceResult, State, blocking, lock, new_uuid, now};
 use crate::jira::{
-    Account, BoardConfig, BoardInfo, CredentialStore, IssueQuery, JiraApi, JiraError, site_address,
+    Account, BoardConfig, BoardInfo, CredentialStore, IssueFields, IssueQuery, JiraApi, JiraError,
+    Me, site_address,
 };
 
 /// How often boards are read while a client watches.
@@ -55,6 +56,8 @@ pub struct JiraSignIn {
     pub email: String,
     /// The account's name in Jira.
     pub display_name: String,
+    /// Its Atlassian account id (empty until read, for a sign-in from before 1.13).
+    pub account_id: String,
 }
 
 /// How syncing one board is going.
@@ -89,9 +92,29 @@ impl JiraLink {
         lock(&self.account).clone()
     }
 
+    /// The board's configuration from its last full read, if any.
+    pub(super) fn cached_config(&self, board: BoardId) -> Option<BoardConfig> {
+        lock(&self.boards)
+            .get(&board)
+            .and_then(|s| s.config.clone())
+    }
+
     /// The lock that keeps syncs and writes of a board one at a time.
     pub(super) fn lock(&self, board: BoardId) -> Arc<tokio::sync::Mutex<()>> {
         lock(&self.boards).entry(board).or_default().lock.clone()
+    }
+}
+
+/// The query for all of a board's issues.
+pub(super) fn board_query(config: &BoardConfig) -> IssueQuery {
+    IssueQuery {
+        filter_id: config.filter_id,
+        sub_query: config.sub_query.clone(),
+        scrum: config.info.scrum,
+        fields: IssueFields::of_config(config),
+        updated_within_minutes: None,
+        extra_jql: Vec::new(),
+        limit: MAX_SYNCED_ISSUES,
     }
 }
 
@@ -144,6 +167,7 @@ impl Service {
             site: a.site,
             email: a.email,
             display_name: a.display_name,
+            account_id: a.account_id,
         })
     }
 
@@ -173,10 +197,13 @@ impl Service {
             email: email.to_owned(),
             token: token.to_owned(),
             display_name: String::new(),
+            account_id: String::new(),
         };
         let api = self.jira.api.clone();
         let checking = account.clone();
-        account.display_name = blocking(move || Ok(api.myself(&checking)?)).await?;
+        let me = blocking(move || Ok(api.myself(&checking)?)).await?;
+        account.display_name = me.display_name;
+        account.account_id = me.account_id;
         self.jira
             .store
             .save(&account)
@@ -279,6 +306,9 @@ impl Service {
                 project_key: config.info.project_key.clone(),
                 scrum: config.info.scrum,
                 rank_field: config.rank_field.clone(),
+                points_field: config.points_field.clone(),
+                sprint_field: config.sprint_field.clone(),
+                quick_filters: config.quick_filters.clone(),
                 sync: SyncState::default(),
             },
             &config.columns,
@@ -334,20 +364,18 @@ impl Service {
                 Some(config) if !full => config,
                 _ => api.board(&account, jira.board_id)?,
             };
-            let fetched = api.issues(
-                &account,
-                &IssueQuery {
-                    filter_id: config.filter_id,
-                    sub_query: config.sub_query.clone(),
-                    scrum: config.info.scrum,
-                    rank_field: config.rank_field.clone(),
-                    updated_within_minutes: if full { None } else { since },
-                    limit: MAX_SYNCED_ISSUES,
-                },
-            )?;
-            Ok::<_, JiraError>((config, fetched))
+            let mut query = board_query(&config);
+            query.updated_within_minutes = if full { None } else { since };
+            let fetched = api.issues(&account, &query)?;
+            // A sign-in from before account ids were kept learns its own.
+            let me = if full && account.account_id.is_empty() {
+                api.myself(&account).ok()
+            } else {
+                None
+            };
+            Ok::<_, JiraError>((config, fetched, me))
         };
-        let (config, fetched) = match blocking(move || Ok(read())).await? {
+        let (config, fetched, me) = match blocking(move || Ok(read())).await? {
             Ok(read) => read,
             Err(e) => {
                 self.sync_failed(board, &e);
@@ -365,6 +393,9 @@ impl Service {
             let report = b.merge_issues(fetched.issues, full, || TaskId::from_uuid(new_uuid()));
             if let Some(j) = b.jira_mut() {
                 j.rank_field.clone_from(&config.rank_field);
+                j.points_field.clone_from(&config.points_field);
+                j.sprint_field.clone_from(&config.sprint_field);
+                j.quick_filters.clone_from(&config.quick_filters);
                 j.project_key.clone_from(&config.info.project_key);
                 j.sync.error = None;
                 if full {
@@ -388,7 +419,27 @@ impl Service {
         }
         sync.failures = 0;
         sync.wait_until = None;
+        drop(boards);
+        if let Some(me) = me {
+            self.learn_me(&me);
+        }
         Ok(())
+    }
+
+    /// Keeps the account id (and name) Jira says the sign-in has.
+    fn learn_me(&self, me: &Me) {
+        let mut account = lock(&self.jira.account);
+        let Some(a) = account.as_mut() else {
+            return;
+        };
+        if me.account_id.is_empty() || a.account_id == me.account_id {
+            return;
+        }
+        a.account_id.clone_from(&me.account_id);
+        a.display_name.clone_from(&me.display_name);
+        if let Err(e) = self.jira.store.save(a) {
+            tracing::warn!(error = %e, "couldn't keep the Jira account id");
+        }
     }
 
     /// Records a failed sync on the board, and when to try again.

@@ -10,8 +10,7 @@ use urushi_ui::{Align, Color, Font, Insets, Key, Length, Node, Role, Theme, key}
 
 use urushi_core::board::MAX_COLUMNS;
 
-use super::labels;
-use crate::board::{BOARDS_SINCE_MINOR, board_tags};
+use crate::board::BOARDS_SINCE_MINOR;
 use crate::msg::Msg;
 use crate::organize::{MenuTarget, Prompt};
 use crate::state::AppState;
@@ -32,6 +31,7 @@ const FOOTER_HEIGHT: f32 = 18.0;
 mod card;
 mod column;
 mod dialogs;
+mod filter;
 pub(in crate::view) mod jira;
 
 pub(in crate::view) use card::drag_ghost;
@@ -95,6 +95,11 @@ pub(super) fn panel(
     } else {
         theme.radius_large
     };
+    let filter_bar = state
+        .board
+        .board(&state.workspace)
+        .filter(|_| state.daemon_supports_board_extras())
+        .map(|b| filter::bar(state, theme, b));
     urushi_ui::widgets::overlay(
         theme,
         Node::column()
@@ -106,6 +111,7 @@ pub(super) fn panel(
     .on_click(Msg::BoardBackground)
     .slide_x(1.0 - state.board.eased())
     .child(header(state, theme))
+    .children(filter_bar)
     .child(urushi_ui::widgets::divider(theme, false))
     .child(body)
 }
@@ -175,12 +181,6 @@ fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
     }
     row = row.child(Node::spacer());
     let board = state.board.board(&state.workspace);
-    if let Some(filter) = board.and_then(|b| jira::epic_filter(state, theme, b)) {
-        row = row.child(filter);
-    }
-    if let Some(filter) = board.and_then(|b| tag_filter(state, theme, b)) {
-        row = row.child(filter);
-    }
     match board {
         Some(b) if b.jira.is_some() => row = row.children(jira::actions(state, theme, b)),
         Some(b) => {
@@ -268,36 +268,6 @@ fn add_column(theme: &Theme, board: &str) -> Node<Msg> {
             ButtonKind::Ghost,
             Msg::OpenPrompt(Prompt::NewColumn(board.to_owned())),
         ))
-}
-
-/// The tag filter's button: "All tags" or the tag shown. Only on boards with tags.
-fn tag_filter(state: &AppState, theme: &Theme, board: &v1::Board) -> Option<Node<Msg>> {
-    if !state.daemon_supports_board_extras() || board_tags(board).is_empty() {
-        return None;
-    }
-    let (text, color) = match &state.board.tag_filter {
-        Some(tag) => (
-            format!("#{}  ▾", shorten(tag, TAB_CHARS)),
-            labels::tag_color(theme, tag),
-        ),
-        None => ("All tags  ▾".to_owned(), theme.text_muted),
-    };
-    Some(
-        Node::row()
-            .padding(Insets::symmetric(4.0, 10.0))
-            .radius(theme.radius)
-            .border(1.0, theme.border)
-            .hover_background(theme.hover)
-            .key(key(&["board-tag-filter"]))
-            .on_click(Msg::OpenMenu(MenuTarget::TagFilter(board.id.clone())))
-            .role(Role::Button, "Filter by tag")
-            .child(Node::text(
-                text,
-                Font::UiMedium,
-                theme.font_size_small,
-                color,
-            )),
-    )
 }
 
 #[cfg(test)]

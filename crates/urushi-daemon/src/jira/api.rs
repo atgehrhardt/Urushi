@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use urushi_core::TaskKind;
-use urushi_core::board::{JiraColumn, StatusCategory, SyncedIssue};
+use urushi_core::board::{JiraBoard, JiraColumn, QuickFilter, StatusCategory, SyncedIssue};
 
 use super::Account;
 
@@ -62,6 +62,12 @@ pub struct BoardConfig {
     pub columns: Vec<JiraColumn>,
     /// The field holding its ranking (e.g. `customfield_10019`).
     pub rank_field: Option<String>,
+    /// The field holding its estimates (story points), if it estimates.
+    pub points_field: Option<String>,
+    /// The site's sprint field, if it has sprints.
+    pub sprint_field: Option<String>,
+    /// Its quick filters.
+    pub quick_filters: Vec<QuickFilter>,
     /// The saved filter choosing its issues.
     pub filter_id: u64,
     /// A kanban board's extra query narrowing the filter (e.g. unreleased versions).
@@ -77,12 +83,61 @@ pub struct IssueQuery {
     pub sub_query: Option<String>,
     /// Only issues in open sprints (a scrum board).
     pub scrum: bool,
-    /// The board's rank field, to order and place cards.
-    pub rank_field: Option<String>,
+    /// The board's own fields to read.
+    pub fields: IssueFields,
     /// Only issues updated in the last this many minutes; everything when `None`.
     pub updated_within_minutes: Option<u64>,
+    /// More JQL clauses the issues must match (e.g. quick filters).
+    pub extra_jql: Vec<String>,
     /// Read at most this many.
     pub limit: usize,
+}
+
+/// Fields whose ids depend on the site or board, read with every issue.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct IssueFields {
+    /// The rank field, to order and place cards.
+    pub rank: Option<String>,
+    /// The estimate (story points) field.
+    pub points: Option<String>,
+    /// The sprint field.
+    pub sprint: Option<String>,
+}
+
+impl IssueFields {
+    /// The fields of a board that follows Jira.
+    pub fn of(jira: &JiraBoard) -> Self {
+        Self {
+            rank: jira.rank_field.clone(),
+            points: jira.points_field.clone(),
+            sprint: jira.sprint_field.clone(),
+        }
+    }
+
+    /// The fields of a board's configuration.
+    pub fn of_config(config: &BoardConfig) -> Self {
+        Self {
+            rank: config.rank_field.clone(),
+            points: config.points_field.clone(),
+            sprint: config.sprint_field.clone(),
+        }
+    }
+
+    /// Those known, by id.
+    pub fn ids(&self) -> impl Iterator<Item = &str> {
+        [&self.rank, &self.points, &self.sprint]
+            .into_iter()
+            .filter_map(|f| f.as_deref())
+    }
+}
+
+/// Who the daemon is signed in as.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Me {
+    /// Their display name.
+    pub display_name: String,
+    /// Their Atlassian account id.
+    pub account_id: String,
 }
 
 /// Issues read for a board.
@@ -158,21 +213,19 @@ pub enum Rank {
 
 /// Jira, as the daemon uses it.
 pub trait JiraApi: Send + Sync {
-    /// The account's display name; checks the sign-in.
-    fn myself(&self, account: &Account) -> JiraResult<String>;
+    /// Who the account is; checks the sign-in.
+    fn myself(&self, account: &Account) -> JiraResult<Me>;
     /// Boards whose name contains `query`, at most 50.
     fn boards(&self, account: &Account, query: &str) -> JiraResult<Vec<BoardInfo>>;
     /// A board's configuration.
     fn board(&self, account: &Account, id: u64) -> JiraResult<BoardConfig>;
     /// A board's issues, in rank order.
     fn issues(&self, account: &Account, query: &IssueQuery) -> JiraResult<Fetched>;
+    /// The ids of a board's issues the query matches (at most its limit), without
+    /// their fields.
+    fn issue_ids(&self, account: &Account, query: &IssueQuery) -> JiraResult<Vec<String>>;
     /// One issue, by key.
-    fn issue(
-        &self,
-        account: &Account,
-        key: &str,
-        rank_field: Option<&str>,
-    ) -> JiraResult<SyncedIssue>;
+    fn issue(&self, account: &Account, key: &str, fields: &IssueFields) -> JiraResult<SyncedIssue>;
     /// The transitions an issue can take now.
     fn transitions(&self, account: &Account, key: &str) -> JiraResult<Vec<Transition>>;
     /// Takes a transition.

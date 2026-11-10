@@ -19,10 +19,21 @@ changes made here go to Jira first.
   (red when syncing fails).
 - **On the board:** the header shows "Synced 2 min ago" (or why syncing failed), **Sync
   now**, **Open in Jira** and **Remove**, which removes the board here and changes nothing in
-  Jira. **All epics ▾** filters by epic, next to the tag filter. Cards show a marker in the
+  Jira. Cards show a marker in the
   issue type's color (story green, bug red and round, task blue, epic purple), the issue
   key (not on phones), an epic chip, Jira labels as tags, subtask progress and the
   assignee's initials, at the same size as any card.
+- **Filtering, as in Jira:** under the tabs, a search field (title, key or notes; Escape
+  clears it, then lets go of the keyboard), the people issues are assigned to as
+  avatars, **Only my issues**, **Recently updated** (the last day) and the board's own
+  quick filters as chips, then **Filters ▾**: the same switches and a page per field
+  (assignee, type, priority, status, label, epic, sprint, component, fix version,
+  reporter) listing the values the board's issues have; several can be chosen. Values
+  in one field widen it, fields narrow each other, and a card shows when it or one of
+  its subtasks passes. Quick filters are JQL, so Jira evaluates them (asked again
+  whenever the board changes while one is on); everything else is filtered here.
+  Columns count "shown/all". On a phone the bar is the search and **Filters ▾**.
+  Boards of Urushi's own get the search, type and label.
 - **Changes go to Jira:** dragging a card (or the editor's column chips) takes a
   transition to a status the column shows, then ranks it among the column's cards; a move
   the workflow doesn't allow is refused with a message and the card stays. Title, notes
@@ -54,11 +65,16 @@ changes made here go to Jira first.
   (`MAX_SYNCED_ISSUES`, `MAX_SUBTASKS`, `MAX_NOTES`). `local_only` refuses what Jira owns
   with `BoardError::FollowsJira` (`FAILED_PRECONDITION` on the wire). `TaskKind::from_jira`
   maps a type by its hierarchy level and name.
-- **Daemon, reading** (`jira/cloud.rs` over `http::CurlHttp`, ADR 0021): boards and their
-  configuration from `/rest/agile/1.0/board`, issues from `/rest/api/3/search/jql` with
+- **Daemon, reading** (`jira/cloud.rs` over `http::CurlHttp`, ADR 0021): boards, their
+  configuration (with the estimate field) and quick filters from `/rest/agile/1.0/board`,
+  the site's sprint field from `/rest/api/3/field`, issues (with reporter, due date,
+  components, fix versions, links, and the board's rank, estimate and sprint fields:
+  `IssueFields`) from `/rest/api/3/search/jql` with
   `filter = <board filter> AND (<sub-query>) [AND sprint in openSprints()] AND
   (statusCategory != Done OR updated >= -14d) [AND updated >= -Nm] ORDER BY Rank`
-  (paged by `nextPageToken`, with guards against tokens that repeat). `jira/parse.rs` reads
+  (paged by `nextPageToken`, with guards against tokens that repeat). `issue_ids` runs
+  the same query with `IssueQuery.extra_jql` (the chosen quick filters) for ids only
+  (`service/jira_query.rs`, `QueryJiraFilter`). `jira/parse.rs` reads
   answers leniently; `jira/adf.rs` turns ADF into plain notes and back.
 - **Daemon, syncing** (`service/jira.rs`): `keep_jira_synced` ticks every 5 s and reads the
   boards that are due (`ACTIVE_INTERVAL` 15 s while a client subscribes, `IDLE_INTERVAL`
@@ -74,18 +90,28 @@ changes made here go to Jira first.
   merged. Only the color changes locally.
 - **Sign-in** (`jira/credentials.rs`): `site_address` normalizes the site (https only);
   `CredentialStore` keeps it in `<home>/jira-credentials.json` (0600).
+- **Wire (1.13):** `JiraIssue.{type_id, assignee_id, reporter, priority_id, due, points,
+  sprint, components, fix_versions, links}`, `JiraBoardSource.quick_filters`,
+  `JiraAccount.account_id` (learned on the next full sync for a sign-in made before),
+  `QueryJiraFilter` → `JiraIssueIds`.
 - **Wire (1.12):** `Board.{jira, epics}`, `BoardColumn.jira_statuses`, `Task/Subtask.{kind,
   issue}`, `CreateTask.kind`, `UpdateTask.kind`, and `ConnectJira` → `JiraAccount`,
   `GetJiraAccount`, `DisconnectJira`, `ListJiraBoards` → `JiraBoardList`,
   `ImportJiraBoard` → `Board`, `SyncBoard`; `ERROR_CODE_UNAVAILABLE` when Jira can't be
   reached. The token travels only in `ConnectJira`.
-- **App:** `AppState.jira` (asked with `GetJiraAccount` on connect and when Settings
+- **App:** `filter.rs` (`BoardFilter`, `Dim`, `board_values`, `board_dims`; the filter is
+  the window's own), `update/filter.rs` (`FilterMsg`, the search as `Field::BoardSearch`
+  outside any dialog, quick-filter queries with `BoardPanel.{quick_asking,
+  quick_stale}`), `view/board/filter.rs` (the bar), `view/menu/filter.rs` (the menu, a
+  `MenuPage::Filter(Dim)` page per field, scrolling past ten values).
+  `AppState.jira` (asked with `GetJiraAccount` on connect and when Settings
   opens), `Dialog::{ConnectJira, ImportJira}` (their errors show in the dialog, not the
-  banner; `update/jira.rs::jira_failed`), `BoardPanel.epic_filter` (`board::passes`),
+  banner; `update/jira.rs::jira_failed`),
   `TaskLabels.kind`, `Effect::OpenUrl` (`platform::open_url`, https only). Gated on
   `daemon_supports_jira()` (`JIRA_SINCE_MINOR = 12`).
 - **CLI:** `urushi jira connect --site --email` (token from `URUSHI_JIRA_TOKEN` or stdin),
-  `jira status|disconnect|boards [query]|import <id>`, `urushi board sync <board>`,
+  `jira status|disconnect|boards [query]|import <id>`, `jira quick <board> [ids…]`
+  (the quick filters, or the issues they let through), `urushi board sync <board>`,
   `board add|edit --kind`; `board ls` shows keys, kinds, epics, assignees and sync state.
 
 ## Invariants
@@ -104,15 +130,17 @@ changes made here go to Jira first.
 
 ## Tests
 - Core: `board/sync/tests.rs`, `board/kind.rs`, `tests/jira_sync_props.rs`.
-- Proto: `convert/boards/jira.rs` (round trips, wire messages, issue addresses).
+- Proto: `convert/boards/jira/tests.rs` (round trips, wire messages, issue addresses).
 - Daemon: `http/tests.rs` (config quoting, a fake and the real curl), `jira/cloud/tests.rs`
   (requests, status mapping, paging), `jira/parse/tests.rs`, `jira/adf.rs`,
   `jira/credentials.rs`, `service/jira.rs` (backoff), and `tests/jira_boards.rs` end to end
-  against an in-memory Jira (sign-in, import, remote changes, transitions, refused moves,
-  edits, subtasks, refusals, restart, sign-out).
-- UI: `textfield/secret.rs`. App: `update/tests/jira.rs` (including a new issue created
-  only on Save); `snapshot/tests.rs` (`jira-board`, `jira-task`, `jira-subtask` (the top
-  bar), `jira-connect`, `jira-import` scenarios, card sizes, no
+  against an in-memory Jira (`tests/fake_jira/`: sign-in, import, remote changes,
+  transitions, refused moves, edits, subtasks, refusals, restart, sign-out, quick
+  filters).
+- UI: `textfield/secret.rs`. App: `filter/tests.rs` (each dimension, how they combine,
+  subtasks keeping their card), `update/tests/jira.rs` (a new issue created only on Save,
+  filters, quick-filter queries, the search's keyboard); `snapshot/tests.rs` (`jira-board`, `jira-task`, `jira-subtask` (the top
+  bar), `jira-filters`, `jira-filter-menu`, `jira-connect`, `jira-import` scenarios, card sizes, no
   subtask delete on Jira boards, the Type picker).
 
 ## Limitations and follow-ups

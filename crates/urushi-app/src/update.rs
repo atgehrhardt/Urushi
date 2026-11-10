@@ -141,6 +141,7 @@ impl AppState {
             | Msg::OpenDeleteBoard(_)
             | Msg::ConfirmDeleteBoard) => self.board_msg(msg, &mut fx),
             Msg::Jira(msg) => self.jira_msg(msg, &mut fx),
+            Msg::Filter(msg) => self.filter_msg(msg, &mut fx),
             Msg::Tick(now_ms) => self.tick(now_ms, &mut fx),
             Msg::WindowFocused(focused) => self.attention.in_background = !focused,
             // The mouse over terminals: `update/pointer.rs`.
@@ -415,7 +416,10 @@ impl AppState {
 
     fn on_event(&mut self, event: v1::event::Body, fx: &mut Vec<Effect>) {
         match event {
-            v1::event::Body::WorkspaceChanged(workspace) => self.on_workspace(workspace, fx),
+            v1::event::Body::WorkspaceChanged(workspace) => {
+                self.on_workspace(workspace, fx);
+                self.refresh_quick_filter(fx);
+            }
             v1::event::Body::ScreenUpdate(update) => {
                 if let Some(screen) = self.screens.get_mut(&update.pane_id) {
                     let (pane_id, seq) = (update.pane_id.clone(), update.seq);
@@ -692,7 +696,7 @@ impl AppState {
             && !(key.mods.is_shortcut() || key.mods.logo)
         {
             self.launcher_dialog_key(key, fx);
-        } else if self.dialog.is_some() {
+        } else if self.dialog.is_some() || self.searching() {
             self.dialog_key(key, fx);
         } else if key.mods.is_shortcut() || key.mods.logo {
             self.shortcut(key, fx);
@@ -829,6 +833,7 @@ mod board;
 mod cards;
 mod daemon;
 mod fields;
+mod filter;
 mod intake;
 mod jira;
 mod launcher;

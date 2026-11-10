@@ -15,7 +15,7 @@ use urushi_core::{BoardId, ColumnId, Task, TaskId, TaskKind, TaskPatch};
 
 use super::boards::NewTask;
 use super::{Service, ServiceError, ServiceResult, State, blocking, new_uuid};
-use crate::jira::{Account, IssueEdit, JiraApi, NewIssue, Rank};
+use crate::jira::{Account, IssueEdit, IssueFields, JiraApi, NewIssue, Rank};
 
 /// A task on a Jira board, with what writing to Jira needs.
 pub(super) struct JiraTask {
@@ -88,7 +88,7 @@ impl Creation {
     /// Creates the issue and its subtasks, moves the issue to its column if its
     /// workflow allows, and reads them all back (the issue first). Blocking.
     fn run(self, api: &dyn JiraApi, account: &Account) -> ServiceResult<Vec<SyncedIssue>> {
-        let rank = self.jira.rank_field.as_deref();
+        let fields = IssueFields::of(&self.jira);
         let new = |kind, parent_key, summary, notes, labels| NewIssue {
             project_key: self.jira.project_key.clone(),
             kind,
@@ -118,7 +118,7 @@ impl Creation {
             );
             keys.push(api.create(account, &sub)?);
         }
-        let created = api.issue(account, &key, rank)?;
+        let created = api.issue(account, &key, &fields)?;
         if !self.statuses.is_empty() && !self.statuses.contains(&created.issue.status_id) {
             // Best effort: a new issue starts where its workflow says.
             let to = api
@@ -130,7 +130,7 @@ impl Creation {
             }
         }
         keys.iter()
-            .map(|k| Ok(api.issue(account, k, rank)?))
+            .map(|k| Ok(api.issue(account, k, &fields)?))
             .collect()
     }
 }
@@ -194,7 +194,7 @@ impl Service {
             let guard = self.jira.lock(t.board);
             let _one_at_a_time = guard.lock().await;
             let api = self.jira.api.clone();
-            let (key, rank_field) = (t.key.clone(), t.jira.rank_field.clone());
+            let (key, fields) = (t.key.clone(), IssueFields::of(&t.jira));
             let read = blocking(move || {
                 if !edit.is_empty() {
                     api.edit(&account, &key, &edit)?;
@@ -217,7 +217,7 @@ impl Service {
                         })?;
                     api.transition(&account, &key, &to.id)?;
                 }
-                Ok(api.issue(&account, &key, rank_field.as_deref())?)
+                Ok(api.issue(&account, &key, &fields)?)
             })
             .await?;
             self.merge_written(t.board, vec![read])?;
@@ -275,7 +275,7 @@ impl Service {
         let guard = self.jira.lock(t.board);
         let _one_at_a_time = guard.lock().await;
         let api = self.jira.api.clone();
-        let (key, rank_field) = (t.key.clone(), t.jira.rank_field.clone());
+        let (key, fields) = (t.key.clone(), IssueFields::of(&t.jira));
         let read = blocking(move || {
             if transition {
                 let to = api
@@ -296,7 +296,7 @@ impl Service {
                     tracing::debug!(%key, error = %e, "couldn't rank");
                 }
             }
-            Ok(api.issue(&account, &key, rank_field.as_deref())?)
+            Ok(api.issue(&account, &key, &fields)?)
         })
         .await?;
         self.merge_written(t.board, vec![read])
@@ -418,7 +418,7 @@ impl Service {
                     labels: Vec::new(),
                 },
             )?;
-            Ok(api.issue(&account, &key, jira.rank_field.as_deref())?)
+            Ok(api.issue(&account, &key, &IssueFields::of(&jira))?)
         })
         .await?;
         let issue_id = read.issue.id.clone();

@@ -59,8 +59,6 @@ pub enum BoardMsg {
     OpenDeleteColumn(String),
     /// Confirmed: remove the column (its tasks move next door).
     ConfirmDeleteColumn,
-    /// Show only tasks with this tag, or all with `None`.
-    FilterTag(Option<String>),
     /// In the task editor: choose the color (0: none).
     PickColor(i32),
     /// In the task editor: add a tag (a suggestion).
@@ -86,6 +84,4 @@ pub enum BoardMsg {
     DeleteAttachment(String),
     /// In the task editor: choose the kind (a wire `TaskKind` value; 0: none).
     PickKind(i32),
-    /// Show only a Jira board's tasks in this epic (by key), or all with `None`.
-    FilterEpic(Option<String>),
 }

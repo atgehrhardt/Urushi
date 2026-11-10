@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail};
 use clap::Subcommand;
 use urushi_client::Client;
 
-use crate::commands::out;
+use crate::commands::{out, resolve};
 use crate::render::short;
 
 #[derive(Subcommand)]
@@ -37,6 +37,14 @@ pub(crate) enum JiraCmd {
     Import {
         /// The Jira board's id (from `urushi jira boards`).
         board: u64,
+    },
+    /// List a Jira board's quick filters, or (given their ids) the issues all of them
+    /// let through.
+    Quick {
+        /// The board (here, not in Jira).
+        board: String,
+        /// Quick filter ids (from the listing).
+        ids: Vec<u64>,
     },
 }
 
@@ -119,5 +127,35 @@ pub(crate) async fn run(client: &Client, cmd: JiraCmd) -> Result<()> {
                 board.name
             ))
         }
+        JiraCmd::Quick { board, ids } => quick(client, &board, &ids).await,
     }
+}
+
+/// `urushi jira quick`: the quick filters, or the issues they let through.
+async fn quick(client: &Client, board: &str, ids: &[u64]) -> Result<()> {
+    let id = resolve(client, board).await?;
+    let workspace = client.list_workspace(false).await?;
+    let Some(board) = workspace.boards.iter().find(|b| b.id == id) else {
+        bail!("no board {board}");
+    };
+    let Some(jira) = board.jira.as_deref() else {
+        bail!("{} doesn't follow Jira", board.name);
+    };
+    if ids.is_empty() {
+        if jira.quick_filters.is_empty() {
+            return out("no quick filters");
+        }
+        for q in &jira.quick_filters {
+            out(&format!("{:>6}  {}", q.id, q.name))?;
+        }
+        return Ok(());
+    }
+    let matching = client.query_jira_filter(&id, ids).await?;
+    let issues = urushi_client::WorkspaceMirror::new(workspace.clone());
+    for task in issues.all_tasks() {
+        if let Some(issue) = task.issue().filter(|i| matching.contains(&i.id)) {
+            out(&format!("{}  {}", issue.key, task.title()))?;
+        }
+    }
+    Ok(())
 }

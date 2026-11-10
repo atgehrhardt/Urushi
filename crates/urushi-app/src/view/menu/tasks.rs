@@ -5,9 +5,8 @@
 
 use urushi_ui::{Font, Insets, Key, Length, Node, Role, Theme, key};
 
-use super::super::labels::{color, color_name, dot, palette, tag_color};
+use super::super::labels::{color, color_name, dot, palette};
 use super::{back, check, item, separator};
-use crate::board::board_tags;
 use crate::msg::{BoardMsg, Msg};
 use crate::organize::{ContextMenu, MenuPage, Prompt};
 use crate::state::{AppState, TaskLink};
@@ -138,7 +137,7 @@ fn task_page(
             task: id.clone(),
             color: c,
         })),
-        MenuPage::Main | MenuPage::Status => None,
+        MenuPage::Main | MenuPage::Status | MenuPage::Filter(_) => None,
     }
 }
 
@@ -208,32 +207,6 @@ pub(super) fn column_items(
             act(BoardMsg::OpenDeleteColumn(column.id.clone())),
         ));
     }
-    items
-}
-
-/// "All tasks", then one row per tag used on the board.
-pub(super) fn tag_filter_items(state: &AppState, theme: &Theme, board: &str) -> Vec<Node<Msg>> {
-    let Some(board) = state.workspace.board(board) else {
-        return Vec::new();
-    };
-    let current = state.board.tag_filter.as_deref();
-    let mut items = vec![item(
-        theme,
-        "All tasks",
-        check(current.is_none()),
-        theme.text,
-        act(BoardMsg::FilterTag(None)),
-    )];
-    items.extend(board_tags(board).into_iter().map(|tag| {
-        let on = current.is_some_and(|c| c.eq_ignore_ascii_case(&tag));
-        dot_item(
-            theme,
-            (&tag, Some(tag_color(theme, &tag))),
-            on,
-            key(&["menu-tag", &tag]),
-            act(BoardMsg::FilterTag(Some(tag.clone()))),
-        )
-    }));
     items
 }
 

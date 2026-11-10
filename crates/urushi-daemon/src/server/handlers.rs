@@ -301,7 +301,8 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         | Body::DisconnectJira(_)
         | Body::ListJiraBoards(_)
         | Body::ImportJiraBoard(_)
-        | Body::SyncBoard(_)) => super::jira::route(service, body).await?,
+        | Body::SyncBoard(_)
+        | Body::QueryJiraFilter(_)) => super::jira::route(service, body).await?,
         body @ (Body::AddAttachment(_) | Body::GetAttachment(_) | Body::DeleteAttachment(_)) => {
             super::boards::route_attachments(service, body).await?
         }

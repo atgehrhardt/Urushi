@@ -5,12 +5,11 @@
 
 use urushi_client::v1;
 use urushi_ui::widgets::{ButtonKind, button};
-use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key};
+use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme};
 
 use super::super::labels;
-use super::{TAB_CHARS, shorten};
+use super::shorten;
 use crate::msg::{JiraMsg, Msg};
-use crate::organize::MenuTarget;
 use crate::state::AppState;
 
 /// Longest epic name shown whole in a card's chip.
@@ -123,42 +122,6 @@ pub(super) fn actions(state: &AppState, theme: &Theme, board: &v1::Board) -> Vec
         Msg::OpenDeleteBoard(board.id.clone()),
     ));
     out
-}
-
-/// The epic filter's button: "All epics" or the epic shown. Only on boards whose cards
-/// are in epics.
-pub(super) fn epic_filter(state: &AppState, theme: &Theme, board: &v1::Board) -> Option<Node<Msg>> {
-    if crate::board::board_epics(board).is_empty() {
-        return None;
-    }
-    let shown = state
-        .board
-        .epic_filter
-        .as_deref()
-        .and_then(|k| board.epics.iter().find(|e| e.key == k));
-    let (text, color) = match shown {
-        Some(e) => (
-            format!("{}  ▾", shorten(&e.summary, TAB_CHARS)),
-            labels::color(theme, e.color).unwrap_or(theme.text),
-        ),
-        None => ("All epics  ▾".to_owned(), theme.text_muted),
-    };
-    Some(
-        Node::row()
-            .padding(Insets::symmetric(4.0, 10.0))
-            .radius(theme.radius)
-            .border(1.0, theme.border)
-            .hover_background(theme.hover)
-            .key(key(&["board-epic-filter"]))
-            .on_click(Msg::OpenMenu(MenuTarget::EpicFilter(board.id.clone())))
-            .role(Role::Button, "Filter by epic")
-            .child(Node::text(
-                text,
-                Font::UiMedium,
-                theme.font_size_small,
-                color,
-            )),
-    )
 }
 
 /// The color a kind is drawn in.

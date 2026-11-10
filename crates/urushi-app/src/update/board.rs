@@ -26,12 +26,19 @@ impl AppState {
                 self.drag = None;
             }
             Msg::BoardReveal(reveal) => self.board.reveal = reveal.clamp(0.0, 1.0),
-            Msg::BoardBackground => self.board.pressed = None,
+            Msg::BoardBackground => {
+                self.board.pressed = None;
+                if self.searching() {
+                    self.focus = None;
+                }
+            }
             Msg::SelectBoard(id) => {
                 let shown = self.board.board(&self.workspace).map(|b| b.id.as_str());
                 if shown != Some(id.as_str()) {
-                    self.board.tag_filter = None;
-                    self.board.epic_filter = None;
+                    self.board.filter.clear();
+                    if self.focus == Some(crate::state::Field::BoardSearch) {
+                        self.focus = None;
+                    }
                 }
                 self.board.selected = Some(id);
             }
@@ -148,6 +155,15 @@ impl AppState {
 
     /// Escape with the panel open and nothing above it: close the panel.
     pub(super) fn board_escape(&mut self) -> bool {
+        // The search clears first, then lets go of the keyboard.
+        if self.searching() {
+            if self.board.filter.search.text().is_empty() {
+                self.focus = None;
+            } else {
+                self.board.filter.search.clear();
+            }
+            return true;
+        }
         if self.board.dragging.take().is_some() {
             self.board.over = None;
             return true;

@@ -35,10 +35,12 @@ pub struct BoardPanel {
     /// While dragging: where the task would land if dropped now, as `(column, before)`
     /// (see [`drop_position`]); `None` when it wouldn't move.
     pub over: Option<(String, Option<String>)>,
-    /// Show only the tasks with this tag (compared ignoring case); `None` shows all.
-    pub tag_filter: Option<String>,
-    /// On a Jira board, show only the tasks in this epic (by key); `None` shows all.
-    pub epic_filter: Option<String>,
+    /// What the shown board is filtered by.
+    pub filter: crate::filter::BoardFilter,
+    /// A quick-filter query is on its way to the daemon.
+    pub quick_asking: bool,
+    /// The board changed while it was: ask again when it answers.
+    pub quick_stale: bool,
     /// Image attachments' thumbnails, fetched from the daemon as they come into view.
     pub thumbnails: Thumbnails,
 }
@@ -153,35 +155,6 @@ pub fn nest_candidates(
     // Cards before their subtasks, in board order.
     out.sort_by_key(|(_, path)| path.matches(" › ").count());
     out
-}
-
-/// Whether `task` passes the tag filter.
-pub fn shows(filter: Option<&str>, task: &v1::Task) -> bool {
-    filter.is_none_or(|f| task.tags.iter().any(|t| t.eq_ignore_ascii_case(f)))
-}
-
-/// Whether `task` passes the panel's filters: its tag and its epic.
-pub fn passes(panel: &BoardPanel, task: &v1::Task) -> bool {
-    shows(panel.tag_filter.as_deref(), task)
-        && panel
-            .epic_filter
-            .as_deref()
-            .is_none_or(|e| task.issue.as_ref().is_some_and(|i| i.epic_key == e))
-}
-
-/// The epics a Jira board's cards belong to, in the board's order.
-pub fn board_epics(board: &v1::Board) -> Vec<&v1::Epic> {
-    board
-        .epics
-        .iter()
-        .filter(|e| {
-            board
-                .columns
-                .iter()
-                .flat_map(|c| &c.tasks)
-                .any(|t| t.issue.as_ref().is_some_and(|i| i.epic_key == e.key))
-        })
-        .collect()
 }
 
 /// Every tag used on a board, in first-seen order (ignoring case), for suggestions and

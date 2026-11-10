@@ -4,7 +4,7 @@
 use urushi_client::v1::{self, request::Body, response::Outcome};
 
 use super::{attached, bodies};
-use crate::msg::{BoardMsg, Effect, Followup, JiraMsg, Msg};
+use crate::msg::{BoardMsg, Effect, FilterMsg, Followup, JiraMsg, Msg};
 use crate::organize::MenuTarget;
 use crate::state::{AppState, Dialog, Field, FieldCommand};
 
@@ -21,6 +21,7 @@ fn signed_in() -> v1::JiraAccount {
         site: "https://acme.atlassian.net".into(),
         email: "a@b.c".into(),
         display_name: "Ada".into(),
+        account_id: "acc-ada".into(),
     }
 }
 
@@ -257,17 +258,85 @@ fn boards_sync_and_issues_open_in_jira() {
 }
 
 #[test]
-fn the_epic_filter_narrows_a_jira_board_and_resets_with_another_board() {
+fn filters_narrow_a_jira_board_and_reset_with_another_board() {
+    use crate::filter::Dim;
     let mut s = with_jira();
-    s.update(Msg::Board(BoardMsg::FilterEpic(Some("ACME-9".into()))));
+    s.update(Msg::SelectBoard("jb".into()));
+    // Picking values leaves the menu open, to pick more.
+    s.update(Msg::OpenMenu(MenuTarget::Filter("jb".into())));
+    s.update(Msg::Filter(FilterMsg::Toggle(Dim::Epic, "ACME-9".into())));
+    assert!(s.menu.is_some());
     let board = jira_board();
     let card = &board.columns[0].tasks[0];
-    assert!(crate::board::passes(&s.board, card));
-    s.update(Msg::Board(BoardMsg::FilterEpic(Some("ACME-5".into()))));
-    assert!(!crate::board::passes(&s.board, card));
-    assert_eq!(crate::board::board_epics(&board).len(), 1);
+    let cx = s.filter_context();
+    assert!(s.board.filter.shows(card, cx));
+    s.update(Msg::Filter(FilterMsg::Toggle(Dim::Epic, "ACME-9".into())));
+    s.update(Msg::Filter(FilterMsg::Toggle(Dim::Epic, "ACME-5".into())));
+    assert!(!s.board.filter.shows(card, s.filter_context()));
+    // "Only my issues" goes by the signed-in account.
+    s.update(Msg::Filter(FilterMsg::Clear));
+    s.jira = Some(signed_in());
+    s.update(Msg::Filter(FilterMsg::Mine));
+    assert_eq!(s.filter_context().me, Some("acc-ada"));
     s.update(Msg::SelectBoard("b".into()));
-    assert!(s.board.epic_filter.is_none());
+    assert!(!s.board.filter.active());
+}
+
+#[test]
+fn quick_filters_ask_jira_and_ask_again_when_the_board_changes() {
+    let mut s = with_jira();
+    s.daemon_minor = 13;
+    s.update(Msg::SelectBoard("jb".into()));
+    let fx = s.update(Msg::Filter(FilterMsg::Quick(4)));
+    assert!(matches!(
+        &fx[..],
+        [Effect::Request { body: Body::QueryJiraFilter(v1::QueryJiraFilterRequest { board_id, quick_filter_ids }), followup: Followup::QuickFilter(b) }]
+            if board_id == "jb" && quick_filter_ids == &[4] && b == "jb"
+    ));
+    // The board changes before Jira answers: asked again once the answer comes.
+    let mut workspace = super::workspace();
+    workspace.boards = vec![jira_board(), super::board::board()];
+    assert!(
+        bodies(&s.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(workspace)))).is_empty()
+    );
+    let fx = answer(
+        &mut s,
+        Followup::QuickFilter("jb".into()),
+        Outcome::JiraIssueIds(v1::JiraIssueIds {
+            ids: vec!["nope".into()],
+        }),
+    );
+    assert!(matches!(bodies(&fx)[..], [Body::QueryJiraFilter(_)]));
+    let board = jira_board();
+    assert!(
+        !s.board
+            .filter
+            .shows(&board.columns[0].tasks[0], s.filter_context())
+    );
+    // Off again: nothing hidden, nothing asked.
+    assert!(s.update(Msg::Filter(FilterMsg::Quick(4))).is_empty());
+    assert!(
+        s.board
+            .filter
+            .shows(&board.columns[0].tasks[0], s.filter_context())
+    );
+}
+
+#[test]
+fn the_search_takes_the_keyboard_and_escape_clears_it_first() {
+    let mut s = with_jira();
+    s.update(Msg::FocusField(Field::BoardSearch));
+    s.update(Msg::Text("acme".into()));
+    assert_eq!(s.board.filter.search.text(), "acme");
+    s.update(Msg::Key(super::named(crate::keys::Named::Backspace)));
+    assert_eq!(s.board.filter.search.text(), "acm");
+    s.update(Msg::Key(super::named(crate::keys::Named::Escape)));
+    assert!(s.board.filter.search.text().is_empty() && s.board.open);
+    s.update(Msg::Key(super::named(crate::keys::Named::Escape)));
+    assert_eq!(s.focus, None);
+    assert!(s.board.open, "the panel stays until Escape again");
+    s.update(Msg::Key(super::named(crate::keys::Named::Escape)));
+    assert!(!s.board.open);
 }
 
 #[test]

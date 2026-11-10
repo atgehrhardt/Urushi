@@ -14,8 +14,18 @@ fn story() -> Value {
             ]},
             "issuetype": { "id": "10001", "name": "Story", "subtask": false, "hierarchyLevel": 0 },
             "status": { "id": "3", "name": "In Progress", "statusCategory": { "key": "indeterminate" } },
-            "assignee": { "displayName": "Ada Lovelace" },
-            "priority": { "name": "High" },
+            "assignee": { "displayName": "Ada Lovelace", "accountId": "acc-ada" },
+            "reporter": { "displayName": "Grace Hopper", "accountId": "acc-grace" },
+            "priority": { "id": "2", "name": "High" },
+            "duedate": "2026-12-01",
+            "components": [{ "id": "100", "name": "API" }],
+            "fixVersions": [{ "id": "200", "name": "1.0" }],
+            "issuelinks": [{ "id": "1" }, { "id": "2" }],
+            "customfield_10016": 3.0,
+            "customfield_10020": [
+                { "id": 5, "name": "Sprint 5", "state": "closed" },
+                { "id": 6, "name": "Sprint 6", "state": "active" }
+            ],
             "parent": { "id": "10007", "key": "ACME-7", "fields": {
                 "summary": "Billing", "issuetype": { "hierarchyLevel": 1 } } },
             "labels": ["backend", "payments"],
@@ -26,9 +36,16 @@ fn story() -> Value {
     })
 }
 
+fn rank() -> IssueFields {
+    IssueFields {
+        rank: Some("customfield_10019".into()),
+        ..IssueFields::default()
+    }
+}
+
 #[test]
 fn a_story_reads_with_its_epic_status_and_rank() {
-    let s = issue(&story(), Some("customfield_10019")).unwrap();
+    let s = issue(&story(), &rank()).unwrap();
     assert_eq!(s.issue.key, "ACME-42");
     assert_eq!(s.kind, TaskKind::Story);
     assert_eq!(s.issue.status_id, "3");
@@ -50,7 +67,7 @@ fn a_subtask_names_its_parent_not_an_epic() {
     v["fields"]["issuetype"] = json!({ "name": "Sub-task", "subtask": true });
     v["fields"]["parent"] =
         json!({ "id": "10040", "key": "ACME-40", "fields": { "summary": "Parent" } });
-    let s = issue(&v, None).unwrap();
+    let s = issue(&v, &IssueFields::default()).unwrap();
     assert_eq!(s.kind, TaskKind::Subtask);
     assert_eq!(s.issue.parent.as_deref(), Some("10040"));
     assert_eq!((s.issue.epic, s.epic_summary), (None, None));
@@ -59,21 +76,25 @@ fn a_subtask_names_its_parent_not_an_epic() {
 
 #[test]
 fn missing_fields_read_as_empty_and_an_issue_needs_an_id_and_key() {
-    let s = issue(&json!({ "id": "1", "key": "A-1", "fields": {} }), None).unwrap();
+    let s = issue(
+        &json!({ "id": "1", "key": "A-1", "fields": {} }),
+        &IssueFields::default(),
+    )
+    .unwrap();
     assert_eq!((s.title.as_str(), s.notes.as_str()), ("", ""));
     assert_eq!(s.kind, TaskKind::Task);
     assert_eq!(s.issue.assignee, None);
-    assert!(issue(&json!({ "key": "A-1" }), None).is_none());
+    assert!(issue(&json!({ "key": "A-1" }), &IssueFields::default()).is_none());
 }
 
 #[test]
 fn search_pages_end_without_a_token_or_on_the_last_page() {
     let page = json!({ "issues": [story(), { "bad": true }], "nextPageToken": "abc" });
-    let (issues, next) = search(&page, None);
+    let (issues, next) = search(&page, &IssueFields::default());
     assert_eq!(issues.len(), 1);
     assert_eq!(next.as_deref(), Some("abc"));
     let last = json!({ "issues": [], "nextPageToken": "abc", "isLast": true });
-    assert_eq!(search(&last, None).1, None);
+    assert_eq!(search(&last, &IssueFields::default()).1, None);
 }
 
 #[test]
@@ -135,4 +156,37 @@ fn error_messages_combine_both_kinds() {
     let body = br#"{"errorMessages":["Nope"],"errors":{"labels":"no spaces"}}"#;
     assert_eq!(error_message(body), "Nope; labels: no spaces");
     assert_eq!(error_message(b"<html>"), "");
+}
+
+#[test]
+fn people_estimates_sprints_and_versions_are_read_with_their_ids() {
+    let fields = IssueFields {
+        points: Some("customfield_10016".into()),
+        sprint: Some("customfield_10020".into()),
+        ..rank()
+    };
+    let i = issue(&story(), &fields).unwrap().issue;
+    assert_eq!(i.type_id, "10001");
+    assert_eq!(i.assignee_id.as_deref(), Some("acc-ada"));
+    let reporter = i.reporter.unwrap();
+    assert_eq!(
+        (reporter.account_id.as_str(), reporter.name.as_str()),
+        ("acc-grace", "Grace Hopper")
+    );
+    assert_eq!(i.priority_id.as_deref(), Some("2"));
+    assert_eq!(i.due.as_deref(), Some("2026-12-01"));
+    assert_eq!(i.points.as_deref(), Some("3"));
+    assert_eq!(i.sprint.map(|s| s.name).as_deref(), Some("Sprint 6"));
+    assert_eq!(i.components[0].name, "API");
+    assert_eq!(i.fix_versions[0].id, "200");
+    assert_eq!(i.links, 2);
+    // Without the board's fields, no estimate or sprint.
+    let plain = issue(&story(), &IssueFields::default()).unwrap().issue;
+    assert_eq!((plain.points, plain.sprint), (None, None));
+    let mut half = story();
+    half["fields"]["customfield_10016"] = json!(0.5);
+    assert_eq!(
+        issue(&half, &fields).unwrap().issue.points.as_deref(),
+        Some("0.5")
+    );
 }

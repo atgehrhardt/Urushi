@@ -82,7 +82,7 @@ pub(crate) fn view(state: &AppState, theme: &Theme, scroll: &HashMap<Key, f32>) 
     if let Some(dialog) = dialogs::view(state, theme, scroll) {
         root = root.child(dialog);
     }
-    root.children(menu::overlay(state, theme))
+    root.children(menu::overlay(state, theme, scroll))
         .children(menu::drag_ghost(state, theme))
         .children(board::drag_ghost(state, theme))
 }

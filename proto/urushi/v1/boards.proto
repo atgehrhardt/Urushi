@@ -37,6 +37,28 @@ message JiraBoardSource {
   uint32 dropped = 8;
   // The board's web page.
   string url = 9;
+  // Its quick filters, as Jira shows them above the board; QueryJiraFilter evaluates
+  // them. Since 1.13.
+  repeated JiraQuickFilter quick_filters = 10;
+}
+
+// A Jira board's quick filter. Since 1.13.
+message JiraQuickFilter {
+  uint64 id = 1;
+  string name = 2;
+}
+
+// Something Jira names and identifies: a sprint, a component, a version. Since 1.13.
+message JiraNamed {
+  string id = 1;
+  string name = 2;
+}
+
+// A Jira user. Since 1.13.
+message JiraUser {
+  // The Atlassian account id, which changes are made with.
+  string account_id = 1;
+  string name = 2;
 }
 
 // An epic that issues on a Jira board belong to. Not a card: issues name it by key.
@@ -94,6 +116,23 @@ message JiraIssue {
   // Its place in the board's ranking; compares as text.
   string rank = 13;
   int64 updated_ms = 14;
+  // Since 1.13:
+  string type_id = 15;
+  // The assignee's account id; empty when unassigned.
+  string assignee_id = 16;
+  // Unset when Jira doesn't say.
+  JiraUser reporter = 17;
+  string priority_id = 18;
+  // YYYY-MM-DD; empty when not due.
+  string due = 19;
+  // The estimate (story points) as Jira shows it ("3", "0.5"); empty without one.
+  string points = 20;
+  // The (open) sprint it is in; unset when none.
+  JiraNamed sprint = 21;
+  repeated JiraNamed components = 22;
+  repeated JiraNamed fix_versions = 23;
+  // How many issues it is linked to.
+  uint32 links = 24;
 }
 
 // One column of a board (e.g. "To do"), with its tasks top to bottom.

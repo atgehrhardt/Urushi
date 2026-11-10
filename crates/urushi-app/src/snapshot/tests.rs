@@ -98,7 +98,8 @@ fn colors_tags_and_column_actions_show() {
     for text in [
         "\"backend\"",
         "\"copy\"",
-        "\"All tags  ▾\"",
+        "\"Filters  ▾\"",
+        "\"Search this board\"",
         "\"+ Column\"",
         "\"2 files\"",
     ] {
@@ -281,7 +282,9 @@ fn jira_boards_show_their_issues_and_leave_jiras_part_to_jira() {
         "\"Sync now\"",
         "\"Open in Jira\"",
         "\"Remove\"",
-        "\"All epics  ▾\"",
+        "\"Filters  ▾\"",
+        "\"Only my issues\"",
+        "\"Recently updated\"",
     ] {
         assert!(board.contains(text), "{text} missing: {board}");
     }
@@ -376,4 +379,38 @@ fn a_subtask_opened_from_its_parent_heads_its_editor_with_where_it_is() {
     let task = dump("jira-task", 1280.0);
     // The parent's editor lists its subtasks with their keys.
     assert!(task.contains("\"ACME-141\""), "{task}");
+}
+
+#[test]
+fn a_jira_board_filters_by_people_and_its_quick_filters() {
+    let filtered = dump("jira-filters", 1280.0);
+    for text in [
+        "\"Bugs\"",
+        "\"Blocked\"",
+        "\"Filters (2)  ▾\"",
+        "\"Clear\"",
+        "\"GH\"",
+    ] {
+        assert!(filtered.contains(text), "{text} missing: {filtered}");
+    }
+    // Only Ada's (recently updated) issues.
+    assert!(
+        filtered.contains("\"Checkout with saved cards\""),
+        "{filtered}"
+    );
+    assert!(!filtered.contains("\"Invoice PDFs\""), "{filtered}");
+    let menu = dump("jira-filter-menu", 1280.0);
+    for text in [
+        "\"Assignee\"",
+        "\"Grace Hopper\"",
+        "\"Ada Lovelace\"",
+        "\"✓\"",
+    ] {
+        assert!(menu.contains(text), "{text} missing: {menu}");
+    }
+    let phone = dump("jira-filters", 402.0);
+    assert!(
+        phone.contains("\"Filters (2)  ▾\"") && !phone.contains("\"Blocked\""),
+        "{phone}"
+    );
 }

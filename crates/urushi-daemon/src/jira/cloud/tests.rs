@@ -56,6 +56,7 @@ fn account() -> Account {
         email: "a@b.c".into(),
         token: "t0k3n".into(),
         display_name: String::new(),
+        account_id: String::new(),
     }
 }
 
@@ -64,8 +65,13 @@ fn query() -> IssueQuery {
         filter_id: 10003,
         sub_query: Some("fixVersion is EMPTY".into()),
         scrum: true,
-        rank_field: Some("customfield_10019".into()),
+        fields: IssueFields {
+            rank: Some("customfield_10019".into()),
+            points: None,
+            sprint: None,
+        },
         updated_within_minutes: Some(3),
+        extra_jql: Vec::new(),
         limit: 3,
     }
 }
@@ -76,9 +82,15 @@ fn found(key: &str) -> Value {
 
 #[test]
 fn requests_sign_in_with_basic_auth_on_the_accounts_site() {
-    let http = Script::answering([(200, json!({ "displayName": "Ada" }))]);
+    let http = Script::answering([(200, json!({ "displayName": "Ada", "accountId": "acc-1" }))]);
     let jira = CloudJira::new(http.clone());
-    assert_eq!(jira.myself(&account()).unwrap(), "Ada");
+    assert_eq!(
+        jira.myself(&account()).unwrap(),
+        Me {
+            display_name: "Ada".into(),
+            account_id: "acc-1".into()
+        }
+    );
     let r = &http.seen()[0];
     assert_eq!(r.url, "https://acme.atlassian.net/rest/api/3/myself");
     assert!(
@@ -130,6 +142,90 @@ fn board_jql_narrows_the_filter() {
         jql(&all),
         "filter = 10003 AND (statusCategory != Done OR updated >= -14d) ORDER BY Rank ASC"
     );
+    let quick = IssueQuery {
+        extra_jql: vec!["assignee = currentUser()".into(), " ".into()],
+        ..all
+    };
+    assert_eq!(
+        jql(&quick),
+        "filter = 10003 AND (statusCategory != Done OR updated >= -14d) AND \
+         (assignee = currentUser()) ORDER BY Rank ASC"
+    );
+}
+
+#[test]
+fn quick_filters_are_evaluated_for_ids_only() {
+    let http = Script::answering([
+        (
+            200,
+            json!({ "issues": [{ "id": "11" }, { "id": "12" }], "nextPageToken": "p2" }),
+        ),
+        (200, json!({ "issues": [{ "id": "13" }], "isLast": true })),
+    ]);
+    let jira = CloudJira::new(http.clone());
+    let q = IssueQuery {
+        extra_jql: vec!["assignee = currentUser()".into()],
+        limit: 10,
+        ..query()
+    };
+    assert_eq!(jira.issue_ids(&account(), &q).unwrap(), ["11", "12", "13"]);
+    let seen = http.seen();
+    assert!(seen[0].url.contains("&fields=id&"), "{}", seen[0].url);
+    assert!(
+        seen[1].url.ends_with("&nextPageToken=p2"),
+        "{}",
+        seen[1].url
+    );
+}
+
+#[test]
+fn a_board_reads_its_quick_filters_estimate_and_sprint_fields() {
+    let http = Script::answering([
+        (200, json!({ "id": 7, "name": "ACME", "type": "scrum" })),
+        (
+            200,
+            json!({
+                "filter": { "id": "10003" },
+                "columnConfig": { "columns": [{ "name": "To Do", "statuses": [{ "id": "1" }] }] },
+                "estimation": { "type": "field", "field": { "fieldId": "customfield_10016" } }
+            }),
+        ),
+        (
+            200,
+            json!({ "values": [{ "id": 4, "name": "Only my issues", "jql": "assignee = currentUser()" }] }),
+        ),
+        (
+            200,
+            json!([
+                { "id": "summary", "schema": { "type": "string" } },
+                { "id": "customfield_10020", "schema": { "custom": "com.pyxis.greenhopper.jira:gh-sprint" } }
+            ]),
+        ),
+    ]);
+    let config = CloudJira::new(http.clone()).board(&account(), 7).unwrap();
+    assert_eq!(config.points_field.as_deref(), Some("customfield_10016"));
+    assert_eq!(config.sprint_field.as_deref(), Some("customfield_10020"));
+    assert_eq!(config.quick_filters.len(), 1);
+    assert_eq!(config.quick_filters[0].jql, "assignee = currentUser()");
+    let seen = http.seen();
+    assert!(
+        seen[2]
+            .url
+            .ends_with("/rest/agile/1.0/board/7/quickfilter?maxResults=50")
+    );
+    assert!(seen[3].url.ends_with("/rest/api/3/field"));
+    // Boards whose extras can't be read still show.
+    let bare = Script::answering([
+        (200, json!({ "id": 7, "name": "ACME" })),
+        (
+            200,
+            json!({ "filter": { "id": 1 }, "columnConfig": { "columns": [] } }),
+        ),
+        (403, json!({})),
+        (403, json!({})),
+    ]);
+    let config = CloudJira::new(bare).board(&account(), 7).unwrap();
+    assert!(config.quick_filters.is_empty() && config.sprint_field.is_none());
 }
 
 #[test]

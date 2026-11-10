@@ -157,18 +157,19 @@ fn columns_are_added_renamed_colored_moved_and_removed_after_asking() {
 }
 
 #[test]
-fn the_tag_filter_resets_with_another_board() {
+fn the_label_filter_resets_with_another_board() {
+    use crate::filter::Dim;
+    use crate::msg::FilterMsg;
     let mut s = with_labels();
-    s.update(Msg::OpenMenu(MenuTarget::TagFilter("b".into())));
-    s.update(board_msg(BoardMsg::FilterTag(Some("UI".into()))));
-    assert_eq!(s.board.tag_filter.as_deref(), Some("UI"));
-    assert!(s.menu.is_none());
+    s.update(Msg::OpenMenu(MenuTarget::Filter("b".into())));
+    s.update(Msg::Filter(FilterMsg::Toggle(Dim::Label, "ui".into())));
+    assert!(s.board.filter.has(Dim::Label, "ui"));
     let (_, _, a) = s.workspace.task("a").unwrap();
     let (_, _, b) = s.workspace.task("b").unwrap();
-    let filter = s.board.tag_filter.as_deref();
-    assert!(crate::board::shows(filter, a) && !crate::board::shows(filter, b));
+    let cx = s.filter_context();
+    assert!(s.board.filter.shows(a, cx) && !s.board.filter.shows(b, cx));
     s.update(Msg::SelectBoard("b".into()));
-    assert!(s.board.tag_filter.is_some(), "the same board keeps it");
+    assert!(s.board.filter.active(), "the same board keeps it");
     s.update(Msg::SelectBoard("other".into()));
-    assert!(s.board.tag_filter.is_none());
+    assert!(!s.board.filter.active());
 }

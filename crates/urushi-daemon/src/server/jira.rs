@@ -1,5 +1,5 @@
 //! Wire → service for Jira (protocol 1.12): the sign-in, listing and importing boards,
-//! and syncing one now. The API token comes in with `ConnectJira` and never goes out.
+//! syncing one now, and (1.13) evaluating its quick filters. The API token comes in with `ConnectJira` and never goes out.
 
 use urushi_proto::convert;
 use urushi_proto::v1::{self, request::Body, response::Outcome};
@@ -14,6 +14,7 @@ fn account(sign_in: Option<JiraSignIn>) -> Outcome {
             site: s.site,
             email: s.email,
             display_name: s.display_name,
+            account_id: s.account_id,
         },
         None => v1::JiraAccount::default(),
     })
@@ -57,6 +58,11 @@ pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcom
                 .await?;
             ok()
         }
+        Body::QueryJiraFilter(r) => Outcome::JiraIssueIds(v1::JiraIssueIds {
+            ids: service
+                .query_jira_filter(parse(&r.board_id, "board_id")?, &r.quick_filter_ids)
+                .await?,
+        }),
         _ => invalid("not a Jira request"),
     })
 }

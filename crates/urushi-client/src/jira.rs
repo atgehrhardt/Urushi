@@ -75,4 +75,21 @@ impl Client {
         });
         self.ok(body, "SyncBoard").await
     }
+
+    /// The ids (`JiraIssue.id`) of a Jira board's issues that all of these quick
+    /// filters let through, as Jira evaluates them (1.13).
+    pub async fn query_jira_filter(
+        &self,
+        board_id: &str,
+        quick_filter_ids: &[u64],
+    ) -> Result<Vec<String>, ClientError> {
+        let body = Body::QueryJiraFilter(v1::QueryJiraFilterRequest {
+            board_id: board_id.into(),
+            quick_filter_ids: quick_filter_ids.to_vec(),
+        });
+        match self.request(body).await? {
+            Outcome::JiraIssueIds(ids) => Ok(ids.ids),
+            _ => Err(unexpected("QueryJiraFilter")),
+        }
+    }
 }

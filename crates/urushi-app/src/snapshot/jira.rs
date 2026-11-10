@@ -1,11 +1,13 @@
 //! The Jira scenarios: a board that follows Jira (`jira-board`), a Jira issue in the
 //! editor (`jira-task`), one of its subtasks opened from it, under the epic and the
-//! parent in the top bar (`jira-subtask`), signing in (`jira-connect`) and choosing a board to import
+//! parent in the top bar (`jira-subtask`), the board filtered to one person's issues
+//! (`jira-filters`) and the Filters menu's Assignee page (`jira-filter-menu`), signing in (`jira-connect`) and choosing a board to import
 //! (`jira-import`).
 
 use urushi_client::v1;
 
-use crate::msg::{JiraMsg, Msg};
+use crate::filter::Dim;
+use crate::msg::{FilterMsg, JiraMsg, Msg};
 use crate::state::AppState;
 
 /// The Jira scenarios.
@@ -13,6 +15,8 @@ pub(super) const SCENARIOS: &[&str] = &[
     "jira-board",
     "jira-task",
     "jira-subtask",
+    "jira-filters",
+    "jira-filter-menu",
     "jira-connect",
     "jira-import",
 ];
@@ -34,6 +38,11 @@ fn issue(key: &str, (kind, status): (v1::TaskKind, &str), assignee: &str, epic: 
             type_name: type_name.into(),
             status: status.into(),
             assignee: assignee.into(),
+            assignee_id: if assignee.is_empty() {
+                String::new()
+            } else {
+                format!("acc-{}", assignee.to_lowercase().replace(' ', "-"))
+            },
             priority: "Medium".into(),
             epic_key: epic.into(),
             notes_editable: true,
@@ -112,6 +121,16 @@ fn board() -> v1::Board {
             project_key: "ACME".into(),
             synced_at_ms: 1_000_000 - 120_000,
             url: format!("{SITE}/secure/RapidBoard.jspa?rapidView=7"),
+            quick_filters: vec![
+                v1::JiraQuickFilter {
+                    id: 1,
+                    name: "Bugs".into(),
+                },
+                v1::JiraQuickFilter {
+                    id: 2,
+                    name: "Blocked".into(),
+                },
+            ],
             ..Default::default()
         })),
         epics: vec![
@@ -143,6 +162,7 @@ pub(super) fn show(state: &mut AppState, name: &str) {
         site: SITE.into(),
         email: "ada@acme.com".into(),
         display_name: "Ada Lovelace".into(),
+        account_id: "acc-ada".into(),
     });
     state.update(Msg::ToggleBoard);
     state.update(Msg::BoardReveal(1.0));
@@ -156,6 +176,26 @@ pub(super) fn show(state: &mut AppState, name: &str) {
                     "acme-141".into(),
                 )));
             }
+        }
+        "jira-filters" => {
+            state.update(Msg::Filter(FilterMsg::Toggle(
+                Dim::Assignee,
+                "acc-ada-lovelace".into(),
+            )));
+            state.update(Msg::Filter(FilterMsg::Recent));
+        }
+        "jira-filter-menu" => {
+            state.update(Msg::Pointer(urushi_ui::Point::new(1000.0, 100.0)));
+            state.update(Msg::OpenMenu(crate::organize::MenuTarget::Filter(
+                "jb".into(),
+            )));
+            state.update(Msg::MenuPage(crate::organize::MenuPage::Filter(
+                Dim::Assignee,
+            )));
+            state.update(Msg::Filter(FilterMsg::Toggle(
+                Dim::Assignee,
+                "acc-grace-hopper".into(),
+            )));
         }
         "jira-connect" => {
             state.update(Msg::Jira(JiraMsg::OpenConnect));

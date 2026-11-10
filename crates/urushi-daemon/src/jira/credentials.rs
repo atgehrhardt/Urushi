@@ -23,6 +23,9 @@ pub struct Account {
     /// Its name in Jira, as last read.
     #[serde(default)]
     pub display_name: String,
+    /// Its Atlassian account id, as last read.
+    #[serde(default)]
+    pub account_id: String,
 }
 
 impl fmt::Debug for Account {
@@ -134,6 +137,7 @@ mod tests {
             email: "a@b.c".into(),
             token: "s3cret".into(),
             display_name: "Ada".into(),
+            account_id: "acc-ada".into(),
         };
         store.save(&account).unwrap();
         assert_eq!(store.load(), Some(account.clone()));

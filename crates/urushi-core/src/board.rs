@@ -35,7 +35,8 @@ pub use attachments::{
 };
 pub use columns::MAX_COLUMNS;
 pub use jira::{
-    BoardSource, Epic, Issue, JiraBoard, JiraColumn, StatusCategory, SyncState, SyncedIssue,
+    BoardSource, Epic, Issue, JiraBoard, JiraColumn, Named, Person, QuickFilter, StatusCategory,
+    SyncState, SyncedIssue,
 };
 pub use kind::TaskKind;
 pub use labels::{LabelColor, MAX_TAG, MAX_TAGS, tag_color, task_tags};

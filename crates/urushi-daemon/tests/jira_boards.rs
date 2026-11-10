@@ -9,279 +9,16 @@
 
 mod common;
 
-use std::sync::{Arc, Mutex};
+mod fake_jira;
+
+use std::sync::Arc;
 
 use common::{Daemon, temp_home};
+use fake_jira::{DOING, DONE, FakeJira, TODO, TOKEN};
 use urushi_client::{Client, ClientError, v1};
 use urushi_core::TaskKind;
-use urushi_core::board::{Issue, JiraColumn, StatusCategory, SyncedIssue};
 use urushi_daemon::DaemonOptions;
-use urushi_daemon::jira::{
-    Account, BoardConfig, BoardInfo, Fetched, IssueEdit, IssueQuery, JiraApi, JiraError,
-    JiraResult, NewIssue, Rank, Transition,
-};
 use urushi_daemon::tailscale::StaticTailscale;
-
-const TOKEN: &str = "s3cret-t0ken";
-const TODO: &str = "1";
-const DOING: &str = "3";
-const DONE: &str = "10001";
-
-#[derive(Clone, Debug)]
-struct Remote {
-    id: u32,
-    summary: String,
-    notes: String,
-    status: &'static str,
-    kind: TaskKind,
-    parent: Option<u32>,
-    epic: Option<u32>,
-    labels: Vec<String>,
-    rank: String,
-}
-
-/// A Jira with one kanban board, a small workflow and a call log.
-struct FakeJira {
-    issues: Mutex<Vec<Remote>>,
-    calls: Mutex<Vec<String>>,
-}
-
-fn key(id: u32) -> String {
-    format!("ACME-{id}")
-}
-
-fn status(id: &str) -> (&'static str, StatusCategory) {
-    match id {
-        TODO => ("To Do", StatusCategory::ToDo),
-        DOING => ("In Progress", StatusCategory::InProgress),
-        _ => ("Done", StatusCategory::Done),
-    }
-}
-
-impl FakeJira {
-    fn new() -> Arc<Self> {
-        let issue = |id, summary: &str, status, kind, parent, epic| Remote {
-            id,
-            summary: summary.into(),
-            notes: String::new(),
-            status,
-            kind,
-            parent,
-            epic,
-            labels: Vec::new(),
-            rank: format!("0|{id:04}"),
-        };
-        Arc::new(Self {
-            issues: Mutex::new(vec![
-                issue(9, "Billing", TODO, TaskKind::Epic, None, None),
-                issue(1, "Checkout", TODO, TaskKind::Story, None, Some(9)),
-                issue(2, "Invoices", DOING, TaskKind::Bug, None, None),
-                issue(3, "Write tests", TODO, TaskKind::Subtask, Some(2), None),
-                issue(4, "Old idea", TODO, TaskKind::Task, None, None),
-            ]),
-            calls: Mutex::default(),
-        })
-    }
-
-    fn log(&self, call: String) {
-        self.calls.lock().unwrap().push(call);
-    }
-
-    fn calls(&self) -> Vec<String> {
-        self.calls.lock().unwrap().clone()
-    }
-
-    fn with(&self, id: u32, f: impl FnOnce(&mut Remote)) {
-        let mut issues = self.issues.lock().unwrap();
-        f(issues.iter_mut().find(|i| i.id == id).unwrap());
-    }
-
-    fn remote(&self, key: &str) -> Remote {
-        let issues = self.issues.lock().unwrap();
-        issues
-            .iter()
-            .find(|i| self::key(i.id) == key)
-            .unwrap()
-            .clone()
-    }
-
-    fn check(account: &Account) -> JiraResult<()> {
-        if account.token == TOKEN {
-            Ok(())
-        } else {
-            Err(JiraError::Unauthorized)
-        }
-    }
-
-    fn synced(&self, r: &Remote) -> SyncedIssue {
-        let issues = self.issues.lock().unwrap();
-        let (name, category) = status(r.status);
-        let epic = r.epic.and_then(|e| issues.iter().find(|i| i.id == e));
-        SyncedIssue {
-            issue: Issue {
-                id: format!("100{}", r.id),
-                key: key(r.id),
-                type_name: r.kind.name().into(),
-                status_id: r.status.into(),
-                status: name.into(),
-                category,
-                assignee: Some("Ada".into()),
-                priority: Some("High".into()),
-                epic: epic.map(|e| key(e.id)),
-                parent: r.parent.map(|p| format!("100{p}")),
-                rank: r.rank.clone(),
-                ..Issue::default()
-            },
-            title: r.summary.clone(),
-            notes: r.notes.clone(),
-            labels: r.labels.clone(),
-            kind: r.kind,
-            epic_summary: epic.map(|e| e.summary.clone()),
-            created: urushi_core::Timestamp::from_unix_millis(1),
-        }
-    }
-
-    fn id_of(key: &str) -> u32 {
-        key.trim_start_matches("ACME-").parse().unwrap()
-    }
-
-    /// The workflow: To Do ⇄ In Progress ⇄ Done, never To Do → Done.
-    fn allowed(from: &str) -> &'static [&'static str] {
-        if from == DOING {
-            &[TODO, DONE]
-        } else {
-            &[DOING]
-        }
-    }
-}
-
-impl JiraApi for FakeJira {
-    fn myself(&self, account: &Account) -> JiraResult<String> {
-        Self::check(account)?;
-        Ok("Ada Lovelace".into())
-    }
-
-    fn boards(&self, account: &Account, _query: &str) -> JiraResult<Vec<BoardInfo>> {
-        Self::check(account)?;
-        Ok(vec![self.board(account, 7)?.info])
-    }
-
-    fn board(&self, account: &Account, id: u64) -> JiraResult<BoardConfig> {
-        Self::check(account)?;
-        if id != 7 {
-            return Err(JiraError::NotFound(format!("board {id}")));
-        }
-        let column = |name: &str, s: &str| JiraColumn {
-            name: name.into(),
-            statuses: vec![s.into()],
-        };
-        Ok(BoardConfig {
-            info: BoardInfo {
-                id: 7,
-                name: "ACME board".into(),
-                scrum: false,
-                project_key: "ACME".into(),
-                project_name: "Acme".into(),
-            },
-            columns: vec![
-                column("To Do", TODO),
-                column("In Progress", DOING),
-                column("Done", DONE),
-            ],
-            rank_field: Some("customfield_10019".into()),
-            filter_id: 10003,
-            sub_query: None,
-        })
-    }
-
-    fn issues(&self, account: &Account, query: &IssueQuery) -> JiraResult<Fetched> {
-        Self::check(account)?;
-        self.log(format!(
-            "issues full={}",
-            query.updated_within_minutes.is_none()
-        ));
-        let remote = self.issues.lock().unwrap().clone();
-        let mut issues: Vec<_> = remote.iter().map(|r| self.synced(r)).collect();
-        issues.sort_by(|a, b| a.issue.rank.cmp(&b.issue.rank));
-        Ok(Fetched {
-            issues,
-            more: false,
-        })
-    }
-
-    fn issue(&self, account: &Account, key: &str, _rank: Option<&str>) -> JiraResult<SyncedIssue> {
-        Self::check(account)?;
-        Ok(self.synced(&self.remote(key)))
-    }
-
-    fn transitions(&self, account: &Account, key: &str) -> JiraResult<Vec<Transition>> {
-        Self::check(account)?;
-        Ok(Self::allowed(self.remote(key).status)
-            .iter()
-            .map(|to| Transition {
-                id: format!("t{to}"),
-                name: status(to).0.into(),
-                to_status: (*to).into(),
-                to_category: status(to).1,
-            })
-            .collect())
-    }
-
-    fn transition(&self, account: &Account, key: &str, transition: &str) -> JiraResult<()> {
-        Self::check(account)?;
-        self.log(format!("transition {key} {transition}"));
-        let to = transition.trim_start_matches('t');
-        let to = [TODO, DOING, DONE].into_iter().find(|s| *s == to).unwrap();
-        assert!(
-            Self::allowed(self.remote(key).status).contains(&to),
-            "the workflow allows it"
-        );
-        self.with(Self::id_of(key), |r| r.status = to);
-        Ok(())
-    }
-
-    fn edit(&self, account: &Account, key: &str, edit: &IssueEdit) -> JiraResult<()> {
-        Self::check(account)?;
-        self.log(format!("edit {key}"));
-        self.with(Self::id_of(key), |r| {
-            if let Some(s) = &edit.summary {
-                r.summary.clone_from(s);
-            }
-            if let Some(n) = &edit.notes {
-                r.notes.clone_from(n);
-            }
-            r.labels.retain(|l| !edit.labels_remove.contains(l));
-            r.labels.extend(edit.labels_add.iter().cloned());
-        });
-        Ok(())
-    }
-
-    fn create(&self, account: &Account, issue: &NewIssue) -> JiraResult<String> {
-        Self::check(account)?;
-        let mut issues = self.issues.lock().unwrap();
-        let id = issues.iter().map(|i| i.id).max().unwrap() + 1;
-        issues.push(Remote {
-            id,
-            summary: issue.summary.clone(),
-            notes: issue.notes.clone(),
-            status: TODO,
-            kind: issue.kind,
-            parent: issue.parent_key.as_deref().map(Self::id_of),
-            epic: None,
-            labels: issue.labels.clone(),
-            rank: format!("0|{id:04}"),
-        });
-        drop(issues);
-        self.log(format!("create {} {}", key(id), issue.kind.name()));
-        Ok(key(id))
-    }
-
-    fn rank(&self, account: &Account, key: &str, rank: &Rank) -> JiraResult<()> {
-        Self::check(account)?;
-        self.log(format!("rank {key} {rank:?}"));
-        Ok(())
-    }
-}
 
 async fn start(home: &std::path::Path, jira: Arc<FakeJira>) -> Daemon {
     let mut options = DaemonOptions::new(home.join("home"));
@@ -348,6 +85,7 @@ async fn signing_in_checks_the_token_with_jira() {
     assert!(account.connected);
     assert_eq!(account.site, "https://acme.atlassian.net");
     assert_eq!(account.display_name, "Ada Lovelace");
+    assert_eq!(account.account_id, "acc-ada");
     assert_eq!(client.jira_account().await.unwrap(), account);
     daemon.stop().await;
 }
@@ -600,5 +338,27 @@ async fn boards_follow_jira_on_their_own() {
     })
     .await;
     assert!(jira.calls().contains(&"issues full=true".to_owned()));
+    daemon.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn quick_filters_are_listed_and_evaluated_by_jira() {
+    let home = temp_home();
+    let (daemon, client, jira, b) = signed_in(home.path()).await;
+    let source = b.jira.as_ref().unwrap();
+    assert_eq!(source.quick_filters.len(), 1);
+    assert_eq!(source.quick_filters[0].name, "Bugs");
+    let ids = client.query_jira_filter(&b.id, &[1]).await.unwrap();
+    let bug = task(&b, "ACME-2").issue.as_ref().unwrap();
+    assert_eq!(ids, std::slice::from_ref(&bug.id));
+    assert!(
+        jira.calls()
+            .contains(&format!("issue_ids {:?}", [fake_jira::BUGS]))
+    );
+    let unknown = client.query_jira_filter(&b.id, &[99]).await.unwrap_err();
+    assert_eq!(code(&unknown), Some(v1::ErrorCode::NotFound));
+    // The issue's ids travel too, for filtering by person and priority.
+    assert_eq!(bug.assignee_id, "acc-ada");
+    assert_eq!(bug.priority_id, "2");
     daemon.stop().await;
 }

@@ -19,6 +19,9 @@ fn jira_board() -> Board {
             project_key: "ACME".into(),
             scrum: false,
             rank_field: None,
+            points_field: None,
+            sprint_field: None,
+            quick_filters: Vec::new(),
             sync: crate::board::SyncState::default(),
         },
         &[

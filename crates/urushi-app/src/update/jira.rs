@@ -135,6 +135,12 @@ impl AppState {
     pub(super) fn jira_failed(&mut self, followup: &Followup, message: &str) -> bool {
         match (followup, &mut self.dialog) {
             (Followup::JiraAccount, _) => true,
+            // Nothing hidden by the quick filters; the banner says why.
+            (Followup::QuickFilter(_), _) => {
+                self.board.quick_asking = false;
+                self.board.filter.quick_matches = None;
+                false
+            }
             (Followup::JiraConnected, Some(Dialog::ConnectJira { busy, error, .. })) => {
                 *busy = false;
                 *error = Some(message.to_owned());
@@ -174,6 +180,9 @@ impl AppState {
                     *boards = Some(list.boards);
                     *error = None;
                 }
+            }
+            (Followup::QuickFilter(board), Outcome::JiraIssueIds(ids)) => {
+                self.quick_filter_answered(&board, Some(ids.ids), fx);
             }
             other => return Some(other),
         }

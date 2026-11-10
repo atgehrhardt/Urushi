@@ -58,8 +58,6 @@ impl AppState {
                     fx.push(request(body, Followup::CloseDialog));
                 }
             }
-            BoardMsg::FilterTag(tag) => self.board.tag_filter = tag,
-            BoardMsg::FilterEpic(epic) => self.board.epic_filter = epic,
             BoardMsg::OpenTask(task) => self.edit_task(&task),
             BoardMsg::EditorBack => self.editor_back(),
             BoardMsg::KeepEditing => self.keep_editing(),

@@ -32,10 +32,8 @@ pub enum MenuTarget {
     Task(String),
     /// A column of a board (by column id).
     Column(String),
-    /// The board's tag filter (by board id).
-    TagFilter(String),
-    /// A Jira board's epic filter (by board id).
-    EpicFilter(String),
+    /// The board's filters (by board id).
+    Filter(String),
     /// The board panel's "+": a new board, or one imported from Jira.
     NewBoard,
     /// A terminal pane (by pane id): split, copy, paste, close.
@@ -54,6 +52,8 @@ pub enum MenuPage {
     Move,
     /// Choose a color (for a task or a column).
     Color,
+    /// Choose values to filter a board by.
+    Filter(crate::filter::Dim),
 }
 
 /// An open context menu.

@@ -118,6 +118,8 @@ pub enum Field {
     JiraToken,
     /// Import from Jira: the search field.
     JiraQuery,
+    /// The board's search field (outside any dialog).
+    BoardSearch,
 }
 
 /// An editing command on the focused text field, from a shortcut or its context menu.

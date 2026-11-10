@@ -18,6 +18,7 @@ mod boards;
 mod columns;
 mod deletion;
 mod jira;
+mod jira_query;
 mod jira_write;
 mod projects;
 mod repos;

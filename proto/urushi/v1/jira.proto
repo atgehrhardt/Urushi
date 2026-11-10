@@ -29,6 +29,9 @@ message JiraAccount {
   string email = 3;
   // The account's name in Jira.
   string display_name = 4;
+  // Its Atlassian account id ("Only my issues"); empty from a sign-in made before
+  // 1.13 until it is read again. Since 1.13.
+  string account_id = 5;
 }
 
 // Lists the site's boards whose name contains `query` (all of them when empty), at
@@ -61,4 +64,16 @@ message ImportJiraBoardRequest {
 // Syncs a Jira board now, completely. Answered once it is done (or failed).
 message SyncBoardRequest {
   string board_id = 1;
+}
+
+// The issues of a Jira board that its quick filters (all of them) let through, as Jira
+// evaluates them. Answered with JiraIssueIds. Since 1.13.
+message QueryJiraFilterRequest {
+  string board_id = 1;
+  repeated uint64 quick_filter_ids = 2;
+}
+
+// Jira issue ids (JiraIssue.id). Since 1.13.
+message JiraIssueIds {
+  repeated string ids = 1;
 }

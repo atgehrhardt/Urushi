@@ -43,6 +43,15 @@ pub struct JiraBoard {
     /// The field holding the board's ranking (e.g. `customfield_10019`), if known.
     #[serde(default)]
     pub rank_field: Option<String>,
+    /// The field holding estimates (story points) on this board, if it estimates.
+    #[serde(default)]
+    pub points_field: Option<String>,
+    /// The site's sprint field, if it has sprints.
+    #[serde(default)]
+    pub sprint_field: Option<String>,
+    /// The board's quick filters, as Jira shows them above the board.
+    #[serde(default)]
+    pub quick_filters: Vec<QuickFilter>,
     /// How the last sync went.
     #[serde(default)]
     pub sync: SyncState,
@@ -62,6 +71,37 @@ impl JiraBoard {
             self.site, self.board_id
         )
     }
+}
+
+/// A board's quick filter: a named JQL clause that narrows the board (Jira evaluates
+/// it).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuickFilter {
+    /// Its id in Jira.
+    pub id: u64,
+    /// Its name ("Only my issues", "Recently updated").
+    pub name: String,
+    /// Its JQL.
+    #[serde(default)]
+    pub jql: String,
+}
+
+/// Something Jira names and identifies: a sprint, a component, a version.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Named {
+    /// Its id in Jira.
+    pub id: String,
+    /// Its name.
+    pub name: String,
+}
+
+/// A Jira user.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Person {
+    /// Their Atlassian account id: what Jira changes are made with.
+    pub account_id: String,
+    /// Their display name.
+    pub name: String,
 }
 
 /// The state of a board's sync with Jira.
@@ -113,6 +153,9 @@ pub struct Issue {
     /// Its type's name as the site calls it ("Story", "Bug", "Spike"…).
     #[serde(default)]
     pub type_name: String,
+    /// Its type's id.
+    #[serde(default)]
+    pub type_id: String,
     /// Its status's id: what places it in a column.
     #[serde(default)]
     pub status_id: String,
@@ -125,9 +168,36 @@ pub struct Issue {
     /// Who it is assigned to, by display name.
     #[serde(default)]
     pub assignee: Option<String>,
+    /// The assignee's account id.
+    #[serde(default)]
+    pub assignee_id: Option<String>,
+    /// Who reported it.
+    #[serde(default)]
+    pub reporter: Option<Person>,
     /// Its priority's name.
     #[serde(default)]
     pub priority: Option<String>,
+    /// Its priority's id.
+    #[serde(default)]
+    pub priority_id: Option<String>,
+    /// When it is due (`YYYY-MM-DD`).
+    #[serde(default)]
+    pub due: Option<String>,
+    /// Its estimate (story points) as Jira shows it ("3", "0.5").
+    #[serde(default)]
+    pub points: Option<String>,
+    /// The sprint it is in (the open one, if several).
+    #[serde(default)]
+    pub sprint: Option<Named>,
+    /// Its components.
+    #[serde(default)]
+    pub components: Vec<Named>,
+    /// The versions it is to be fixed in.
+    #[serde(default)]
+    pub fix_versions: Vec<Named>,
+    /// How many issues it is linked to.
+    #[serde(default)]
+    pub links: u32,
     /// The key of the epic it belongs to.
     #[serde(default)]
     pub epic: Option<String>,

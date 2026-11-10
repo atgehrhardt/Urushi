@@ -109,6 +109,8 @@ message Request {
     ListJiraBoardsRequest list_jira_boards = 59;
     ImportJiraBoardRequest import_jira_board = 60;
     SyncBoardRequest sync_board = 61;
+    // Since 1.13.
+    QueryJiraFilterRequest query_jira_filter = 62;
   }
 }
 
@@ -144,6 +146,8 @@ message Response {
     // Since 1.12.
     JiraAccount jira_account = 25;
     JiraBoardList jira_boards = 26;
+    // Since 1.13.
+    JiraIssueIds jira_issue_ids = 27;
   }
 }
 

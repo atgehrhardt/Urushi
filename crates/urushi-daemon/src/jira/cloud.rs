@@ -16,8 +16,8 @@ use serde_json::{Value, json};
 use urushi_core::board::SyncedIssue;
 
 use super::api::{
-    BoardConfig, BoardInfo, Fetched, IssueEdit, IssueQuery, JiraApi, JiraError, JiraResult,
-    NewIssue, Rank, Transition,
+    BoardConfig, BoardInfo, Fetched, IssueEdit, IssueFields, IssueQuery, JiraApi, JiraError,
+    JiraResult, Me, NewIssue, Rank, Transition,
 };
 use super::{Account, adf, parse};
 use crate::http::{HttpClient, Method, Request, base64, encode_query};
@@ -26,9 +26,11 @@ use crate::http::{HttpClient, Method, Request, base64, encode_query};
 pub const DONE_DAYS: u32 = 14;
 /// Issues read per search page.
 const PAGE: usize = 100;
-/// The issue fields the board shows.
-const FIELDS: &str =
-    "summary,description,issuetype,status,assignee,priority,parent,labels,updated,created";
+/// The issue fields the board shows (with the board's own: [`IssueFields`]).
+const FIELDS: &str = "summary,description,issuetype,status,assignee,reporter,priority,parent,\
+                      labels,updated,created,duedate,components,fixVersions,issuelinks";
+/// Most quick filters read for a board.
+const QUICK_FILTERS: usize = 50;
 
 /// Jira Cloud.
 pub struct CloudJira {
@@ -91,11 +93,18 @@ impl CloudJira {
         self.call(account, Method::Get, path, None)
     }
 
-    fn fields(rank_field: Option<&str>) -> String {
-        match rank_field {
-            Some(rank) => format!("{FIELDS},{rank}"),
-            None => FIELDS.into(),
-        }
+    fn fields(fields: &IssueFields) -> String {
+        std::iter::once(FIELDS)
+            .chain(fields.ids())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    /// The site's sprint field (from its field list), if it has one.
+    fn sprint_field(&self, account: &Account) -> JiraResult<Option<String>> {
+        Ok(parse::sprint_field(
+            &self.get(account, "/rest/api/3/field")?,
+        ))
     }
 }
 
@@ -114,6 +123,13 @@ pub fn jql(query: &IssueQuery) -> String {
     if let Some(minutes) = query.updated_within_minutes {
         clauses.push(format!("updated >= -{minutes}m"));
     }
+    clauses.extend(
+        query
+            .extra_jql
+            .iter()
+            .filter(|q| !q.trim().is_empty())
+            .map(|q| format!("({q})")),
+    );
     format!("{} ORDER BY Rank ASC", clauses.join(" AND "))
 }
 
@@ -123,12 +139,15 @@ fn segment(key: &str) -> String {
 }
 
 impl JiraApi for CloudJira {
-    fn myself(&self, account: &Account) -> JiraResult<String> {
+    fn myself(&self, account: &Account) -> JiraResult<Me> {
         let me = self.get(account, "/rest/api/3/myself")?;
-        Ok(me["displayName"]
-            .as_str()
-            .unwrap_or(&account.email)
-            .to_owned())
+        Ok(Me {
+            display_name: me["displayName"]
+                .as_str()
+                .unwrap_or(&account.email)
+                .to_owned(),
+            account_id: me["accountId"].as_str().unwrap_or_default().to_owned(),
+        })
     }
 
     fn boards(&self, account: &Account, query: &str) -> JiraResult<Vec<BoardInfo>> {
@@ -151,15 +170,25 @@ impl JiraApi for CloudJira {
             account,
             &format!("/rest/agile/1.0/board/{id}/configuration"),
         )?;
-        parse::config(info, &config)
-            .ok_or_else(|| JiraError::Unavailable("Jira sent an odd board configuration".into()))
+        let mut config = parse::config(info, &config)
+            .ok_or_else(|| JiraError::Unavailable("Jira sent an odd board configuration".into()))?;
+        // Extras: a board shows without them.
+        config.quick_filters = self
+            .get(
+                account,
+                &format!("/rest/agile/1.0/board/{id}/quickfilter?maxResults={QUICK_FILTERS}"),
+            )
+            .map(|v| parse::quick_filters(&v))
+            .unwrap_or_default();
+        config.sprint_field = self.sprint_field(account).ok().flatten();
+        Ok(config)
     }
 
     fn issues(&self, account: &Account, query: &IssueQuery) -> JiraResult<Fetched> {
         let base = format!(
             "/rest/api/3/search/jql?jql={}&fields={}&maxResults={PAGE}",
             encode_query(&jql(query)),
-            encode_query(&Self::fields(query.rank_field.as_deref())),
+            encode_query(&Self::fields(&query.fields)),
         );
         let mut fetched = Fetched::default();
         let mut seen = std::collections::HashSet::new();
@@ -171,8 +200,7 @@ impl JiraApi for CloudJira {
                 Some(t) => format!("{base}&nextPageToken={}", encode_query(t)),
                 None => base.clone(),
             };
-            let (issues, next) =
-                parse::search(&self.get(account, &path)?, query.rank_field.as_deref());
+            let (issues, next) = parse::search(&self.get(account, &path)?, &query.fields);
             let before = fetched.issues.len();
             fetched.issues.extend(
                 issues
@@ -194,18 +222,46 @@ impl JiraApi for CloudJira {
         Ok(fetched)
     }
 
-    fn issue(
-        &self,
-        account: &Account,
-        key: &str,
-        rank_field: Option<&str>,
-    ) -> JiraResult<SyncedIssue> {
+    fn issue_ids(&self, account: &Account, query: &IssueQuery) -> JiraResult<Vec<String>> {
+        let base = format!(
+            "/rest/api/3/search/jql?jql={}&fields=id&maxResults={PAGE}",
+            encode_query(&jql(query)),
+        );
+        let mut ids: Vec<String> = Vec::new();
+        let mut token: Option<String> = None;
+        for _ in 0..=query.limit / PAGE + 1 {
+            let path = match &token {
+                Some(t) => format!("{base}&nextPageToken={}", encode_query(t)),
+                None => base.clone(),
+            };
+            let (page, next) = parse::search_ids(&self.get(account, &path)?);
+            let before = ids.len();
+            ids.extend(
+                page.into_iter()
+                    .filter(|id| !ids.contains(id))
+                    .collect::<Vec<_>>(),
+            );
+            if ids.len() >= query.limit {
+                ids.truncate(query.limit);
+                break;
+            }
+            match next {
+                Some(next) if ids.len() > before && token.as_ref() != Some(&next) => {
+                    token = Some(next);
+                }
+                _ => break,
+            }
+        }
+        Ok(ids)
+    }
+
+    fn issue(&self, account: &Account, key: &str, fields: &IssueFields) -> JiraResult<SyncedIssue> {
         let path = format!(
             "/rest/api/3/issue/{}?fields={}",
             segment(key),
-            encode_query(&Self::fields(rank_field))
+            encode_query(&Self::fields(fields))
         );
-        parse::issue(&self.get(account, &path)?, rank_field)
+        parse::issue(&self.get(account, &path)?, fields)
             .ok_or_else(|| JiraError::Unavailable(format!("Jira sent an odd {key}")))
     }
 
