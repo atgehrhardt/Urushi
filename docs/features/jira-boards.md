@@ -164,8 +164,9 @@ moves at once and goes back if Jira refuses.
   quick_stale}`), `view/board/filter.rs` (the bar), `view/menu/filter.rs` (the menu, a
   `MenuPage::Filter(Dim)` page per field, scrolling past ten values).
   `AppState.jira` (asked with `GetJiraAccount` on connect and when Settings
-  opens), `Dialog::{ConnectJira, ImportJira}` (their errors show in the dialog, not the
-  banner; `update/jira.rs::jira_failed`),
+  opens), `Dialog::{ConnectJira, ImportJira}` (their sign-in and listing errors show
+  in their own error line, `update/jira.rs::jira_failed`; any other error shows in the
+  dialog too, as everywhere, see [the workspace GUI](gui-workspace.md)),
   `TaskLabels.kind`, `Effect::OpenUrl` (`platform::open_url`, https only). Gated on
   `daemon_supports_jira()` (`JIRA_SINCE_MINOR = 12`).
 - **CLI:** `urushi jira connect --site --email` (token from `URUSHI_JIRA_TOKEN` or stdin),

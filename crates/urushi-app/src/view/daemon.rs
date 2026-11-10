@@ -1,10 +1,11 @@
 //! The daemon section of Settings, and the confirmation before restarting it.
 
-use urushi_ui::widgets::{ButtonKind, button, modal};
+use urushi_ui::widgets::{ButtonKind, button};
 use urushi_ui::{Font, Length, Node, Theme};
 
 use crate::msg::Msg;
 use crate::state::AppState;
+use crate::view::modal::modal;
 
 /// "Daemon: version · protocol", with a Restart button for a local daemon. When the
 /// daemon is older than the app, says what that costs and what restarting does.
@@ -66,6 +67,7 @@ pub(super) fn settings_section(state: &AppState, theme: &Theme) -> Vec<Node<Msg>
 
 /// The confirmation. Like deleting a thread, only the red button restarts; Enter doesn't.
 pub(super) fn confirm(
+    state: &AppState,
     theme: &Theme,
     terminals: usize,
     threads: usize,
@@ -115,6 +117,7 @@ pub(super) fn confirm(
     }
     actions.push(restart);
     modal(
+        state,
         theme,
         "Restart the Urushi daemon?",
         520.0,

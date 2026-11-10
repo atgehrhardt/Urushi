@@ -2,15 +2,18 @@
 //! column (its tasks move to the column next to it). Only the red button acts; Enter
 //! doesn't.
 
-use urushi_ui::widgets::{ButtonKind, button, modal};
+use urushi_ui::widgets::{ButtonKind, button};
 use urushi_ui::{Font, Length, Node, Theme};
 
 use super::super::dialogs::{cancel, hint};
 use crate::msg::{BoardMsg, Msg};
+use crate::state::AppState;
+use crate::view::modal::modal;
 
 /// Deleting a board takes its tasks with it, so it asks first. Only the red button
 /// deletes (Enter doesn't). A Jira board is only removed here: Jira keeps its issues.
 pub(in crate::view) fn delete_board(
+    state: &AppState,
     theme: &Theme,
     name: &str,
     tasks: usize,
@@ -42,6 +45,7 @@ pub(in crate::view) fn delete_board(
         .child(Node::text(what, Font::Ui, theme.font_size, theme.text))
         .child(hint(theme, after));
     modal(
+        state,
         theme,
         &title,
         420.0,
@@ -56,6 +60,7 @@ pub(in crate::view) fn delete_board(
 
 /// Removing a column moves its tasks next door, so it says where they go.
 pub(in crate::view) fn delete_column(
+    state: &AppState,
     theme: &Theme,
     name: &str,
     tasks: usize,
@@ -71,6 +76,7 @@ pub(in crate::view) fn delete_column(
         .gap(6.0)
         .child(Node::text(what, Font::Ui, theme.font_size, theme.text));
     modal(
+        state,
         theme,
         &format!("Remove column “{name}”?"),
         420.0,

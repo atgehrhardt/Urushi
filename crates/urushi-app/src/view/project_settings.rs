@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use urushi_ui::widgets::{ButtonKind, SelectOption, button, modal, select_button, toggle};
+use urushi_ui::widgets::{ButtonKind, SelectOption, button, select_button, toggle};
 use urushi_ui::{Key, Length, Node, Theme, key};
 
 use super::dialogs::{cancel, hint, label};
@@ -13,6 +13,7 @@ use crate::msg::Msg;
 use crate::organize::Select;
 use crate::project_settings::{ProjectSettingsDraft, ProjectSettingsMsg as M};
 use crate::state::AppState;
+use crate::view::modal::modal;
 
 /// The parent-branch repo choice that means "no parent branch".
 const NO_PARENT: &str = "None";
@@ -50,6 +51,7 @@ pub(super) fn view(
         ))
         .child(hint(theme, base_thread_hint(state, draft)));
     modal(
+        state,
         theme,
         &format!("{name} settings"),
         480.0,
