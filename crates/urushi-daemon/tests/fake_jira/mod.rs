@@ -10,7 +10,7 @@
     reason = "test helpers"
 )]
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 
 use serde_json::Value;
 use urushi_core::board::{Issue, JiraColumn, Person, QuickFilter, StatusCategory, SyncedIssue};
@@ -95,6 +95,9 @@ pub const TEAMS: [(&str, &str); 2] = [("t1", "Payments"), ("t2", "Mobile")];
 pub struct FakeJira {
     pub issues: Mutex<Vec<Remote>>,
     calls: Mutex<Vec<String>>,
+    /// While `true`, asking for an issue's transitions waits (see
+    /// [`FakeJira::hold_transitions`]).
+    transitions_held: (Mutex<bool>, Condvar),
 }
 
 /// The JQL of the board's one quick filter.
@@ -136,7 +139,21 @@ impl FakeJira {
                 issue(4, "Old idea", TODO, TaskKind::Task, None, None),
             ]),
             calls: Mutex::default(),
+            transitions_held: (Mutex::new(false), Condvar::new()),
         })
+    }
+
+    /// Makes Jira slow to answer which transitions an issue has, until
+    /// [`FakeJira::release_transitions`]: lets a test see what the board shows while a
+    /// move waits on Jira.
+    pub fn hold_transitions(&self) {
+        *self.transitions_held.0.lock().unwrap() = true;
+    }
+
+    /// Answers the transition lookups held by [`FakeJira::hold_transitions`].
+    pub fn release_transitions(&self) {
+        *self.transitions_held.0.lock().unwrap() = false;
+        self.transitions_held.1.notify_all();
     }
 
     fn log(&self, call: String) {
@@ -349,6 +366,12 @@ impl JiraApi for FakeJira {
 
     fn transitions(&self, account: &Account, key: &str) -> JiraResult<Vec<Transition>> {
         Self::check(account)?;
+        let (held, released) = &self.transitions_held;
+        drop(
+            released
+                .wait_while(held.lock().unwrap(), |held| *held)
+                .unwrap(),
+        );
         Ok(Self::allowed(self.remote(key).status)
             .iter()
             .map(|to| Transition {

@@ -536,24 +536,36 @@ async fn a_watched_board_follows_jira_within_seconds_reading_only_what_changed()
 #[tokio::test(flavor = "multi_thread")]
 async fn a_refused_move_shows_at_once_then_goes_back() {
     let home = temp_home();
-    let (daemon, client, _jira, b) = signed_in(home.path()).await;
+    let (daemon, client, jira, b) = signed_in(home.path()).await;
     let (watcher, mut events) = daemon.connect().await;
     watcher.list_workspace(true).await.unwrap();
     let checkout = task(&b, "ACME-1").id.clone();
-    // To Do → Done isn't in the workflow.
-    let refused = client
-        .move_task(&checkout, &b.columns[2].id, 0)
-        .await
-        .unwrap_err();
-    assert_eq!(code(&refused), Some(v1::ErrorCode::FailedPrecondition));
-    // Watchers saw it move, and come back.
-    common::next_event(&mut events, |e| match e {
-        v1::event::Body::WorkspaceChanged(w) => w
-            .boards
+    let in_done = |w: &v1::Workspace| {
+        w.boards
             .iter()
             .filter(|b| b.jira.is_some())
             .any(|b| b.columns[2].tasks.iter().any(|t| t.id == checkout))
-            .then_some(()),
+    };
+    // Jira answers only once the watcher has seen the card move, so the move can't be
+    // folded into the next change.
+    jira.hold_transitions();
+    // To Do → Done isn't in the workflow.
+    let moving = tokio::spawn({
+        let (client, checkout, done) = (client.clone(), checkout.clone(), b.columns[2].id.clone());
+        async move { client.move_task(&checkout, &done, 0).await }
+    });
+    // Watchers see it move at once…
+    common::next_event(&mut events, |e| match e {
+        v1::event::Body::WorkspaceChanged(w) => in_done(&w).then_some(()),
+        _ => None,
+    })
+    .await;
+    jira.release_transitions();
+    let refused = moving.await.unwrap().unwrap_err();
+    assert_eq!(code(&refused), Some(v1::ErrorCode::FailedPrecondition));
+    // …and come back.
+    common::next_event(&mut events, |e| match e {
+        v1::event::Body::WorkspaceChanged(w) => (!in_done(&w)).then_some(()),
         _ => None,
     })
     .await;
