@@ -395,6 +395,7 @@ mod deletion;
 mod fields;
 mod flows;
 mod jira;
+mod jira_deletion;
 mod labels;
 mod organize;
 mod panes;

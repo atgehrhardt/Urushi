@@ -250,6 +250,9 @@ pub trait JiraApi: Send + Sync {
     fn create(&self, account: &Account, issue: &NewIssue) -> JiraResult<String>;
     /// Moves an issue in the board's ranking.
     fn rank(&self, account: &Account, key: &str, rank: &Rank) -> JiraResult<()>;
+    /// Deletes an issue for good, with its sub-tasks (Jira refuses to delete an issue
+    /// that has sub-tasks otherwise).
+    fn delete_issue(&self, account: &Account, key: &str) -> JiraResult<()>;
 
     // ---- One issue in full (the editor) -------------------------------------------
     /// Everything the editor shows of an issue: its editable fields with their values

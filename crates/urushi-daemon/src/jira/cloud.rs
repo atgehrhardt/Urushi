@@ -313,6 +313,11 @@ impl JiraApi for CloudJira {
         .map(drop)
     }
 
+    fn delete_issue(&self, account: &Account, key: &str) -> JiraResult<()> {
+        let path = format!("/rest/api/3/issue/{}?deleteSubtasks=true", segment(key));
+        self.call(account, Method::Delete, &path, None).map(drop)
+    }
+
     fn details(&self, account: &Account, key: &str, board: u64) -> JiraResult<IssueDetails> {
         self.read_details(account, key, board)
     }

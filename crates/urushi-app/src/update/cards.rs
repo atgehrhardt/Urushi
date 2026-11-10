@@ -81,10 +81,8 @@ impl AppState {
                 };
                 fx.push(request(body, followup));
             }
-            BoardMsg::DeleteTask(task_id) => {
-                let body = self.delete_body(task_id);
-                fx.push(request(body, Followup::None));
-            }
+            BoardMsg::DeleteTask(task_id) => self.delete_task(task_id, Followup::None, fx),
+            BoardMsg::ConfirmDeleteIssue => self.confirm_delete_issue(fx),
             BoardMsg::MoveTask { task, column } => {
                 let current = self.workspace.task(&task).map(|(_, c, _)| c.id.clone());
                 if current.is_some_and(|c| c != column) {

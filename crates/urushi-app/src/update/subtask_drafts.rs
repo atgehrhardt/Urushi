@@ -74,7 +74,7 @@ impl AppState {
         {
             nav.back = back;
             nav.draft_of_previous = Some(at);
-            nav.confirm_discard = false;
+            nav.settle();
             // On a Jira board every subtask is a Sub-task issue, with that type's fields.
             if self
                 .workspace
@@ -108,7 +108,7 @@ impl AppState {
         if let Some(nav) = nav_mut(&mut current) {
             back = std::mem::take(&mut nav.back);
             nav.draft_of_previous = None;
-            nav.confirm_discard = false;
+            nav.settle();
         }
         let Some(mut parent) = back.pop() else {
             return false;
@@ -120,7 +120,7 @@ impl AppState {
                 subtasks.drafts.insert(at.min(subtasks.drafts.len()), draft);
             }
             nav.back = back;
-            nav.confirm_discard = false;
+            nav.settle();
         }
         self.open(parent, None);
         true

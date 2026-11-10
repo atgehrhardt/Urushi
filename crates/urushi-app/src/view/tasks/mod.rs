@@ -162,7 +162,9 @@ pub(super) fn editor(
         };
         (body, if full { FULL } else { WIDE })
     };
-    let actions = if nav.confirm_discard {
+    let actions = if let Some(about) = &nav.confirm_delete {
+        actions::delete_question(theme, about)
+    } else if nav.confirm_discard {
         actions::discard_question(theme)
     } else if draft {
         actions::draft_actions(theme)

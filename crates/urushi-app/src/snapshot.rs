@@ -85,6 +85,8 @@ pub const SCENARIOS: &[&str] = &[
     "jira-new-epic",
     "jira-connect",
     "jira-import",
+    "jira-delete-issue",
+    "jira-delete-subtask",
     "project-base-thread",
     "project-settings",
 ];

@@ -26,7 +26,7 @@ pub(super) fn task_items(
     };
     let task = found.task();
     let id = task.id().to_owned();
-    // Jira owns nesting and deleting its issues.
+    // Jira owns nesting its issues; deleting one asks first.
     let issue = task.issue();
     if let Some(items) = task_page(theme, menu, &found) {
         return items;
@@ -91,16 +91,21 @@ pub(super) fn task_items(
             theme.text,
             Msg::Jira(crate::msg::JiraMsg::Open(issue.url.clone())),
         ));
+    }
+    if !state.can_delete(task) {
         return items;
     }
+    // A Jira issue asks first: it goes from Jira for good.
+    let label = match (task.is_card(), issue.is_some()) {
+        (false, false) => "Delete subtask",
+        (false, true) => "Delete subtask…",
+        (true, false) => "Delete task",
+        (true, true) => "Delete issue…",
+    };
     items.push(separator(theme));
     items.push(item(
         theme,
-        if task.is_card() {
-            "Delete task"
-        } else {
-            "Delete subtask"
-        },
+        label,
         "",
         theme.danger,
         act(BoardMsg::DeleteTask(id)),

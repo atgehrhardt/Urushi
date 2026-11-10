@@ -69,6 +69,7 @@ pub(super) fn view(
             (title, notes, subtasks, labels),
             issue,
         ),
+        Dialog::DeleteIssue(about) => super::board::delete_issue(theme, about),
         Dialog::DeleteBoard { board, name, tasks } => {
             let jira = state
                 .workspace
