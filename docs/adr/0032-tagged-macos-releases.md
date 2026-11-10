@@ -18,7 +18,8 @@ bundle is already assembled and ad-hoc signed by `scripts/bundle-macos.sh`.
   `make app` uses. It checks the bundle (three binaries, arm64, `codesign --verify`),
   zips it with `ditto -c -k --keepParent`, and publishes
   `Urushi-<version>-macos-arm64.zip` plus its `.sha256` with `gh release create`.
-- Running the workflow by hand (`workflow_dispatch`) is a dry run: it builds the zip as a
+- Running the workflow by hand (`workflow_dispatch`), or a pull request that changes
+  `release.yml` or `scripts/bundle-macos.sh`, is a dry run: it builds the zip as a
   workflow artifact and publishes nothing.
 
 ## Alternatives considered

@@ -2,13 +2,18 @@ name: Release
 
 # Pushing a tag vX.Y.Z (matching [workspace.package].version in Cargo.toml) builds
 # Urushi.app for Apple Silicon and publishes it as a GitHub Release. Running the workflow
-# by hand builds the same zip as a workflow artifact and publishes nothing (a dry run).
+# by hand, or a pull request that changes how releases are built, builds the same zip as
+# a workflow artifact and publishes nothing (a dry run).
 # See docs/features/ci-and-releases.md and ADR 0032.
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/bundle-macos.sh
 
 env:
   CARGO_TERM_COLOR: always

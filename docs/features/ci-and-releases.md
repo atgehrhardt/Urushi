@@ -33,7 +33,8 @@ fixtures. On Windows the unit tests and the `cmd.exe` PTY test run.
    and generated change notes.
 
 **Dry run:** Actions → Release → *Run workflow* builds the same zip as a workflow artifact
-and publishes nothing.
+and publishes nothing. Pull requests that change `release.yml` or `scripts/bundle-macos.sh`
+get the same dry run automatically.
 
 ## Invariants
 - A release's version, its tag and the app's `CFBundleShortVersionString` are equal: the
@@ -49,8 +50,8 @@ and publishes nothing.
   racing it.
 
 ## Tests
-- The workflows themselves are exercised by running them: CI on the pull request, and the
-  release workflow via a manual dry run.
+- The workflows themselves are exercised by running them: CI on every pull request, and
+  the release workflow's dry run on pull requests that change how releases are built.
 - Before pushing, `cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc`
   (and `x86_64-unknown-linux-gnu`) type-checks the other desktop OSes from a Mac.
 
