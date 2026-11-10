@@ -58,3 +58,5 @@ jobs:
           breaking: ${{ github.event_name == 'pull_request' }}
           breaking_against: ${{ github.event.repository.clone_url }}#branch=main
           push: false
+          # The workflow token can't comment on pull requests; failures show in the log.
+          pr_comment: false
