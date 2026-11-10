@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.16 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.17 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -37,6 +37,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 17 | `MoveBoard{board_id, index}` reorders boards, Jira boards included (nothing is sent to Jira): the index counts positions without the moved board and is clamped to the end; an unknown board is `NOT_FOUND`. `Workspace.boards` is in display (tab) order. Clients check `Welcome.protocol_minor ≥ 17` before sending it. |
 | 16 | `Settings.update_base_from_remote` and `SettingsPatch.update_base_from_remote` (ADR 0028): before making a new thread's worktree, the daemon fetches the base from its remote and starts from the newer commit. Older daemons leave it unset (`false`), which is accurate because they don't update. Clients check `Welcome.protocol_minor ≥ 16` before showing the switch. |
 | 15 | Epics are cards on Jira boards (ADR 0027), with no wire change: epic issues arrive as `Task`s with `kind = EPIC` in the column showing their status, and `Board.epics` also lists every epic shown as a card. `CreateTask.kind = EPIC` on a Jira board creates an epic issue; an epic with `subtasks`/`subtask_details`, and `CreateSubtask` under an epic, are `INVALID_ARGUMENT` (Jira epics hold stories, not sub-tasks). Older daemons refuse epics, so clients check `Welcome.protocol_minor ≥ 15` before offering Epic on a Jira board. |
 | 14 | Subtasks with details (ADR 0025): `CreateTask.subtask_details` (`NewSubtask{title, notes, color, tags, kind, jira_fields}`), and the same details on `CreateSubtask` (`notes`, `color`, `tags`, `kind`, `jira_fields`); older daemons read only titles. Clients check `Welcome.protocol_minor ≥ 14` before opening a new subtask in an editor of its own. |
@@ -64,7 +65,7 @@ v1 field names are frozen (`buf breaking` uses `WIRE_JSON`). On the wire, **`Pro
   - `AttachPane{pane, cols, rows}` returns a full `ScreenUpdate`. After that the daemon streams `ScreenUpdate{seq}` events, and the client must send the `AckScreen{seq}` notification before the next one is sent.
   - `DetachPane`, `SetPaneSize`, the `Input{key|text|paste|mouse|wheel}` and `ScrollPane` notifications, and `ReadScreenText` (plain text, for the CLI and tests).
   - Events: `PaneExited`, `PaneBell`.
-- **Task boards:** `CreateBoard`, `RenameBoard`, `DeleteBoard`, `CreateColumn`, `UpdateColumn`, `MoveColumn`, `DeleteColumn`, `CreateTask` (since 1.14 with `subtask_details`: `NewSubtask`s carrying notes, color, tags, kind and Jira fields), `UpdateTask`, `MoveTask`, `NestTask`, `DeleteTask`, `CreateSubtask` (since 1.14 with the same details; older daemons read only the title), `UpdateSubtask`, `DeleteSubtask`, `AddAttachment`, `GetAttachment`, `DeleteAttachment`. Boards arrive with the workspace (`Workspace.boards`), so subscribers see changes through `WorkspaceChanged`.
+- **Task boards:** `CreateBoard`, `RenameBoard`, `MoveBoard` (since 1.17: a board to `index` among the others, counted without it and clamped; `Workspace.boards` is in that order), `DeleteBoard`, `CreateColumn`, `UpdateColumn`, `MoveColumn`, `DeleteColumn`, `CreateTask` (since 1.14 with `subtask_details`: `NewSubtask`s carrying notes, color, tags, kind and Jira fields), `UpdateTask`, `MoveTask`, `NestTask`, `DeleteTask`, `CreateSubtask` (since 1.14 with the same details; older daemons read only the title), `UpdateSubtask`, `DeleteSubtask`, `AddAttachment`, `GetAttachment`, `DeleteAttachment`. Boards arrive with the workspace (`Workspace.boards`), so subscribers see changes through `WorkspaceChanged`.
 - **Settings:** `GetSettings`, `UpdateSettings` (global and per repo).
 - **Remote:** `TailnetStatus`, `SetTailnetServe`.
 

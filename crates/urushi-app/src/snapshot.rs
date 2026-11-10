@@ -31,7 +31,8 @@ pub fn scene(
 /// list open, `new-thread-project` with the project list open), `settings`, the thread
 /// `menu` and its `menu-status` page, a thread being dragged (`drag`), a project being
 /// dragged above another (`drag-project`), the `repos` tab, the task `board` (a task
-/// being dragged across it in `board-drag`, a `task` with subtasks being edited, and a card's context menu in
+/// being dragged across it in `board-drag`, the "Personal" board's tab dragged onto the
+/// first in `board-tab-drag`, a `task` with subtasks being edited, and a card's context menu in
 /// `task-menu`, a column's in `column-menu`, a subtask opened as a task in
 /// `task-nested`, a new subtask's own editor in `task-new-subtask`, "Make subtask of…" in `nest`, and Start thread switched to an existing
 /// thread in `task-in-thread`), a terminal with an agent's plan
@@ -56,6 +57,7 @@ pub const SCENARIOS: &[&str] = &[
     "repos",
     "board",
     "board-drag",
+    "board-tab-drag",
     "task",
     "task-menu",
     "column-menu",
@@ -114,6 +116,7 @@ fn sample_thumbnail() -> Option<std::sync::Arc<urushi_ui::ImageData>> {
 const BOARD_SCENARIOS: &[&str] = &[
     "board",
     "board-drag",
+    "board-tab-drag",
     "task",
     "task-menu",
     "column-menu",
@@ -509,6 +512,13 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
             if name == "task" {
                 state.update(Msg::PressTask("k3".into()));
                 state.update(Msg::PressEnded);
+            }
+            if name == "board-tab-drag" {
+                // "Personal" held over "Billing launch": the line shows before it.
+                state.update(Msg::Pointer(urushi_ui::Point::new(420.0, 22.0)));
+                state.update(Msg::DragBoard("b2".into()));
+                state.update(Msg::DragMove(urushi_ui::Point::new(330.0, 30.0)));
+                state.update(Msg::DragOver(Some(Box::new(Msg::DropBoard("b1".into())))));
             }
             if name == "board-drag" {
                 // "Invoice PDF export" held over "Pricing page copy".

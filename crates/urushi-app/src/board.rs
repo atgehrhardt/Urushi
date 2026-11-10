@@ -1,6 +1,6 @@
 //! Client-side state of the task-board panel: whether it's open (and how far it has
-//! slid out), which board is shown, and the task being pressed or dragged (and where it
-//! would land). The boards
+//! slid out), which board is shown, the task being pressed or dragged (and where it
+//! would land), and where a dragged board tab would land. The boards
 //! themselves live in the daemon and arrive with the workspace (`Workspace.boards`).
 
 use urushi_client::{TaskRef, WorkspaceMirror, v1};
@@ -17,6 +17,8 @@ pub const JIRA_SINCE_MINOR: u32 = 12;
 /// First protocol minor version where a Jira board's epics are cards that can be
 /// created like any issue (ADR 0027).
 pub const EPIC_CARDS_SINCE_MINOR: u32 = 15;
+/// First protocol minor version that can reorder boards (`MoveBoard`).
+pub const BOARD_ORDER_SINCE_MINOR: u32 = 17;
 
 /// How long the panel takes to slide fully in or out, in seconds.
 pub const SLIDE_SECONDS: f32 = 0.18;
@@ -38,6 +40,9 @@ pub struct BoardPanel {
     /// While dragging: where the task would land if dropped now, as `(column, before)`
     /// (see [`drop_position`]); `None` when it wouldn't move.
     pub over: Option<(String, Option<String>)>,
+    /// While a board's tab is dragged (`AppState::dragging`): the tab whose place it
+    /// would take if dropped now; `None` when it wouldn't move.
+    pub tab_over: Option<String>,
     /// What the shown board is filtered by.
     pub filter: crate::filter::BoardFilter,
     /// A quick-filter query is on its way to the daemon.

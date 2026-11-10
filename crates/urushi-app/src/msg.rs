@@ -116,6 +116,10 @@ pub enum Msg {
         /// New position.
         index: u32,
     },
+    /// A board's tab started being dragged.
+    DragBoard(String),
+    /// A dragged board was released over another board's tab (by id): it takes its place.
+    DropBoard(String),
     /// Open or close a selector in the new-thread dialog.
     ToggleSelect(Select),
     /// Choose the repo in the new-thread dialog.

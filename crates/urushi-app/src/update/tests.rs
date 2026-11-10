@@ -388,6 +388,7 @@ fn compact_layout_navigates_between_threads_and_terminals() {
 mod attachments;
 mod attention;
 mod board;
+mod board_order;
 mod daemon;
 mod deletion;
 mod fields;

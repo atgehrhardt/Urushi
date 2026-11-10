@@ -132,6 +132,7 @@ impl AppState {
                 self.project_over = None;
                 self.board.dragging = None;
                 self.board.over = None;
+                self.board.tab_over = None;
             }
             _ => {}
         }
@@ -352,6 +353,7 @@ impl AppState {
             || self.board.dragging.take().is_some();
         if self.dragging.is_none() {
             self.project_over = None;
+            self.board.tab_over = None;
         }
         dismissed
     }

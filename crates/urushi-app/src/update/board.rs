@@ -1,14 +1,15 @@
 //! The task-board panel: opening it, choosing a board, dragging tasks between columns,
-//! and deleting boards. The task editor, subtasks and starting threads from tasks are in
-//! `tasks.rs`. Every change is a request to the daemon (`CreateTask`, `MoveTask`, …);
-//! the panel updates when the workspace comes back.
+//! dragging board tabs to reorder them, and deleting boards. The task editor, subtasks
+//! and starting threads from tasks are in `tasks.rs`. Every change is a request to the
+//! daemon (`CreateTask`, `MoveTask`, `MoveBoard`, …); the panel updates when the
+//! workspace comes back.
 
 use urushi_client::v1::{self, request::Body};
 
 use super::request;
 use crate::board::drop_position;
 use crate::msg::{Effect, Followup, Msg};
-use crate::organize::Prompt;
+use crate::organize::{Dragged, Prompt, board_drop_index};
 use crate::state::{AppState, Dialog};
 
 impl AppState {
@@ -21,6 +22,10 @@ impl AppState {
                 self.board.pressed = None;
                 self.board.dragging = None;
                 self.board.over = None;
+                if matches!(self.dragging, Some((Dragged::Board(_), _))) {
+                    self.dragging = None;
+                }
+                self.board.tab_over = None;
                 // The terminals are covered: no half-made selection or drag survives.
                 self.selection = None;
                 self.drag = None;
@@ -57,6 +62,23 @@ impl AppState {
             }
             Msg::DropTask { column, before } => self.drop_task(&column, before.as_deref(), fx),
             Msg::DragOver(target) => self.drag_over(target.map(|m| *m)),
+            Msg::DragBoard(board) => {
+                self.board.pressed = None;
+                if self.daemon_supports_board_order() && self.dialog.is_none() {
+                    self.menu = None;
+                    self.board.tab_over = None;
+                    self.dragging =
+                        Some((Dragged::Board(board), self.last_press.unwrap_or_default()));
+                }
+            }
+            Msg::DropBoard(target) => {
+                self.board.tab_over = None;
+                if let Some((Dragged::Board(board), _)) = self.dragging.take()
+                    && let Some(index) = board_drop_index(self.workspace.boards(), &board, &target)
+                {
+                    fx.push(move_board(board, index));
+                }
+            }
             msg @ (Msg::PickColumn(_)
             | Msg::DeleteTask
             | Msg::ToggleSubtask(_)
@@ -97,6 +119,22 @@ impl AppState {
                 .task(task)
                 .and_then(|(board, _, _)| drop_position(board, task, &column, before.as_deref()))
                 .map(|_| (column, before)),
+            _ => None,
+        };
+    }
+
+    /// While a board's tab is dragged: remember which tab's place it would take, for the
+    /// drop line. Only drops that move it count.
+    pub(super) fn board_tab_over(&mut self, target: Option<Msg>) {
+        let Some((Dragged::Board(board), _)) = &self.dragging else {
+            return;
+        };
+        self.board.tab_over = match target {
+            Some(Msg::DropBoard(t))
+                if board_drop_index(self.workspace.boards(), board, &t).is_some() =>
+            {
+                Some(t)
+            }
             _ => None,
         };
     }
@@ -174,4 +212,12 @@ impl AppState {
         }
         false
     }
+}
+
+/// The `MoveBoard` request (the order of the tabs is the daemon's).
+pub(super) fn move_board(board_id: String, index: u32) -> Effect {
+    request(
+        Body::MoveBoard(v1::MoveBoardRequest { board_id, index }),
+        Followup::None,
+    )
 }

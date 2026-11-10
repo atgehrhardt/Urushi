@@ -592,6 +592,11 @@ impl AppState {
         self.daemon_minor >= crate::organize::PROJECT_ORDER_SINCE_MINOR
     }
 
+    /// Whether the daemon can reorder boards (protocol 1.17).
+    pub fn daemon_supports_board_order(&self) -> bool {
+        self.daemon_minor >= crate::board::BOARD_ORDER_SINCE_MINOR
+    }
+
     /// Whether `agent` is started with its skip-permissions flag (per the daemon's settings).
     pub fn skips_permissions(&self, agent: urushi_core::Agent) -> bool {
         self.settings

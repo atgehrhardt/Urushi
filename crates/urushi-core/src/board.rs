@@ -7,7 +7,8 @@
 //! (`tests/board_props.rs`). A task's subtasks are tasks too, nested inside it
 //! (`tree.rs`, ADR 0015); a task has a color and tags (`labels.rs`) and attached files
 //! (`attachments.rs`, ADR 0016), and can name the thread that was started for it. Columns can be added, recolored, reordered and removed
-//! (`columns.rs`); new boards start with [`DEFAULT_COLUMNS`]. Boards are
+//! (`columns.rs`); new boards start with [`DEFAULT_COLUMNS`], and the list of boards is
+//! reordered with [`move_board`] (`order.rs`). Boards are
 //! organization only: they never touch git, terminals or files (the daemon stores
 //! attachments' bytes). Ids and timestamps are passed
 //! in by the daemon.
@@ -25,6 +26,7 @@ mod columns;
 mod jira;
 mod kind;
 mod labels;
+mod order;
 mod prompt;
 mod sync;
 mod tree;
@@ -40,6 +42,7 @@ pub use jira::{
 };
 pub use kind::TaskKind;
 pub use labels::{LabelColor, MAX_TAG, MAX_TAGS, tag_color, task_tags};
+pub use order::move_board;
 pub use prompt::{MAX_PROMPT_BYTES, task_prompt, task_reference_prompt};
 pub use sync::{MAX_SYNCED_ISSUES, MergeReport};
 pub use tree::{MAX_DEPTH, MAX_SUBTASKS};

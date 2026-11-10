@@ -41,6 +41,14 @@ pub(crate) enum BoardCmd {
         /// New name.
         name: String,
     },
+    /// Move a board's tab to a position among the others (0 is first; past the end is
+    /// last).
+    Order {
+        /// Board id.
+        board: String,
+        /// New position.
+        index: u32,
+    },
     /// Delete a board and all its tasks.
     Rm {
         /// Board id.
@@ -158,6 +166,9 @@ pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
         }
         BoardCmd::Rename { board, name } => Ok(client
             .rename_board(&resolve(client, &board).await?, &name)
+            .await?),
+        BoardCmd::Order { board, index } => Ok(client
+            .move_board(&resolve(client, &board).await?, index)
             .await?),
         BoardCmd::Rm { board } => Ok(client.delete_board(&resolve(client, &board).await?).await?),
         BoardCmd::Add {

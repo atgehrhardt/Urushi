@@ -119,6 +119,8 @@ message Request {
     SearchJiraUsersRequest search_jira_users = 67;
     SearchJiraIssuesRequest search_jira_issues = 68;
     WatchBoardRequest watch_board = 69;
+    // Since 1.17.
+    MoveBoardRequest move_board = 70;
   }
 }
 
