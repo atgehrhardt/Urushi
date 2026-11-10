@@ -317,6 +317,9 @@ pub enum Followup {
     ThreadCreated,
     /// Show the deletion warning.
     DeletionPlan,
+    /// The daemon answered `DeleteThread` for this thread: on failure, show it again
+    /// and say why. Never touches dialogs or focus.
+    ThreadDeleted(String),
     /// Select the new tab.
     TabCreated,
     /// A task was started in an existing thread: go to its new tab.

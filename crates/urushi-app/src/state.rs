@@ -232,8 +232,6 @@ pub enum Dialog {
         title: String,
         /// What the daemon will delete.
         plan: v1::DeletionPlan,
-        /// The delete request is in flight.
-        deleting: bool,
     },
     /// Settings.
     Settings {
@@ -401,8 +399,11 @@ pub struct AppState {
     pub target: ConnectTarget,
     /// Connection status.
     pub connection: Connection,
-    /// The workspace as last reported.
+    /// The workspace as shown: the daemon's last report without threads being deleted
+    /// (see [`crate::deletions`]).
     pub workspace: WorkspaceMirror,
+    /// The daemon's last reported workspace, and the deletions the app waits on.
+    pub deletions: crate::deletions::Deletions,
     /// The thread shown in the main area.
     pub selected_thread: Option<String>,
     /// The tab shown per thread.
@@ -494,6 +495,7 @@ impl AppState {
             target,
             connection: Connection::Connecting,
             workspace: WorkspaceMirror::default(),
+            deletions: crate::deletions::Deletions::default(),
             selected_thread: None,
             selected_tab: HashMap::new(),
             screens: HashMap::new(),

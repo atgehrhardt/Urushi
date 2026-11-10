@@ -16,6 +16,7 @@ pub mod attention;
 mod backend;
 pub mod board;
 pub mod config;
+pub mod deletions;
 pub mod drafts;
 mod files;
 pub mod filter;
