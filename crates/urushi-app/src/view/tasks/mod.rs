@@ -9,7 +9,7 @@ use urushi_ui::widgets::{ButtonKind, button, modal_with_header};
 use urushi_ui::{Align, Color, Font, Insets, Key, Length, Node, Role, TextField, Theme, key};
 
 use super::dialogs::{area, field, hint, label};
-use urushi_client::{FoundTask, TaskRef};
+use urushi_client::{FoundTask, TaskRef, v1};
 
 use crate::board::TaskLabels;
 use crate::issue::IssueEditor;
@@ -48,6 +48,27 @@ pub(crate) fn editor_scroll_key() -> Key {
     key(&["task-editor"])
 }
 
+/// The editor's subtasks (none in a new subtask's own editor). An epic on a Jira board
+/// (the task's kind, or the one picked for a new task) holds stories, not sub-tasks
+/// (ADR 0027), so it is offered none.
+fn subtask_list(
+    state: &AppState,
+    (theme, scroll): (&Theme, &HashMap<Key, f32>),
+    (board, current, draft, picked): (&str, Option<TaskRef<'_>>, bool, i32),
+    subtasks: &SubtaskEditor,
+) -> Vec<Node<Msg>> {
+    if !state.daemon_supports_subtasks() || draft {
+        return Vec::new();
+    }
+    let offset = scroll.get(&subtasks_scroll_key()).copied().unwrap_or(0.0);
+    let epic = state
+        .workspace
+        .board(board)
+        .is_some_and(|b| b.jira.is_some())
+        && current.map_or(picked, TaskRef::kind) == i32::from(v1::TaskKind::Epic);
+    subtasks::checklist(state, theme, (current, epic), subtasks, offset)
+}
+
 /// Creating (`task: None`) or editing a task. On a desktop the text (title, notes,
 /// subtasks) is on the left and the organizing (column, color, tags) on the right; on a
 /// phone they are one scrolling column.
@@ -78,10 +99,8 @@ pub(super) fn editor(
         ))
         .child(label(theme, "Notes"));
     text = text.children(notes_input(state, theme, notes, issue));
-    if state.daemon_supports_subtasks() && !draft {
-        let offset = scroll.get(&subtasks_scroll_key()).copied().unwrap_or(0.0);
-        text = text.children(subtasks::checklist(state, theme, current, subtasks, offset));
-    }
+    let list = (board, current, draft, labels.kind);
+    text = text.children(subtask_list(state, (theme, scroll), list, subtasks));
     if let (Some(task), true) = (task, issue.is_some() && full) {
         let width = text_width(state, full);
         text = text.children(issue::tabs(state, theme, (task, width), jira, scroll));
@@ -220,7 +239,8 @@ fn organize(
     } else if state.daemon_supports_jira() && current.is_none_or(TaskRef::is_card) {
         // A Jira board's subtasks are all Sub-task issues: no kind to pick.
         if !(draft && jira_board) {
-            organize = organize.children(jira::kind_picker(theme, labels.kind, jira_board, width));
+            let kinds = (jira_board, state.daemon_supports_epic_cards());
+            organize = organize.children(jira::kind_picker(theme, labels.kind, kinds, width));
         }
         if jira_board && current.is_none() {
             organize = organize.children(issue::create_section(state, theme, jira, width, scroll));

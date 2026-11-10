@@ -14,6 +14,9 @@ pub const SUBTASKS_SINCE_MINOR: u32 = 6;
 pub const BOARD_EXTRAS_SINCE_MINOR: u32 = 8;
 /// First protocol minor version with Jira boards and task kinds.
 pub const JIRA_SINCE_MINOR: u32 = 12;
+/// First protocol minor version where a Jira board's epics are cards that can be
+/// created like any issue (ADR 0027).
+pub const EPIC_CARDS_SINCE_MINOR: u32 = 15;
 
 /// How long the panel takes to slide fully in or out, in seconds.
 pub const SLIDE_SECONDS: f32 = 0.18;

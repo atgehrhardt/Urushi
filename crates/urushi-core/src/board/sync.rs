@@ -6,8 +6,9 @@
 //!   id, thread link and color; Jira's fields replace the rest.
 //! - Every task is placed again from its issue: a card in the column showing its
 //!   status, ordered by the board's rank; a Jira subtask under its parent, checked off
-//!   when its status is in the done category. Epics become the board's [`Epic`]s, not
-//!   cards. Issues whose status no column shows leave the board, as they do in Jira.
+//!   when its status is in the done category. Epics are cards too (ADR 0027), and are
+//!   also the board's [`Epic`]s, which their stories name. Issues whose status no column
+//!   shows leave the board, as they do in Jira.
 //! - A *full* snapshot is everything on the board, so issues missing from it are
 //!   removed. A partial one (recently updated issues) leaves the others as they are.
 //! - The board stays within [`MAX_SYNCED_ISSUES`] tasks and [`super::MAX_SUBTASKS`]
@@ -122,9 +123,7 @@ impl Board {
         }
         for synced in snapshot {
             if synced.kind == super::TaskKind::Epic {
-                records.remove(&synced.issue.id);
                 upsert_epic(&mut self.epics, &synced.issue.key, &synced.title);
-                continue;
             }
             if let (Some(key), Some(summary)) = (&synced.issue.epic, &synced.epic_summary) {
                 upsert_epic(&mut self.epics, key, summary);
@@ -142,9 +141,17 @@ impl Board {
             .collect();
 
         let dropped = self.place(records, &parents);
+        // An epic stays while it is a card or a task names it.
         let used: HashSet<String> = self
             .all_tasks()
-            .filter_map(|t| t.issue.as_ref()?.epic.clone())
+            .filter_map(|t| {
+                let issue = t.issue.as_ref()?;
+                if t.kind == Some(super::TaskKind::Epic) {
+                    Some(issue.key.clone())
+                } else {
+                    issue.epic.clone()
+                }
+            })
             .collect();
         let epics = std::mem::take(&mut self.epics);
         self.epics = epics

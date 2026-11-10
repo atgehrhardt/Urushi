@@ -455,6 +455,52 @@ fn a_new_jira_task_is_created_only_on_save() {
     );
 }
 
+#[test]
+fn a_new_epic_is_created_on_save_from_a_daemon_that_makes_epics_cards() {
+    let mut s = with_jira();
+    assert!(
+        !s.daemon_supports_epic_cards(),
+        "a 1.12 daemon refuses epics"
+    );
+    s.daemon_minor = crate::board::EPIC_CARDS_SINCE_MINOR;
+    assert!(s.daemon_supports_epic_cards());
+    s.update(Msg::NewTask {
+        board: "jb".into(),
+        column: "todo".into(),
+    });
+    type_into(&mut s, Field::TaskTitle, "Payments");
+    s.update(Msg::Board(BoardMsg::PickKind(v1::TaskKind::Epic.into())));
+    let fx = s.update(Msg::Submit);
+    assert!(
+        matches!(bodies(&fx)[..], [Body::CreateTask(v1::CreateTaskRequest { title, kind, .. })]
+            if title == "Payments" && *kind == i32::from(v1::TaskKind::Epic)),
+        "{fx:?}"
+    );
+}
+
+#[test]
+fn an_epic_card_shows_under_its_own_epic_filter() {
+    use crate::filter::{Dim, values};
+    use urushi_client::TaskRef;
+    let epic = v1::Task {
+        id: "e".into(),
+        kind: v1::TaskKind::Epic.into(),
+        issue: Some(Box::new(v1::JiraIssue {
+            key: "ACME-9".into(),
+            ..Default::default()
+        })),
+        ..Default::default()
+    };
+    assert_eq!(
+        values(Dim::Epic, TaskRef::Card(&epic)),
+        [("ACME-9".to_owned(), "ACME-9".to_owned())]
+    );
+    let mut s = with_jira();
+    s.update(Msg::SelectBoard("jb".into()));
+    s.update(Msg::Filter(FilterMsg::Toggle(Dim::Epic, "ACME-9".into())));
+    assert!(s.board.filter.shows(&epic, s.filter_context()));
+}
+
 /// The Jira board shown by a 1.13 daemon, which is told the panel shows it (so it
 /// reads it every few seconds), and told again when that changes.
 fn with_jira_13() -> AppState {

@@ -212,24 +212,45 @@ fn jira_subtasks_nest_under_their_parent_and_are_checked_when_done() {
 }
 
 #[test]
-fn epics_are_not_cards_but_named_by_their_issues() {
+fn epics_are_cards_and_name_their_stories() {
     let mut b = jira_board();
     let mut epic = issue(9, TODO, "0|z");
     epic.kind = TaskKind::Epic;
     epic.title = "Billing".into();
-    let mut child = issue(1, TODO, "0|a");
+    let mut child = issue(1, DOING, "0|a");
     child.issue.epic = Some("ACME-9".into());
     child.epic_summary = Some("Billing (old name)".into());
-    b.merge_issues(vec![child.clone(), epic], true, ids());
-    assert_eq!(keys(&b, 0), ["ACME-1"]);
+    b.merge_issues(vec![child.clone(), epic.clone()], true, ids());
+    assert_eq!(
+        keys(&b, 0),
+        ["ACME-9"],
+        "the epic is a card in its status's column"
+    );
+    assert_eq!(keys(&b, 1), ["ACME-1"], "its story stays in its own column");
+    assert_eq!(b.columns[0].tasks[0].kind, Some(TaskKind::Epic));
     let e = b.epic("ACME-9").unwrap();
     assert_eq!(e.summary, "Billing");
     assert_eq!(e.color, crate::board::tag_color("ACME-9"));
 
-    // An epic nothing names any more is forgotten.
+    // An epic no story names stays while it is a card…
     child.issue.epic = None;
-    b.merge_issues(vec![child], false, ids());
+    b.merge_issues(vec![child.clone()], false, ids());
+    assert!(b.epic("ACME-9").is_some());
+    // …and is forgotten with it.
+    b.merge_issues(vec![child], true, ids());
+    assert!(keys(&b, 0).is_empty());
     assert!(b.epics.is_empty());
+}
+
+#[test]
+fn an_epic_named_only_by_its_stories_is_still_named() {
+    let mut b = jira_board();
+    let mut child = issue(1, TODO, "0|a");
+    child.issue.epic = Some("ACME-9".into());
+    child.epic_summary = Some("Billing".into());
+    b.merge_issues(vec![child], true, ids());
+    assert_eq!(keys(&b, 0), ["ACME-1"]);
+    assert_eq!(b.epic("ACME-9").unwrap().summary, "Billing");
 }
 
 #[test]

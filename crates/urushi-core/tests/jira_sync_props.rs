@@ -34,7 +34,8 @@ fn shot() -> impl Strategy<Value = Shot> {
         .prop_map(|(n, status, parent, epic)| Shot {
             n,
             status,
-            parent: parent.filter(|p| *p != n),
+            // Jira epics have no parent (a story's epic is `Issue.epic`, not `parent`).
+            parent: parent.filter(|p| *p != n && !epic),
             epic,
         })
 }
@@ -146,8 +147,13 @@ proptest! {
                     prop_assert_eq!(b.task(*task).unwrap().thread, Some(*thread));
                 }
             }
+            // Epics are cards (ADR 0027), and named for their stories' chips.
+            let cards: HashSet<TaskId> = b.columns.iter().flat_map(|c| &c.tasks).map(|t| t.id).collect();
             for s in snapshot.iter().filter(|s| s.kind == TaskKind::Epic) {
-                prop_assert!(!after.contains_key(&s.issue.id), "an epic became a card");
+                if let Some(task) = after.get(&s.issue.id) {
+                    prop_assert!(cards.contains(task), "an epic became a subtask");
+                    prop_assert!(b.epic(&s.issue.key).is_some(), "an epic card isn't named");
+                }
             }
             // Link the first task, to follow it through later merges.
             if let Some((issue, task)) = after.iter().next() {

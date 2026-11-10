@@ -1,5 +1,5 @@
-//! Creating issues on Jira boards (ADR 0020): a new card's issue with its sub-tasks,
-//! and a sub-task under an existing card, each with the details its editor set
+//! Creating issues on Jira boards (ADR 0020): a new card's issue (epics too, ADR 0027)
+//! with its sub-tasks, and a sub-task under an existing card, each with the details its editor set
 //! (description, labels, the site's own fields). As with every Jira write, the issues
 //! are made in Jira first and read back; only a task's color is Urushi's own, and is
 //! set here afterwards.
@@ -12,6 +12,10 @@ use super::jira_write::{JiraTask, labels, refused};
 use super::{Service, ServiceError, ServiceResult, blocking};
 use crate::jira::details::FieldValue;
 use crate::jira::{Account, IssueFields, JiraApi, NewIssue};
+
+/// Why an epic gets no sub-tasks: in Jira, an epic's children are standard issues
+/// (stories, tasks, bugs) naming it as their parent, and sub-tasks sit under those.
+const EPIC_SUBTASKS: &str = "a Jira epic holds stories, not sub-tasks";
 
 /// An issue's own text, checked as Jira will want it.
 struct IssueText {
@@ -121,11 +125,13 @@ impl Service {
         new: &NewTask<'_>,
     ) -> ServiceResult<Task> {
         let kind = new.kind.unwrap_or(TaskKind::Task);
-        if matches!(kind, TaskKind::Epic | TaskKind::Subtask) {
-            return Err(ServiceError::Invalid(format!(
-                "a {} isn't a card on a Jira board",
-                kind.name()
-            )));
+        if kind == TaskKind::Subtask {
+            return Err(ServiceError::Invalid(
+                "a subtask isn't a card on a Jira board".into(),
+            ));
+        }
+        if kind == TaskKind::Epic && !new.subtasks.is_empty() {
+            return Err(ServiceError::Invalid(EPIC_SUBTASKS.into()));
         }
         let issue = IssueText::of(new.title, new.notes, new.tags, new.jira_fields)?;
         let subtasks = new
@@ -170,7 +176,7 @@ impl Service {
         let tasks = self.tasks_for_issues(board, &ids)?;
         let Some(Some(id)) = tasks.first().copied() else {
             return Err(ServiceError::Precondition(format!(
-                "Jira made {key}, but its status isn't on this board"
+                "Jira made {key}, but this board doesn't show it"
             )));
         };
         // Colors are Urushi's own.
@@ -191,6 +197,9 @@ impl Service {
     ) -> ServiceResult<Task> {
         if t.nested {
             return Err(refused("a subtask can't have subtasks"));
+        }
+        if t.task.kind == Some(TaskKind::Epic) {
+            return Err(ServiceError::Invalid(EPIC_SUBTASKS.into()));
         }
         let text = IssueText::sub(new)?;
         let account = self.jira_account()?;

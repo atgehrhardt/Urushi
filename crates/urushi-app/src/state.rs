@@ -570,6 +570,11 @@ impl AppState {
         self.daemon_minor >= crate::board::JIRA_SINCE_MINOR
     }
 
+    /// Whether the daemon creates epics on Jira boards, as cards (protocol 1.15).
+    pub fn daemon_supports_epic_cards(&self) -> bool {
+        self.daemon_minor >= crate::board::EPIC_CARDS_SINCE_MINOR
+    }
+
     /// Whether the daemon can reorder projects (protocol 1.11).
     pub fn daemon_supports_project_order(&self) -> bool {
         self.daemon_minor >= crate::organize::PROJECT_ORDER_SINCE_MINOR

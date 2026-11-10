@@ -102,7 +102,11 @@ async fn imported_boards_show_jiras_columns_issues_and_changes() {
             .collect::<Vec<_>>(),
         ["To Do", "In Progress", "Done"]
     );
-    assert_eq!(keys(&b, 0), ["ACME-1", "ACME-4"]);
+    assert_eq!(
+        keys(&b, 0),
+        ["ACME-1", "ACME-4", "ACME-9"],
+        "epics are cards too"
+    );
     assert_eq!(keys(&b, 1), ["ACME-2"]);
     let invoices = task(&b, "ACME-2");
     assert_eq!(invoices.kind, i32::from(v1::TaskKind::Bug));
@@ -125,7 +129,7 @@ async fn imported_boards_show_jiras_columns_issues_and_changes() {
     jira.issues.lock().unwrap().retain(|r| r.id != 4);
     client.sync_board(&b.id).await.unwrap();
     let b = board(&client).await;
-    assert_eq!(keys(&b, 0), Vec::<String>::new());
+    assert_eq!(keys(&b, 0), ["ACME-9"]);
     assert_eq!(task(&b, "ACME-1").title, "Checkout v2");
     daemon.stop().await;
 }
@@ -168,7 +172,7 @@ async fn moves_and_new_cards_take_jiras_transitions() {
     assert_eq!(jira.remote("ACME-10").status, TODO);
     assert_eq!(
         keys(&board(&client).await, 0),
-        ["ACME-1", "ACME-4", "ACME-10"]
+        ["ACME-1", "ACME-4", "ACME-9", "ACME-10"]
     );
 
     // A card added to another column is moved there in Jira, with its subtasks.
@@ -185,6 +189,77 @@ async fn moves_and_new_cards_take_jiras_transitions() {
     assert_eq!(jira.remote("ACME-11").status, DOING);
     assert_eq!(jira.remote("ACME-12").parent, Some(11));
     assert_eq!(started.subtasks[0].title, "Rates");
+    daemon.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn epics_are_cards_and_can_be_created() {
+    let home = temp_home();
+    let (daemon, client, jira, b) = signed_in(home.path()).await;
+    let billing = task(&b, "ACME-9");
+    assert_eq!(billing.kind, i32::from(v1::TaskKind::Epic));
+    assert_eq!(
+        b.epics[0].key, "ACME-9",
+        "and named for their stories' chips"
+    );
+
+    // A new epic is an epic in Jira, a card in the column it was added to.
+    let epic = client
+        .create_task_with(v1::CreateTaskRequest {
+            board_id: b.id.clone(),
+            column_id: b.columns[1].id.clone(),
+            title: "Payments".into(),
+            kind: v1::TaskKind::Epic.into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(jira.calls().contains(&"create ACME-10 epic".to_owned()));
+    assert_eq!(jira.remote("ACME-10").status, DOING);
+    assert_eq!(epic.kind, i32::from(v1::TaskKind::Epic));
+    let b = board(&client).await;
+    assert_eq!(keys(&b, 1), ["ACME-2", "ACME-10"]);
+    assert!(
+        b.epics
+            .iter()
+            .any(|e| e.key == "ACME-10" && e.summary == "Payments")
+    );
+
+    // A story added to it in Jira names it.
+    jira.with(4, |r| r.epic = Some(10));
+    client.sync_board(&b.id).await.unwrap();
+    let b = board(&client).await;
+    assert_eq!(
+        task(&b, "ACME-4").issue.as_ref().unwrap().epic_key,
+        "ACME-10"
+    );
+
+    // Jira epics hold stories, not sub-tasks: refused before Jira is asked.
+    let calls = jira.calls().len();
+    let with_subtasks = client
+        .create_task_with(v1::CreateTaskRequest {
+            board_id: b.id.clone(),
+            column_id: b.columns[0].id.clone(),
+            title: "Shipping".into(),
+            kind: v1::TaskKind::Epic.into(),
+            subtasks: vec!["Rates".into()],
+            ..Default::default()
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(code(&with_subtasks), Some(v1::ErrorCode::InvalidArgument));
+    let under = client.create_subtask(&epic.id, "Rates").await.unwrap_err();
+    assert_eq!(
+        code(&under),
+        Some(v1::ErrorCode::InvalidArgument),
+        "{under}"
+    );
+    assert!(
+        jira.calls()[calls..]
+            .iter()
+            .all(|c| !c.starts_with("create")),
+        "nothing was created in Jira"
+    );
     daemon.stop().await;
 }
 
@@ -482,6 +557,9 @@ async fn a_refused_move_shows_at_once_then_goes_back() {
         _ => None,
     })
     .await;
-    assert_eq!(keys(&board(&client).await, 0), ["ACME-1", "ACME-4"]);
+    assert_eq!(
+        keys(&board(&client).await, 0),
+        ["ACME-1", "ACME-4", "ACME-9"]
+    );
     daemon.stop().await;
 }

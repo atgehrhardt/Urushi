@@ -312,6 +312,25 @@ fn the_new_thread_dialog_offers_every_project_or_none() {
 }
 
 #[test]
+fn jira_epics_are_cards_and_new_ones_get_no_subtasks() {
+    let board = dump("jira-board", 1280.0);
+    assert!(board.contains("\"ACME-7\""), "the epic's card: {board}");
+    let labels = access_labels("jira-new-epic");
+    for kind in ["Type Task", "Type Story", "Type Bug", "Type Epic"] {
+        assert!(
+            labels.iter().any(|l| l == kind),
+            "{kind} missing: {labels:?}"
+        );
+    }
+    let editor = dump("jira-new-epic", 1280.0);
+    assert!(
+        editor.contains("\"Jira epics hold stories, not sub-tasks.\""),
+        "{editor}"
+    );
+    assert!(!editor.contains("\"New subtask…\""), "{editor}");
+}
+
+#[test]
 fn jira_boards_show_their_issues_and_leave_jiras_part_to_jira() {
     let board = dump("jira-board", 1280.0);
     for text in [

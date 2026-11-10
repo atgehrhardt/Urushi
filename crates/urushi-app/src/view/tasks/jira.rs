@@ -10,10 +10,11 @@ use super::super::board::jira::{kind_color, kind_marker, kind_name};
 use super::super::dialogs::label;
 use crate::msg::{BoardMsg, JiraMsg, Msg};
 
-/// The kinds a picker offers: on a Jira board only the issue types that are cards.
-fn offered(jira: bool) -> Vec<v1::TaskKind> {
+/// The kinds a picker offers: on a Jira board only the issue types that are cards,
+/// which includes epics when the daemon makes them cards (1.15, ADR 0027).
+fn offered(jira: bool, epics: bool) -> Vec<v1::TaskKind> {
     let mut kinds = vec![v1::TaskKind::Task, v1::TaskKind::Story, v1::TaskKind::Bug];
-    if !jira {
+    if !jira || epics {
         kinds.push(v1::TaskKind::Epic);
     }
     kinds
@@ -21,8 +22,13 @@ fn offered(jira: bool) -> Vec<v1::TaskKind> {
 
 /// "Type" and a chip per kind; the chosen one again clears it (except on Jira boards,
 /// where an issue needs a type).
-pub(super) fn kind_picker(theme: &Theme, chosen: i32, jira: bool, width: f32) -> Vec<Node<Msg>> {
-    let chips = offered(jira).into_iter().map(|k| {
+pub(super) fn kind_picker(
+    theme: &Theme,
+    chosen: i32,
+    (jira, epics): (bool, bool),
+    width: f32,
+) -> Vec<Node<Msg>> {
+    let chips = offered(jira, epics).into_iter().map(|k| {
         let wire = i32::from(k);
         let on = wire == chosen || (jira && chosen == 0 && k == v1::TaskKind::Task);
         let name = kind_name(wire).unwrap_or_default();
@@ -139,4 +145,17 @@ pub(super) fn issue_section(
         row("Priority", or_none(&issue.priority)),
         row("Epic", epic),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn jira_boards_offer_epics_only_from_daemons_that_make_them_cards() {
+        let epic = |jira, epics| offered(jira, epics).contains(&v1::TaskKind::Epic);
+        assert!(epic(false, false), "any board of Urushi's own");
+        assert!(!epic(true, false), "an older daemon refuses them");
+        assert!(epic(true, true));
+    }
 }

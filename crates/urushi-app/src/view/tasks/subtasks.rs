@@ -20,11 +20,12 @@ const VISIBLE_SUBTASKS: usize = 6;
 const SUBTASK_ROW: f32 = 28.0;
 
 /// The "Subtasks" heading, the list (an existing task's subtasks, each opening as a
-/// task of its own; or drafts for a new task), and the field that adds one.
+/// task of its own; or drafts for a new task), and the field that adds one. A Jira
+/// epic (`jira_epic`) can't have sub-tasks, so it says so instead of offering one.
 pub(super) fn checklist(
     state: &AppState,
     theme: &Theme,
-    task: Option<TaskRef<'_>>,
+    (task, jira_epic): (Option<TaskRef<'_>>, bool),
     editor: &SubtaskEditor,
     offset: f32,
 ) -> Vec<Node<Msg>> {
@@ -57,6 +58,18 @@ pub(super) fn checklist(
                 .scroll(subtasks_scroll_key(), offset);
         }
         out.push(list.children(rows));
+    }
+    if jira_epic {
+        out.push(
+            Node::text(
+                "Jira epics hold stories, not sub-tasks.",
+                Font::Ui,
+                theme.font_size_small,
+                theme.text_muted,
+            )
+            .key(key(&["epic-no-subtasks"])),
+        );
+        return out;
     }
     let add = field(
         state,

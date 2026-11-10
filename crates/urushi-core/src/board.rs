@@ -126,7 +126,8 @@ pub struct Board {
     /// Where its content comes from, when it follows Jira.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<BoardSource>,
-    /// The epics its Jira issues belong to, by key.
+    /// The epics on it or that its Jira issues belong to, by key: what epic chips and
+    /// the epic filter name (epics are cards too, ADR 0027).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub epics: Vec<Epic>,
 }

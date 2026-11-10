@@ -75,6 +75,7 @@ pub const SCENARIOS: &[&str] = &[
     "jira-filter-menu",
     "jira-issue",
     "jira-issue-picker",
+    "jira-new-epic",
     "jira-connect",
     "jira-import",
 ];
