@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.13 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.14 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -61,7 +61,7 @@ v1 field names are frozen (`buf breaking` uses `WIRE_JSON`). On the wire, **`Pro
   - `AttachPane{pane, cols, rows}` returns a full `ScreenUpdate`. After that the daemon streams `ScreenUpdate{seq}` events, and the client must send the `AckScreen{seq}` notification before the next one is sent.
   - `DetachPane`, `SetPaneSize`, the `Input{key|text|paste|mouse|wheel}` and `ScrollPane` notifications, and `ReadScreenText` (plain text, for the CLI and tests).
   - Events: `PaneExited`, `PaneBell`.
-- **Task boards:** `CreateBoard`, `RenameBoard`, `DeleteBoard`, `CreateColumn`, `UpdateColumn`, `MoveColumn`, `DeleteColumn`, `CreateTask`, `UpdateTask`, `MoveTask`, `NestTask`, `DeleteTask`, `CreateSubtask`, `UpdateSubtask`, `DeleteSubtask`, `AddAttachment`, `GetAttachment`, `DeleteAttachment`. Boards arrive with the workspace (`Workspace.boards`), so subscribers see changes through `WorkspaceChanged`.
+- **Task boards:** `CreateBoard`, `RenameBoard`, `DeleteBoard`, `CreateColumn`, `UpdateColumn`, `MoveColumn`, `DeleteColumn`, `CreateTask` (since 1.14 with `subtask_details`: `NewSubtask`s carrying notes, color, tags, kind and Jira fields), `UpdateTask`, `MoveTask`, `NestTask`, `DeleteTask`, `CreateSubtask` (since 1.14 with the same details; older daemons read only the title), `UpdateSubtask`, `DeleteSubtask`, `AddAttachment`, `GetAttachment`, `DeleteAttachment`. Boards arrive with the workspace (`Workspace.boards`), so subscribers see changes through `WorkspaceChanged`.
 - **Settings:** `GetSettings`, `UpdateSettings` (global and per repo).
 - **Remote:** `TailnetStatus`, `SetTailnetServe`.
 

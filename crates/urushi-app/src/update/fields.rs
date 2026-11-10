@@ -109,7 +109,8 @@ impl AppState {
                 if self.daemon_supports_board_extras() {
                     fields.push(Field::TaskTag);
                 }
-                if self.daemon_supports_subtasks() {
+                // A new subtask's editor doesn't list subtasks of its own.
+                if self.daemon_supports_subtasks() && !self.editing_subtask_draft() {
                     fields.push(Field::NewSubtask);
                 }
                 fields

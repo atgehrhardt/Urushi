@@ -340,6 +340,39 @@ fn the_search_takes_the_keyboard_and_escape_clears_it_first() {
 }
 
 #[test]
+fn a_thread_for_an_issue_suggests_a_branch_led_by_its_key() {
+    let mut s = with_jira();
+    for (link, wanted) in [
+        (
+            crate::state::TaskLink {
+                task: "j1".into(),
+                subtask: None,
+            },
+            "urushi/ACME-1-checkout",
+        ),
+        (
+            crate::state::TaskLink {
+                task: "j1".into(),
+                subtask: Some("j2".into()),
+            },
+            "urushi/ACME-2-tests",
+        ),
+    ] {
+        s.update(Msg::StartThread(link));
+        let Some(Dialog::NewThread { branch, .. }) = &s.dialog else {
+            panic!("{:?}", s.dialog);
+        };
+        assert_eq!(branch.text(), wanted);
+    }
+    // Retitled, it keeps the key.
+    s.update(Msg::Text(" now".into()));
+    let Some(Dialog::NewThread { branch, .. }) = &s.dialog else {
+        panic!("{:?}", s.dialog);
+    };
+    assert_eq!(branch.text(), "urushi/ACME-2-tests-now");
+}
+
+#[test]
 fn saving_a_jira_card_never_sends_its_type() {
     let mut s = with_jira();
     s.update(Msg::PressTask("j1".into()));

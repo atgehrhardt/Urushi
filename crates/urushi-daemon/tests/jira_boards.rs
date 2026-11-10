@@ -13,7 +13,7 @@ mod fake_jira;
 
 use std::sync::Arc;
 
-use common::{Daemon, temp_home};
+use common::{Daemon, repo, temp_home};
 use fake_jira::{DOING, DONE, FakeJira, TODO, TOKEN};
 use urushi_client::{Client, ClientError, v1};
 use urushi_core::TaskKind;
@@ -185,6 +185,49 @@ async fn moves_and_new_cards_take_jiras_transitions() {
     assert_eq!(jira.remote("ACME-11").status, DOING);
     assert_eq!(jira.remote("ACME-12").parent, Some(11));
     assert_eq!(started.subtasks[0].title, "Rates");
+    daemon.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn threads_for_issues_get_branches_named_after_them() {
+    let home = temp_home();
+    let fixture = repo(home.path());
+    let (daemon, client, _jira, b) = signed_in(home.path()).await;
+    let repo_id = client
+        .add_repo(fixture.repo.to_str().unwrap(), "")
+        .await
+        .unwrap()
+        .id;
+    let invoices = task(&b, "ACME-2").clone();
+    let start = |subtask: &str, branch: &str| v1::CreateThreadRequest {
+        project_id: repo_id.clone(),
+        title: invoices.title.clone(),
+        task_id: invoices.id.clone(),
+        subtask_id: subtask.into(),
+        branch: branch.into(),
+        skip_initial_tab: true,
+        ..Default::default()
+    };
+    // No branch asked for: the issue's key leads it, as Jira writes it.
+    let card = client.create_thread_with(start("", "")).await.unwrap();
+    assert!(
+        card.primary_branch.starts_with("urushi/ACME-2-invoices-"),
+        "{}",
+        card.primary_branch
+    );
+    // A subtask's thread is named after the subtask's own issue.
+    let sub = client
+        .create_thread_with(start(&invoices.subtasks[0].id, ""))
+        .await
+        .unwrap();
+    assert!(
+        sub.primary_branch.starts_with("urushi/ACME-3-"),
+        "{}",
+        sub.primary_branch
+    );
+    // A branch the user chose is kept as it is.
+    let mine = client.create_thread_with(start("", "mine")).await.unwrap();
+    assert_eq!(mine.primary_branch, "mine");
     daemon.stop().await;
 }
 

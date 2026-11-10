@@ -1,4 +1,6 @@
-//! Human-readable names that are also valid machine identifiers: slugs and git branch names.
+//! Human-readable names that are also valid machine identifiers: slugs, git branch names,
+//! and the Jira issue keys that go into the branches of threads started from issues
+//! (ADR 0026).
 //!
 //! Branch names follow the rules of `git check-ref-format` (for names under `refs/heads/`),
 //! so a [`BranchName`] can always be passed to `git` without further checks.
@@ -113,9 +115,79 @@ impl BranchName {
         ))
     }
 
+    /// The primary branch for a new thread started from a Jira issue:
+    /// `<prefix><KEY>-<slug>-<short id>` (see [`issue_branch_stem`]).
+    pub fn for_issue_thread(
+        prefix: &BranchPrefix,
+        key: &IssueKey,
+        title: &str,
+        thread: ThreadId,
+    ) -> Result<Self, NamingError> {
+        Self::new(format!(
+            "{}{}-{}",
+            prefix.as_str(),
+            issue_branch_stem(key, title),
+            thread.short()
+        ))
+    }
+
     /// The branch name text.
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+/// A Jira issue key, e.g. `UR-3`: a project key (an uppercase letter, then uppercase
+/// letters, digits or `_`), `-`, and the issue's number. Always valid inside a branch
+/// name.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct IssueKey(String);
+
+impl IssueKey {
+    /// `key` if it is one; `None` otherwise.
+    pub fn new(key: &str) -> Option<Self> {
+        let (project, number) = key.split_once('-')?;
+        let mut chars = project.chars();
+        let project_ok = chars.next().is_some_and(|c| c.is_ascii_uppercase())
+            && chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+        let number_ok = !number.is_empty()
+            && number.chars().all(|c| c.is_ascii_digit())
+            && !number.starts_with('0');
+        (project_ok && number_ok).then(|| Self(key.to_owned()))
+    }
+
+    /// The key text.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for IssueKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// A branch name, without its prefix, for work on issue `key` titled `title`:
+/// `UR-3-invoice-pdfs`. The key stays as Jira writes it, so Jira's code integrations
+/// (GitHub, GitLab, Bitbucket) link the branch, its commits and pull requests from it
+/// to the issue. A key the title already starts with isn't repeated, and a title with
+/// nothing usable leaves the key alone.
+pub fn issue_branch_stem(key: &IssueKey, title: &str) -> String {
+    if !title.chars().any(|c| c.is_ascii_alphanumeric()) {
+        return key.0.clone();
+    }
+    let slug = Slug::from_title(title);
+    let lower = key.0.to_ascii_lowercase();
+    let rest = match slug.as_str().strip_prefix(&lower) {
+        Some("") => "",
+        Some(after) => after.strip_prefix('-').unwrap_or(slug.as_str()),
+        None => slug.as_str(),
+    };
+    if rest.is_empty() {
+        key.0.clone()
+    } else {
+        format!("{}-{rest}", key.0)
     }
 }
 
@@ -301,6 +373,39 @@ mod tests {
         )
         .unwrap();
         assert_eq!(name.as_str(), "urushi/add-oauth-deadbeef");
+    }
+
+    #[test]
+    fn issue_keys_are_jiras_shape() {
+        for good in ["UR-3", "ACME-141", "A1_B-20"] {
+            assert!(IssueKey::new(good).is_some(), "{good}");
+        }
+        for bad in [
+            "ur-3", "UR", "UR-", "UR-03", "-3", "1UR-3", "UR-3a", "U R-3", "UR-3-4",
+        ] {
+            assert!(IssueKey::new(bad).is_none(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn issue_branches_start_with_the_key_as_jira_writes_it() {
+        let key = IssueKey::new("UR-3").unwrap();
+        assert_eq!(issue_branch_stem(&key, "Invoice PDFs"), "UR-3-invoice-pdfs");
+        assert_eq!(
+            issue_branch_stem(&key, "UR-3: Invoice PDFs"),
+            "UR-3-invoice-pdfs"
+        );
+        assert_eq!(issue_branch_stem(&key, "UR-3"), "UR-3");
+        assert_eq!(issue_branch_stem(&key, "!!!"), "UR-3");
+        assert_eq!(issue_branch_stem(&key, "UR-30 later"), "UR-3-ur-30-later");
+        let name = BranchName::for_issue_thread(
+            &BranchPrefix::default(),
+            &key,
+            "Invoice PDFs",
+            ThreadId::from_u128(0xdead_beef),
+        )
+        .unwrap();
+        assert_eq!(name.as_str(), "urushi/UR-3-invoice-pdfs-deadbeef");
     }
 
     #[test]

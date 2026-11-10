@@ -1,13 +1,15 @@
 //! The task editor's subtasks: an existing task's (checked off in place, each check a
 //! request, and each opening as a task of its own), the drafts added here (created on
-//! Save), and the field that adds one.
+//! Save, each opening in an editor of its own), the field that adds one by its title,
+//! and **New subtask…**, which writes one with all its details.
 
 use urushi_client::{TaskRef, v1};
-use urushi_ui::widgets::icon_button;
+use urushi_ui::widgets::{ButtonKind, button, icon_button};
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key};
 
 use super::super::dialogs::{field, label};
 use super::subtasks_scroll_key;
+use crate::drafts::SubtaskDraft;
 use crate::msg::{BoardMsg, Msg};
 use crate::organize::MenuTarget;
 use crate::state::{AppState, Field, SubtaskEditor, TaskLink};
@@ -39,9 +41,10 @@ pub(super) fn checklist(
             rows.push(subtask_row(state, theme, s));
         }
     }
-    // Added here, created on Save.
-    for (i, title) in editor.drafts.iter().enumerate() {
-        rows.push(draft_row(theme, i, title));
+    // Added here, created on Save; each opens in an editor of its own (1.14).
+    let openable = state.daemon_supports_subtask_details();
+    for (i, draft) in editor.drafts.iter().enumerate() {
+        rows.push(draft_row(theme, i, draft, openable));
     }
     let mut out = vec![label(theme, &heading)];
     if !rows.is_empty() {
@@ -55,13 +58,30 @@ pub(super) fn checklist(
         }
         out.push(list.children(rows));
     }
-    out.push(field(
+    let add = field(
         state,
         theme,
         &editor.new,
         Field::NewSubtask,
         "Add a subtask…",
-    ));
+    );
+    if !openable {
+        out.push(add);
+        return out;
+    }
+    out.push(
+        Node::row()
+            .width(Length::Fill(1.0))
+            .gap(8.0)
+            .align(Align::Center)
+            .child(add.width(Length::Fill(1.0)))
+            .child(button(
+                theme,
+                "New subtask…",
+                ButtonKind::Secondary,
+                Msg::Board(BoardMsg::NewSubtask),
+            )),
+    );
     out
 }
 
@@ -181,18 +201,49 @@ fn subtask_title(theme: &Theme, s: &v1::Subtask, openable: bool) -> Node<Msg> {
     title
 }
 
-fn draft_row(theme: &Theme, i: usize, title: &str) -> Node<Msg> {
+/// A subtask written here, created on Save: its title (opening its editor when
+/// `openable`), whether it has more than a title, and × to remove it.
+fn draft_row(theme: &Theme, i: usize, draft: &SubtaskDraft, openable: bool) -> Node<Msg> {
+    let title = draft.title();
+    let shown = if title.is_empty() {
+        "Untitled subtask"
+    } else {
+        title
+    };
+    let mut text = Node::row()
+        .width(Length::Fill(1.0))
+        .height(Length::Fill(1.0))
+        .gap(6.0)
+        .align(Align::Center)
+        .child(Node::text(shown, Font::Ui, theme.font_size, theme.text).width(Length::Fill(1.0)));
+    if draft.has_details() {
+        text = text.child(Node::text(
+            "details",
+            Font::UiMedium,
+            theme.font_size_small,
+            theme.text_muted,
+        ));
+    }
+    if openable {
+        text = text
+            .padding(Insets::symmetric(0.0, 4.0))
+            .radius(theme.radius)
+            .hover_background(theme.hover)
+            .key(key(&["subtask-draft", &i.to_string()]))
+            .on_click(Msg::Board(BoardMsg::OpenSubtaskDraft(i)))
+            .role(Role::Button, format!("Open new subtask {shown}"));
+    }
     Node::row()
         .width(Length::Fill(1.0))
         .height(Length::Fixed(SUBTASK_ROW))
         .padding(Insets::symmetric(0.0, 4.0))
         .gap(8.0)
         .child(checkbox_shape(theme, false))
-        .child(Node::text(title, Font::Ui, theme.font_size, theme.text).width(Length::Fill(1.0)))
+        .child(text)
         .child(icon_button(
             theme,
             "×",
-            &format!("Remove subtask {title}"),
+            &format!("Remove subtask {shown}"),
             Msg::RemoveDraftSubtask(i),
         ))
 }

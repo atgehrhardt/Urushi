@@ -10,6 +10,12 @@ pub enum BoardMsg {
     OpenTask(String),
     /// In the task editor: back to the task it was opened from.
     EditorBack,
+    /// In the task editor: write a new subtask in an editor of its own.
+    NewSubtask,
+    /// In the task editor: open a subtask written there but not yet created.
+    OpenSubtaskDraft(usize),
+    /// In a new subtask's editor: forget it and go back.
+    RemoveSubtaskDraft,
     /// In the task editor, asked whether to discard unsaved edits: no, keep editing.
     KeepEditing,
     /// In the task editor, asked whether to discard unsaved edits: yes, close.

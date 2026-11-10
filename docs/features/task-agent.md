@@ -2,7 +2,7 @@
 
 - **Status:** Shipped
 - **Owners (crates):** `urushi-core` (`agent/mode.rs`, `board/prompt.rs`, `AgentSettings`), `urushi-daemon` (`cli.rs`, `service/task_agent.rs`, `service/threads.rs`, `service/settings.rs`), `urushi-proto` (`agents.proto`, `convert::agent_mode_*`), `urushi-app` (`task_agent.rs`, `update/setup.rs`, `view/setup.rs`, `view/new_thread.rs`, `update/task_threads.rs`, `view/task_in_thread.rs`), `urushi-cli` (`urushi board show`)
-- **Related ADRs:** [0018](../adr/0018-start-tasks-in-existing-threads.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0024](../adr/0024-task-prompts-by-reference.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Related ADRs:** [0026](../adr/0026-issue-keys-in-branch-names.md), [0018](../adr/0018-start-tasks-in-existing-threads.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0024](../adr/0024-task-prompts-by-reference.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 **Start thread** on a task or subtask opens a thread that runs the user's **task agent**
@@ -10,7 +10,8 @@
 prompt refers to the task, a Jira issue by its key and address, and tells it to review
 the task in full first with `urushi board show <KEY or id>` (which prints its notes,
 subtasks and attachments, and for a Jira issue its fields, comments, links and files),
-and for Jira to ask before changing it there. Panes can run that CLI against their
+and for Jira to ask before changing it there and to put the issue's key in commit
+messages and pull request titles (ADR 0026). Panes can run that CLI against their
 daemon. If the daemon can't find its CLI, the task's title, notes and checklist are
 pasted in instead. The new-thread dialog still opens
 first, prefilled, and says what will start, e.g. "Starts Claude in plan mode with this

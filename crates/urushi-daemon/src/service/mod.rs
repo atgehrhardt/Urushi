@@ -18,6 +18,7 @@ mod boards;
 mod columns;
 mod deletion;
 mod jira;
+mod jira_create;
 mod jira_details;
 mod jira_edit;
 mod jira_query;
@@ -45,7 +46,7 @@ use urushi_mux::{AlacrittyEmulator, MuxError, Pty, SessionHandle, SpawnSpec, Ter
 use urushi_proto::v1;
 
 pub use attachments::AttachmentData;
-pub use boards::NewTask;
+pub use boards::{NewSubtask, NewTask};
 pub use deletion::DeletionPlan;
 pub use jira::{JiraSignIn, NOT_SIGNED_IN};
 pub use jira_edit::IssueChange;

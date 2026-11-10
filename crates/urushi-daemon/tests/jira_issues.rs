@@ -288,6 +288,64 @@ async fn new_issues_take_the_fields_their_project_requires() {
         .unwrap();
     let key = task.issue.as_ref().unwrap().key.clone();
     assert_eq!(jira.remote(&key).extra.team.as_deref(), Some("t2"));
+    // A sub-task with its details: description, labels and its own fields in Jira,
+    // its color here.
+    let sub = client
+        .create_subtask_with(v1::CreateSubtaskRequest {
+            task_id: task.id.clone(),
+            title: "Its docs".into(),
+            notes: "Every endpoint".into(),
+            color: v1::LabelColor::Teal.into(),
+            tags: vec!["docs".into()],
+            kind: v1::TaskKind::Bug.into(),
+            jira_fields: vec![v1::JiraFieldEdit {
+                field_id: TEAM.into(),
+                value: Some(value(&[("t2", "Mobile")], "")),
+            }],
+        })
+        .await
+        .unwrap();
+    let sub_key = sub.issue.as_ref().unwrap().key.clone();
+    let remote = jira.remote(&sub_key);
+    assert_eq!(
+        remote.kind,
+        urushi_core::TaskKind::Subtask,
+        "Jira's sub-task type"
+    );
+    assert_eq!(remote.parent.map(fake_jira::key), Some(key.clone()));
+    assert_eq!(
+        (remote.notes.as_str(), remote.labels.as_slice()),
+        ("Every endpoint", &["docs".to_owned()][..])
+    );
+    assert_eq!(remote.extra.team.as_deref(), Some("t2"));
+    assert_eq!(sub.color, i32::from(v1::LabelColor::Teal));
+    // A new card's sub-tasks get theirs too.
+    let card = client
+        .create_task_with(v1::CreateTaskRequest {
+            board_id: b.id.clone(),
+            column_id: b.columns[0].id.clone(),
+            title: "With steps".into(),
+            kind: v1::TaskKind::Story.into(),
+            jira_fields: vec![v1::JiraFieldEdit {
+                field_id: TEAM.into(),
+                value: Some(value(&[("t2", "Mobile")], "")),
+            }],
+            subtask_details: vec![v1::NewSubtask {
+                title: "Step".into(),
+                notes: "First".into(),
+                color: v1::LabelColor::Red.into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let step = &card.subtasks[0];
+    assert_eq!(
+        (step.title.as_str(), step.notes.as_str()),
+        ("Step", "First")
+    );
+    assert_eq!(step.color, i32::from(v1::LabelColor::Red));
     // Not a Jira issue: refused before asking Jira.
     let w = client.list_workspace(false).await.unwrap();
     assert!(w.boards.iter().all(|b| b.jira.is_some()));

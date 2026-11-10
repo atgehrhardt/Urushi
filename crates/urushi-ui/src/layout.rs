@@ -33,6 +33,8 @@ pub struct Hit<M> {
     pub on_drop: Option<M>,
     /// Cursor while hovered.
     pub cursor: CursorIcon,
+    /// Clicks here don't reach regions under it (see [`Node::opaque`]).
+    pub opaque: bool,
 }
 
 /// A scrollable area and how far its content extends.
@@ -91,13 +93,10 @@ impl<M: Clone> Frame<M> {
         self.hits.iter().rev().find(|h| h.rect.contains(p))
     }
 
-    /// The message to send for a click at `p`.
+    /// The message to send for a click at `p`: the topmost region there that takes
+    /// clicks, unless an opaque region lies above it.
     pub fn click(&self, p: Point) -> Option<M> {
-        self.hits
-            .iter()
-            .rev()
-            .filter(|h| h.rect.contains(p))
-            .find_map(|h| h.on_click.clone())
+        self.topmost(p, |h| h.on_click.as_ref())
     }
 
     /// The message for a secondary click (right / two-finger click) at `p`.
@@ -115,12 +114,18 @@ impl<M: Clone> Frame<M> {
         self.topmost(p, |h| h.on_drop.as_ref())
     }
 
+    /// What `pick` finds in the topmost region at `p` that has one, looking no further
+    /// down than the first opaque region.
     fn topmost(&self, p: Point, pick: impl Fn(&Hit<M>) -> Option<&M>) -> Option<M> {
-        self.hits
-            .iter()
-            .rev()
-            .filter(|h| h.rect.contains(p))
-            .find_map(|h| pick(h).cloned())
+        for h in self.hits.iter().rev().filter(|h| h.rect.contains(p)) {
+            if let Some(m) = pick(h) {
+                return Some(m.clone());
+            }
+            if h.opaque {
+                return None;
+            }
+        }
+        None
     }
 
     /// The cursor to show at `p`.
@@ -255,6 +260,12 @@ impl<M: Clone> Ctx<'_, M> {
         } else {
             Size::default()
         };
+        let natural = Size::new(
+            natural.width,
+            node.style
+                .max_height
+                .map_or(natural.height, |max| natural.height.min(max)),
+        );
         let pick = |len: Length, natural: f32| match len {
             Length::Fixed(v) => v,
             Length::Fit => natural,
@@ -294,6 +305,7 @@ impl<M: Clone> Ctx<'_, M> {
             || node.on_drop.is_some()
             || node.cursor != CursorIcon::Default
             || node.key.is_some()
+            || node.opaque
         {
             self.frame.hits.push(Hit {
                 rect: visible,
@@ -303,6 +315,7 @@ impl<M: Clone> Ctx<'_, M> {
                 on_drag: node.on_drag.clone(),
                 on_drop: node.on_drop.clone(),
                 cursor: node.cursor,
+                opaque: node.opaque,
             });
         }
         if node.role != Role::None {

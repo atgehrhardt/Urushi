@@ -33,7 +33,7 @@ pub fn scene(
 /// dragged above another (`drag-project`), the `repos` tab, the task `board` (a task
 /// being dragged across it in `board-drag`, a `task` with subtasks being edited, and a card's context menu in
 /// `task-menu`, a column's in `column-menu`, a subtask opened as a task in
-/// `task-nested`, "Make subtask of…" in `nest`, and Start thread switched to an existing
+/// `task-nested`, a new subtask's own editor in `task-new-subtask`, "Make subtask of…" in `nest`, and Start thread switched to an existing
 /// thread in `task-in-thread`), a terminal with an agent's plan
 /// usage in the `status` bar (and its pane's context menu in `pane-menu`), the same with
 /// the sidebar hidden (`sidebar-collapsed`), and the first-run `setup` wizard (its mode
@@ -60,6 +60,7 @@ pub const SCENARIOS: &[&str] = &[
     "task-menu",
     "column-menu",
     "task-nested",
+    "task-new-subtask",
     "nest",
     "task-in-thread",
     "status",
@@ -116,6 +117,7 @@ const BOARD_SCENARIOS: &[&str] = &[
     "task-menu",
     "column-menu",
     "task-nested",
+    "task-new-subtask",
     "nest",
     "task-in-thread",
 ];
@@ -482,6 +484,12 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
             }
             if name == "task-nested" {
                 state.update(Msg::Board(crate::msg::BoardMsg::OpenTask("s2".into())));
+            }
+            if name == "task-new-subtask" {
+                state.update(Msg::Board(crate::msg::BoardMsg::OpenTask("k3".into())));
+                state.update(Msg::FocusField(crate::state::Field::NewSubtask));
+                state.update(Msg::Text("Translate the FAQ".into()));
+                state.update(Msg::Board(crate::msg::BoardMsg::NewSubtask));
             }
             if name == "nest" {
                 state.update(Msg::Board(crate::msg::BoardMsg::OpenNest("k1".into())));

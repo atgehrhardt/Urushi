@@ -168,6 +168,79 @@ async fn subtasks_are_created_checked_renamed_and_deleted() {
     daemon.stop().await;
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn subtasks_are_created_with_their_details() {
+    let home = temp_home();
+    let daemon = Daemon::start(&home.path().join("home")).await;
+    let (client, _events) = daemon.connect().await;
+    let board = client.create_board("Work").await.unwrap();
+    let detailed = |title: &str| v1::NewSubtask {
+        title: title.into(),
+        notes: "how".into(),
+        color: v1::LabelColor::Teal.into(),
+        tags: vec!["api".into()],
+        kind: v1::TaskKind::Bug.into(),
+        jira_fields: Vec::new(),
+    };
+    // With a new task: titles first, then those with details.
+    let task = client
+        .create_task_with(v1::CreateTaskRequest {
+            board_id: board.id.clone(),
+            column_id: board.columns[0].id.clone(),
+            title: "Ship search".into(),
+            subtasks: vec!["index".into()],
+            subtask_details: vec![detailed("query page")],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let steps: Vec<_> = task
+        .subtasks
+        .iter()
+        .map(|s| {
+            (
+                s.title.as_str(),
+                s.notes.as_str(),
+                s.color,
+                s.tags.clone(),
+                s.kind,
+            )
+        })
+        .collect();
+    let (teal, bug) = (v1::LabelColor::Teal.into(), v1::TaskKind::Bug.into());
+    assert_eq!(
+        steps,
+        [
+            ("index", "", 0, vec![], 0),
+            ("query page", "how", teal, vec!["api".to_owned()], bug)
+        ]
+    );
+    // Under an existing task.
+    let d = detailed("docs");
+    let docs = client
+        .create_subtask_with(v1::CreateSubtaskRequest {
+            task_id: task.id.clone(),
+            title: d.title,
+            notes: d.notes,
+            color: d.color,
+            tags: d.tags,
+            kind: d.kind,
+            jira_fields: d.jira_fields,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        (
+            docs.notes.as_str(),
+            docs.color,
+            docs.tags.as_slice(),
+            docs.kind
+        ),
+        ("how", teal, &["api".to_owned()][..], bug)
+    );
+    daemon.stop().await;
+}
+
 /// A board with one task that has one subtask.
 async fn task_with_a_subtask(client: &urushi_client::Client) -> (v1::Task, v1::Subtask) {
     let board = client.create_board("Work").await.unwrap();

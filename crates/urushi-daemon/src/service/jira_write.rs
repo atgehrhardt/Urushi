@@ -6,26 +6,25 @@
 //! If Jira refuses, the request fails and nothing changes here. Only a task's color is
 //! Urushi's own, and changes without Jira.
 //!
-//! Deleting issues, nesting them and changing their type are left to Jira.
+//! Creating issues is in `jira_create.rs`. Deleting issues, nesting them and changing
+//! their type are left to Jira.
 
 use urushi_core::board::{
     JiraBoard, StatusCategory, SyncedIssue, task_notes, task_tags, task_title,
 };
-use urushi_core::{BoardId, ColumnId, Task, TaskId, TaskKind, TaskPatch};
+use urushi_core::{BoardId, ColumnId, Task, TaskId, TaskPatch};
 
-use super::boards::NewTask;
 use super::{Service, ServiceError, ServiceResult, State, blocking, new_uuid};
-use crate::jira::details::FieldValue;
-use crate::jira::{Account, IssueEdit, IssueFields, JiraApi, NewIssue, Rank};
+use crate::jira::{IssueEdit, IssueFields, Rank};
 
 /// A task on a Jira board, with what writing to Jira needs.
 pub(super) struct JiraTask {
-    board: BoardId,
-    jira: JiraBoard,
-    task: Task,
-    key: String,
+    pub(super) board: BoardId,
+    pub(super) jira: JiraBoard,
+    pub(super) task: Task,
+    pub(super) key: String,
     /// It is a subtask under another issue.
-    nested: bool,
+    pub(super) nested: bool,
 }
 
 impl State {
@@ -59,7 +58,7 @@ impl State {
 }
 
 /// Tags as Jira labels: Jira refuses labels with spaces, so say so first.
-fn labels(tags: &[String]) -> ServiceResult<Vec<String>> {
+pub(super) fn labels(tags: &[String]) -> ServiceResult<Vec<String>> {
     let tags = task_tags(tags)?;
     if let Some(bad) = tags.iter().find(|t| t.contains(char::is_whitespace)) {
         return Err(ServiceError::Invalid(format!(
@@ -69,76 +68,8 @@ fn labels(tags: &[String]) -> ServiceResult<Vec<String>> {
     Ok(tags)
 }
 
-fn refused(what: &str) -> ServiceError {
+pub(super) fn refused(what: &str) -> ServiceError {
     ServiceError::Precondition(format!("{what} on a Jira board: do it in Jira"))
-}
-
-/// A new card's issue and subtasks, to create in Jira.
-struct Creation {
-    jira: JiraBoard,
-    kind: TaskKind,
-    summary: String,
-    notes: String,
-    labels: Vec<String>,
-    subtasks: Vec<String>,
-    /// The statuses of the column it was added to.
-    statuses: Vec<String>,
-    /// Values for its other fields (by id), written as their kinds say.
-    extra: Vec<(String, FieldValue)>,
-}
-
-impl Creation {
-    /// Creates the issue and its subtasks, moves the issue to its column if its
-    /// workflow allows, and reads them all back (the issue first). Blocking.
-    fn run(self, api: &dyn JiraApi, account: &Account) -> ServiceResult<Vec<SyncedIssue>> {
-        let fields = IssueFields::of(&self.jira);
-        let new = |kind, parent_key, summary, notes, labels| NewIssue {
-            project_key: self.jira.project_key.clone(),
-            kind,
-            parent_key,
-            summary,
-            notes,
-            labels,
-            fields: Vec::new(),
-        };
-        let mut issue = new(
-            self.kind,
-            None,
-            self.summary.clone(),
-            self.notes.clone(),
-            self.labels.clone(),
-        );
-        if !self.extra.is_empty() {
-            let meta = api.create_fields(account, &self.jira.project_key, self.kind)?;
-            issue.fields = super::jira_edit::written(&meta, &self.extra)?;
-        }
-        let key = api.create(account, &issue)?;
-        let mut keys = vec![key.clone()];
-        for summary in &self.subtasks {
-            let sub = new(
-                TaskKind::Subtask,
-                Some(key.clone()),
-                summary.clone(),
-                String::new(),
-                Vec::new(),
-            );
-            keys.push(api.create(account, &sub)?);
-        }
-        let created = api.issue(account, &key, &fields)?;
-        if !self.statuses.is_empty() && !self.statuses.contains(&created.issue.status_id) {
-            // Best effort: a new issue starts where its workflow says.
-            let to = api
-                .transitions(account, &key)?
-                .into_iter()
-                .find(|t| self.statuses.contains(&t.to_status));
-            if let Some(to) = to {
-                api.transition(account, &key, &to.id)?;
-            }
-        }
-        keys.iter()
-            .map(|k| Ok(api.issue(account, k, &fields)?))
-            .collect()
-    }
 }
 
 impl Service {
@@ -328,140 +259,6 @@ impl Service {
                 Err(e)
             }
         }
-    }
-
-    /// Creates an issue (and its subtasks) for a new card in `column`, moved there.
-    pub(super) async fn jira_create_task(
-        &self,
-        board: BoardId,
-        column: ColumnId,
-        new: &NewTask<'_>,
-    ) -> ServiceResult<Task> {
-        let kind = new.kind.unwrap_or(TaskKind::Task);
-        if matches!(kind, TaskKind::Epic | TaskKind::Subtask) {
-            return Err(ServiceError::Invalid(format!(
-                "a {} isn't a card on a Jira board",
-                kind.name()
-            )));
-        }
-        let summary = task_title(new.title)?;
-        let notes = task_notes(new.notes)?;
-        let tags = labels(new.tags)?;
-        let subtasks = new
-            .subtasks
-            .iter()
-            .map(|s| task_title(s))
-            .collect::<Result<Vec<_>, _>>()?;
-        let (jira, statuses) = self.read(|state| {
-            let jira = state.jira_board(board)?;
-            let statuses = state
-                .boards
-                .iter()
-                .find(|b| b.id == board)
-                .and_then(|b| b.column(column))
-                .map(|c| c.statuses.clone())
-                .ok_or_else(|| ServiceError::NotFound(format!("column {column}")))?;
-            Ok((jira, statuses))
-        })?;
-        if jira.project_key.is_empty() {
-            return Err(ServiceError::Precondition(
-                "this Jira board has no project to create issues in".into(),
-            ));
-        }
-        let account = self.jira_account()?;
-        let guard = self.jira.lock(board);
-        let _one_at_a_time = guard.lock().await;
-        let api = self.jira.api.clone();
-        let creation = Creation {
-            jira,
-            kind,
-            summary,
-            notes,
-            labels: tags,
-            subtasks,
-            statuses,
-            extra: new.jira_fields.to_vec(),
-        };
-        let read = blocking(move || creation.run(api.as_ref(), &account)).await?;
-        let issue_id = read.first().map(|i| i.issue.id.clone()).unwrap_or_default();
-        let key = read
-            .first()
-            .map(|i| i.issue.key.clone())
-            .unwrap_or_default();
-        self.merge_written(board, read)?;
-        let id = self.read(|state| {
-            state
-                .boards
-                .iter()
-                .find(|b| b.id == board)
-                .and_then(|b| b.task_for_issue(&issue_id))
-                .map(|t| t.id)
-                .ok_or_else(|| {
-                    ServiceError::Precondition(format!(
-                        "Jira made {key}, but its status isn't on this board"
-                    ))
-                })
-        })?;
-        if new.color.is_some() {
-            let local = TaskPatch {
-                color: Some(new.color),
-                ..TaskPatch::default()
-            };
-            self.mutate(|state| Ok(state.board_mut(board)?.update_task(id, &local)?))?;
-        }
-        self.read(|state| {
-            state
-                .boards
-                .iter()
-                .find_map(|b| b.task(id).cloned())
-                .ok_or_else(|| ServiceError::NotFound(format!("task {id}")))
-        })
-    }
-
-    /// Creates a Jira subtask under a card.
-    pub(super) async fn jira_create_subtask(
-        &self,
-        t: JiraTask,
-        title: &str,
-    ) -> ServiceResult<Task> {
-        if t.nested {
-            return Err(refused("a subtask can't have subtasks"));
-        }
-        let summary = task_title(title)?;
-        let account = self.jira_account()?;
-        let guard = self.jira.lock(t.board);
-        let _one_at_a_time = guard.lock().await;
-        let api = self.jira.api.clone();
-        let (parent, jira) = (t.key.clone(), t.jira.clone());
-        let read = blocking(move || {
-            let key = api.create(
-                &account,
-                &NewIssue {
-                    project_key: parent
-                        .rsplit_once('-')
-                        .map_or(jira.project_key.clone(), |(p, _)| p.to_owned()),
-                    kind: TaskKind::Subtask,
-                    parent_key: Some(parent),
-                    summary,
-                    notes: String::new(),
-                    labels: Vec::new(),
-                    fields: Vec::new(),
-                },
-            )?;
-            Ok(api.issue(&account, &key, &IssueFields::of(&jira))?)
-        })
-        .await?;
-        let issue_id = read.issue.id.clone();
-        self.merge_written(t.board, vec![read])?;
-        self.read(|state| {
-            state
-                .boards
-                .iter()
-                .find(|b| b.id == t.board)
-                .and_then(|b| b.task_for_issue(&issue_id))
-                .cloned()
-                .ok_or_else(|| ServiceError::NotFound("the new subtask".into()))
-        })
     }
 
     /// Issues aren't deleted from Urushi.

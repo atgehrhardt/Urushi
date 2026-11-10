@@ -17,7 +17,7 @@ fn thread_id() -> String {
 
 /// A 1.6 daemon's workspace: task "a" has two subtasks, the second started as the
 /// workspace's thread; task "b" has none.
-fn with_subtasks() -> AppState {
+pub(super) fn with_subtasks() -> AppState {
     let mut s = attached();
     s.daemon_minor = 6;
     let mut workspace = super::workspace();
@@ -42,7 +42,7 @@ fn with_subtasks() -> AppState {
     s
 }
 
-fn open_task(s: &mut AppState, id: &str) {
+pub(super) fn open_task(s: &mut AppState, id: &str) {
     s.update(Msg::PressTask(id.into()));
     s.update(Msg::PressEnded);
 }
@@ -72,7 +72,8 @@ fn an_existing_tasks_subtasks_are_checked_right_away_and_added_on_save() {
     assert!(matches!(
         &s.dialog,
         Some(Dialog::Task { subtasks, .. })
-            if subtasks.new.text().is_empty() && subtasks.drafts == ["Third"]
+            if subtasks.new.text().is_empty()
+                && subtasks.drafts.iter().map(crate::drafts::SubtaskDraft::title).eq(["Third"])
     ));
     let fx = s.update(Msg::DeleteSubtask("s2".into()));
     assert!(matches!(
@@ -82,8 +83,8 @@ fn an_existing_tasks_subtasks_are_checked_right_away_and_added_on_save() {
     let fx = s.update(Msg::Submit);
     assert!(matches!(
         bodies(&fx)[..],
-        [Body::CreateSubtask(v1::CreateSubtaskRequest { task_id, title })]
-            if task_id == "a" && title == "Third"
+        [Body::CreateSubtask(v1::CreateSubtaskRequest { task_id, title, notes, .. })]
+            if task_id == "a" && title == "Third" && notes.is_empty()
     ));
     assert!(s.dialog.is_none());
 }

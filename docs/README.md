@@ -39,6 +39,8 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0022 – Read a Jira issue in full when its editor opens, and edit any field from Jira's own metadata](adr/0022-jira-issues-in-full-on-demand.md)
 - [0023 – Read a Jira board someone looks at every 3 s, look before reading, and show moves at once](adr/0023-near-real-time-jira-sync.md)
 - [0024 – Start a task's agent with a reference to the task and the CLI to read it, not a copy](adr/0024-task-prompts-by-reference.md)
+- [0025 – Write a new subtask in an editor of its own, kept as a draft until Save](adr/0025-new-subtasks-in-their-own-editor.md)
+- [0026 – Name a Jira issue's thread branch after its key, and let Jira's integration link the code](adr/0026-issue-keys-in-branch-names.md)
 
 ## Features
 - [_template](features/_template.md)

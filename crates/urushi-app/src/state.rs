@@ -66,8 +66,8 @@ pub enum ThreadTarget {
 /// and deleting one are immediate.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SubtaskEditor {
-    /// Titles of subtasks to create on Save.
-    pub drafts: Vec<String>,
+    /// Subtasks to create on Save, each with the details written in its own editor.
+    pub drafts: Vec<crate::drafts::SubtaskDraft>,
     /// The "add a subtask" field.
     pub new: TextField,
 }
@@ -81,6 +81,9 @@ pub struct EditorNav {
     pub back: Vec<Dialog>,
     /// Closing was asked with unsaved edits: the editor asks to confirm.
     pub confirm_discard: bool,
+    /// This editor writes a new subtask of the editor it was opened from (the last in
+    /// `back`), to go at this place in its drafts. Back and Save put it there.
+    pub draft_of_previous: Option<usize>,
 }
 
 /// A dialog field that can take keyboard focus.

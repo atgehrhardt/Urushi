@@ -2,7 +2,7 @@
 
 - **Status:** Shipped (manual boards, columns, colors, tags, kinds, nested subtasks, attachments, threads started from tasks; Jira boards in [jira-boards](jira-boards.md))
 - **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,prompt}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_nav.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/`, `view/tasks/`, `view/labels.rs`, `view/menu/tasks.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
-- **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
+- **Related ADRs:** [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
 
 ## What it does
 A **Tasks** button sits under the sidebar's Projects | Repos tabs. It shows the number of
@@ -33,7 +33,9 @@ it back.
 - **+** on a column adds a task. Clicking a card opens the editor: title, notes and
   subtasks on the left; column, color and tags on the right (one scrolling column on
   phones); **Start thread**, and Delete. Color and tags are saved with Save, like the
-  title and notes.
+  title and notes. The editor grows with what it holds up to what leaves its buttons
+  on screen, then scrolls, so **Save** is always visible. Clicking blank space inside
+  it does nothing; only a click outside it closes it.
 - **Notes** take several lines: the box is five lines tall, wraps, and scrolls. Enter
   starts a new line there; Cmd+Enter (Ctrl+Enter elsewhere) saves from any field. Enter
   in the title moves on to the notes: it never saves, so a half-typed task is never
@@ -46,8 +48,13 @@ it back.
   for subtask progress and the thread chip. The copy that follows the pointer while
   dragging is the same card.
 - **Subtasks** are tasks too, kept inside their parent (ADR 0015). In the editor: type
-  in "Add a subtask…" and press Enter to add it to the list; added subtasks are created
-  on Save (with a new task, or under an existing one). Click the box to check one off
+  in "Add a subtask…" and press Enter to add one by its title, or press **New
+  subtask…** to write one in an editor of its own (ADR 0025): title, notes, type, color,
+  tags, and on a Jira board the sub-task's own fields (required ones asked for, as for
+  a new issue). **Done** or **‹** puts it in the task's list, where it opens again as it
+  was left ("details" marks one with more than a title); **Remove subtask** drops it;
+  **Save** in either editor saves the task with it. Added subtasks are created with
+  everything they have on Save (with a new task, or under an existing one). Click the box to check one off
   and × to delete one; those are immediate. Cards show progress ("✓ 1/3", green when
   all are done), and subtask rows their own (with the kind and key of a Jira issue).
   - **Clicking a subtask's title opens it** as a task of its own ("Edit subtask"), with
@@ -164,7 +171,10 @@ restarts.
   1.8, `Subtask.{notes, created_at_ms, color, tags, subtasks}` (a subtask carries every
   task field, so 1.6 clients still read the first level as a checklist), `NestTask{task_id,
   parent_id, index}`, and nested ids in `UpdateTask`, `MoveTask` (which takes a subtask
-  out onto the board), `DeleteTask` and `CreateSubtask`.
+  out onto the board), `DeleteTask` and `CreateSubtask`. Since 1.14 a subtask is
+  created with its details: `NewSubtask{title, notes, color, tags, kind, jira_fields}`
+  in `CreateTask.subtask_details` (after any `subtasks` titles), and the same fields on
+  `CreateSubtaskRequest` (daemon: `service::NewSubtask`, `server/boards.rs`).
 - **App:** `AppState.board: BoardPanel` holds what the panel is doing: open, slide
   position, the chosen board, the card pressed or dragged, and where it would land
   (`over`). The runner animates `reveal` over 180 ms (`runner.rs::animate`), and the view
@@ -191,8 +201,15 @@ restarts.
     edits (`editor_dirty`) sets `EditorNav::confirm_discard` instead
     (`hold_editor_close`); `BoardMsg::{KeepEditing, DiscardEdits}` answer it. A
     subtask's check mark changes right away; a subtask is deleted with `DeleteSubtask`.
-    Subtasks added in the editor are drafts in `SubtaskEditor` until Save:
-    `CreateTask.subtasks` for a new task, a `CreateSubtask` each for an existing one.
+    Subtasks added in the editor are drafts in `SubtaskEditor` until Save, each a
+    `drafts::SubtaskDraft`: the whole `Dialog::Task` it was written in.
+    `BoardMsg::NewSubtask` / `OpenSubtaskDraft(i)` open one on top of the editor, like
+    `OpenTask`, with `EditorNav::draft_of_previous` naming its place in the list;
+    `fold_draft` (`update/subtask_drafts.rs`) puts it back on Back, Done, Save and
+    `OpenTask`, and `drafts_problem` holds Save while one has no title or misses a
+    required Jira field. On a 1.14 daemon a new task sends them as
+    `CreateTask.subtask_details` and an existing one a detailed `CreateSubtask` each;
+    older daemons get `CreateTask.subtasks` titles and no **New subtask…**.
     Enter in "Add a subtask…" or "Add a tag…" adds; Enter in the notes (a
     `TextField::multiline`, drawn with the toolkit's `text_area`) adds a line; Enter in
     the title moves to the notes (`task_editor_enter`); Enter elsewhere, or
@@ -281,6 +298,7 @@ restarts.
   deep subtask's link and prompt),
   `tests/boards_and_usage.rs` (`boards_are_kept_mirrored_and_survive_a_restart`,
   `subtasks_are_created_checked_renamed_and_deleted`,
+  `subtasks_are_created_with_their_details`,
   `threads_started_from_tasks_are_linked_until_deleted`).
 - App: `board.rs` (drop positions, open-task count), `update/tests/board.rs` (the card
   menu, editor,
@@ -288,15 +306,21 @@ restarts.
   keyboard) and `update/tests/tasks.rs` (subtasks,
   drafts saved only on Save, opening subtasks, Back and the crumbs keeping unsaved edits,
   asking before discarding them, making them standalone, nesting, starting and going to
-  threads, the drop line, older daemons) and
+  threads, the drop line, older daemons), `update/tests/subtask_drafts.rs` (a new
+  subtask's own editor: its details, Back keeping it, removing it, Jira's required
+  fields, older daemons) and
   `update/tests/labels.rs` (colors, tags, columns, the filter) and
   `update/tests/attachments.rs` (picking, dropping, opening, deleting, thumbnails);
   `files.rs` (reading and saving files). `snapshot.rs` has
-  the `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested` and
-  `nest` scenarios, which render at desktop and
-  phone sizes, `task_cards_are_all_the_same_size` and
+  the `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested`,
+  `task-new-subtask` and `nest` scenarios, which render at desktop and
+  phone sizes, `task_cards_are_all_the_same_size`,
+  `a_new_subtask_has_an_editor_of_its_own`,
+  `the_task_editors_buttons_stay_on_screen_in_a_short_window` and
   `long_subtask_titles_are_cut_short_inside_the_editor`.
-- Toolkit: `urushi-ui/tests/layout.rs::a_sliding_panel_moves_with_its_children_and_is_clipped`;
+- Toolkit: `urushi-ui/tests/layout.rs::a_sliding_panel_moves_with_its_children_and_is_clipped`,
+  `modal_covers_the_app_and_dismisses_on_backdrop` (a click inside the card doesn't),
+  `a_max_height_caps_a_fit_box_which_then_scrolls`;
   `urushi-ui/tests/fields.rs` (text areas wrapping, clicks on lines, scrolling, and
   `wrapped_text`'s ellipsis); `textfield/tests.rs` (multiline editing and moves);
   `text.rs::wraps_at_line_breaks_then_between_words`.
