@@ -63,8 +63,7 @@ impl Service {
         }
         let tab = result?;
         if let Some(agent) = agent {
-            self.start_task_agent(thread, pane, &agent.command_line)
-                .await;
+            self.start_task_agent(thread, pane, agent).await;
         }
         Ok(tab)
     }

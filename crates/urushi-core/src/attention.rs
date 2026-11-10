@@ -6,6 +6,10 @@
 //! when the user types into the pane or looks at it. Urushi's own signal is a private
 //! OSC 777 sequence, [`AttentionKind::signal_sequence`]. Agents started by Urushi get
 //! hooks that write it (`agent::hooks`); the daemon's terminal emulator recognises it.
+//!
+//! The same sequence also carries [`READY_SIGNAL`], which is not attention: an agent's
+//! hook says its input is ready, so a drafted task message can be typed into it (ADR
+//! 0030).
 
 /// Why a pane wants the user. `Waiting` outranks `Done`: a thread shows its most urgent
 /// pane.
@@ -21,6 +25,14 @@ pub enum AttentionKind {
 pub const SIGNAL_OSC: &str = "777";
 /// The extension name in Urushi's signal, so it can't be mistaken for `777;notify`.
 pub const SIGNAL_NAMESPACE: &str = "urushi";
+/// The word in Urushi's signal for "the agent has started and reads input". Never raises
+/// attention.
+pub const READY_SIGNAL: &str = "ready";
+
+/// Urushi's signal carrying `word`: `ESC ] 777 ; urushi ; <word> BEL`.
+pub fn signal_sequence(word: &str) -> String {
+    format!("\u{1b}]{SIGNAL_OSC};{SIGNAL_NAMESPACE};{word}\u{7}")
+}
 
 impl AttentionKind {
     /// The word for this kind in Urushi's signal.
@@ -43,10 +55,7 @@ impl AttentionKind {
     /// The escape sequence a program writes to its terminal to raise this:
     /// `ESC ] 777 ; urushi ; done BEL`.
     pub fn signal_sequence(self) -> String {
-        format!(
-            "\u{1b}]{SIGNAL_OSC};{SIGNAL_NAMESPACE};{}\u{7}",
-            self.signal()
-        )
+        signal_sequence(self.signal())
     }
 }
 
@@ -69,6 +78,15 @@ mod tests {
             assert_eq!(AttentionKind::from_signal(kind.signal()), Some(kind));
         }
         assert_eq!(AttentionKind::from_signal("nope"), None);
+        assert_eq!(
+            AttentionKind::from_signal(READY_SIGNAL),
+            None,
+            "not attention"
+        );
+        assert_eq!(
+            signal_sequence(READY_SIGNAL),
+            "\u{1b}]777;urushi;ready\u{7}"
+        );
         assert_eq!(
             AttentionKind::Done.signal_sequence(),
             "\u{1b}]777;urushi;done\u{7}"

@@ -195,17 +195,19 @@ mod unix {
     }
 }
 
-/// An agent hook, which has no controlling terminal, raises attention by writing
-/// Urushi's signal to the terminal device named in the pane's environment.
+/// An agent hook, which has no controlling terminal, raises attention (and says it is
+/// ready) by writing Urushi's signal to the terminal device named in the pane's
+/// environment.
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn hooks_signal_through_the_terminal_device() {
     use urushi_core::AttentionKind;
-    use urushi_core::agent::hooks::{TTY_ENV, signal_command};
+    use urushi_core::agent::hooks::{TTY_ENV, ready_command, signal_command};
 
     let size = TermSize::new(80, 4);
     let script = format!(
-        "{} ; {} ; printf '\\a'; sleep 5",
+        "{} ; {} ; {} ; printf '\\a'; sleep 5",
+        ready_command(),
         signal_command(AttentionKind::Done),
         signal_command(AttentionKind::Waiting)
     );
@@ -233,6 +235,7 @@ async fn hooks_signal_through_the_terminal_device() {
     assert_eq!(seen.alerts, 3, "done, waiting, then a bell");
     assert_eq!(seen.bells, 1);
     assert_eq!(seen.alert, Some(AttentionKind::Waiting));
+    assert_eq!(seen.ready, 1, "ready is counted, and is not an alert");
     s.kill().await.unwrap();
 }
 

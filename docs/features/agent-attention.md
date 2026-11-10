@@ -18,20 +18,25 @@ has focus) or type into it.
 1. **Hooks.** Every pane's environment has `URUSHI_TTY` (its terminal device, set by the
    mux) and the hook configuration (`agent::hooks::hook_env`). Agent command lines start
    with `Agent::hook_args`:
-   - Claude: `--settings "$URUSHI_CLAUDE_SETTINGS"`, with `Stop` → done and
-     `Notification` (permission prompt, question) → waiting.
+   - Claude: `--settings "$URUSHI_CLAUDE_SETTINGS"`, with `Stop` → done,
+     `Notification` (permission prompt, question) → waiting, and `SessionStart`
+     (`startup`) → `ready` (`ready_command`). `ready` is **not attention**: it says
+     Claude reads input, so a drafted task message can be pasted in
+     ([task agent](task-agent.md), ADR 0030).
    - Codex: `notify` → done, and approval requests as OSC 9 → waiting.
 
    A hook runs `signal_command`, which writes `ESC ] 777 ; urushi ; done BEL` to
    `$URUSHI_TTY`.
 2. **Detection.** The mux's `Notices` parser watches each pane's output for that signal,
    for `OSC 9`/`OSC 777;notify` (waiting) and, through alacritty, the bell (waiting).
-   `SessionStatus.{alerts, alert}` reports the latest.
+   `SessionStatus.{alerts, alert}` reports the latest. `ready` signals only count up
+   `SessionStatus.ready` (`EmulatorEvent::Ready`).
 3. **Daemon.** `watch_session` calls `raise_attention(pane, kind)`. Attention is kept in
    memory per pane with its time. A repeat of the same kind is ignored. Each change wakes
    `WorkspaceChanged` subscribers without a new revision, and `workspace()` lists
    `Tab.attention[PaneAttention{pane_id, kind, since_ms}]`. Typing or clicking in a pane
-   (`Input` key/text/paste/press) and `ClearAttention{pane_ids}` clear it. Closed panes
+   (`Input` key/text/paste/press, `Service::user_acted`, which also counts toward a task
+   message waiting to be drafted there) and `ClearAttention{pane_ids}` clear it. Closed panes
    are forgotten.
 4. **App.**
    - `attend` runs after every message.

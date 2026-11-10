@@ -1,7 +1,7 @@
 //! Agent CLIs: which are installed, starting one in a new tab (ADR 0009), and resuming
 //! one in a restored pane.
 
-use urushi_core::{Agent, AgentMode, AgentSessionId};
+use urushi_core::{Agent, AgentMode, AgentSessionId, PromptDelivery};
 use urushi_mux::Input;
 
 use super::{Service, ServiceError, ServiceResult, blocking};
@@ -35,10 +35,11 @@ impl Service {
         agent: Agent,
         shell: Option<String>,
         mode: AgentMode,
+        delivery: PromptDelivery,
     ) -> ServiceResult<String> {
         let found = self.find_agent(agent, shell).await?;
         let skip = self.settings().agents.skips_permissions(agent);
-        Ok(agent.task_command_line(&found.program, skip, mode))
+        Ok(agent.task_command_line(&found.program, skip, mode, delivery))
     }
 
     /// The command line that resumes `agent`'s conversation `session` (or its latest one

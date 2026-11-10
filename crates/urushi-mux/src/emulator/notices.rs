@@ -1,10 +1,20 @@
 //! Terminal notifications, which alacritty's parser drops: iTerm2's `OSC 9 ; text`,
 //! rxvt's `OSC 777 ; notify ; title ; body`, and Urushi's own `OSC 777 ; urushi ; done`
-//! (see `urushi_core::attention`). A second, output-only parser watches the same bytes
-//! for them, so nothing about the screen changes.
+//! (see `urushi_core::attention`), including its `ready` signal, which is not attention.
+//! A second, output-only parser watches the same bytes for them, so nothing about the
+//! screen changes.
 
 use alacritty_terminal::vte::{Parser, Perform};
-use urushi_core::attention::{AttentionKind, SIGNAL_NAMESPACE, SIGNAL_OSC};
+use urushi_core::attention::{AttentionKind, READY_SIGNAL, SIGNAL_NAMESPACE, SIGNAL_OSC};
+
+/// A notification seen in the output.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Notice {
+    /// The program wants the user.
+    Attention(AttentionKind),
+    /// An agent's hook says it reads input now (`READY_SIGNAL`).
+    Ready,
+}
 
 /// Watches output for notifications. Keeps parser state between chunks, so a sequence
 /// split across reads is still seen.
@@ -15,14 +25,14 @@ pub(super) struct Notices {
 
 impl Notices {
     /// The notifications in `bytes`, in order.
-    pub(super) fn advance(&mut self, bytes: &[u8]) -> Vec<AttentionKind> {
+    pub(super) fn advance(&mut self, bytes: &[u8]) -> Vec<Notice> {
         let mut sink = Sink(Vec::new());
         self.parser.advance(&mut sink, bytes);
         sink.0
     }
 }
 
-struct Sink(Vec<AttentionKind>);
+struct Sink(Vec<Notice>);
 
 impl Perform for Sink {
     fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
@@ -33,20 +43,23 @@ impl Perform for Sink {
 }
 
 /// What an OSC sequence (split at `;`) asks for, if it's a notification.
-fn classify(params: &[&[u8]]) -> Option<AttentionKind> {
+fn classify(params: &[&[u8]]) -> Option<Notice> {
     match params {
         // iTerm2's notification. ConEmu uses `9 ; <number> ; …` for other things
         // (progress bars, working directory), which aren't notifications.
         [b"9", text, ..] => {
             let numeric = text.iter().all(u8::is_ascii_digit);
-            (!text.is_empty() && !numeric).then_some(AttentionKind::Waiting)
+            (!text.is_empty() && !numeric).then_some(Notice::Attention(AttentionKind::Waiting))
         }
         [osc, name, word, ..]
             if *osc == SIGNAL_OSC.as_bytes() && *name == SIGNAL_NAMESPACE.as_bytes() =>
         {
-            AttentionKind::from_signal(std::str::from_utf8(word).ok()?)
+            if *word == READY_SIGNAL.as_bytes() {
+                return Some(Notice::Ready);
+            }
+            AttentionKind::from_signal(std::str::from_utf8(word).ok()?).map(Notice::Attention)
         }
-        [b"777", b"notify", ..] => Some(AttentionKind::Waiting),
+        [b"777", b"notify", ..] => Some(Notice::Attention(AttentionKind::Waiting)),
         _ => None,
     }
 }
@@ -55,8 +68,16 @@ fn classify(params: &[&[u8]]) -> Option<AttentionKind> {
 mod tests {
     use super::*;
 
+    /// The attention asked for in `bytes`.
     fn seen(bytes: &[u8]) -> Vec<AttentionKind> {
-        Notices::default().advance(bytes)
+        Notices::default()
+            .advance(bytes)
+            .into_iter()
+            .filter_map(|n| match n {
+                Notice::Attention(kind) => Some(kind),
+                Notice::Ready => None,
+            })
+            .collect()
     }
 
     #[test]
@@ -97,6 +118,19 @@ mod tests {
     fn a_sequence_split_across_reads_is_seen_once() {
         let mut notices = Notices::default();
         assert!(notices.advance(b"\x1b]777;uru").is_empty());
-        assert_eq!(notices.advance(b"shi;done\x07"), vec![AttentionKind::Done]);
+        assert_eq!(
+            notices.advance(b"shi;done\x07"),
+            vec![Notice::Attention(AttentionKind::Done)]
+        );
+    }
+
+    #[test]
+    fn the_ready_signal_is_seen_but_is_not_attention() {
+        let ready = urushi_core::attention::signal_sequence(READY_SIGNAL);
+        assert_eq!(
+            Notices::default().advance(ready.as_bytes()),
+            vec![Notice::Ready]
+        );
+        assert!(seen(ready.as_bytes()).is_empty());
     }
 }

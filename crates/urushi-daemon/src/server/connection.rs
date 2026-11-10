@@ -199,9 +199,10 @@ async fn notify(connection: &Arc<Connection>, body: notification::Body) {
             let Some((pane, input)) = screen::input_from_proto(input) else {
                 return;
             };
-            // Typing or clicking in a pane means the user has seen it.
+            // Typing or clicking in a pane means the user has seen it, and takes it
+            // over from a task message waiting to be drafted there.
             if is_user_action(&input) {
-                connection.service.clear_attention([pane]);
+                connection.service.user_acted(pane);
             }
             if let Ok(session) = connection.service.session(pane) {
                 let _ = session.input(input).await;

@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.18 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.19 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -37,6 +37,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 19 | How a task's agent gets its message (UR-30, ADR 0030): `AgentSettings.{task_draft, task_message_custom, task_message}` and the same as `optional` in `SettingsPatch`. `task_draft` starts the task agent without its prompt and pastes it into the agent's input, unsent, once the agent is ready; false (the default) sends it as before. With `task_message_custom` on and a non-blank `task_message`, that text replaces the default message, with `{key}`, `{title}`, `{url}` and `{show}` filled in per task; the text is kept while it is off. A message over 10 000 characters is `INVALID_ARGUMENT`. Older daemons ignore the fields, so clients check `Welcome.protocol_minor ≥ 19` before offering them. |
 | 18 | Project settings (ADR 0029): `Folder.settings` (`FolderSettings{base_repo_id, base_branch, optional base_thread}`; unset `base_thread` means on, and a folder from an older daemon has none, which reads as the defaults) and `UpdateFolderSettings{folder_id, settings}` → `Folder`, which replaces them. `base_branch` may name a remote-tracking branch (`origin/x`); the daemon stores the local `x`, creating it to track the remote one if needed. Anything that isn't a branch of the repo is `INVALID_ARGUMENT`. Switching the parent-branch thread on (with a parent branch) opens it; a change that would need an open one closed is `FAILED_PRECONDITION`. Parent-branch threads: `Thread.{project_base, attached_checkout}`; `DeletionPlan.keeps_worktree` (an attached thread: nothing on disk is removed). Deleting a parent-branch thread switches it off; moving it to another folder is `FAILED_PRECONDITION`. `Branches.remote_branches` (`<remote>/<branch>`, no `HEAD`). Clients check `Welcome.protocol_minor ≥ 18` before offering project settings. |
 | 17 | `MoveBoard{board_id, index}` reorders boards, Jira boards included (nothing is sent to Jira): the index counts positions without the moved board and is clamped to the end; an unknown board is `NOT_FOUND`. `Workspace.boards` is in display (tab) order. Clients check `Welcome.protocol_minor ≥ 17` before sending it. |
 | 16 | `Settings.update_base_from_remote` and `SettingsPatch.update_base_from_remote` (ADR 0028): before making a new thread's worktree, the daemon fetches the base from its remote and starts from the newer commit. Older daemons leave it unset (`false`), which is accurate because they don't update. Clients check `Welcome.protocol_minor ≥ 16` before showing the switch. |

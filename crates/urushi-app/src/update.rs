@@ -279,6 +279,7 @@ impl AppState {
                 ))),
                 prefix: TextField::new(s.branch_prefix),
                 shell: TextField::new(s.default_shell),
+                message: TextField::multiline(s.agents.map(|a| a.task_message).unwrap_or_default()),
             },
             None,
         );
@@ -657,6 +658,7 @@ impl AppState {
             Some(Dialog::Settings {
                 prefix,
                 shell,
+                message,
                 look,
             }) => {
                 // Only a changed look is sent: older daemons don't keep one.
@@ -666,6 +668,10 @@ impl AppState {
                     branch_prefix: Some(prefix.text().to_owned()),
                     default_shell: Some(shell.text().trim().to_owned()),
                     appearance: changed.then(|| urushi_proto::convert::appearance_to_proto(look)),
+                    // Older daemons don't keep one.
+                    task_message: self
+                        .daemon_supports_task_message()
+                        .then(|| message.text().to_owned()),
                     ..Default::default()
                 };
                 fx.push(request(
@@ -721,6 +727,9 @@ impl AppState {
                     Body::UpdateSettings(v1::UpdateSettingsRequest { patch: Some(patch) }),
                     Followup::Settings,
                 ));
+            }
+            SettingToggle::TaskSend | SettingToggle::TaskMessageCustom => {
+                self.toggle_task_message(toggle, fx);
             }
             SettingToggle::ServeTailnet => {
                 let serving = self.tailnet.as_ref().is_some_and(|t| t.serving);

@@ -20,6 +20,34 @@ fn every_scenario_renders_at_desktop_and_phone_sizes() {
 }
 
 #[test]
+fn settings_say_how_tasks_get_their_message() {
+    let settings = dump("settings", 1280.0);
+    for text in [
+        "\"Send the task's message when the agent starts\"",
+        "\"Use my own task message\"",
+    ] {
+        assert!(settings.contains(text), "{text} missing: {settings}");
+    }
+    assert!(
+        !settings.contains("Filled in per task"),
+        "no message box while it is off: {settings}"
+    );
+    let custom = dump("settings-task-message", 1280.0);
+    for text in [
+        "Off: the message is typed into Claude for you to edit and send.",
+        "Pick up {key}",
+        "Filled in per task",
+    ] {
+        assert!(custom.contains(text), "{text} missing: {custom}");
+    }
+    let start = dump("task-in-thread", 1280.0);
+    assert!(
+        start.contains("with this task as its prompt"),
+        "sent by default: {start}"
+    );
+}
+
+#[test]
 fn the_setup_wizard_offers_installed_agents_then_their_modes() {
     let agents = dump("setup", 1280.0);
     for text in [

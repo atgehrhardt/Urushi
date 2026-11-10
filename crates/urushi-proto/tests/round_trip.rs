@@ -160,6 +160,9 @@ fn all_request_kinds() {
                 task_agent: Some(v1::Agent::Claude.into()),
                 task_mode: Some(v1::AgentMode::Plan.into()),
                 update_base_from_remote: Some(false),
+                task_draft: Some(true),
+                task_message_custom: Some(true),
+                task_message: Some("Pick up {key}".into()),
                 ..Default::default()
             }),
         }),
@@ -263,6 +266,9 @@ fn all_response_kinds() {
                 cursor_skip_permissions: true,
                 task_agent: v1::Agent::Codex.into(),
                 task_mode: v1::AgentMode::Normal.into(),
+                task_draft: true,
+                task_message_custom: true,
+                task_message: "Do {key}".into(),
                 ..Default::default()
             }),
             ..Default::default()

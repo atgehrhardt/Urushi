@@ -78,6 +78,15 @@ message AgentSettings {
   Agent task_agent = 4;
   // The mode task_agent starts in. Since 1.7.
   AgentMode task_mode = 5;
+  // Type the task's message into the task agent without sending it, for the user to
+  // edit and send. False (the default): the agent starts with it as its first prompt.
+  // Since 1.19.
+  bool task_draft = 6;
+  // Use task_message instead of the default message. Since 1.19.
+  bool task_message_custom = 7;
+  // The user's own task message. {key}, {title}, {url} and {show} are filled in per
+  // task. Kept while task_message_custom is off. Since 1.19.
+  string task_message = 8;
 }
 
 message TailnetSettings {
@@ -110,6 +119,10 @@ message SettingsPatch {
   Appearance appearance = 15;
   // Since 1.16.
   optional bool update_base_from_remote = 16;
+  // Since 1.19.
+  optional bool task_draft = 17;
+  optional bool task_message_custom = 18;
+  optional string task_message = 19;
 }
 
 message UpdateSettingsRequest {

@@ -33,6 +33,7 @@ mod settings;
 mod state;
 mod tabs;
 mod task_agent;
+mod task_draft;
 mod task_tabs;
 mod threads;
 
@@ -152,6 +153,9 @@ pub struct Service {
     restore_points: Mutex<HashMap<PaneId, (u64, PaneRecord)>>,
     /// Panes whose program finished or waits for the user. Not stored (`attention.rs`).
     attention: Mutex<HashMap<PaneId, attention::Attention>>,
+    /// Panes waiting for a task's message to be drafted into their agent, with how many
+    /// times the user acted on each since (`task_draft.rs`).
+    drafts: Mutex<HashMap<PaneId, u64>>,
     home: PathBuf,
     changes: watch::Sender<u64>,
     /// Woken when a client asks the daemon to stop (`ShutdownDaemon`).
@@ -216,6 +220,7 @@ impl Service {
             jira: jira::JiraLink::new(config.jira, &config.home),
             restore_points: Mutex::new(HashMap::new()),
             attention: Mutex::new(HashMap::new()),
+            drafts: Mutex::default(),
             home: config.home,
             cli: config.cli,
             changes: watch::channel(revision).0,

@@ -43,8 +43,9 @@ pub(super) fn view(
         Dialog::Settings {
             prefix,
             shell,
+            message,
             look,
-        } => settings_dialog(state, (theme, scroll), (prefix, shell), look),
+        } => settings_dialog(state, (theme, scroll), (prefix, shell, message), look),
         Dialog::Connect { host } => connect(state, theme, host),
         Dialog::RestartDaemon {
             terminals,
@@ -423,7 +424,7 @@ fn tailnet_status(tailnet: &v1::TailnetStatus) -> String {
 fn settings_dialog(
     state: &AppState,
     (theme, scroll): (&Theme, &std::collections::HashMap<urushi_ui::Key, f32>),
-    (prefix, shell): (&TextField, &TextField),
+    (prefix, shell, message): (&TextField, &TextField, &TextField),
     look: &crate::appearance::LookDraft,
 ) -> Node<Msg> {
     let prefix = field(state, theme, prefix, Field::BranchPrefix, "urushi/");
@@ -489,7 +490,7 @@ fn settings_dialog(
             theme,
             "Off by default. When on, the agent runs commands and edits files without asking.",
         ))
-        .children(super::setup::settings_rows(state, theme))
+        .children(super::setup::settings_rows(state, theme, message))
         .children(super::jira::settings_rows(state, theme))
         .child(label(theme, "Branch prefix"))
         .child(prefix)

@@ -139,6 +139,8 @@ pub enum Field {
     JiraWork,
     /// Settings: a custom color (`appearance::COLOR_NAMES`), as `#rrggbb`.
     LookColor(u8),
+    /// Settings: the user's own task message.
+    TaskMessage,
 }
 
 /// An editing command on the focused text field, from a shortcut or its context menu.
@@ -169,6 +171,10 @@ pub enum SettingToggle {
     ServeTailnet,
     /// Start an agent with its skip-permissions flag.
     SkipPermissions(urushi_core::Agent),
+    /// Send a task's message to its agent, or only draft it there (protocol 1.19).
+    TaskSend,
+    /// Start tasks with the user's own message instead of the default (1.19).
+    TaskMessageCustom,
 }
 
 /// What a new tab runs: a plain shell, or an agent CLI inside one.
@@ -249,6 +255,8 @@ pub enum Dialog {
         prefix: TextField,
         /// Default shell field.
         shell: TextField,
+        /// The user's own task message (multiline), saved with Save.
+        message: TextField,
         /// The Appearance section's draft, shown live until Save or Cancel.
         look: Box<crate::appearance::LookDraft>,
     },
@@ -611,7 +619,7 @@ impl AppState {
     pub fn skips_permissions(&self, agent: urushi_core::Agent) -> bool {
         self.settings
             .as_ref()
-            .and_then(|s| s.agents)
+            .and_then(|s| s.agents.as_ref())
             .is_some_and(|a| match agent {
                 urushi_core::Agent::Claude => a.claude_skip_permissions,
                 urushi_core::Agent::Codex => a.codex_skip_permissions,

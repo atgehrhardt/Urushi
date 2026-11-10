@@ -172,7 +172,7 @@ pub(crate) fn print_settings(s: &v1::Settings) -> Result<()> {
         }
     )?;
     writeln!(o, "allow-tagged-nodes      {}", t.allow_tagged_nodes)?;
-    let a = s.agents.unwrap_or_default();
+    let a = s.agents.clone().unwrap_or_default();
     writeln!(o, "claude-skip-permissions {}", a.claude_skip_permissions)?;
     writeln!(o, "codex-skip-permissions  {}", a.codex_skip_permissions)?;
     writeln!(o, "cursor-skip-permissions {}", a.cursor_skip_permissions)?;
@@ -188,6 +188,17 @@ pub(crate) fn print_settings(s: &v1::Settings) -> Result<()> {
         v1::AgentMode::Normal | v1::AgentMode::Unspecified => "normal",
     };
     writeln!(o, "task-mode               {task_mode}")?;
+    writeln!(o, "task-send               {}", !a.task_draft)?;
+    writeln!(o, "task-message-custom     {}", a.task_message_custom)?;
+    writeln!(
+        o,
+        "task-message            {}",
+        if a.task_message.is_empty() {
+            "(none)".to_owned()
+        } else {
+            a.task_message.replace('\n', "\\n")
+        }
+    )?;
     let (colors, logo) = crate::look::describe(s);
     writeln!(o, "colors                  {colors}")?;
     writeln!(o, "logo                    {logo}")?;

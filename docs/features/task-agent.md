@@ -1,8 +1,8 @@
 # Feature: Task agent and first-run setup
 
 - **Status:** Shipped
-- **Owners (crates):** `urushi-core` (`agent/mode.rs`, `board/prompt.rs`, `AgentSettings`), `urushi-daemon` (`cli.rs`, `service/task_agent.rs`, `service/threads.rs`, `service/settings.rs`), `urushi-proto` (`agents.proto`, `convert::agent_mode_*`), `urushi-app` (`task_agent.rs`, `update/setup.rs`, `view/setup.rs`, `view/new_thread.rs`, `update/task_threads.rs`, `view/task_in_thread.rs`), `urushi-cli` (`urushi board show`)
-- **Related ADRs:** [0026](../adr/0026-issue-keys-in-branch-names.md), [0018](../adr/0018-start-tasks-in-existing-threads.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0024](../adr/0024-task-prompts-by-reference.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Owners (crates):** `urushi-core` (`agent/mode.rs`, `agent/message.rs`, `agent/hooks.rs`, `board/prompt.rs`, `board/message.rs`, `AgentSettings`), `urushi-mux` (`SessionStatus.ready`), `urushi-daemon` (`cli.rs`, `service/task_agent.rs`, `service/task_draft.rs`, `service/threads.rs`, `service/settings.rs`), `urushi-proto` (`agents.proto`, `settings.proto`, `convert::agent_mode_*`), `urushi-app` (`task_agent.rs`, `update/setup.rs`, `view/setup.rs`, `view/new_thread.rs`, `update/task_threads.rs`, `view/task_in_thread.rs`), `urushi-cli` (`urushi board show`, `settings set task-*`)
+- **Related ADRs:** [0030](../adr/0030-draft-task-messages-once-the-agent-is-ready.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0018](../adr/0018-start-tasks-in-existing-threads.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0024](../adr/0024-task-prompts-by-reference.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 **Start thread** on a task or subtask opens a thread that runs the user's **task agent**
@@ -16,6 +16,17 @@ daemon. If the daemon can't find its CLI, the task's title, notes and checklist 
 pasted in instead. The new-thread dialog still opens
 first, prefilled, and says what will start, e.g. "Starts Claude in plan mode with this
 task as its prompt."
+
+Two switches in Settings (under the mode, protocol 1.19) change the message (UR-30):
+- **Send the task's message when the agent starts** (on by default). Off, the agent
+  starts with an empty input and the message is **drafted** there, unsent, for the user
+  to edit and send (ADR 0030). The dialog then says "…with this task's message drafted
+  for you to send."
+- **Use my own task message** (off by default, shown whatever the other switch says).
+  On, a box takes the user's message, saved with **Save**. It replaces the default
+  message, with `{key}` (issue key or task id), `{title}`, `{url}` (the Jira address)
+  and `{show}` (`urushi board show …`) filled in per task. Left empty, the default is
+  used.
 
 The dialog can also send the task to an **existing thread** ("New thread | Existing
 thread", 1.10 daemons). A new tab in the picked thread runs the task agent the same way,
@@ -34,7 +45,15 @@ choice under **Tasks start with**.
   daemon's document. On the wire, `AgentSettings.task_agent` / `task_mode` and
   `SettingsPatch.task_agent` / `task_mode` (`AGENT_UNSPECIFIED` clears the choice). The
   CLI sets them with `urushi settings set task-agent claude` and `task-mode plan`.
-- **The prompt** (ADR 0024): `urushi_core::task_reference_prompt(board, task)` when the
+  `AgentSettings.task_delivery: PromptDelivery {Send, Draft}` and `task_message:
+  TaskMessage{custom, text}` (1.19: `task_draft`, `task_message_custom`,
+  `task_message`; CLI `task-send on|off`, `task-message-custom on|off`, `task-message
+  "<text>"`). `TaskMessage::template` is the text only when on and not blank; the daemon
+  refuses one over `MAX_TASK_MESSAGE` (10 000) characters.
+- **The prompt** (ADR 0024): `urushi_core::custom_task_prompt(board, task, template)`
+  when the user's own message is on (placeholders filled in in one pass, so filled-in
+  text is never read again; unknown `{…}` kept), else
+  `urushi_core::task_reference_prompt(board, task)` when the
   daemon found its CLI (`cli::locate`: beside `urushid`, or in the bundle's
   `Resources/bin`; `DaemonOptions::cli`), else `urushi_core::task_prompt(board, task)`,
   for a task at any depth (`State::task_prompt(link, by_reference)`). Every pane gets
@@ -51,13 +70,29 @@ choice under **Tasks start with**.
   2. `finish_thread_creation` spawns the first pane with `URUSHI_TASK_PROMPT` in its
      environment (`spawn_session_with_env`) and names the tab after the agent.
   3. After the thread is recorded, `start_task_agent` types
-     `Agent::task_command_line(program, skip, mode)`.
+     `Agent::task_command_line(program, skip, mode, delivery)`.
+  4. **Drafting** (ADR 0030): the line has no `"$URUSHI_TASK_PROMPT"`.
+     `expect_draft` notes the pane's `SessionStatus.ready` count before typing;
+     `draft_when_ready` then waits in the background and sends `Input::Paste(prompt)`
+     (bracketed, no Enter) once:
+     - Claude's `SessionStart` hook wrote the `ready` signal (after its trust and other
+       startup dialogs), or, for Codex and Cursor, bracketed paste is on and the agent
+       is the shell's foreground job (`usage::process::foreground_job`,
+       `agent_process_under`, checked at most every 500 ms);
+     - and the screen has been still for 500 ms.
+
+     Keys the user sends before the agent is ready answer its startup dialogs and don't
+     matter. Once it is ready, a user action in the pane (`Service::user_acted`, counted
+     per pending draft) drops the draft, logged, as do the program exiting and 2 min
+     (Claude) / 30 s (others) without readiness.
 - **In an existing thread:** `CreateTab{thread_id, task_id, subtask_id,
   start_task_agent: true}` (`service/task_tabs.rs::create_task_tab`). It resolves the
   same `TaskAgent` before spawning, starts the pane with `URUSHI_TASK_PROMPT`, records the
   tab and the link in one `mutate`, and then types the command. CLI: `urushi tab new
   <thread> --task <id> --start-agent`.
 - **Command lines:**
+
+  Drafting leaves the last word off each line below.
 
   | Agent | Normal | Plan |
   |---|---|---|
@@ -85,6 +120,9 @@ choice under **Tasks start with**.
   (`tests/task_agents.rs::a_task_agent_that_cant_start_leaves_nothing_behind`). The same
   holds in an existing thread: no tab and no link
   (`a_task_that_cant_start_in_a_thread_leaves_nothing_behind`).
+- A drafted message is never sent: it is pasted without Enter, never before the agent
+  says it is ready (Claude) or holds the terminal (others), and never once the user has
+  typed in the ready agent (`tests/task_drafts.rs`).
 - The whole prompt reaches the agent as one argument
   (`tests/task_agents.rs::a_task_starts_the_task_agent_in_its_mode_with_the_task_as_prompt`).
 - A mode the agent lacks is never passed to it (`Agent::effective_mode`; `agent/mode.rs`
@@ -97,11 +135,24 @@ choice under **Tasks start with**.
   - `agent/mode.rs`: flags per agent × mode × skip.
   - `board/prompt.rs`: task, subtask, a deeper subtask, empty notes and truncation, and
     references to a task, a step and a Jira subtask.
+  - `board/message.rs`: placeholders for a Jira issue and a plain task, other braces.
+  - `agent/message.rs`, `agent/mode.rs` (drafted lines), `agent/hooks.rs` (the
+    `SessionStart` hook).
   - `agent.rs`: older settings load.
 - **Proto:** `convert/tests.rs` (modes, unknown values mean Normal) and
   `tests/round_trip.rs`.
 - **Daemon:**
-  - `service/settings.rs` (choose and clear).
+  - `service/settings.rs` (choose and clear; drafting and the message, kept while off,
+    too long refused).
+  - `tests/task_drafts.rs`, with fake agents that print what they read from the
+    terminal: the user's message filled in and sent; a drafted message pasted once the
+    fake Claude says it's ready (plan mode kept, no prompt argument, no Enter); a fake
+    Codex with only bracketed paste; answering a startup dialog keeps the draft; typing
+    once the agent is ready drops it.
+  - Manually: real Claude Code 2.1 in a throwaway home, task-send off. It started
+    without a prompt on its folder-trust dialog; after "Yes, I trust this folder" the
+    reference message sat unsent in its input.
+  - `urushi-mux`: `notices.rs` (`ready` is not attention), `pty_session.rs` (counted).
   - `tests/task_agents.rs`, with a fake `claude` that prints each argument, for both a new
     thread and an existing one (`a_task_starts_in_an_existing_thread_in_a_new_tab`), and
     by reference with a CLI beside the daemon, which the pane finds on `PATH` with
@@ -112,10 +163,21 @@ choice under **Tasks start with**.
     without a task agent or a 1.7 daemon.
   - `update/tests/task_in_thread.rs`: the switch, picking, the `CreateTab` request, and
     older daemons.
-  - `snapshot.rs`: the `setup`, `setup-mode` and `task-in-thread` scenarios.
+  - `update/tests/task_message.rs`: the switches, the message box's focus and Save,
+    older daemons, and what Start thread says.
+  - `snapshot.rs`: the `setup`, `setup-mode`, `task-in-thread` and
+    `settings-task-message` scenarios.
 
 ## Limitations and follow-ups
-- The prompt is fixed text. There is no per-repo or per-board template yet.
+- The user's own message is global; there is no per-repo or per-board message yet.
+- A drafted message for Codex or Cursor can meet a startup dialog (Codex's update menu or
+  folder trust). A paste there is ignored, so the draft is lost; the message is still in
+  `$URUSHI_TASK_PROMPT`.
+- A Claude whose hooks are off (`disableAllHooks`) never says it's ready, so after 2 min
+  the draft is dropped.
+- A pending draft lives in the daemon's memory; a daemon restart before the agent is
+  ready loses it.
+- Claude shows a long paste as `[Pasted text]` until it is edited.
 - Reviewing the task costs the agent a command (and in plan mode maybe a permission
   prompt).
 - After a daemon restart, a resumed agent isn't put back into plan mode (ADR 0013, ADR 0014).

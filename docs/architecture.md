@@ -91,7 +91,7 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
   1. Resolve the base. With `update_base_from_remote` (default on), fetch the base's branch from its remote and start from the remote's commit if the local branch is only behind it. The user's checkout is never touched, and a failed fetch falls back to the local commit (ADR 0028, `service/fresh_base.rs`). Then snapshot the existing branches.
   2. `git worktree add -b <branch> <data>/worktrees/<repo>/<thread> <base>`
   3. Persist the thread.
-  4. Spawn the first tab, unless the client asked for none (the GUI then shows the agent launcher). A thread started from a task with `start_task_agent` runs the user's task agent there, with its prompt in `URUSHI_TASK_PROMPT` (ADR 0014): a reference to the task and `urushi board show` to read it, or a copy of it without a CLI (ADR 0024); that agent and prompt are resolved before step 2.
+  4. Spawn the first tab, unless the client asked for none (the GUI then shows the agent launcher). A thread started from a task with `start_task_agent` runs the user's task agent there, with its prompt in `URUSHI_TASK_PROMPT` (ADR 0014): a reference to the task and `urushi board show` to read it, or a copy of it without a CLI (ADR 0024), or the user's own message filled in for the task; that agent and prompt are resolved before step 2. When the user drafts task messages, the prompt is left off the command line and `service/task_draft.rs` pastes it into the agent, unsent, once the agent is ready (ADR 0030).
 
   A task can also start in an existing thread: `CreateTab{task_id, start_task_agent}` opens a tab running the task agent there and links the task in the same mutation (ADR 0018).
 

@@ -29,6 +29,7 @@ macro_rules! focused_field {
             (Some(Dialog::Prompt { field, .. }), Field::Prompt) => Some(field),
             (Some(Dialog::Settings { prefix, .. }), Field::BranchPrefix) => Some(prefix),
             (Some(Dialog::Settings { shell, .. }), Field::DefaultShell) => Some(shell),
+            (Some(Dialog::Settings { message, .. }), Field::TaskMessage) => Some(message),
             (Some(Dialog::Settings { look, .. }), Field::LookColor(i)) => {
                 ($($r)+ look.hex).into_iter().nth(usize::from(i))
             }
@@ -81,7 +82,7 @@ impl AppState {
     }
 
     /// The fields Tab cycles through, in order.
-    fn dialog_fields(&self) -> Vec<Field> {
+    pub(super) fn dialog_fields(&self) -> Vec<Field> {
         match &self.dialog {
             Some(Dialog::AddProject { .. }) if self.can_pick_folders() => Vec::new(),
             Some(Dialog::AddProject { .. }) => vec![Field::ProjectPath],
@@ -91,7 +92,12 @@ impl AppState {
             }) => Vec::new(),
             Some(Dialog::NewThread { .. }) => vec![Field::ThreadTitle, Field::ThreadBranch],
             Some(Dialog::Settings { look, .. }) => {
-                let mut fields = vec![Field::BranchPrefix, Field::DefaultShell];
+                // In the order they're shown: the task message comes first.
+                let mut fields = Vec::new();
+                if self.task_agent().is_some() && self.task_message().0 {
+                    fields.push(Field::TaskMessage);
+                }
+                fields.extend([Field::BranchPrefix, Field::DefaultShell]);
                 if look.custom {
                     fields.extend((0..5).map(Field::LookColor));
                 }

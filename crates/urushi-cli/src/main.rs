@@ -330,7 +330,10 @@ enum SettingsCmd {
     /// worktree-root, update-base-from-remote (fetch a new thread's base from its remote
     /// first), tailnet-port, allowed-logins (comma-separated), allow-tagged-nodes,
     /// claude-skip-permissions, codex-skip-permissions, cursor-skip-permissions,
-    /// task-agent (claude, codex, cursor or none), task-mode (normal or plan), colors (a
+    /// task-agent (claude, codex, cursor or none), task-mode (normal or plan), task-send
+    /// (off: the task's message is typed into the agent for you to send),
+    /// task-message-custom, task-message (your own; {key}, {title}, {url} and {show} are
+    /// filled in per task), colors (a
     /// preset: urushi, ocean, forest, dusk, ember, mono; or five #rrggbb colors:
     /// background, three glows, accent), logo (original, accent, mono or hidden).
     Set {

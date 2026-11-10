@@ -143,8 +143,9 @@ fn task_agent_hint(state: &AppState, theme: &Theme) -> Option<Node<Msg>> {
         Some((agent, mode)) => hint(
             theme,
             &format!(
-                "Starts {} with this task as its prompt.",
-                crate::task_agent::describe(agent, mode)
+                "Starts {} {}.",
+                crate::task_agent::describe(agent, mode),
+                state.task_message_phrase()
             ),
         ),
         None => hint(

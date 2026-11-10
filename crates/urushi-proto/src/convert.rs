@@ -10,8 +10,8 @@ use thiserror::Error;
 use urushi_core::layout::{Child, Node};
 use urushi_core::{
     Agent, AgentMode, AgentSettings, Axis, BranchName, BranchPrefix, Direction, Layout, PaneId,
-    Repo, RepoSettingsOverrides, Settings, Slug, Status, Tab, TabId, TailnetSettings, Thread,
-    ThreadKind, ThreadState, Timestamp,
+    PromptDelivery, Repo, RepoSettingsOverrides, Settings, Slug, Status, Tab, TabId,
+    TailnetSettings, TaskMessage, Thread, ThreadKind, ThreadState, Timestamp,
 };
 
 use crate::v1;
@@ -343,6 +343,9 @@ pub fn settings_to_proto(s: &Settings) -> v1::Settings {
                 .map_or(v1::Agent::Unspecified, agent_to_proto)
                 .into(),
             task_mode: agent_mode_to_proto(s.agents.task_mode).into(),
+            task_draft: s.agents.task_delivery.is_draft(),
+            task_message_custom: s.agents.task_message.custom,
+            task_message: s.agents.task_message.text.clone(),
         }),
         appearance: Some(appearance_to_proto(s.appearance)),
     }
@@ -364,7 +367,7 @@ pub fn settings_from_proto(s: &v1::Settings) -> Result<Settings, ConvertError> {
             allowed_logins: tailnet.allowed_logins,
             allow_tagged_nodes: tailnet.allow_tagged_nodes,
         },
-        agents: agent_settings_from_proto(s.agents.unwrap_or_default()),
+        agents: agent_settings_from_proto(s.agents.clone().unwrap_or_default()),
         appearance: appearance_from_proto(s.appearance.as_ref()),
     })
 }
@@ -376,6 +379,11 @@ fn agent_settings_from_proto(a: v1::AgentSettings) -> AgentSettings {
     settings.set_skip_permissions(Agent::Cursor, a.cursor_skip_permissions);
     settings.task_agent = agent_from_proto(a.task_agent);
     settings.task_mode = agent_mode_from_proto(a.task_mode);
+    settings.task_delivery = PromptDelivery::drafting(a.task_draft);
+    settings.task_message = TaskMessage {
+        custom: a.task_message_custom,
+        text: a.task_message,
+    };
     settings
 }
 

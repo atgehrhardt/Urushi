@@ -4,13 +4,16 @@
 //! shell and types the agent's command into it, so the shell is still there when the
 //! agent exits. This module knows each agent's program name and its "skip permission
 //! prompts" flag, how it resumes a conversation (`resume.rs`), how it starts for a task
-//! (`mode.rs`), and the hooks that report when it finished or waits (`hooks.rs`).
+//! (`mode.rs`, with the user's own message from `message.rs`), and the hooks that report
+//! when it is ready, finished or waits (`hooks.rs`).
 //! Finding the program on disk is the daemon's job.
 
-pub use mode::{AgentMode, TASK_PROMPT_ENV};
+pub use message::{MAX_TASK_MESSAGE, TASK_MESSAGE_PLACEHOLDERS, TaskMessage};
+pub use mode::{AgentMode, PromptDelivery, TASK_PROMPT_ENV};
 pub use resume::{AgentSessionId, InvalidSessionId};
 
 pub mod hooks;
+mod message;
 mod mode;
 mod resume;
 
@@ -102,6 +105,10 @@ pub struct AgentSettings {
     pub task_agent: Option<Agent>,
     /// The mode [`Self::task_agent`] starts in. Only applies to task starts.
     pub task_mode: AgentMode,
+    /// Whether a task's message is sent to [`Self::task_agent`] or only drafted in it.
+    pub task_delivery: PromptDelivery,
+    /// The user's own task message, instead of the default one when on.
+    pub task_message: TaskMessage,
 }
 
 impl AgentSettings {
@@ -181,9 +188,16 @@ mod tests {
         let s: AgentSettings = serde_json::from_str(r#"{"skip_permissions":["claude"]}"#).unwrap();
         assert_eq!(s.task_agent, None);
         assert_eq!(s.task_mode, AgentMode::Normal);
+        assert_eq!(s.task_delivery, PromptDelivery::Send);
+        assert_eq!(s.task_message, TaskMessage::default());
         let s = AgentSettings {
             task_agent: Some(Agent::Claude),
             task_mode: AgentMode::Plan,
+            task_delivery: PromptDelivery::Draft,
+            task_message: TaskMessage {
+                custom: true,
+                text: "Do {key}".into(),
+            },
             ..AgentSettings::default()
         };
         let json = serde_json::to_string(&s).unwrap();
@@ -197,7 +211,7 @@ mod tests {
         let json = serde_json::to_string(&s).unwrap();
         assert_eq!(
             json,
-            r#"{"skip_permissions":["claude"],"task_agent":null,"task_mode":"normal"}"#
+            r#"{"skip_permissions":["claude"],"task_agent":null,"task_mode":"normal","task_delivery":"send","task_message":{"custom":false,"text":""}}"#
         );
         assert_eq!(serde_json::from_str::<AgentSettings>(&json).unwrap(), s);
     }

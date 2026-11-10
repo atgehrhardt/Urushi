@@ -67,6 +67,9 @@ pub struct SessionStatus {
     pub alerts: u64,
     /// What the latest alert asked for (a bell is [`AttentionKind::Waiting`]).
     pub alert: Option<AttentionKind>,
+    /// Times an agent's hook said it reads input so far (Urushi's `ready` signal). Not
+    /// an alert.
+    pub ready: u64,
     /// Exit code once the process has exited. `-1` if it couldn't be determined.
     pub exit_code: Option<i32>,
 }
@@ -353,6 +356,7 @@ impl Actor {
         let mut bells = 0;
         let mut alerts = 0;
         let mut alert = None;
+        let mut ready = 0;
         for event in self.emulator.advance(bytes) {
             match event {
                 EmulatorEvent::Reply(reply) => self.write(reply),
@@ -366,14 +370,18 @@ impl Actor {
                     alerts += 1;
                     alert = Some(kind);
                 }
+                EmulatorEvent::Ready => ready += 1,
             }
         }
         self.record_damage();
-        if alerts > 0 {
+        if alerts > 0 || ready > 0 {
             self.status.send_modify(|s| {
                 s.bells += bells;
                 s.alerts += alerts;
-                s.alert = alert;
+                if alerts > 0 {
+                    s.alert = alert;
+                }
+                s.ready += ready;
             });
         }
     }

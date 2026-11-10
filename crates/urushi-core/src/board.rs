@@ -26,6 +26,7 @@ mod columns;
 mod jira;
 mod kind;
 mod labels;
+mod message;
 mod order;
 mod prompt;
 mod sync;
@@ -42,6 +43,7 @@ pub use jira::{
 };
 pub use kind::TaskKind;
 pub use labels::{LabelColor, MAX_TAG, MAX_TAGS, tag_color, task_tags};
+pub use message::custom_task_prompt;
 pub use order::move_board;
 pub use prompt::{MAX_PROMPT_BYTES, task_prompt, task_reference_prompt};
 pub use sync::{MAX_SYNCED_ISSUES, MergeReport};
