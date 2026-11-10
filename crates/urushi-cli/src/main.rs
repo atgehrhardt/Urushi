@@ -247,6 +247,14 @@ enum ThreadCmd {
         #[arg(default_value = "")]
         project: String,
     },
+    /// Move a thread to a position in the list of threads (0 is first). The sidebar
+    /// keeps this order inside each project, pin and status group.
+    Reorder {
+        /// Thread id.
+        thread: String,
+        /// New position, counted without the thread (clamped to the end).
+        index: u32,
+    },
     /// Rename a thread.
     Rename {
         /// Thread id.

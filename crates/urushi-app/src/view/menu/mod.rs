@@ -13,6 +13,7 @@ use crate::state::{AppState, FieldCommand};
 mod boards;
 mod filter;
 mod jira;
+mod order;
 mod pane;
 mod quick_filter;
 mod tasks;
@@ -238,6 +239,10 @@ fn thread_items(state: &AppState, theme: &Theme, menu: &ContextMenu, id: &str) -
                 theme.text,
                 Msg::MenuPage(MenuPage::Move),
             ),
+        ]
+        .into_iter()
+        .chain(order::thread_moves(state, theme, &id))
+        .chain([
             separator(theme),
             item(
                 theme,
@@ -246,7 +251,8 @@ fn thread_items(state: &AppState, theme: &Theme, menu: &ContextMenu, id: &str) -
                 theme.danger,
                 Msg::RequestDeleteThread(id),
             ),
-        ],
+        ])
+        .collect(),
         MenuPage::Status => status_page(state, theme, thread, id),
         MenuPage::Move => move_page(state, theme, thread, id),
     }
@@ -378,7 +384,7 @@ fn project_items(state: &AppState, theme: &Theme, id: &str) -> Vec<Node<Msg>> {
             Msg::OpenProjectSettings(id.to_owned()),
         ));
     }
-    items.extend(move_items(state, theme, id));
+    items.extend(order::project_moves(state, theme, id));
     items.push(separator(theme));
     items.push(item(
         theme,
@@ -387,29 +393,5 @@ fn project_items(state: &AppState, theme: &Theme, id: &str) -> Vec<Node<Msg>> {
         theme.danger,
         Msg::DeleteProject(id.to_owned()),
     ));
-    items
-}
-
-/// "Move up" and "Move down" for a project, where it can go that way and the daemon can
-/// reorder projects (protocol 1.11).
-fn move_items(state: &AppState, theme: &Theme, id: &str) -> Vec<Node<Msg>> {
-    let projects = state.workspace.projects();
-    let Some(at) = projects.iter().position(|p| p.id == id) else {
-        return Vec::new();
-    };
-    if !state.daemon_supports_project_order() {
-        return Vec::new();
-    }
-    let moved = |index: usize| Msg::MoveProject {
-        project: id.to_owned(),
-        index: u32::try_from(index).unwrap_or(u32::MAX),
-    };
-    let mut items = Vec::new();
-    if at > 0 {
-        items.push(item(theme, "Move up", "", theme.text, moved(at - 1)));
-    }
-    if at + 1 < projects.len() {
-        items.push(item(theme, "Move down", "", theme.text, moved(at + 1)));
-    }
     items
 }

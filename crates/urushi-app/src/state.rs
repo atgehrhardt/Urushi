@@ -535,6 +535,8 @@ pub struct AppState {
     pub dragging: Option<(crate::organize::Dragged, Point)>,
     /// While a project is dragged: the project whose place it would take if dropped now.
     pub project_over: Option<String>,
+    /// While a thread is dragged: the thread whose place it would take if dropped now.
+    pub thread_over: Option<String>,
     /// Where the last mouse press was (anchors context menus).
     pub last_press: Option<Point>,
     /// Branches of a repo, for the new-thread dialog: `(repo id, branches)`.
@@ -598,6 +600,7 @@ impl AppState {
             menu: None,
             dragging: None,
             project_over: None,
+            thread_over: None,
             last_press: None,
             branches: None,
             mods: crate::keys::Mods::default(),
@@ -682,6 +685,11 @@ impl AppState {
     /// Whether the daemon can reorder projects (protocol 1.11).
     pub fn daemon_supports_project_order(&self) -> bool {
         self.daemon_minor >= crate::organize::PROJECT_ORDER_SINCE_MINOR
+    }
+
+    /// Whether the daemon can reorder threads (protocol 1.24).
+    pub fn daemon_supports_thread_order(&self) -> bool {
+        self.daemon_minor >= crate::organize::THREAD_ORDER_SINCE_MINOR
     }
 
     /// Whether the daemon keeps quick filters and writes them to Jira (protocol 1.23).

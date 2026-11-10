@@ -52,6 +52,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0035 – Treat Claude as finished only when no background agent of its own still runs](adr/0035-claude-is-done-when-no-background-agent-runs.md)
 - [0036 – Show a thread's pull request: read a Jira issue's from Jira's development info, and let a local task link one](adr/0036-pull-requests-from-jira-dev-info-and-local-links.md)
 - [0037 – Write quick filters to Jira through its board-settings endpoint, and keep them here when Jira refuses](adr/0037-quick-filters-written-to-jira-or-kept-here.md)
+- [0038 – Reorder threads by moving them in the one stored list, and let a drop join the target's group](adr/0038-reorder-threads-in-the-stored-list.md)
 
 ## Features
 - [_template](features/_template.md)

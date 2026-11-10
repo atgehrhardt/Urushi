@@ -130,6 +130,8 @@ message Request {
     CreateQuickFilterRequest create_quick_filter = 73;
     UpdateQuickFilterRequest update_quick_filter = 74;
     DeleteQuickFilterRequest delete_quick_filter = 75;
+    // Since 1.24.
+    MoveThreadRequest move_thread = 76;
   }
 }
 

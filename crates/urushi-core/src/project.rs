@@ -111,12 +111,7 @@ pub fn base_checkout<'a>(
 /// The list's order is the order projects are shown in. Returns `false`, changing
 /// nothing, if there is no such project.
 pub fn move_project(projects: &mut Vec<Project>, id: ProjectId, index: usize) -> bool {
-    let Some(at) = projects.iter().position(|p| p.id == id) else {
-        return false;
-    };
-    let project = projects.remove(at);
-    projects.insert(index.min(projects.len()), project);
-    true
+    crate::order::move_where(projects, |p| p.id == id, index)
 }
 
 #[cfg(test)]

@@ -7,12 +7,7 @@ use crate::BoardId;
 /// Moves board `id` to `index` in the list (counted without it; clamped to the end).
 /// Returns `false`, changing nothing, if there is no such board.
 pub fn move_board(boards: &mut Vec<Board>, id: BoardId, index: usize) -> bool {
-    let Some(at) = boards.iter().position(|b| b.id == id) else {
-        return false;
-    };
-    let board = boards.remove(at);
-    boards.insert(index.min(boards.len()), board);
-    true
+    crate::order::move_where(boards, |b| b.id == id, index)
 }
 
 #[cfg(test)]

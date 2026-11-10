@@ -17,6 +17,7 @@ pub mod board;
 pub mod ids;
 pub mod layout;
 pub mod naming;
+pub mod order;
 pub mod ownership;
 pub mod pane_group;
 pub mod project;
