@@ -440,7 +440,7 @@ pub struct AppState {
     pub dialog: Option<Dialog>,
     /// The focused dialog field.
     pub focus: Option<Field>,
-    /// An error to show in the banner.
+    /// The error to show, on whatever surface is on top (`errors.rs`).
     pub error: Option<String>,
     /// Text selection: pane and range.
     pub selection: Option<(String, Selection)>,
@@ -653,5 +653,11 @@ impl AppState {
             .find(|t| Some(&t.id) == selected)
             .or_else(|| tabs.first())
             .copied()
+    }
+
+    /// On phones (`compact`), whether the page shown is the thread list rather than the
+    /// terminals: it was asked for, or there is nothing else to show.
+    pub fn shows_thread_list_page(&self) -> bool {
+        self.sidebar_open || self.current_tab().is_none() && self.selected_thread.is_none()
     }
 }

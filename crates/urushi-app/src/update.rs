@@ -23,6 +23,7 @@ impl AppState {
         reason = "one arm per message kind keeps routing in one place"
     )]
     pub fn update(&mut self, msg: Msg) -> Vec<Effect> {
+        let before = crate::errors::BeforeUpdate::of(self);
         let mut fx = Vec::new();
         match msg {
             // A dialog field's Cut/Copy/Paste menu: `update/fields.rs`.
@@ -223,6 +224,8 @@ impl AppState {
         self.want_thumbnails(&mut fx);
         self.watch_shown_board(&mut fx);
         self.attend(&mut fx);
+        // An error shown in a dialog goes with it (`errors.rs`).
+        crate::errors::forget_dialog_error(self, &before);
         fx
     }
 

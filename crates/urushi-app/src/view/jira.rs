@@ -4,13 +4,14 @@
 use std::collections::HashMap;
 
 use urushi_client::v1;
-use urushi_ui::widgets::{ButtonKind, button, modal};
+use urushi_ui::widgets::{ButtonKind, button};
 use urushi_ui::{Font, Insets, Key, Length, Node, Role, TextField, Theme, key};
 
 use super::board::shorten;
 use super::dialogs::{cancel, field, hint, label};
 use crate::msg::{JiraMsg, Msg};
 use crate::state::{AppState, Field};
+use crate::view::modal::modal;
 
 /// Rows of boards shown before the list scrolls.
 const VISIBLE: usize = 8;
@@ -90,6 +91,7 @@ pub(super) fn connect(
         .children(error_line(theme, error));
     let action = if busy { "Checking…" } else { "Connect" };
     modal(
+        state,
         theme,
         "Connect Jira",
         480.0,
@@ -148,6 +150,7 @@ pub(super) fn import(
         "The board keeps Jira's columns and stays in sync: changes made here go to Jira.",
     ));
     modal(
+        state,
         theme,
         "Import a Jira board",
         520.0,
