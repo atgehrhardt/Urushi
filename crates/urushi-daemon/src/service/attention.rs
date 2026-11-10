@@ -24,8 +24,10 @@ pub(crate) struct Attention {
 
 impl Service {
     /// Raises `kind` on `pane`. The same kind again changes nothing (a program ringing
-    /// the bell repeatedly is one alert until the user looks).
+    /// the bell repeatedly is one alert until the user looks). An agent that finished or
+    /// waits no longer runs (ADR 0033).
     pub(crate) fn raise_attention(&self, pane: PaneId, kind: AttentionKind) {
+        self.set_running(pane, false);
         {
             let mut attention = lock(&self.attention);
             if attention.get(&pane).is_some_and(|a| a.kind == kind) {
@@ -81,8 +83,8 @@ impl Service {
         }
     }
 
-    /// Wakes subscribers without a new revision: attention isn't stored.
-    fn broadcast(&self) {
+    /// Wakes subscribers without a new revision: attention (and running) isn't stored.
+    pub(super) fn broadcast(&self) {
         let revision = lock(&self.state).revision;
         self.changes.send_replace(revision);
     }

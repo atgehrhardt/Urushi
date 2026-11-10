@@ -214,6 +214,10 @@ async fn notify(connection: &Arc<Connection>, body: notification::Body) {
             if is_user_action(&input) {
                 connection.service.user_acted(pane);
             }
+            // Claude runs no hook when it is interrupted (ADR 0033).
+            if crate::service::is_interrupt(&input) {
+                connection.service.user_interrupted(pane);
+            }
             if let Ok(session) = connection.service.session(pane) {
                 let _ = session.input(input).await;
             }

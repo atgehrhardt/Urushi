@@ -70,6 +70,13 @@ pub struct SessionStatus {
     /// Times an agent's hook said it reads input so far (Urushi's `ready` signal). Not
     /// an alert.
     pub ready: u64,
+    /// Times an agent's hook said it works or its session ended so far (Urushi's
+    /// `running` and `idle` signals). Not an alert.
+    pub activity: u64,
+    /// Whether the agent works, as the latest signal in the output says: `running` sets
+    /// it, and `idle` or any alert (the agent finished or waits) clears it. So it follows
+    /// the order of signals that arrive together.
+    pub running: bool,
     /// Exit code once the process has exited. `-1` if it couldn't be determined.
     pub exit_code: Option<i32>,
 }
@@ -357,6 +364,8 @@ impl Actor {
         let mut alerts = 0;
         let mut alert = None;
         let mut ready = 0;
+        let mut activity = 0;
+        let mut running = None;
         for event in self.emulator.advance(bytes) {
             match event {
                 EmulatorEvent::Reply(reply) => self.write(reply),
@@ -365,16 +374,22 @@ impl Actor {
                     bells += 1;
                     alerts += 1;
                     alert = Some(AttentionKind::Waiting);
+                    running = running.map(|_| false);
                 }
                 EmulatorEvent::Attention(kind) => {
                     alerts += 1;
                     alert = Some(kind);
+                    running = running.map(|_| false);
                 }
                 EmulatorEvent::Ready => ready += 1,
+                EmulatorEvent::Running(now) => {
+                    activity += 1;
+                    running = Some(now);
+                }
             }
         }
         self.record_damage();
-        if alerts > 0 || ready > 0 {
+        if alerts > 0 || ready > 0 || activity > 0 {
             self.status.send_modify(|s| {
                 s.bells += bells;
                 s.alerts += alerts;
@@ -382,6 +397,12 @@ impl Actor {
                     s.alert = alert;
                 }
                 s.ready += ready;
+                s.activity += activity;
+                if let Some(now) = running {
+                    s.running = now;
+                } else if alerts > 0 {
+                    s.running = false;
+                }
             });
         }
     }

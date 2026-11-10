@@ -203,12 +203,17 @@ mod unix {
 #[tokio::test(flavor = "multi_thread")]
 async fn hooks_signal_through_the_terminal_device() {
     use urushi_core::AttentionKind;
-    use urushi_core::agent::hooks::{TTY_ENV, ready_command, signal_command};
+    use urushi_core::agent::hooks::{
+        TTY_ENV, idle_command, ready_command, running_command, signal_command,
+    };
 
     let size = TermSize::new(80, 4);
     let script = format!(
-        "{} ; {} ; {} ; printf '\\a'; sleep 5",
+        "{} ; {} ; {} ; {} ; {} ; {} ; printf '\\a'; sleep 5",
         ready_command(),
+        running_command(),
+        idle_command(),
+        running_command(),
         signal_command(AttentionKind::Done),
         signal_command(AttentionKind::Waiting)
     );
@@ -237,7 +242,52 @@ async fn hooks_signal_through_the_terminal_device() {
     assert_eq!(seen.bells, 1);
     assert_eq!(seen.alert, Some(AttentionKind::Waiting));
     assert_eq!(seen.ready, 1, "ready is counted, and is not an alert");
+    assert_eq!(seen.activity, 3, "running, idle, running: not alerts");
+    assert!(
+        !seen.running,
+        "the alerts after the last running stopped it"
+    );
     s.kill().await.unwrap();
+}
+
+/// The `running` a session reports once `script` has printed its signals in one write.
+#[cfg(unix)]
+async fn running_after(signals: &str) -> bool {
+    let size = TermSize::new(80, 4);
+    let script = format!("printf '{signals}'; sleep 5");
+    let spec = SpawnSpec {
+        program: Some("/bin/sh".into()),
+        args: vec!["-c".into(), script],
+        size: Some(size),
+        ..SpawnSpec::default()
+    };
+    let s = SessionHandle::spawn(&NativePty, &spec, Box::new(AlacrittyEmulator::new(size)))
+        .expect("spawn");
+    let mut status = s.status();
+    let seen = tokio::time::timeout(TIMEOUT, async {
+        loop {
+            let now = *status.borrow_and_update();
+            if now.activity >= 1 && now.alerts >= 1 {
+                return now;
+            }
+            status.changed().await.expect("session alive");
+        }
+    })
+    .await
+    .expect("signals arrive");
+    s.kill().await.unwrap();
+    seen.running
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn running_follows_the_order_of_signals_that_arrive_together() {
+    let running = "\\033]777;urushi;running\\007";
+    let done = "\\033]777;urushi;done\\007";
+    // A turn's last tool, then its end: stopped.
+    assert!(!running_after(&format!("{running}{done}")).await);
+    // A turn's end, then the next prompt: running.
+    assert!(running_after(&format!("{done}{running}")).await);
 }
 
 #[cfg(windows)]

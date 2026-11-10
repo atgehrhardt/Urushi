@@ -66,7 +66,7 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
                     "     ",
                     tab.layout.as_ref(),
                     &tab.focused_pane_id,
-                    &tab.attention,
+                    (&tab.attention, &tab.running),
                 )?;
             }
         }
@@ -89,17 +89,18 @@ fn write_quick(o: &mut impl Write, quick: &v1::QuickTerminal) -> Result<()> {
         "  ",
         quick.layout.as_ref(),
         &quick.focused_pane_id,
-        &quick.attention,
+        (&quick.attention, &quick.running),
     )
 }
 
-/// One line per pane: `*` marks the focused one, then any attention.
+/// One line per pane: `*` marks the focused one, then whether its agent runs and any
+/// attention.
 fn print_panes(
     o: &mut impl Write,
     indent: &str,
     layout: Option<&v1::LayoutNode>,
     focused: &str,
-    attention: &[v1::PaneAttention],
+    (attention, running): (&[v1::PaneAttention], &[v1::PaneRunning]),
 ) -> Result<()> {
     let Some(layout) = layout.and_then(|l| urushi_proto::convert::layout_from_proto(l).ok()) else {
         return Ok(());
@@ -114,7 +115,16 @@ fn print_panes(
                 v1::AttentionKind::Done => "  [finished]",
                 _ => "  [needs input]",
             });
-        writeln!(o, "{indent}{marker}{} pane{attention}", short(&pane))?;
+        let running = if running.iter().any(|r| r.pane_id == pane) {
+            "  [running]"
+        } else {
+            ""
+        };
+        writeln!(
+            o,
+            "{indent}{marker}{} pane{running}{attention}",
+            short(&pane)
+        )?;
     }
     Ok(())
 }

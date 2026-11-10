@@ -109,6 +109,10 @@ message Tab {
   // Panes whose program finished or is waiting for the user, until someone looks or
   // types (not stored; lost when the daemon restarts). Since 1.9.
   repeated PaneAttention attention = 6;
+  // Panes whose agent is working right now: it took a prompt, uses a tool or runs a
+  // subagent, as its hooks say (ADR 0033). Not stored; lost when the daemon restarts.
+  // Since 1.21.
+  repeated PaneRunning running = 7;
 }
 
 // Split panes that belong to no thread, shown as a drop-down panel (ADR 0031). A daemon
@@ -121,6 +125,8 @@ message QuickTerminal {
   string focused_pane_id = 3;
   // As Tab.attention.
   repeated PaneAttention attention = 4;
+  // As Tab.running. Since 1.21.
+  repeated PaneRunning running = 5;
 }
 
 // Returns the quick terminal, first opening one with a single shell in the home
@@ -142,6 +148,13 @@ message PaneAttention {
   AttentionKind kind = 2;
   // When it was raised. A new raise has a new time, so clients can tell it apart.
   int64 since_ms = 3;
+}
+
+// A pane whose agent is working. Since 1.21.
+message PaneRunning {
+  string pane_id = 1;
+  // When it started working.
+  int64 since_ms = 2;
 }
 
 // Clears the attention of these panes (the user is looking at them). Panes without

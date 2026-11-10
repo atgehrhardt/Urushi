@@ -14,7 +14,7 @@ use crate::state::AppState;
 
 /// The usual workspace plus a second thread ("Other", tab 21, pane 101). `raised` lists
 /// (pane, kind, since) attention.
-fn with_attention(raised: &[(u128, v1::AttentionKind, i64)]) -> v1::Workspace {
+pub(super) fn with_attention(raised: &[(u128, v1::AttentionKind, i64)]) -> v1::Workspace {
     let mut w = workspace();
     w.threads.push(v1::Thread {
         id: ThreadId::from_u128(11).to_string(),
@@ -31,6 +31,7 @@ fn with_attention(raised: &[(u128, v1::AttentionKind, i64)]) -> v1::Workspace {
         ))),
         focused_pane_id: id(101),
         attention: Vec::new(),
+        running: Vec::new(),
     });
     for (pane, kind, since) in raised {
         let tab = w
@@ -48,7 +49,7 @@ fn with_attention(raised: &[(u128, v1::AttentionKind, i64)]) -> v1::Workspace {
 }
 
 /// Connected to a 1.9 daemon, showing the first thread's terminal.
-fn showing(raised: &[(u128, v1::AttentionKind, i64)], minor: u32) -> AppState {
+pub(super) fn showing(raised: &[(u128, v1::AttentionKind, i64)], minor: u32) -> AppState {
     let mut s = AppState::new(ConnectTarget::Local(None), CELL);
     s.update(Msg::Connected {
         welcome: v1::Welcome {

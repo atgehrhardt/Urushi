@@ -141,7 +141,7 @@ impl AppState {
 }
 
 /// The threads linked to `subtasks` and theirs, at any depth.
-fn linked_threads<'a>(subtasks: &'a [v1::Subtask], out: &mut Vec<&'a str>) {
+pub(crate) fn linked_threads<'a>(subtasks: &'a [v1::Subtask], out: &mut Vec<&'a str>) {
     for s in subtasks {
         out.push(&s.thread_id);
         linked_threads(&s.subtasks, out);

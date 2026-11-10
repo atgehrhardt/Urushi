@@ -26,6 +26,9 @@ pub enum EmulatorEvent {
     /// An agent's hook said it has started and reads input (Urushi's `ready` signal).
     /// Not attention.
     Ready,
+    /// An agent's hook said it is working (`true`, Urushi's `running` signal) or that its
+    /// session ended (`false`, `idle`). Not attention.
+    Running(bool),
 }
 
 /// Which viewport lines changed since the last [`Emulator::take_damage`].

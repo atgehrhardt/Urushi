@@ -1,5 +1,5 @@
-//! A thread's card in the sidebar: its title (with a dot when its agent finished or
-//! waits), the repo and branch it's on, and its lifecycle badge. Click to open it,
+//! A thread's card in the sidebar: its title (with a dot when its agent finished, works
+//! or waits), the repo and branch it's on, and its lifecycle badge. Click to open it,
 //! right-click for its menu, drag to file it under another project. A project's
 //! parent-branch thread (ADR 0029) stays at its project's top: it can't be dragged, and
 //! is closed from its menu rather than a delete button.
@@ -10,6 +10,7 @@ use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key};
 
 use crate::msg::Msg;
 use crate::organize::{Dragged, MenuTarget};
+use crate::running::Indicator;
 use crate::state::AppState;
 
 /// A thread: title, then which repo and branch it's on. Click to open, right-click
@@ -26,11 +27,11 @@ pub(super) fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) 
         Ok(v1::ThreadState::Deleting) => Some(("deleting", theme.warning)),
         _ => Some(("creating", theme.warning)),
     };
-    let attention = state.thread_attention(&thread.id);
+    let attention = state.thread_indicator(&thread.id);
     let mut details = Node::column()
         .width(Length::Fill(1.0))
         .gap(1.0)
-        .child(thread_title(theme, thread, selected, attention))
+        .child(thread_title(state, theme, thread, selected, attention))
         .child(Node::text(
             thread_meta(state, thread),
             Font::Ui,
@@ -110,12 +111,14 @@ pub(super) fn thread_card(state: &AppState, theme: &Theme, thread: &v1::Thread) 
         ))
 }
 
-/// A thread's title, with a dot when its agent finished or waits (ADR 0017).
+/// A thread's title, with a dot when its agent finished, works or waits (ADR 0017,
+/// ADR 0033).
 fn thread_title(
+    state: &AppState,
     theme: &Theme,
     thread: &v1::Thread,
     selected: bool,
-    attention: Option<v1::AttentionKind>,
+    attention: Option<Indicator>,
 ) -> Node<Msg> {
     let color = if selected {
         theme.text
@@ -130,7 +133,9 @@ fn thread_title(
             Node::text(&thread.title, Font::UiMedium, theme.font_size, color)
                 .width(Length::Fill(1.0)),
         )
-        .children(attention.map(|k| super::attention::indicator(theme, k, super::attention::DOT)))
+        .children(
+            attention.map(|k| super::attention::indicator(state, theme, k, super::attention::DOT)),
+        )
 }
 
 /// Which repo and branch a thread is on. Pinned threads leave their status section, so

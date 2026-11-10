@@ -26,8 +26,10 @@ pub mod msg;
 pub mod organize;
 mod platform;
 pub mod project_settings;
+mod pulse;
 pub mod quick_terminal;
 mod runner;
+pub mod running;
 pub mod sidebar;
 pub mod snapshot;
 pub mod state;
@@ -118,6 +120,8 @@ pub fn run_with(event_loop: EventLoop<UserEvent>, config: AppConfig) -> Result<(
         clipboard: platform::Clipboard::new(),
         safe_area: config.safe_area.clone(),
         animated_at: None,
+        pulse: pulse::Pulse::new(std::time::Instant::now()),
+        occluded: false,
         field_press: None,
         last_click: None,
     };

@@ -159,8 +159,9 @@ pub fn tab_to_proto(tab: &Tab) -> v1::Tab {
         title: tab.title().to_owned(),
         layout: Some(layout_to_proto(tab.layout())),
         focused_pane_id: tab.focused().to_string(),
-        // Volatile: the daemon adds it from its own state (see `urushi_core::attention`).
+        // Volatile: the daemon adds them from its own state (see `urushi_core::attention`).
         attention: Vec::new(),
+        running: Vec::new(),
     }
 }
 

@@ -12,7 +12,10 @@
 //!   `Notification` hook for permission prompts and questions (waiting), and a
 //!   `SessionStart` hook on startup (ready: it runs once Claude's own startup dialogs,
 //!   such as folder trust, are answered, so a drafted task message can be typed in; ADR
-//!   0030).
+//!   0030). It also says when Claude is **running** (ADR 0033): `UserPromptSubmit`,
+//!   `PreToolUse`, `PostToolUse` and `SubagentStart` write `running`, and `SessionEnd`
+//!   writes `idle`. The tool hooks fire for subagents' tools too and after a permission
+//!   is granted, so they keep a pane running for as long as anything works in it.
 //! - Codex: its `notify` program on turn completion (done), and its own terminal
 //!   notifications (OSC 9) for approval requests (waiting).
 //! - Cursor has no command-line hooks; bells and notifications still count.
@@ -20,7 +23,9 @@
 use std::fmt::Write as _;
 
 use super::Agent;
-use crate::attention::{AttentionKind, READY_SIGNAL, SIGNAL_NAMESPACE, SIGNAL_OSC};
+use crate::attention::{
+    AttentionKind, IDLE_SIGNAL, READY_SIGNAL, RUNNING_SIGNAL, SIGNAL_NAMESPACE, SIGNAL_OSC,
+};
 
 /// Environment variable holding the path of the pane's terminal device.
 pub const TTY_ENV: &str = "URUSHI_TTY";
@@ -39,6 +44,18 @@ pub fn signal_command(kind: AttentionKind) -> String {
 /// ([`READY_SIGNAL`]). Like [`signal_command`], harmless outside an Urushi pane.
 pub fn ready_command() -> String {
     word_command(READY_SIGNAL)
+}
+
+/// A shell command that tells the pane's terminal the agent is working
+/// ([`RUNNING_SIGNAL`]). Like [`signal_command`], harmless outside an Urushi pane.
+pub fn running_command() -> String {
+    word_command(RUNNING_SIGNAL)
+}
+
+/// A shell command that tells the pane's terminal the agent's session ended
+/// ([`IDLE_SIGNAL`]). Like [`signal_command`], harmless outside an Urushi pane.
+pub fn idle_command() -> String {
+    word_command(IDLE_SIGNAL)
 }
 
 /// A shell command writing Urushi's signal with `word` to the pane's terminal.
@@ -92,11 +109,13 @@ fn claude_settings() -> String {
             json_string(&command)
         )
     };
+    let running = format!(r#"[{{"hooks":{}}}]"#, hook(running_command()));
     format!(
-        r#"{{"hooks":{{"Stop":[{{"hooks":{}}}],"Notification":[{{"matcher":"permission_prompt|elicitation_dialog","hooks":{}}}],"SessionStart":[{{"matcher":"startup","hooks":{}}}]}}}}"#,
+        r#"{{"hooks":{{"Stop":[{{"hooks":{}}}],"Notification":[{{"matcher":"permission_prompt|elicitation_dialog","hooks":{}}}],"SessionStart":[{{"matcher":"startup","hooks":{}}}],"UserPromptSubmit":{running},"PreToolUse":{running},"PostToolUse":{running},"SubagentStart":{running},"SessionEnd":[{{"hooks":{}}}]}}}}"#,
         hook(signal_command(AttentionKind::Done)),
         hook(signal_command(AttentionKind::Waiting)),
-        hook(ready_command())
+        hook(ready_command()),
+        hook(idle_command()),
     )
 }
 
@@ -173,6 +192,30 @@ mod tests {
         // Ready once it has started, not again on /clear, resume or compaction.
         assert_eq!(command("SessionStart"), ready_command());
         assert_eq!(settings["hooks"]["SessionStart"][0]["matcher"], "startup");
+    }
+
+    #[test]
+    fn claude_says_when_it_runs_and_when_its_session_ends() {
+        let settings: serde_json::Value = serde_json::from_str(&claude_settings()).unwrap();
+        for event in [
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PostToolUse",
+            "SubagentStart",
+        ] {
+            let entry = &settings["hooks"][event][0];
+            assert_eq!(entry["hooks"][0]["command"], running_command(), "{event}");
+            // Every tool, every agent type.
+            assert!(entry.get("matcher").is_none(), "{event}");
+        }
+        assert_eq!(
+            settings["hooks"]["SessionEnd"][0]["hooks"][0]["command"],
+            idle_command()
+        );
+        assert_eq!(
+            running_command(),
+            r#"[ -w "$URUSHI_TTY" ] && printf '\033]777;urushi;running\007' > "$URUSHI_TTY"; true"#
+        );
     }
 
     #[test]

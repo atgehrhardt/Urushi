@@ -5,14 +5,15 @@ use urushi_core::{PaneId, QuickTerminal, TabId};
 use super::{ConvertError, layout_from_proto, layout_to_proto, parse_id};
 use crate::v1;
 
-/// Core quick terminal → wire. Attention is left empty; the daemon adds it from its own
-/// state, as for tabs.
+/// Core quick terminal → wire. Attention and running are left empty; the daemon adds
+/// them from its own state, as for tabs.
 pub fn quick_terminal_to_proto(q: &QuickTerminal) -> v1::QuickTerminal {
     v1::QuickTerminal {
         id: q.id().to_string(),
         layout: Some(layout_to_proto(q.layout())),
         focused_pane_id: q.focused().to_string(),
         attention: Vec::new(),
+        running: Vec::new(),
     }
 }
 

@@ -231,8 +231,8 @@ fn terminal_button(state: &AppState, theme: &Theme) -> Node<Msg> {
         )
         .children(
             state
-                .quick_attention()
-                .map(|k| super::attention::indicator(theme, k, super::attention::DOT)),
+                .quick_indicator()
+                .map(|k| super::attention::indicator(state, theme, k, super::attention::DOT)),
         )
         .child(Node::text(
             ">_",

@@ -43,6 +43,7 @@ pub(super) fn workspace() -> v1::Workspace {
             layout: Some(layout),
             focused_pane_id: pane.to_string(),
             attention: Vec::new(),
+            running: Vec::new(),
         }],
         folders: Vec::new(),
         boards: Vec::new(),
@@ -402,6 +403,7 @@ mod pointer;
 mod project_order;
 mod project_settings;
 mod quick;
+mod running;
 mod setup;
 mod sidebar;
 mod subtask_drafts;
