@@ -2,7 +2,7 @@
 
 - **Status:** Shipped (manual boards, columns, colors, tags, kinds, nested subtasks, attachments, threads started from tasks; Jira boards in [jira-boards](jira-boards.md))
 - **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,order,prompt,quick}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_nav.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/` (tabs in `tabs.rs`), `view/tasks/`, `view/labels.rs`, `view/menu/{tasks,boards}.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
-- **Related ADRs:** [0033](../adr/0033-quick-filters-written-to-jira-or-kept-here.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
+- **Related ADRs:** [0037](../adr/0037-quick-filters-written-to-jira-or-kept-here.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
 
 ## What it does
 A **Tasks** button sits under the sidebar's Projects | Repos tabs. It shows the number of
@@ -38,7 +38,7 @@ it back.
   several can be chosen, and a card shows when it or a subtask passes. The column
   counts then read "shown/all", and **Clear** drops every filter. Choosing another board
   clears them. Jira boards filter by much more ([jira-boards](jira-boards.md)).
-- **Quick filters** (1.21 daemons, ADR 0033): **Save filter…** in the bar (or **Save as
+- **Quick filters** (1.23 daemons, ADR 0037): **Save filter…** in the bar (or **Save as
   quick filter…** in **Filters ▾**) saves the search, types and tags chosen under a name.
   It becomes a chip after the search field, and an entry in **Filters ▾**, that turns
   it on and off. Right-click a chip for **Edit…** (rename it, or **Use current filters**)
@@ -100,6 +100,13 @@ it back.
   card's or on-screen thread picked first. **Start in thread** opens a new tab there,
   running the task agent with the task as its prompt (a plain terminal without one), and
   links the task to that thread (ADR 0018).
+- **Pull request** (ADR 0036, 1.22 daemons): an existing task on a local board has a
+  **Pull request** field under its tags. It takes the pull request's `https://` address
+  (anything else is pointed out, and the daemon refuses it) and is saved with Save;
+  **Open** opens it. Emptying it unlinks it. The thread linked to the task then shows
+  GitHub's mark on its card ([thread organization](thread-organization.md)). A Jira
+  board has no such field, because its issues' pull requests come from Jira
+  ([jira-boards](jira-boards.md)).
 - **Agent attention on cards:** when an agent in a thread linked to the task, or to any
   of its subtasks at any depth, finishes or waits for the user, the card gets a
   **Finished** (green) or **Needs input** (amber) badge by its title and a border in that
@@ -115,7 +122,8 @@ it back.
 - **Right-click or two-finger click** a card for its menu: **Open**, **Move to ›** (a
   column), **Make subtask of…**, **Color ›**, **Start thread…** / **Go to thread**, and
   **Delete task**, which deletes it
-  right away, as the editor's Delete does.
+  right away, as the editor's Delete does. On a Jira board it is **Delete issue…**, and
+  it asks first: the issue is deleted in Jira (see [Jira boards](jira-boards.md)).
 - Long names are cut short with an ellipsis instead of running over their neighbours:
   subtask titles in the editor, column names, board tabs and the card's thread chip.
 - **Drag** a card onto another card to put it above that card, or onto a column to put it
@@ -147,6 +155,9 @@ restarts.
   color, `move_task` takes an
   index counted without the moved task, clamped to the bottom, a task has at most
   `MAX_SUBTASKS`, and `link_thread` / `unlink_thread` record and forget threads.
+  `Task::pr_url` is a `PrUrl` (`pull_request.rs`: `https://` with a host, no
+  whitespace, at most `MAX_PR_URL`), set through `TaskPatch::pr_url` and refused on a
+  Jira board.
   The list of boards is kept in tab order; `move_board` (`order.rs`) reorders it.
   `Board.quick_filters` (`quick.rs`) holds `QuickFilter{id, name, rule}`, where
   `QuickRule::Fields{search, kinds, tags}` applies to boards of Urushi's own and
@@ -296,7 +307,8 @@ restarts.
   subtasks as an indented tree; `mv` takes a subtask out onto the board; `edit`,
   `rm-task` and `sub add` take subtask ids), `urushi board attach <task> <file>`,
   `urushi board attachment get <id> [--thumbnail] [-o file]|rm <id>` (`add --color --tag`,
-  `edit --color <c|none> --tag --untag`), `urushi board col add|rename|color|mv|rm`,
+  `edit --color <c|none> --tag --untag --pr <url|"">`; `show` prints `Pull request:`
+  lines), `urushi board col add|rename|color|mv|rm`,
   `urushi board sub add|done|undo|rename|rm`, `urushi board quick
   ls|add|edit|rm <board> …` (`--search`, `--kind`, `--tag`; a filter by name or id), and `urushi thread new <repo> --task <task or subtask>`.
   Columns can be named, e.g. `urushi board mv <task> done`.
@@ -330,6 +342,12 @@ restarts.
 ## Tests
 - Core: `board/tests.rs`, `board/tree/tests.rs` (nesting, bounds, links, old
   documents), `board/order.rs` (moving boards), `board/attachments.rs` (names, media types, bounds), `board/prompt.rs` and `tests/board_props.rs`.
+- Pull requests: core `board/pull_request.rs` (URLs, labels, the one shown),
+  `board/tests.rs` (linking at any depth, old documents); proto
+  `convert/boards/tests.rs` (round trips, an invalid link reads as none); daemon
+  `tests/jira_pull_requests.rs::a_local_task_links_a_pull_request_and_a_jira_issue_cannot`;
+  app `update/tests/pull_requests.rs` (the field, Save, unlinking, Jira boards and
+  older daemons).
 - Proto: `convert/boards/tests.rs` covers round trips and wire encoding of every 1.5,
   1.6 and 1.8 board message (`tests/round_trip.rs` covers `MoveBoard`), and that the largest attachment fits in a frame;
   `convert/boards/labels.rs` the color mapping.
@@ -391,6 +409,10 @@ restarts.
 - In the notes, Up/Down move between lines separated by line breaks, not between the
   wrapped lines of a long paragraph (the editing model doesn't know the layout).
 - A card's title is one line, cut short with an ellipsis.
+- A new task can't be given a pull request until it is saved: `CreateTask` has no
+  `pr_url`, so the field shows only on an existing task.
+- A local task links one pull request; the card can't show its state (open or merged),
+  since nothing reads the code host.
 - A dragged card doesn't scroll a column that is taller than the panel.
 - The board tabs don't scroll sideways: with many boards they run past the panel's edge,
   and a dragged tab can't reach the ones out of view (use the menu or `urushi board

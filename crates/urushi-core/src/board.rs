@@ -15,8 +15,9 @@
 //!
 //! A board can also follow a Jira board (`jira.rs`, `sync.rs`, ADR 0020): its content
 //! then comes from Jira, and changes Jira owns are refused here with
-//! [`BoardError::FollowsJira`]. Any task can have a [`TaskKind`] (`kind.rs`). A board
-//! keeps named quick filters (`quick.rs`).
+//! [`BoardError::FollowsJira`]. Any task can have a [`TaskKind`] (`kind.rs`). A local
+//! task can link its pull request, and a Jira issue keeps the ones Jira reports
+//! (`pull_request.rs`, ADR 0036). A board keeps named quick filters (`quick.rs`).
 
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +33,7 @@ mod labels;
 mod message;
 mod order;
 mod prompt;
+mod pull_request;
 mod quick;
 mod sync;
 mod tree;
@@ -51,6 +53,7 @@ pub use labels::{LabelColor, MAX_TAG, MAX_TAGS, tag_color, task_tags};
 pub use message::custom_task_prompt;
 pub use order::move_board;
 pub use prompt::{MAX_PROMPT_BYTES, task_prompt, task_reference_prompt};
+pub use pull_request::{MAX_PR_TITLE, MAX_PR_URL, MAX_PULL_REQUESTS, PrStatus, PrUrl, PullRequest};
 pub use quick::{
     MAX_JQL, MAX_QUICK_FILTERS, MAX_SEARCH, QuickFilter, QuickFilterRef, QuickRule,
     quick_filter_name,
@@ -148,6 +151,10 @@ pub struct Task {
     /// The Jira issue it shows, on a Jira board.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issue: Option<Issue>,
+    /// The pull request for it, on a local board (ADR 0036). A Jira issue's pull
+    /// requests come from Jira instead ([`Issue::pull_requests`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr_url: Option<PrUrl>,
 }
 
 impl Task {
@@ -171,6 +178,7 @@ impl Task {
             thread: None,
             kind: None,
             issue: None,
+            pr_url: None,
         })
     }
 }
@@ -190,6 +198,8 @@ pub struct TaskPatch {
     pub done: Option<bool>,
     /// New kind; `Some(None)` clears it.
     pub kind: Option<Option<TaskKind>>,
+    /// New pull request link; `Some(None)` clears it. Local boards only.
+    pub pr_url: Option<Option<PrUrl>>,
 }
 
 impl TaskPatch {
@@ -201,6 +211,7 @@ impl TaskPatch {
             && self.tags.is_none()
             && self.done.is_none()
             && self.kind.is_none()
+            && self.pr_url.is_none()
     }
 }
 
@@ -283,9 +294,10 @@ impl Board {
         Ok(())
     }
 
-    /// Changes a task's (at any depth) title, notes, color, tags, kind and/or check
-    /// mark. Nothing changes unless every given value is valid. On a Jira board only
-    /// the color can change here; the rest is written to Jira and merged back.
+    /// Changes a task's (at any depth) title, notes, color, tags, kind, pull request
+    /// and/or check mark. Nothing changes unless every given value is valid. On a Jira
+    /// board only the color can change here; the rest is written to Jira and merged
+    /// back, and its pull requests come from Jira.
     pub fn update_task(&mut self, id: TaskId, patch: &TaskPatch) -> Result<(), BoardError> {
         if !patch.is_local() {
             self.local_only("editing a task this way")?;
@@ -311,6 +323,9 @@ impl Board {
         }
         if let Some(kind) = patch.kind {
             task.kind = kind;
+        }
+        if let Some(pr_url) = &patch.pr_url {
+            task.pr_url.clone_from(pr_url);
         }
         Ok(())
     }

@@ -1,5 +1,5 @@
 //! Quick filters a board keeps: named filters shown as chips above the board, each
-//! turned on and off with a click, as Jira's quick filters are (ADR 0033).
+//! turned on and off with a click, as Jira's quick filters are (ADR 0037).
 //!
 //! A board of Urushi's own filters by fields every task has ([`QuickRule::Fields`]: a
 //! search, kinds and tags), which clients evaluate. A Jira board's quick filters live in

@@ -1,4 +1,4 @@
-//! [`CloudJira`]'s requests for a board's quick filters (ADR 0033).
+//! [`CloudJira`]'s requests for a board's quick filters (ADR 0037).
 //!
 //! Reading uses the agile API (`GET /rest/agile/1.0/board/{id}/quickfilter`). Jira Cloud
 //! documents no way to write quick filters, so writing uses the endpoint Jira's own

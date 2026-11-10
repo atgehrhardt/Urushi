@@ -1,4 +1,4 @@
-//! Quick filters (protocol 1.21): saving what is chosen as one (JQL on a Jira board, a
+//! Quick filters (protocol 1.23): saving what is chosen as one (JQL on a Jira board, a
 //! search, kinds and tags elsewhere), turning it on, changing and deleting it from its
 //! chip's menu, errors in the dialog, Jira's refusal in the banner, older daemons.
 
@@ -14,7 +14,7 @@ use crate::msg::{Effect, FilterMsg, Followup, Msg};
 use crate::organize::MenuTarget;
 use crate::state::{AppState, Dialog, Field};
 
-/// A 1.21 daemon showing `b` (task "a" is a bug tagged "UI"), the panel open.
+/// A 1.23 daemon showing `b` (task "a" is a bug tagged "UI"), the panel open.
 fn showing(b: v1::Board) -> AppState {
     let mut s = attached();
     s.daemon_minor = urushi_client::QUICK_FILTERS_SINCE_MINOR;

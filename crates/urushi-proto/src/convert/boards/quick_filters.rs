@@ -1,4 +1,4 @@
-//! Quick filters (protocol 1.21, ADR 0033): core ⇄ wire for the filters a board keeps,
+//! Quick filters (protocol 1.23, ADR 0037): core ⇄ wire for the filters a board keeps,
 //! their rules, and references to a board's quick filters, Jira's own or kept.
 
 use urushi_core::QuickFilter;

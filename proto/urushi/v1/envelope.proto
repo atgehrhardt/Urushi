@@ -126,7 +126,7 @@ message Request {
     UpdateFolderSettingsRequest update_folder_settings = 71;
     // Since 1.20.
     OpenQuickTerminalRequest open_quick_terminal = 72;
-    // Since 1.21.
+    // Since 1.23.
     CreateQuickFilterRequest create_quick_filter = 73;
     UpdateQuickFilterRequest update_quick_filter = 74;
     DeleteQuickFilterRequest delete_quick_filter = 75;
@@ -172,7 +172,7 @@ message Response {
     JiraIssueRefs jira_issue_refs = 30;
     // Since 1.20.
     QuickTerminal quick_terminal = 31;
-    // Since 1.21.
+    // Since 1.23.
     QuickFilterSaved quick_filter_saved = 32;
   }
 }

@@ -19,6 +19,7 @@ mod quick_filters;
 mod requests;
 mod screen;
 mod tasks;
+mod thread_links;
 mod workspace;
 
 pub use connection::{Client, Events};
@@ -30,6 +31,7 @@ pub use quick::QUICK_TERMINAL_SINCE_MINOR;
 pub use quick_filters::{QUICK_FILTERS_SINCE_MINOR, jira_filter, kept_filter};
 pub use screen::{Cell, ScreenState};
 pub use tasks::{FoundTask, TaskRef};
+pub use thread_links::{IssueLink, PrLink, ThreadLinks};
 pub use urushi_proto::endpoint::{Endpoint, parse_tcp};
 pub use urushi_proto::v1;
 pub use workspace::WorkspaceMirror;

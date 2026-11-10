@@ -1,4 +1,4 @@
-//! Wire → service for a board's quick filters (protocol 1.21, ADR 0033): making,
+//! Wire → service for a board's quick filters (protocol 1.23, ADR 0037): making,
 //! changing and removing them. On a Jira board they are written to Jira.
 
 use urushi_proto::convert;

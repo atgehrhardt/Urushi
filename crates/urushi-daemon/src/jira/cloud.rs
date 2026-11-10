@@ -10,13 +10,15 @@
 //! - Changes use the issue endpoints: transitions, edit (labels as add/remove
 //!   operations, so labels Urushi can't show are never touched), create and rank.
 //! - A board's quick filters are read from the agile API and written through the
-//!   endpoint Jira's own board settings use (`quick_filters.rs`, ADR 0033).
+//!   endpoint Jira's own board settings use (`quick_filters.rs`, ADR 0037).
+//! - An issue's pull requests come from Jira's development info (`cloud/dev.rs`, ADR
+//!   0036).
 
 use std::sync::Arc;
 
 use serde_json::{Value, json};
 use urushi_core::TaskKind;
-use urushi_core::board::{JiraQuickFilter, Person, SyncedIssue};
+use urushi_core::board::{JiraQuickFilter, Person, PullRequest, SyncedIssue};
 
 use super::api::{
     BoardConfig, BoardInfo, Fetched, IssueEdit, IssueFields, IssueQuery, JiraApi, JiraError,
@@ -335,6 +337,11 @@ impl JiraApi for CloudJira {
         .map(drop)
     }
 
+    fn delete_issue(&self, account: &Account, key: &str) -> JiraResult<()> {
+        let path = format!("/rest/api/3/issue/{}?deleteSubtasks=true", segment(key));
+        self.call(account, Method::Delete, &path, None).map(drop)
+    }
+
     fn details(&self, account: &Account, key: &str, board: u64) -> JiraResult<IssueDetails> {
         self.read_details(account, key, board)
     }
@@ -431,9 +438,14 @@ impl JiraApi for CloudJira {
         self.call(account, Method::Post, &path, Some(&body))
             .map(drop)
     }
+
+    fn pull_requests(&self, account: &Account, issue_id: &str) -> JiraResult<Vec<PullRequest>> {
+        self.read_pull_requests(account, issue_id)
+    }
 }
 
 mod details;
+mod dev;
 mod quick_filters;
 mod search;
 

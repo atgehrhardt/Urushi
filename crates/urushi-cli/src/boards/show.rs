@@ -80,10 +80,16 @@ fn summary(found: &FoundTask<'_>) -> Result<()> {
     if !task.tags().is_empty() {
         out(&format!("Tags: {}", task.tags().join(", ")))?;
     }
+    if !task.pr_url().is_empty() {
+        out(&format!("Pull request: {}", task.pr_url()))?;
+    }
     let Some(i) = task.issue() else {
         return Ok(());
     };
     out(&format!("Jira: {}", i.url))?;
+    for pr in &i.pull_requests {
+        out(&format!("Pull request: {}{}", pr.url, pr_facts(pr)))?;
+    }
     let mut facts = vec![
         format!("Type: {}", i.type_name),
         format!("Status: {}", i.status),
@@ -104,6 +110,21 @@ fn summary(found: &FoundTask<'_>) -> Result<()> {
         facts.push(format!("Epic: {} {}", epic.key, epic.summary));
     }
     out(&facts.join(" · "))
+}
+
+/// A Jira pull request's status and title, after its URL.
+fn pr_facts(pr: &v1::PullRequest) -> String {
+    let status = match v1::PullRequestStatus::try_from(pr.status) {
+        Ok(v1::PullRequestStatus::Open) => " (open)",
+        Ok(v1::PullRequestStatus::Merged) => " (merged)",
+        Ok(v1::PullRequestStatus::Declined) => " (declined)",
+        _ => "",
+    };
+    if pr.title.is_empty() {
+        status.to_owned()
+    } else {
+        format!("{status} {}", pr.title)
+    }
 }
 
 /// A Jira issue's other fields, comments, links and files.

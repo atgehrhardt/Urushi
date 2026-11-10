@@ -1,4 +1,4 @@
-//! `urushi board quick …`: a board's quick filters (protocol 1.21, ADR 0033). On a Jira
+//! `urushi board quick …`: a board's quick filters (protocol 1.23, ADR 0037). On a Jira
 //! board they are Jira's (JQL), and the daemon writes them to Jira, or keeps a new one
 //! itself when Jira won't take it; on a board of Urushi's own they filter by search,
 //! kind and tag.

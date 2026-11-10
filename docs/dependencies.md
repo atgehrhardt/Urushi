@@ -71,6 +71,7 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | JetBrains Mono (Regular, Bold, Italic, Bold Italic) | OFL-1.1 (`assets/fonts/JetBrainsMono-OFL.txt`) | Terminal font |
 | Inter (Regular, Medium, SemiBold) | OFL-1.1 (`assets/fonts/Inter-OFL.txt`) | UI font |
 | App icon and logo (`assets/icon/`) | Ours | Designed for Urushi; see `docs/platforms.md`. |
+| Jira and GitHub marks (`assets/brands/*.svg`, from [Simple Icons](https://simpleicons.org) 16.35.0) | CC0-1.0 (the icon set); the marks are their owners' trademarks | A thread card's links to its Jira issue and pull request (ADR 0036). Used only to point at the brand's own pages, as [Atlassian's](https://atlassian.design/foundations/logos/) and [GitHub's](https://github.com/logos) guidelines allow; Simple Icons' disclaimer asks users to follow them. Rendered to white masks (`*-48.rgba`) by `scripts/render-icons.swift` and tinted by the app. Drawing our own look-alikes would be no less a use of the marks. |
 
 ## Written in-house instead of depending on a crate
 

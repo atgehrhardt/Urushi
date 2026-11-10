@@ -1,7 +1,7 @@
-// Making, changing and removing a board's quick filters (ADR 0033). On a board of
+// Making, changing and removing a board's quick filters (ADR 0037). On a board of
 // Urushi's own the daemon keeps them (Board.quick_filters). On a Jira board they are
 // written to Jira, as quick filters of the Jira board; if Jira won't take a new one,
-// the daemon keeps it instead and says why. Since protocol 1.21.
+// the daemon keeps it instead and says why. Since protocol 1.23.
 syntax = "proto3";
 
 package urushi.v1;
@@ -18,7 +18,7 @@ message CreateQuickFilterRequest {
   QuickFilterRule rule = 3;
 }
 
-// Where a new quick filter went. Since 1.21.
+// Where a new quick filter went. Since 1.23.
 message QuickFilterSaved {
   QuickFilterRef filter = 1;
   // Set when the board follows Jira but Jira wouldn't take the filter, so the daemon

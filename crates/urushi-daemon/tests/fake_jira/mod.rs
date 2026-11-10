@@ -10,10 +10,13 @@
     reason = "test helpers"
 )]
 
+use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex};
 
 use serde_json::Value;
-use urushi_core::board::{Issue, JiraColumn, JiraQuickFilter, Person, StatusCategory, SyncedIssue};
+use urushi_core::board::{
+    Issue, JiraColumn, JiraQuickFilter, Person, PullRequest, StatusCategory, SyncedIssue,
+};
 use urushi_core::{TaskKind, Timestamp};
 use urushi_daemon::jira::details::{
     Comment, Field, FieldKind, FieldOption, FieldValue, IssueDetails, IssueRef, JiraAttachment,
@@ -103,6 +106,12 @@ pub struct FakeJira {
     /// While set, writing quick filters fails with this (see
     /// [`FakeJira::refuse_quick_filter_writes`]).
     quick_filter_refusal: Mutex<Option<JiraError>>,
+    /// While `true`, deleting issues is refused, as for an account without Jira's
+    /// "Delete issues" permission.
+    pub deletes_forbidden: Mutex<bool>,
+    /// What development info answers for an issue, by its number (none: no pull
+    /// requests).
+    pub pull_requests: Mutex<HashMap<u32, JiraResult<Vec<PullRequest>>>>,
 }
 
 /// JQL Jira can't read (`issue_ids` refuses it).
@@ -154,6 +163,8 @@ impl FakeJira {
                 jql: BUGS.into(),
             }]),
             quick_filter_refusal: Mutex::new(None),
+            deletes_forbidden: Mutex::new(false),
+            pull_requests: Mutex::default(),
         })
     }
 
@@ -198,6 +209,12 @@ impl FakeJira {
         let remote = issues.iter_mut().find(|i| i.id == id).unwrap();
         f(remote);
         remote.version += 1;
+    }
+
+    /// Whether the issue is still in Jira.
+    pub fn has(&self, key: &str) -> bool {
+        let issues = self.issues.lock().unwrap();
+        issues.iter().any(|i| self::key(i.id) == key)
     }
 
     pub fn remote(&self, key: &str) -> Remote {
@@ -525,6 +542,23 @@ impl JiraApi for FakeJira {
         Ok(())
     }
 
+    fn delete_issue(&self, account: &Account, key: &str) -> JiraResult<()> {
+        Self::check(account)?;
+        if *self.deletes_forbidden.lock().unwrap() {
+            return Err(JiraError::Forbidden(
+                "You do not have permission to delete issues in this project.".into(),
+            ));
+        }
+        let id = Self::id_of(key);
+        let mut issues = self.issues.lock().unwrap();
+        if !issues.iter().any(|i| i.id == id) {
+            return Err(JiraError::NotFound(format!("Issue does not exist: {key}")));
+        }
+        self.log(format!("delete {key}"));
+        issues.retain(|i| i.id != id && i.parent != Some(id));
+        Ok(())
+    }
+
     fn details(&self, account: &Account, key: &str, _board: u64) -> JiraResult<IssueDetails> {
         Self::check(account)?;
         self.log(format!("details {key}"));
@@ -780,6 +814,18 @@ impl JiraApi for FakeJira {
             r.extra.worklogs.push((id, seconds, comment.into()));
         });
         Ok(())
+    }
+
+    fn pull_requests(&self, account: &Account, issue_id: &str) -> JiraResult<Vec<PullRequest>> {
+        Self::check(account)?;
+        let n: u32 = issue_id.trim_start_matches("100").parse().unwrap();
+        self.log(format!("pull_requests {}", key(n)));
+        self.pull_requests
+            .lock()
+            .unwrap()
+            .get(&n)
+            .cloned()
+            .unwrap_or(Ok(Vec::new()))
     }
 }
 

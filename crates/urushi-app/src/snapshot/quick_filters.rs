@@ -1,4 +1,4 @@
-//! The quick-filter scenarios (protocol 1.21): a board of Urushi's own with quick
+//! The quick-filter scenarios (protocol 1.23): a board of Urushi's own with quick
 //! filters as chips, one on, and a selection that can be saved (`board-quick-filters`);
 //! saving a Jira board's selection, with the JQL built from it
 //! (`quick-filter-save`); and a quick filter chip's menu (`quick-filter-menu`).

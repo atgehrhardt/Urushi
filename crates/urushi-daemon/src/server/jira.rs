@@ -1,5 +1,5 @@
 //! Wire → service for Jira (protocol 1.12): the sign-in, listing and importing boards,
-//! syncing one now, and (1.13) evaluating its quick filters (since 1.21 the board's own
+//! syncing one now, and (1.13) evaluating its quick filters (since 1.23 the board's own
 //! too). The API token comes in with `ConnectJira` and never goes out.
 
 use urushi_proto::convert;

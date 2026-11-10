@@ -39,7 +39,7 @@ mod tabs;
 pub(in crate::view) use card::drag_ghost;
 use column::column;
 pub(in crate::view) use column::drop_line;
-pub(in crate::view) use dialogs::{delete_board, delete_column};
+pub(in crate::view) use dialogs::{delete_board, delete_column, delete_issue};
 
 /// Width of the slot that adds a column.
 const ADD_COLUMN_WIDTH: f32 = 96.0;
@@ -116,6 +116,12 @@ pub(super) fn panel(
     .children(filter_bar)
     .child(urushi_ui::widgets::divider(theme, false))
     .child(body)
+    .children(super::error::for_place(
+        state,
+        theme,
+        crate::errors::ErrorPlace::Board,
+        None,
+    ))
 }
 
 /// Board tabs, "+", and the shown board's actions.

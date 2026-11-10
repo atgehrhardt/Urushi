@@ -9,7 +9,7 @@ use super::{Service, ServiceError, ServiceResult, blocking};
 
 impl Service {
     /// The ids of the board's issues that every quick filter in `filters` (Jira's own,
-    /// by id) and `kept` (the board's own JQL filters, ADR 0033) lets through (at most
+    /// by id) and `kept` (the board's own JQL filters, ADR 0037) lets through (at most
     /// the board's bound). Unknown filters are refused.
     pub async fn query_jira_filter(
         &self,

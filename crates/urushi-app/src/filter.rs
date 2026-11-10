@@ -2,7 +2,7 @@
 //! issues"), and any of the issue's fields (type, priority, status, labels, epic,
 //! sprint, components, fix versions), "Recently updated", and quick filters: a Jira
 //! board's own, which only Jira can evaluate (`QueryJiraFilter`, protocol 1.13), and
-//! those the board keeps (protocol 1.21, `quick.rs`), which are JQL on a Jira board and
+//! those the board keeps (protocol 1.23, `quick.rs`), which are JQL on a Jira board and
 //! a search, kinds and tags elsewhere.
 //!
 //! Values chosen in one dimension widen it (any of them); dimensions narrow each other

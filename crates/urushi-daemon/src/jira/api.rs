@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use urushi_core::TaskKind;
 use urushi_core::board::{
-    JiraBoard, JiraColumn, JiraQuickFilter, Person, StatusCategory, SyncedIssue,
+    JiraBoard, JiraColumn, JiraQuickFilter, Person, PullRequest, StatusCategory, SyncedIssue,
 };
 
 use super::details::{Field, IssueDetails, IssueRef};
@@ -261,8 +261,11 @@ pub trait JiraApi: Send + Sync {
     fn create(&self, account: &Account, issue: &NewIssue) -> JiraResult<String>;
     /// Moves an issue in the board's ranking.
     fn rank(&self, account: &Account, key: &str, rank: &Rank) -> JiraResult<()>;
+    /// Deletes an issue for good, with its sub-tasks (Jira refuses to delete an issue
+    /// that has sub-tasks otherwise).
+    fn delete_issue(&self, account: &Account, key: &str) -> JiraResult<()>;
 
-    // ---- A board's quick filters (ADR 0033) -----------------------------------------
+    // ---- A board's quick filters (ADR 0037) -----------------------------------------
     /// A board's quick filters, as Jira shows them above it.
     fn quick_filters(&self, account: &Account, board: u64) -> JiraResult<Vec<JiraQuickFilter>>;
     /// Adds a quick filter to a board; its id, when Jira's answer says it.
@@ -332,4 +335,8 @@ pub trait JiraApi: Send + Sync {
         started: &str,
         comment: &str,
     ) -> JiraResult<()>;
+    /// The GitHub pull requests the site's code-host integration reports for the issue
+    /// with this Jira id (ADR 0036), newest first; none when the site has no such
+    /// integration.
+    fn pull_requests(&self, account: &Account, issue_id: &str) -> JiraResult<Vec<PullRequest>>;
 }

@@ -1,6 +1,6 @@
 //! Messages for filtering a board (`filter.rs`): the search, people, any field's
 //! values, "Recently updated", quick filters (a Jira board's and the board's own), and
-//! saving, changing and deleting quick filters (protocol 1.21).
+//! saving, changing and deleting quick filters (protocol 1.23).
 
 use crate::filter::Dim;
 use crate::filter::quick::QuickRef;

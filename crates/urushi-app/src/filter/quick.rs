@@ -1,4 +1,4 @@
-//! Quick filters the board keeps (protocol 1.21, ADR 0033): which one a chip or menu
+//! Quick filters the board keeps (protocol 1.23, ADR 0037): which one a chip or menu
 //! means, deciding whether a task passes one of a search, kinds and tags (a board of
 //! Urushi's own; JQL is Jira's to evaluate), building that rule from what is chosen on
 //! the board, and describing it in a few words.

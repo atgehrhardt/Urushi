@@ -219,3 +219,29 @@ pub async fn next_event<T>(
     .await
     .expect("event arrived in time")
 }
+
+/// Waits for a `ScreenUpdate` of `pane` that `pick` accepts, acking every update on the
+/// way as a real client does: the daemon holds back the next update until the last one
+/// is acked, so skipping one unacked would stall the stream.
+pub async fn next_screen_update(
+    client: &Client,
+    events: &mut Events,
+    pane: &str,
+    mut pick: impl FnMut(&v1::ScreenUpdate) -> bool,
+) -> v1::ScreenUpdate {
+    tokio::time::timeout(TIMEOUT, async {
+        loop {
+            let event = events.recv().await.expect("connection open");
+            if let v1::event::Body::ScreenUpdate(update) = event
+                && update.pane_id == pane
+            {
+                client.ack_screen(pane, update.seq).await.unwrap();
+                if pick(&update) {
+                    return update;
+                }
+            }
+        }
+    })
+    .await
+    .expect("screen update arrived in time")
+}

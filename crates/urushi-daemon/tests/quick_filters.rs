@@ -1,4 +1,4 @@
-//! Quick filters end to end (protocol 1.21, ADR 0033): a board of Urushi's own keeps
+//! Quick filters end to end (protocol 1.23, ADR 0037): a board of Urushi's own keeps
 //! them; a Jira board's are written to Jira and stay through syncs, and one Jira won't
 //! take is kept here as JQL Jira still evaluates.
 #![allow(

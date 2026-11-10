@@ -138,6 +138,8 @@ pub(super) fn issue(v: &Value, fields: &IssueFields) -> Option<SyncedIssue> {
                 .unwrap_or_default(),
             updated: time(&f["updated"]),
             notes_editable: true,
+            // Read from development info for linked issues only (ADR 0036).
+            pull_requests: Vec::new(),
         },
         title: text(&f["summary"]),
         notes: adf::to_markdown(&f["description"]),
@@ -303,6 +305,7 @@ pub(super) fn error_message(body: &[u8]) -> String {
 }
 
 pub(super) mod details;
+pub(super) mod dev;
 
 #[cfg(test)]
 mod tests;

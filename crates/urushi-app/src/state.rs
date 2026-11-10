@@ -85,9 +85,45 @@ pub struct EditorNav {
     pub back: Vec<Dialog>,
     /// Closing was asked with unsaved edits: the editor asks to confirm.
     pub confirm_discard: bool,
+    /// Deleting a Jira issue (this task or one of its subtasks) was asked: the editor
+    /// asks to confirm (ADR 0034).
+    pub confirm_delete: Option<IssueDeletion>,
     /// This editor writes a new subtask of the editor it was opened from (the last in
     /// `back`), to go at this place in its drafts. Back and Save put it there.
     pub draft_of_previous: Option<usize>,
+}
+
+impl EditorNav {
+    /// Drops any question the editor was asking (discard, delete).
+    pub fn settle(&mut self) {
+        self.confirm_discard = false;
+        self.confirm_delete = None;
+    }
+}
+
+/// A Jira issue about to be deleted, as the question before it names it. Deleting it
+/// in Jira is for good and for everyone, so Urushi always asks (ADR 0034).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IssueDeletion {
+    /// The task showing it.
+    pub task: String,
+    /// Its key (`ACME-2`).
+    pub key: String,
+    /// Its title.
+    pub title: String,
+    /// How many subtasks (at any depth) go with it.
+    pub subtasks: usize,
+}
+
+impl IssueDeletion {
+    /// "ACME-2", "ACME-2 and its subtask" or "ACME-2 and its 3 subtasks".
+    pub fn what(&self) -> String {
+        match self.subtasks {
+            0 => self.key.clone(),
+            1 => format!("{} and its subtask", self.key),
+            n => format!("{} and its {n} subtasks", self.key),
+        }
+    }
 }
 
 /// A dialog field that can take keyboard focus.
@@ -117,6 +153,8 @@ pub enum Field {
     NestQuery,
     /// Task editor: the "add a tag" field.
     TaskTag,
+    /// Task editor: the pull request link.
+    TaskPrUrl,
     /// Connect Jira: the site.
     JiraSite,
     /// Connect Jira: the account's email.
@@ -349,7 +387,7 @@ pub enum Dialog {
         /// Why listing or importing failed.
         error: Option<String>,
     },
-    /// Save what is chosen on the board as a quick filter, or change one (ADR 0033).
+    /// Save what is chosen on the board as a quick filter, or change one (ADR 0037).
     QuickFilter(Box<crate::filter::editor::QuickFilterEditor>),
     /// Confirm deleting a quick filter.
     DeleteQuickFilter {
@@ -360,6 +398,8 @@ pub enum Dialog {
         /// Its name, for the heading.
         name: String,
     },
+    /// Confirm deleting a Jira issue (from its card's menu), in Jira, for good.
+    DeleteIssue(IssueDeletion),
     /// Confirm deleting a board and its tasks.
     DeleteBoard {
         /// Board id.
@@ -455,7 +495,7 @@ pub struct AppState {
     pub dialog: Option<Dialog>,
     /// The focused dialog field.
     pub focus: Option<Field>,
-    /// An error to show in the banner.
+    /// The error to show, on whatever surface is on top (`errors.rs`).
     pub error: Option<String>,
     /// Text selection: pane and range.
     pub selection: Option<(String, Selection)>,
@@ -617,6 +657,23 @@ impl AppState {
         self.daemon_minor >= crate::board::EPIC_CARDS_SINCE_MINOR
     }
 
+    /// Whether the daemon links pull requests to tasks and reads a Jira issue's from
+    /// Jira (protocol 1.22, ADR 0036).
+    pub fn daemon_supports_pr_links(&self) -> bool {
+        self.daemon_minor >= crate::board::PR_LINKS_SINCE_MINOR
+    }
+
+    /// Whether the daemon deletes Jira issues (protocol 1.21, ADR 0034).
+    pub fn daemon_supports_jira_deletion(&self) -> bool {
+        self.daemon_minor >= crate::board::JIRA_DELETION_SINCE_MINOR
+    }
+
+    /// Whether Delete is offered for a task: any of Urushi's own, and Jira issues on a
+    /// daemon that deletes them.
+    pub fn can_delete(&self, task: urushi_client::TaskRef<'_>) -> bool {
+        task.issue().is_none() || self.daemon_supports_jira_deletion()
+    }
+
     /// Whether the daemon keeps a quick terminal (protocol 1.20).
     pub fn daemon_supports_quick_terminal(&self) -> bool {
         self.daemon_minor >= crate::quick_terminal::QUICK_TERMINAL_SINCE_MINOR
@@ -627,7 +684,7 @@ impl AppState {
         self.daemon_minor >= crate::organize::PROJECT_ORDER_SINCE_MINOR
     }
 
-    /// Whether the daemon keeps quick filters and writes them to Jira (protocol 1.21).
+    /// Whether the daemon keeps quick filters and writes them to Jira (protocol 1.23).
     pub fn daemon_supports_quick_filters(&self) -> bool {
         self.daemon_minor >= urushi_client::QUICK_FILTERS_SINCE_MINOR
     }
@@ -673,5 +730,11 @@ impl AppState {
             .find(|t| Some(&t.id) == selected)
             .or_else(|| tabs.first())
             .copied()
+    }
+
+    /// On phones (`compact`), whether the page shown is the thread list rather than the
+    /// terminals: it was asked for, or there is nothing else to show.
+    pub fn shows_thread_list_page(&self) -> bool {
+        self.sidebar_open || self.current_tab().is_none() && self.selected_thread.is_none()
     }
 }

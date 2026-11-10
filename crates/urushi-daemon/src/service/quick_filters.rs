@@ -1,4 +1,4 @@
-//! A board's quick filters (ADR 0033): making, changing and removing them.
+//! A board's quick filters (ADR 0037): making, changing and removing them.
 //!
 //! A board of Urushi's own keeps its quick filters itself (`Board.quick_filters`). A
 //! Jira board's quick filters are Jira's: they are written to Jira (under the board's

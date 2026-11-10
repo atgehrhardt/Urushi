@@ -1,11 +1,12 @@
 //! The launcher's choices (terminal, or an installed agent CLI), shown as a picker
 //! dialog for a new tab and inline in a thread that has no tabs.
 
-use urushi_ui::widgets::{ButtonKind, button, modal};
+use urushi_ui::widgets::{ButtonKind, button};
 use urushi_ui::{Align, Font, Insets, Length, Node, Role, Theme, key};
 
 use crate::msg::Msg;
 use crate::state::{AppState, Launch};
+use crate::view::modal::modal;
 
 /// One choice: a numbered row that starts it when clicked.
 fn choice(
@@ -100,6 +101,7 @@ pub(super) fn dialog(state: &AppState, theme: &Theme, highlighted: usize) -> Nod
         .child(choices(state, theme, Some(highlighted)))
         .child(footnote(state, theme));
     modal(
+        state,
         theme,
         "New tab",
         420.0,

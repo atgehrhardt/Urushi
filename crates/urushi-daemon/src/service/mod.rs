@@ -21,6 +21,7 @@ mod fresh_base;
 mod jira;
 mod jira_create;
 mod jira_details;
+mod jira_dev;
 mod jira_edit;
 mod jira_query;
 mod jira_sync;
@@ -55,6 +56,7 @@ pub use attachments::AttachmentData;
 pub use boards::{NewSubtask, NewTask};
 pub use deletion::DeletionPlan;
 pub use jira::{JiraSignIn, NOT_SIGNED_IN};
+pub use jira_dev::{PR_ACTIVE_INTERVAL, PR_IDLE_INTERVAL, PR_PER_ROUND};
 pub use jira_edit::IssueChange;
 pub use jira_sync::{ACTIVE_INTERVAL, BoardWatch, FULL_INTERVAL, IDLE_INTERVAL, WATCHED_INTERVAL};
 pub use project_base::ProjectSettingsRequest;
@@ -244,6 +246,7 @@ impl Service {
         service.persist()?;
         service.keep_restore_points();
         service.keep_jira_synced();
+        service.keep_pull_requests_current();
         Ok(service)
     }
 

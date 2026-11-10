@@ -1,4 +1,4 @@
-//! The quick-filter dialog's draft (ADR 0033): saving what is chosen on the board as a
+//! The quick-filter dialog's draft (ADR 0037): saving what is chosen on the board as a
 //! quick filter, or changing one. On a Jira board it holds the JQL to send, which the
 //! person can read and change; on a board of Urushi's own, the search, kinds and tags.
 

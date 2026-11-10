@@ -37,6 +37,7 @@ macro_rules! focused_field {
             (Some(Dialog::Task { notes, .. }), Field::TaskNotes) => Some(notes),
             (Some(Dialog::Task { subtasks, .. }), Field::NewSubtask) => Some($($r)+ subtasks.new),
             (Some(Dialog::Task { labels, .. }), Field::TaskTag) => Some($($r)+ labels.input),
+            (Some(Dialog::Task { labels, .. }), Field::TaskPrUrl) => Some($($r)+ labels.pr_url),
             (Some(Dialog::Task { issue, .. }), Field::JiraSearch) => Some($($r)+ issue.search),
             (Some(Dialog::Task { issue, .. }), Field::JiraComment) => Some($($r)+ issue.comment),
             (Some(Dialog::Task { issue, .. }), Field::JiraWork) => Some($($r)+ issue.work),
@@ -123,6 +124,9 @@ impl AppState {
                 let mut fields = vec![Field::TaskTitle, Field::TaskNotes];
                 if self.daemon_supports_board_extras() {
                     fields.push(Field::TaskTag);
+                }
+                if self.shows_pr_field() {
+                    fields.push(Field::TaskPrUrl);
                 }
                 // A new subtask's editor doesn't list subtasks of its own.
                 if self.daemon_supports_subtasks() && !self.editing_subtask_draft() {

@@ -76,7 +76,7 @@ pub(crate) enum BoardCmd {
         #[arg(long)]
         kind: Option<String>,
     },
-    /// Change a task's title, notes, color, tags or kind.
+    /// Change a task's title, notes, color, tags, kind or pull request.
     Edit {
         /// Task id.
         task: String,
@@ -98,6 +98,10 @@ pub(crate) enum BoardCmd {
         /// New kind (task, story, bug, epic, subtask), or "none" to clear it.
         #[arg(long)]
         kind: Option<String>,
+        /// Link a pull request (an https:// URL), or "" to unlink it. Local boards only:
+        /// a Jira issue's pull requests come from Jira.
+        #[arg(long = "pr")]
+        pr_url: Option<String>,
     },
     /// Move a task (or a subtask, which then becomes a card) to a column of its board.
     Mv {
@@ -119,10 +123,14 @@ pub(crate) enum BoardCmd {
         #[arg(long)]
         index: Option<u32>,
     },
-    /// Delete a task (or a subtask) with its subtasks.
+    /// Delete a task (or a subtask) with its subtasks. A Jira issue is deleted in Jira,
+    /// for everyone, after a question.
     RmTask {
         /// Task id.
         task: String,
+        /// Don't ask before deleting a Jira issue.
+        #[arg(long)]
+        yes: bool,
     },
     /// Manage a task's subtasks.
     #[command(subcommand)]
@@ -244,7 +252,11 @@ pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
                 index.unwrap_or(u32::MAX),
             )
             .await?),
-        BoardCmd::RmTask { task } => Ok(client.delete_task(&resolve(client, &task).await?).await?),
+        BoardCmd::RmTask { task, yes } => {
+            let id = resolve(client, &task).await?;
+            confirm_jira_delete(client, &id, yes).await?;
+            Ok(client.delete_task(&id).await?)
+        }
         BoardCmd::Sub(cmd) => sub(client, cmd).await,
         BoardCmd::Col(cmd) => columns::run(client, cmd).await,
         BoardCmd::Attach { task, file } => attachments::attach(client, &task, &file).await,
@@ -268,6 +280,7 @@ async fn edit(client: &Client, cmd: BoardCmd) -> Result<()> {
         tags,
         untags,
         kind,
+        pr_url,
     } = cmd
     else {
         return Ok(());
@@ -295,6 +308,7 @@ async fn edit(client: &Client, cmd: BoardCmd) -> Result<()> {
             color: color.as_deref().map(color_arg).transpose()?.map(Into::into),
             tags,
             kind: kind.as_deref().map(kind_arg).transpose()?,
+            pr_url,
         })
         .await?)
 }
@@ -356,6 +370,43 @@ pub(crate) async fn usage(client: &Client, pane: &str) -> Result<()> {
             "  {:<14} {:>5.1}% used{resets}",
             w.label, w.used_percent
         ))?;
+    }
+    Ok(())
+}
+
+/// Deleting a Jira issue deletes it in Jira, for everyone and for good, so it asks first
+/// (ADR 0034); `--yes` skips the question. Run without a terminal to answer, it needs
+/// `--yes`. Tasks of Urushi's own are deleted without asking.
+pub(super) async fn confirm_jira_delete(client: &Client, id: &str, yes: bool) -> Result<()> {
+    use std::io::IsTerminal;
+    if yes {
+        return Ok(());
+    }
+    let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
+    let Some(found) = mirror.find_task(id) else {
+        return Ok(());
+    };
+    let task = found.task();
+    let Some(issue) = task.issue() else {
+        return Ok(());
+    };
+    let with = match task.subtree().len().saturating_sub(1) {
+        0 => String::new(),
+        1 => " and its subtask".to_owned(),
+        n => format!(" and its {n} subtasks"),
+    };
+    let key = &issue.key;
+    if !std::io::stdin().is_terminal() {
+        bail!(
+            "{key} is a Jira issue: deleting it deletes it in Jira for everyone. Pass --yes to delete it"
+        );
+    }
+    let question = format!(
+        "Delete {key} “{}”{with} from Jira? This can't be undone. [y/N] ",
+        task.title()
+    );
+    if !crate::commands::confirm(&question)? {
+        bail!("cancelled");
     }
     Ok(())
 }

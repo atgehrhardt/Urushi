@@ -14,7 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Board, BoardError, LabelColor, TaskKind};
+use super::{Board, BoardError, LabelColor, PullRequest, TaskKind};
 use crate::Timestamp;
 
 /// Where a board's content comes from, if not from Urushi alone.
@@ -214,6 +214,11 @@ pub struct Issue {
     /// would cut it short in Jira, so they are read-only.
     #[serde(default = "yes")]
     pub notes_editable: bool,
+    /// Its pull requests, from Jira's development info (ADR 0036): read only while a
+    /// thread is linked to it, at most [`super::MAX_PULL_REQUESTS`]. A board sync
+    /// keeps them as they are.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pull_requests: Vec<PullRequest>,
 }
 
 fn yes() -> bool {
@@ -331,6 +336,16 @@ impl Board {
         let tasks = &mut self.column_mut(column)?.tasks;
         tasks.insert(index.min(tasks.len()), task);
         Ok(())
+    }
+
+    /// Takes a task (a card, or a subtask at any depth) and its subtasks off a board
+    /// that follows Jira, once Jira has deleted its issue. Returns it. A board of
+    /// Urushi's own refuses: its tasks are removed with [`Board::remove_task`].
+    pub fn forget_issue(&mut self, id: super::TaskId) -> Result<super::Task, BoardError> {
+        if self.source.is_none() {
+            return Err(BoardError::FollowsJira("forgetting a deleted Jira issue"));
+        }
+        self.detach(id)
     }
 
     /// The task showing the issue with this Jira id or key.

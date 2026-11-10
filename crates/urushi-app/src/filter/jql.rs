@@ -1,5 +1,5 @@
 //! What is chosen on a Jira board, as JQL: what "Save as quick filter…" offers to save
-//! (ADR 0033), for the person to read and change before Jira gets it.
+//! (ADR 0037), for the person to read and change before Jira gets it.
 //!
 //! Each dimension becomes one clause (its values widening it, `x in (…)`), and clauses
 //! narrow each other (`AND`), as the filter does. Quick filters that are on join in

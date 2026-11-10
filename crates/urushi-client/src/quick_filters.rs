@@ -1,4 +1,4 @@
-//! Typed wrappers for a board's quick filters (protocol 1.21, ADR 0033): making,
+//! Typed wrappers for a board's quick filters (protocol 1.23, ADR 0037): making,
 //! changing and removing them. On a Jira board the daemon writes them to Jira, or keeps
 //! a new one itself when Jira won't take it.
 
@@ -9,7 +9,7 @@ use crate::{Client, ClientError};
 
 /// First protocol minor version with quick filters that can be made, changed and
 /// removed (and kept by boards of Urushi's own).
-pub const QUICK_FILTERS_SINCE_MINOR: u32 = 21;
+pub const QUICK_FILTERS_SINCE_MINOR: u32 = 23;
 
 impl Client {
     /// Adds a quick filter to a board: JQL on a Jira board, the other criteria

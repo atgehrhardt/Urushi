@@ -372,7 +372,6 @@ async fn what_jira_owns_is_refused() {
     let card = task(&b, "ACME-1").id.clone();
     let subtask = task(&b, "ACME-2").subtasks[0].id.clone();
     for refused in [
-        client.delete_task(&card).await.unwrap_err(),
         client.rename_board(&b.id, "Mine").await.unwrap_err(),
         client.delete_column(&b.columns[0].id).await.unwrap_err(),
         client.nest_task(&card, &subtask, 0).await.unwrap_err(),

@@ -1,4 +1,4 @@
-//! A quick filter chip's context menu (protocol 1.21): **Edit…** and **Delete…**.
+//! A quick filter chip's context menu (protocol 1.23): **Edit…** and **Delete…**.
 
 use urushi_ui::{Node, Theme};
 

@@ -1,4 +1,4 @@
-//! Saving, changing and deleting quick filters (protocol 1.21, ADR 0033).
+//! Saving, changing and deleting quick filters (protocol 1.23, ADR 0037).
 //!
 //! "Save as quick filter…" opens a dialog holding what is chosen on the board: on a Jira
 //! board as JQL (`filter/jql.rs`) to read and change, elsewhere as a search, kinds and

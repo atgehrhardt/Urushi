@@ -3,11 +3,12 @@
 //! dialogs in `tasks.rs`.
 
 use urushi_client::v1;
-use urushi_ui::widgets::{ButtonKind, button, modal, text_area, text_field, toggle};
+use urushi_ui::widgets::{ButtonKind, button, text_area, text_field, toggle};
 use urushi_ui::{Color, Font, Insets, Length, Node, Role, TextField, Theme, key};
 
 use crate::msg::Msg;
 use crate::state::{AppState, Dialog, Field, SettingToggle};
+use crate::view::modal::modal;
 
 pub(super) fn view(
     state: &AppState,
@@ -24,6 +25,7 @@ pub(super) fn view(
             let (title, placeholder, action) = prompt.texts();
             let body = field(state, theme, text, Field::Prompt, placeholder);
             modal(
+                state,
                 theme,
                 title,
                 420.0,
@@ -51,7 +53,7 @@ pub(super) fn view(
             terminals,
             threads,
             restarting,
-        } => super::daemon::confirm(theme, *terminals, *threads, *restarting),
+        } => super::daemon::confirm(state, theme, *terminals, *threads, *restarting),
         Dialog::Task {
             board,
             column,
@@ -73,12 +75,13 @@ pub(super) fn view(
         Dialog::DeleteQuickFilter { filter, name, .. } => {
             super::board::quick_filter::delete(theme, name, filter)
         }
+        Dialog::DeleteIssue(about) => super::board::delete_issue(state, theme, about),
         Dialog::DeleteBoard { board, name, tasks } => {
             let jira = state
                 .workspace
                 .board(board)
                 .is_some_and(|b| b.jira.is_some());
-            super::board::delete_board(theme, name, *tasks, jira)
+            super::board::delete_board(state, theme, name, *tasks, jira)
         }
         Dialog::ConnectJira {
             site,
@@ -107,7 +110,7 @@ pub(super) fn view(
         }
         Dialog::DeleteColumn {
             name, tasks, into, ..
-        } => super::board::delete_column(theme, name, *tasks, into),
+        } => super::board::delete_column(state, theme, name, *tasks, into),
         Dialog::Setup { step, agent, mode } => {
             super::setup::wizard(state, theme, *step, *agent, *mode)
         }
@@ -244,6 +247,7 @@ fn add_project(state: &AppState, theme: &Theme, path: &TextField) -> Node<Msg> {
             None,
         ));
     modal(
+        state,
         theme,
         "Add repo",
         480.0,
@@ -275,7 +279,15 @@ fn connect(state: &AppState, theme: &Theme, host: &TextField) -> Node<Msg> {
         actions.push(cancel(theme));
     }
     actions.push(button(theme, "Connect", ButtonKind::Primary, Msg::Submit));
-    modal(theme, "Connect to a host", 460.0, body, actions, dismiss)
+    modal(
+        state,
+        theme,
+        "Connect to a host",
+        460.0,
+        body,
+        actions,
+        dismiss,
+    )
 }
 
 /// One line of the deletion warning: what, then the detail in `color`.
@@ -386,6 +398,7 @@ fn delete_dialog(
         .child(body)
         .role(Role::Label, "Deletion details");
     modal(
+        state,
         theme,
         &format!("Delete “{title}”?"),
         600.0,
@@ -511,6 +524,7 @@ fn settings_dialog(
         body
     };
     modal(
+        state,
         theme,
         "Settings",
         620.0,

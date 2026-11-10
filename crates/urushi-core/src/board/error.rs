@@ -57,6 +57,9 @@ pub enum BoardError {
     /// More than [`MAX_TAGS`] tags.
     #[error("a task can have at most {MAX_TAGS} tags")]
     TooManyTags,
+    /// A pull request link wasn't an `https://` URL with a host.
+    #[error("a pull request link must be an https:// URL")]
+    BadPrUrl,
     /// The board follows Jira, which owns this change.
     #[error("{0} isn't possible on a Jira board: change it in Jira")]
     FollowsJira(&'static str),

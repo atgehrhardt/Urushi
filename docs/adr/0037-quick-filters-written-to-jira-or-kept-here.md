@@ -1,4 +1,4 @@
-# 0033. Write quick filters to Jira through its board-settings endpoint, and keep them here when Jira refuses
+# 0037. Write quick filters to Jira through its board-settings endpoint, and keep them here when Jira refuses
 
 - **Status:** Accepted
 - **Date:** 2026-11-10
@@ -42,7 +42,7 @@ anything kept only in that list would be lost.
 - **Filters are defined from the selection.** "Save as quick filter…" turns what is chosen
   on the board into JQL (Jira) or a search, kinds and tags (others). On a Jira board the
   JQL is shown and can be edited before saving.
-- Wire: protocol 1.21 adds `CreateQuickFilter`, `UpdateQuickFilter`,
+- Wire: protocol 1.23 adds `CreateQuickFilter`, `UpdateQuickFilter`,
   `DeleteQuickFilter`, `Board.quick_filters`, `JiraQuickFilter.jql` and
   `QueryJiraFilter.kept_quick_filter_ids`.
 

@@ -70,6 +70,11 @@ impl<'a> TaskRef<'a> {
         *field!(self, kind)
     }
 
+    /// Its pull request link, on a local board; empty if none (1.22).
+    pub fn pr_url(self) -> &'a str {
+        field!(self, pr_url)
+    }
+
     /// The Jira issue it shows, on a Jira board (1.12).
     pub fn issue(self) -> Option<&'a v1::JiraIssue> {
         field!(self, issue).as_deref()

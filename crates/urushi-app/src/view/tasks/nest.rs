@@ -3,7 +3,6 @@
 
 use std::collections::HashMap;
 
-use urushi_ui::widgets::modal;
 use urushi_ui::{Font, Insets, Key, Length, Node, Role, TextField, Theme, key};
 
 use super::super::board::shorten;
@@ -11,6 +10,7 @@ use super::super::dialogs::{cancel, field, hint};
 use crate::board::nest_candidates;
 use crate::msg::{BoardMsg, Msg};
 use crate::state::{AppState, Field};
+use crate::view::modal::modal;
 
 /// Rows shown before the list scrolls.
 const VISIBLE: usize = 9;
@@ -86,6 +86,7 @@ pub(in crate::view) fn picker(
         body = body.child(list.children(rows));
     }
     modal(
+        state,
         theme,
         &format!("Make “{}” a subtask of…", shorten(&title, 40)),
         480.0,

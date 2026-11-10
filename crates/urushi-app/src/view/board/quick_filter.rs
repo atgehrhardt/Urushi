@@ -1,4 +1,4 @@
-//! The quick-filter dialogs (ADR 0033): saving what is chosen on the board as a quick
+//! The quick-filter dialogs (ADR 0037): saving what is chosen on the board as a quick
 //! filter, or changing one — a name, then on a Jira board its JQL (which Jira gets and
 //! evaluates), elsewhere what it filters by — and asking before deleting one. Only the
 //! red button deletes; Enter doesn't.
