@@ -1,0 +1,95 @@
+name: Release
+
+# Pushing a tag vX.Y.Z (matching [workspace.package].version in Cargo.toml) builds
+# Urushi.app for Apple Silicon and publishes it as a GitHub Release. Running the workflow
+# by hand, or a pull request that changes how releases are built, builds the same zip as
+# a workflow artifact and publishes nothing (a dry run).
+# See docs/features/ci-and-releases.md and ADR 0032.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/bundle-macos.sh
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos:
+    name: macOS (arm64)
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Version
+        id: version
+        env:
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          if [ "$IS_TAG" = true ] && [ "$TAG" != "v$version" ]; then
+            echo "::error::tag $TAG doesn't match Cargo.toml's version $version (expected v$version)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "zip=Urushi-$version-macos-arm64.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Build Urushi.app
+        run: ./scripts/bundle-macos.sh
+
+      - name: Check the bundle
+        run: |
+          app=build/Urushi.app
+          test -x "$app/Contents/MacOS/Urushi"
+          test -x "$app/Contents/MacOS/urushid"
+          test -x "$app/Contents/Resources/bin/urushi"
+          lipo -archs "$app/Contents/MacOS/Urushi" | grep -qx arm64
+          codesign --verify --deep --strict "$app"
+
+      - name: Zip
+        env:
+          ZIP: ${{ steps.version.outputs.zip }}
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent build/Urushi.app "dist/$ZIP"
+          (cd dist && shasum -a 256 "$ZIP" > "$ZIP.sha256")
+          cat "dist/$ZIP.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.zip }}
+          path: dist/*
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          ZIP: ${{ steps.version.outputs.zip }}
+        run: |
+          cat > notes.md <<EOF
+          Urushi $VERSION for Apple Silicon Macs (macOS 12 or later).
+
+          **Install:** unzip, then move \`Urushi.app\` to \`/Applications\`. The app is
+          ad-hoc signed, not notarized, so macOS blocks the first launch. Allow it once with
+          right-click → Open, or run:
+
+              xattr -dr com.apple.quarantine /Applications/Urushi.app
+
+          **CLI:** \`ln -s /Applications/Urushi.app/Contents/Resources/bin/urushi /usr/local/bin/urushi\`
+
+          **Upgrading:** a running daemon keeps your sessions and the old version until it
+          next starts (Settings → Restart daemon…, which ends all sessions).
+          EOF
+          gh release create "$TAG" "dist/$ZIP" "dist/$ZIP.sha256" \
+            --title "Urushi $VERSION" --notes-file notes.md --generate-notes

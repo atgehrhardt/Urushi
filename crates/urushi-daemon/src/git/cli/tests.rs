@@ -34,7 +34,7 @@ fn sh(dir: &Path, args: &[&str]) -> String {
 /// A repo on `main` with one commit, pushed to a bare `origin` whose HEAD is `main`.
 pub(crate) fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let root = crate::platform::canonicalize(dir.path()).unwrap();
     let remote = root.join("origin.git");
     let repo = root.join("repo");
     std::fs::create_dir_all(&repo).unwrap();

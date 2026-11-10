@@ -55,7 +55,7 @@ impl Daemon {
         let task = tokio::spawn(urushi_daemon::run(options, async move {
             let _ = stopped.await;
         }));
-        let daemon = Self {
+        let mut daemon = Self {
             home: home.to_path_buf(),
             stop: Some(stop),
             task,
@@ -65,9 +65,13 @@ impl Daemon {
             if Client::connect(&daemon.endpoint(), "probe").await.is_ok() {
                 return daemon;
             }
+            if daemon.task.is_finished() {
+                let result = (&mut daemon.task).await;
+                panic!("daemon did not start: {result:?}");
+            }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
-        panic!("daemon did not start");
+        panic!("daemon did not start within 5s");
     }
 
     pub fn endpoint(&self) -> Endpoint {
@@ -127,6 +131,9 @@ pub struct Fixture {
 /// A repo on `main`, pushed to a bare `origin` whose HEAD is `main`.
 pub fn repo(dir: &Path) -> Fixture {
     let root = std::fs::canonicalize(dir).unwrap();
+    // Git can't use Windows' verbatim form (`\\?\C:\…`); the daemon strips it the same way.
+    #[cfg(windows)]
+    let root = PathBuf::from(root.to_str().unwrap().trim_start_matches(r"\\?\"));
     let remote = root.join("origin.git");
     let repo = root.join("repo");
     std::fs::create_dir_all(&repo).unwrap();

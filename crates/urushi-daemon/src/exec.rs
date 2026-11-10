@@ -24,7 +24,16 @@ pub(crate) fn run(
     if status.success() {
         Ok(out)
     } else {
-        Err(format!("{program} failed ({status})"))
+        Err(failure(program, status))
+    }
+}
+
+/// Why `program` failed, the same on every OS: `… failed (exit status: N)` (Windows would
+/// otherwise say "exit code"), so callers can tell failures apart by their code.
+fn failure(program: &str, status: std::process::ExitStatus) -> String {
+    match status.code() {
+        Some(code) => format!("{program} failed (exit status: {code})"),
+        None => format!("{program} failed ({status})"),
     }
 }
 
@@ -111,5 +120,23 @@ mod tests {
         let input = vec![b'x'; 4 * 1024 * 1024];
         let out = run("cat", &[], Some(&input), Duration::from_secs(20)).unwrap();
         assert_eq!(out.len(), input.len());
+    }
+}
+
+#[cfg(test)]
+mod exit_status_tests {
+    use super::*;
+
+    /// Callers (e.g. `http::friendly`) tell failures apart by their exit code, so it
+    /// must read the same on every OS.
+    #[test]
+    fn failures_name_their_exit_status() {
+        let (program, args): (&str, &[&str]) = if cfg!(windows) {
+            ("cmd", &["/c", "exit 7"])
+        } else {
+            ("sh", &["-c", "exit 7"])
+        };
+        let error = run(program, args, None, Duration::from_secs(10)).unwrap_err();
+        assert_eq!(error, format!("{program} failed (exit status: 7)"));
     }
 }

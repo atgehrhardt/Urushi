@@ -1,5 +1,5 @@
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::net::UnixListener;
@@ -7,6 +7,11 @@ use urushi_proto::endpoint::LocalEndpoint;
 
 use crate::server::connection::{self, Peer};
 use crate::service::Service;
+
+/// The absolute path of `path`, with symlinks resolved.
+pub(crate) fn canonicalize(path: &Path) -> std::io::Result<PathBuf> {
+    std::fs::canonicalize(path)
+}
 
 /// Creates `dir` readable only by the current user (it holds the socket and state).
 pub(crate) fn secure_dir(dir: &Path) -> std::io::Result<()> {
@@ -146,7 +151,7 @@ pub(crate) fn login_shell_path(
 
 /// Every process on this machine, one line each, from `ps` (see `process::PS_COLUMNS`).
 pub(crate) fn process_table() -> Option<String> {
-    crate::usage::exec_run(
+    crate::exec::run(
         "ps",
         &["-A", "-o", crate::usage::process::PS_COLUMNS],
         None,
@@ -162,7 +167,7 @@ pub(crate) fn process_table() -> Option<String> {
 pub(crate) fn claude_credentials() -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
-        let keychain = crate::usage::exec_run(
+        let keychain = crate::exec::run(
             "security",
             &[
                 "find-generic-password",

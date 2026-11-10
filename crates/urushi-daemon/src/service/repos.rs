@@ -33,7 +33,7 @@ impl Service {
         }
         let git = self.git.clone();
         let root = blocking(move || Ok(git.repo_root(&path)?)).await?;
-        let canonical = std::fs::canonicalize(&root).unwrap_or(root);
+        let canonical = crate::platform::canonicalize(&root).unwrap_or(root);
 
         self.mutate(|state| {
             if let Some(existing) = state.repos.iter().find(|p| p.repo_root == canonical) {

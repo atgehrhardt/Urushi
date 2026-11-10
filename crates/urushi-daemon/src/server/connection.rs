@@ -122,7 +122,17 @@ where
         local: peer.local,
     });
     loop {
-        match read_envelope(&mut reader).await {
+        let read = tokio::select! {
+            read = read_envelope(&mut reader) => read,
+            // A stopped daemon hangs up, so clients see it go and a pipe or socket of
+            // the old daemon never lingers (on Windows it would keep the next daemon
+            // from creating its pipe).
+            () = connection.service.stopped() => {
+                writer_task.abort();
+                break;
+            }
+        };
+        match read {
             Ok(Some(frame)) => dispatch(&connection, frame).await,
             Ok(None) => break,
             Err(e) => {

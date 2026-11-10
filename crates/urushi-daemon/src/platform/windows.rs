@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::net::windows::named_pipe::ServerOptions;
@@ -94,4 +94,57 @@ pub(crate) fn process_table() -> Option<String> {
 /// Claude Code's stored sign-in (JSON), from `%USERPROFILE%\.claude\.credentials.json`.
 pub(crate) fn claude_credentials() -> Result<String, String> {
     crate::usage::claude_credentials_file()
+}
+
+/// The absolute path of `path`, with symlinks resolved, in the plain `C:\…` form.
+/// `std::fs::canonicalize` returns verbatim `\\?\C:\…` paths, which git and most
+/// programs can't use, so the verbatim prefix is removed where the plain form means the
+/// same file.
+pub(crate) fn canonicalize(path: &Path) -> std::io::Result<PathBuf> {
+    std::fs::canonicalize(path).map(strip_verbatim)
+}
+
+/// `\\?\C:\x` → `C:\x` and `\\?\UNC\server\share` → `\\server\share`; anything else as is.
+fn strip_verbatim(path: PathBuf) -> PathBuf {
+    let Some(text) = path.to_str() else {
+        return path;
+    };
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verbatim_prefixes_are_removed() {
+        let strip = |p: &str| strip_verbatim(PathBuf::from(p));
+        assert_eq!(strip(r"\\?\C:\Users\me"), PathBuf::from(r"C:\Users\me"));
+        assert_eq!(
+            strip(r"\\?\UNC\host\share\x"),
+            PathBuf::from(r"\\host\share\x")
+        );
+        assert_eq!(
+            strip(r"\\?\GLOBALROOT\x"),
+            PathBuf::from(r"\\?\GLOBALROOT\x")
+        );
+        assert_eq!(strip(r"C:\plain"), PathBuf::from(r"C:\plain"));
+    }
+
+    #[test]
+    fn canonical_paths_are_plain() {
+        let dir = tempfile::tempdir().unwrap();
+        let canonical = canonicalize(dir.path()).unwrap();
+        assert!(
+            !canonical.to_str().unwrap().starts_with(r"\\?\"),
+            "{canonical:?}"
+        );
+        assert!(canonical.is_dir());
+    }
 }

@@ -199,7 +199,8 @@ mod tests {
         assert_eq!(listed[0], ("/a".into(), true));
         assert_eq!(listed[1], ("/b".into(), true));
         assert_eq!(listed[2], ("/usr/bin".into(), true));
-        assert!(listed.contains(&("/home/me/.local/bin".into(), false)));
+        let local_bin = Path::new("/home/me").join(".local/bin");
+        assert!(listed.contains(&(local_bin.to_string_lossy().into_owned(), false)));
         assert_eq!(listed.iter().filter(|(d, _)| d == "/b").count(), 1);
     }
 
