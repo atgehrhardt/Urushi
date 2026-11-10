@@ -22,6 +22,8 @@ Every thread **always** gets its own git worktree on a new branch: the name the 
 
   The daemon re-computes the plan and refuses with `CONFLICT` if anything changed.
 
+  `DeleteThread` returns once git is done, which can take seconds with remote branches. Clients need not wait for it. The thread is `Deleting` from the moment the daemon starts, and the request runs to the end even if the client disconnects. The GUI hides the thread as soon as the user confirms, and goes on working ([GUI workspace](gui-workspace.md)).
+
 ## Invariants
 - A thread never owns: the base branch, the default branch, branches that existed before it, branches checked out in other worktrees, or branches that no longer exist.
 - Nothing is deleted without a matching token. The token is only issued with a plan.
@@ -34,6 +36,7 @@ Every thread **always** gets its own git worktree on a new branch: the name the 
   - remote deletion disabled
   - failed creation leaves no branches behind
 - `crates/urushi-daemon/tests/threads_and_agents.rs`: named branch, no first tab, duplicate and invalid names, unknown base.
+- `crates/urushi-app/src/update/tests/deletion.rs` and `crates/urushi-app/src/deletions.rs`: the GUI hides a thread on confirm, and keeps selection and focus. A refusal brings the thread back.
 
 ## Limitations and follow-ups
 - A branch created with `git branch x` and never checked out in the worktree is not detected as owned.

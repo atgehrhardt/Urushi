@@ -85,10 +85,14 @@ window. On phones the panels fill the screen edge to edge.
   - Tab and Shift+Tab move between fields. Long text scrolls to keep the caret in view.
   - Multiline fields (task notes) wrap their text. Enter starts a new line there, Up/Down/Home/End work on lines, and Cmd+Enter (macOS) / Ctrl+Enter (elsewhere) submits the dialog, as it does from any field.
 - **Deleting a thread:** the app first requests a `DeletionPlan`. The warning lists everything that will be destroyed. Only the red Delete button sends `DeleteThread{token}`; Enter never does.
+  - Confirming closes the warning and hides the thread at once. The daemon deletes in the background while the user keeps working. Logic: `update/deletion.rs`.
+  - The app keeps the daemon's workspace as reported and shows it without threads being deleted (`deletions.rs`). Those are threads the daemon reports as `Deleting` (from any client) and threads this app asked to delete that the daemon still lists. If the selected thread goes, the first remaining one is shown. Otherwise selection and focus stay where they are.
+  - The answer to `DeleteThread` never closes a dialog or moves focus. A refusal (e.g. the thread changed since the warning) shows the thread again, and the error banner says why. A deletion that fails partway brings the thread back as "deletion failed".
 
 ## Invariants
 - The app holds no authoritative state. Every change goes through a daemon request.
 - There is no path from the UI to `DeleteThread` without a plan shown in the dialog (`update/tests.rs::deleting_a_thread_always_goes_through_the_warning`).
+- Deleting a thread never blocks the app and never takes focus (`update/tests/deletion.rs`).
 - A collapsed sidebar always has a visible, clickable button to bring it back, whatever the main area shows (`view/mod.rs::a_collapsed_sidebar_can_always_be_shown_again`).
 
 ## Tests

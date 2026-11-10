@@ -292,24 +292,26 @@ fn deleting_a_thread_always_goes_through_the_warning() {
     // Enter does not confirm a deletion.
     assert!(s.update(Msg::Key(named(Named::Enter))).is_empty());
     let fx = s.update(Msg::ConfirmDelete);
+    // Its terminal is detached, and the deletion asked for once.
+    let deletes: Vec<_> = bodies(&fx)
+        .into_iter()
+        .filter(|b| matches!(b, Body::DeleteThread(_)))
+        .collect();
     assert!(
-        matches!(bodies(&fx)[..], [Body::DeleteThread(v1::DeleteThreadRequest { token, .. })] if token == "tok")
+        matches!(deletes[..], [Body::DeleteThread(v1::DeleteThreadRequest { token, .. })] if token == "tok"),
+        "{fx:?}"
     );
+    assert!(
+        fx.iter().any(|e| matches!(
+            e,
+            Effect::Request { followup: Followup::ThreadDeleted(t), .. } if *t == thread
+        )),
+        "the answer goes to the deletion, not to whatever dialog is open then"
+    );
+    // The warning closes and the thread is gone at once (UR-8); deletion runs on.
+    assert_eq!(s.dialog, None);
+    assert!(s.workspace.thread(&thread).is_none());
     assert!(s.update(Msg::ConfirmDelete).is_empty(), "no double submit");
-
-    // A failure re-enables the button and shows the error.
-    s.update(Msg::Response {
-        followup: Followup::CloseDialog,
-        result: Err("offline".into()),
-    });
-    assert!(matches!(
-        &s.dialog,
-        Some(Dialog::DeleteThread {
-            deleting: false,
-            ..
-        })
-    ));
-    assert_eq!(s.error.as_deref(), Some("offline"));
 }
 
 #[test]
@@ -387,6 +389,7 @@ mod attachments;
 mod attention;
 mod board;
 mod daemon;
+mod deletion;
 mod fields;
 mod flows;
 mod jira;

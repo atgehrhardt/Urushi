@@ -36,11 +36,7 @@ pub(super) fn view(
             )
         }
         Dialog::NewTab { highlighted } => super::launcher::dialog(state, theme, *highlighted),
-        Dialog::DeleteThread {
-            title,
-            plan,
-            deleting,
-        } => delete_dialog(theme, title, plan, *deleting),
+        Dialog::DeleteThread { title, plan } => delete_dialog(theme, title, plan),
         Dialog::Settings {
             prefix,
             shell,
@@ -275,8 +271,9 @@ fn connect(state: &AppState, theme: &Theme, host: &TextField) -> Node<Msg> {
 }
 
 /// The deletion warning. It lists exactly what the daemon will destroy, and the default
-/// action (Cancel, and Enter) never deletes.
-fn delete_dialog(theme: &Theme, title: &str, plan: &v1::DeletionPlan, deleting: bool) -> Node<Msg> {
+/// action (Cancel, and Enter) never deletes. Delete closes it at once: the daemon deletes
+/// in the background (`update/deletion.rs`).
+fn delete_dialog(theme: &Theme, title: &str, plan: &v1::DeletionPlan) -> Node<Msg> {
     let row = |what: &str, detail: String, color: Color| {
         Node::row()
             .width(Length::Fill(1.0))
@@ -338,19 +335,12 @@ fn delete_dialog(theme: &Theme, title: &str, plan: &v1::DeletionPlan, deleting: 
     for warning in &plan.warnings {
         body = body.child(row("Note", warning.clone(), theme.text_muted));
     }
-    let mut delete = button(
+    let delete = button(
         theme,
-        if deleting {
-            "Deleting…"
-        } else {
-            "Delete thread"
-        },
+        "Delete thread",
         ButtonKind::Danger,
         Msg::ConfirmDelete,
     );
-    if deleting {
-        delete.on_click = None;
-    }
     let card_body = Node::column()
         .width(Length::Fill(1.0))
         .padding(Insets::all(0.0))

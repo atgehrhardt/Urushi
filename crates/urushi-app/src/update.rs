@@ -281,19 +281,6 @@ impl AppState {
         self.request_jira_account(fx);
     }
 
-    fn confirm_delete(&mut self, fx: &mut Vec<Effect>) {
-        if let Some(Dialog::DeleteThread { plan, deleting, .. }) = &mut self.dialog
-            && !*deleting
-        {
-            *deleting = true;
-            let body = Body::DeleteThread(v1::DeleteThreadRequest {
-                thread_id: plan.thread_id.clone(),
-                token: plan.token.clone(),
-            });
-            fx.push(request(body, Followup::CloseDialog));
-        }
-    }
-
     /// Typed or pasted text goes to the focused dialog field, otherwise to the focused pane.
     fn insert_text(
         &mut self,
@@ -361,7 +348,14 @@ impl AppState {
     }
 
     fn on_workspace(&mut self, workspace: v1::Workspace, fx: &mut Vec<Effect>) {
-        self.workspace = WorkspaceMirror::new(workspace);
+        self.deletions.report(workspace);
+        self.apply_workspace(fx);
+    }
+
+    /// Shows the daemon's last reported workspace, without the threads being deleted,
+    /// and keeps the selection and attached panes in step with it.
+    fn apply_workspace(&mut self, fx: &mut Vec<Effect>) {
+        self.workspace = self.deletions.visible();
         let thread_exists = |id: &String| self.workspace.thread(id).is_some();
         if !self.selected_thread.as_ref().is_some_and(thread_exists) {
             self.selected_thread = self.workspace.raw().threads.first().map(|t| t.id.clone());
@@ -461,6 +455,10 @@ impl AppState {
         result: Result<Outcome, String>,
         fx: &mut Vec<Effect>,
     ) {
+        if let Followup::ThreadDeleted(thread) = &followup {
+            self.thread_deleted(thread, result.err(), fx);
+            return;
+        }
         let outcome = match result {
             Ok(outcome) => outcome,
             // An older daemon, or no agents: the picker just offers a terminal.
@@ -480,9 +478,6 @@ impl AppState {
             Err(message) => {
                 if let Followup::Attached(pane) = &followup {
                     self.attaching.remove(pane);
-                }
-                if let Some(Dialog::DeleteThread { deleting, .. }) = &mut self.dialog {
-                    *deleting = false;
                 }
                 self.error = Some(message);
                 return;
@@ -523,14 +518,7 @@ impl AppState {
                     .thread(&plan.thread_id)
                     .map(|t| t.title.clone())
                     .unwrap_or_default();
-                self.open(
-                    Dialog::DeleteThread {
-                        title,
-                        plan,
-                        deleting: false,
-                    },
-                    None,
-                );
+                self.open(Dialog::DeleteThread { title, plan }, None);
             }
             (Followup::TaskTabCreated, Outcome::Tab(tab)) => self.task_tab_created(tab, fx),
             (Followup::TabCreated, Outcome::Tab(tab)) => {
@@ -664,6 +652,7 @@ impl AppState {
                 self.focus = None;
                 self.connection = Connection::Connecting;
                 self.workspace = WorkspaceMirror::default();
+                self.deletions = crate::deletions::Deletions::default();
                 self.selected_thread = None;
                 self.reset_panes();
                 fx.push(Effect::Reconnect(target));
@@ -858,6 +847,7 @@ mod attention;
 mod board;
 mod cards;
 mod daemon;
+mod deletion;
 mod fields;
 mod filter;
 mod intake;
