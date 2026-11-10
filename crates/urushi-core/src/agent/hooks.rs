@@ -8,7 +8,8 @@
 //! (ADR 0014) it travels in the pane's environment and the typed command line only
 //! refers to it:
 //!
-//! - Claude: `--settings "$URUSHI_CLAUDE_SETTINGS"`, adding a `Stop` hook (done), a
+//! - Claude: `--settings "$URUSHI_CLAUDE_SETTINGS"`, adding a `Stop` hook (done,
+//!   unless background agents still run: ADR 0035), a
 //!   `Notification` hook for permission prompts and questions (waiting), and a
 //!   `SessionStart` hook on startup (ready: it runs once Claude's own startup dialogs,
 //!   such as folder trust, are answered, so a drafted task message can be typed in; ADR
@@ -33,6 +34,30 @@ pub const CODEX_NOTIFY_ENV: &str = "URUSHI_CODEX_NOTIFY";
 /// an Urushi pane, and always succeeds, so a hook never shows up as an error.
 pub fn signal_command(kind: AttentionKind) -> String {
     word_command(kind.signal())
+}
+
+/// The kinds of Claude background task (the `type` of a `background_tasks` entry in
+/// its `Stop` hook input) that are agents still working on the user's request. Claude
+/// ends its turn while they run and again after each reports back, so a `Stop` then
+/// isn't the end of the response (ADR 0035). Shells, monitors and MCP tasks aren't
+/// here: a server left running must not keep the agent from ever being done.
+pub const CLAUDE_AGENT_TASK_TYPES: &[&str] = &["subagent", "workflow", "teammate", "cloud session"];
+
+/// The command for Claude's `Stop` hook: raises `done` unless the hook input on stdin
+/// lists a running background agent ([`CLAUDE_AGENT_TASK_TYPES`]). Claude lists only
+/// running and pending tasks there; versions that don't list them get `done` as before.
+/// Like [`signal_command`], harmless outside an Urushi pane and always succeeds.
+pub fn claude_done_command() -> String {
+    // Hook input is JSON, so a quote inside a description is escaped (`\"type\"`) and
+    // can't pass for a task's own `"type"`.
+    let pattern = format!(
+        r#""type"[[:space:]]*:[[:space:]]*"({})""#,
+        CLAUDE_AGENT_TASK_TYPES.join("|")
+    );
+    format!(
+        "grep -Eq '{pattern}' || {{ {}; }}; true",
+        signal_command(AttentionKind::Done)
+    )
 }
 
 /// A shell command that tells the pane's terminal the agent reads input now
@@ -94,7 +119,7 @@ fn claude_settings() -> String {
     };
     format!(
         r#"{{"hooks":{{"Stop":[{{"hooks":{}}}],"Notification":[{{"matcher":"permission_prompt|elicitation_dialog","hooks":{}}}],"SessionStart":[{{"matcher":"startup","hooks":{}}}]}}}}"#,
-        hook(signal_command(AttentionKind::Done)),
+        hook(claude_done_command()),
         hook(signal_command(AttentionKind::Waiting)),
         hook(ready_command())
     )
@@ -144,6 +169,14 @@ mod tests {
     }
 
     #[test]
+    fn claudes_done_command_skips_the_signal_while_background_agents_run() {
+        assert_eq!(
+            claude_done_command(),
+            r#"grep -Eq '"type"[[:space:]]*:[[:space:]]*"(subagent|workflow|teammate|cloud session)"' || { [ -w "$URUSHI_TTY" ] && printf '\033]777;urushi;done\007' > "$URUSHI_TTY"; true; }; true"#
+        );
+    }
+
+    #[test]
     fn the_ready_command_writes_the_ready_signal() {
         assert_eq!(
             ready_command(),
@@ -160,7 +193,7 @@ mod tests {
                 .unwrap()
                 .to_owned()
         };
-        assert_eq!(command("Stop"), signal_command(AttentionKind::Done));
+        assert_eq!(command("Stop"), claude_done_command());
         assert_eq!(
             command("Notification"),
             signal_command(AttentionKind::Waiting)

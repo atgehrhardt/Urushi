@@ -1,4 +1,4 @@
-//! Reading Jira's development info (ADR 0033): which code hosts report pull requests
+//! Reading Jira's development info (ADR 0036): which code hosts report pull requests
 //! for an issue (`/rest/dev-status/latest/issue/summary`), and those pull requests
 //! (`…/issue/detail?dataType=pullrequest`). These endpoints are what Jira's own
 //! Development panel reads; they aren't in Jira's published API, so anything missing

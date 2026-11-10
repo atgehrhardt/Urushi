@@ -33,8 +33,7 @@ impl AppState {
                     task: Some(task), ..
                 }) = &self.dialog
                 {
-                    let body = self.delete_body(task.clone());
-                    fx.push(request(body, Followup::CloseDialog));
+                    self.delete_task(task.clone(), Followup::CloseDialog, fx);
                 }
             }
             Msg::ToggleSubtask(id) => {
@@ -47,10 +46,7 @@ impl AppState {
                     fx.push(request(body, Followup::None));
                 }
             }
-            Msg::DeleteSubtask(id) => {
-                let body = Body::DeleteSubtask(v1::DeleteSubtaskRequest { subtask_id: id });
-                fx.push(request(body, Followup::None));
-            }
+            Msg::DeleteSubtask(id) => self.delete_task(id, Followup::None, fx),
             Msg::RemoveDraftSubtask(i) => {
                 if let Some(Dialog::Task { subtasks, .. }) = &mut self.dialog
                     && i < subtasks.drafts.len()
@@ -313,7 +309,7 @@ impl AppState {
             // Jira owns an issue's type.
             kind: (labels.kind != current.kind() && current.issue().is_none())
                 .then_some(labels.kind),
-            // Jira names an issue's pull requests (ADR 0033).
+            // Jira names an issue's pull requests (ADR 0036).
             pr_url: (self.daemon_supports_pr_links()
                 && current.issue().is_none()
                 && labels.pr_url.text().trim() != current.pr_url())

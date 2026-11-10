@@ -1,4 +1,4 @@
-//! Pull requests on tasks (ADR 0033), end to end: a Jira issue linked to a thread gets
+//! Pull requests on tasks (ADR 0036), end to end: a Jira issue linked to a thread gets
 //! its pull requests from Jira's development info (and only such an issue is asked
 //! about), loses them when the thread goes, and a failing read never marks the board
 //! as failing; a local task links one by hand, which a Jira board refuses.

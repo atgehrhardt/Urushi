@@ -19,9 +19,11 @@ pub const JIRA_SINCE_MINOR: u32 = 12;
 pub const EPIC_CARDS_SINCE_MINOR: u32 = 15;
 /// First protocol minor version that can reorder boards (`MoveBoard`).
 pub const BOARD_ORDER_SINCE_MINOR: u32 = 17;
+/// First protocol minor version that deletes Jira issues (ADR 0034).
+pub const JIRA_DELETION_SINCE_MINOR: u32 = 21;
 /// First protocol minor version that links pull requests to tasks and reads a Jira
-/// issue's from Jira (ADR 0033).
-pub const PR_LINKS_SINCE_MINOR: u32 = 21;
+/// issue's from Jira (ADR 0036).
+pub const PR_LINKS_SINCE_MINOR: u32 = 22;
 
 /// How long the panel takes to slide fully in or out, in seconds.
 pub const SLIDE_SECONDS: f32 = 0.18;
@@ -113,7 +115,7 @@ pub struct TaskLabels {
     pub tags: Vec<String>,
     /// The "add a tag" field.
     pub input: urushi_ui::TextField,
-    /// The pull request link field (a local board's existing task, ADR 0033).
+    /// The pull request link field (a local board's existing task, ADR 0036).
     pub pr_url: urushi_ui::TextField,
 }
 

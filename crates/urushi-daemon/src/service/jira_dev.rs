@@ -1,4 +1,4 @@
-//! Keeping the pull requests of Jira issues linked to threads current (ADR 0033).
+//! Keeping the pull requests of Jira issues linked to threads current (ADR 0036).
 //!
 //! A thread card shows the pull request of the issue it was started from. Jira's
 //! development info says which those are, at one or two requests per issue, so only

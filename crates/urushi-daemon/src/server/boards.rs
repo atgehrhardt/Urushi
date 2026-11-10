@@ -1,6 +1,6 @@
 //! Wire → service for task boards (protocol 1.5; subtasks since 1.6; colors, tags,
 //! columns and nested tasks since 1.8; kinds and Jira boards since 1.12; reordering boards since 1.17; pull request links
-//! since 1.21). Task changes
+//! since 1.22). Task changes
 //! are async: on a Jira board they are written to Jira first.
 
 use urushi_core::board::PrUrl;
@@ -52,7 +52,9 @@ pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcom
             ok()
         }
         Body::DeleteSubtask(r) => {
-            service.delete_task(parse(&r.subtask_id, "subtask_id")?)?;
+            service
+                .delete_task(parse(&r.subtask_id, "subtask_id")?)
+                .await?;
             ok()
         }
         Body::NestTask(r) => {
@@ -93,7 +95,7 @@ pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcom
             ok()
         }
         Body::DeleteTask(r) => {
-            service.delete_task(parse(&r.task_id, "task_id")?)?;
+            service.delete_task(parse(&r.task_id, "task_id")?).await?;
             ok()
         }
         _ => invalid("not a board request"),

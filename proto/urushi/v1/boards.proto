@@ -134,12 +134,12 @@ message JiraIssue {
   repeated JiraNamed fix_versions = 23;
   // How many issues it is linked to.
   uint32 links = 24;
-  // Its pull requests, from Jira's development info (ADR 0033). Read only while a
-  // thread is linked to it, so empty otherwise. Since 1.21.
+  // Its pull requests, from Jira's development info (ADR 0036). Read only while a
+  // thread is linked to it, so empty otherwise. Since 1.22.
   repeated PullRequest pull_requests = 25;
 }
 
-// Where a pull request stands. Since 1.21.
+// Where a pull request stands. Since 1.22.
 enum PullRequestStatus {
   // Not known (or a status this client doesn't know).
   PULL_REQUEST_STATUS_UNSPECIFIED = 0;
@@ -149,7 +149,7 @@ enum PullRequestStatus {
   PULL_REQUEST_STATUS_DECLINED = 3;
 }
 
-// A pull request, as a Jira site's code-host integration reports it. Since 1.21.
+// A pull request, as a Jira site's code-host integration reports it. Since 1.22.
 message PullRequest {
   // An https:// URL.
   string url = 1;
@@ -211,7 +211,7 @@ message Task {
   // The Jira issue it shows, on a Jira board. Since 1.12.
   JiraIssue issue = 11;
   // The pull request linked to it (an https:// URL), on a local board; empty if none.
-  // A Jira issue's are in `issue.pull_requests`. Since 1.21.
+  // A Jira issue's are in `issue.pull_requests`. Since 1.22.
   string pr_url = 12;
 }
 
@@ -235,7 +235,7 @@ message Subtask {
   // Since 1.12.
   TaskKind kind = 11;
   JiraIssue issue = 12;
-  // As Task.pr_url. Since 1.21.
+  // As Task.pr_url. Since 1.22.
   string pr_url = 13;
 }
 
@@ -354,7 +354,7 @@ message UpdateTaskRequest {
   // an issue's type. Since 1.12.
   optional TaskKind kind = 6;
   // Links a pull request (an https:// URL); empty unlinks it. Not on a Jira board,
-  // where Jira's development info names an issue's pull requests. Since 1.21.
+  // where Jira's development info names an issue's pull requests. Since 1.22.
   optional string pr_url = 7;
 }
 

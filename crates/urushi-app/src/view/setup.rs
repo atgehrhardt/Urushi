@@ -2,13 +2,14 @@
 //! in Settings that change the choice later, with how tasks get their message.
 
 use urushi_core::{Agent, AgentMode};
-use urushi_ui::widgets::{ButtonKind, button, modal, toggle};
+use urushi_ui::widgets::{ButtonKind, button, toggle};
 use urushi_ui::{Font, Insets, Length, Node, Role, TextField, Theme, key};
 
 use super::dialogs::{area, hint, label};
 use crate::msg::Msg;
 use crate::state::{AppState, Field, SettingToggle};
 use crate::task_agent::{SetupMsg, SetupStep, mode_detail};
+use crate::view::modal::modal;
 
 /// The setup wizard, on `step`, with `agent` and `mode` chosen so far.
 pub(super) fn wizard(
@@ -86,6 +87,7 @@ pub(super) fn wizard(
         ),
     };
     modal(
+        state,
         theme,
         "Set up Urushi",
         520.0,

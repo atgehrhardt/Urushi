@@ -1,4 +1,4 @@
-//! A local task's pull request link (ADR 0033): edited in the task editor, sent with
+//! A local task's pull request link (ADR 0036): edited in the task editor, sent with
 //! Save only when it changed, and not offered on Jira boards (whose pull requests come
 //! from Jira) or by older daemons.
 

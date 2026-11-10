@@ -252,6 +252,9 @@ pub trait JiraApi: Send + Sync {
     fn create(&self, account: &Account, issue: &NewIssue) -> JiraResult<String>;
     /// Moves an issue in the board's ranking.
     fn rank(&self, account: &Account, key: &str, rank: &Rank) -> JiraResult<()>;
+    /// Deletes an issue for good, with its sub-tasks (Jira refuses to delete an issue
+    /// that has sub-tasks otherwise).
+    fn delete_issue(&self, account: &Account, key: &str) -> JiraResult<()>;
 
     // ---- One issue in full (the editor) -------------------------------------------
     /// Everything the editor shows of an issue: its editable fields with their values
@@ -303,7 +306,7 @@ pub trait JiraApi: Send + Sync {
         comment: &str,
     ) -> JiraResult<()>;
     /// The GitHub pull requests the site's code-host integration reports for the issue
-    /// with this Jira id (ADR 0033), newest first; none when the site has no such
+    /// with this Jira id (ADR 0036), newest first; none when the site has no such
     /// integration.
     fn pull_requests(&self, account: &Account, issue_id: &str) -> JiraResult<Vec<PullRequest>>;
 }

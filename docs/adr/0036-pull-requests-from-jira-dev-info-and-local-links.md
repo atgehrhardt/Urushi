@@ -1,4 +1,4 @@
-# 0033. Show a thread's pull request: read a Jira issue's from Jira's development info, and let a local task link one
+# 0036. Show a thread's pull request: read a Jira issue's from Jira's development info, and let a local task link one
 
 - **Status:** Accepted
 - **Date:** 2026-11-10
@@ -54,5 +54,5 @@ nothing there knows a task's pull request.
   `docs/dependencies.md` lists them, with Simple Icons' disclaimer.
 - GitLab and Bitbucket pull requests don't show. Showing them later needs their marks
   and the other instance types read.
-- Protocol 1.21 adds `Task.pr_url`, `Subtask.pr_url`, `UpdateTaskRequest.pr_url`,
+- Protocol 1.22 adds `Task.pr_url`, `Subtask.pr_url`, `UpdateTaskRequest.pr_url`,
   `JiraIssue.pull_requests` and `PullRequest`.

@@ -2,13 +2,13 @@
 
 - **Status:** Shipped
 - **Owners (crates):** `urushi-core` (`project`, `status`, `thread`), `urushi-daemon` (`service/projects.rs`, `server/organize.rs`, `store.rs`), `urushi-client` (`thread_links.rs`), `urushi-app` (`organize.rs`, `update/organize.rs`, `view/projects.rs`, `view/thread_card.rs`, `brand_icons.rs`, `view/menu/`, `view/new_thread.rs`), `urushi-ui` (positioned nodes, secondary click, drag and drop, selectors), `urushi-cli`
-- **Related ADRs:** [0010](../adr/0010-repos-and-projects.md), [0002](../adr/0002-daemon-source-of-truth.md), [0033](../adr/0033-pull-requests-from-jira-dev-info-and-local-links.md)
+- **Related ADRs:** [0010](../adr/0010-repos-and-projects.md), [0002](../adr/0002-daemon-source-of-truth.md), [0036](../adr/0036-pull-requests-from-jira-dev-info-and-local-links.md)
 
 ## What it does
 - **Repos** are git repositories (what used to be called projects). **Projects** are groups of threads you make yourself, and can hold threads from any repo. A thread is in at most one project; the rest are listed under **No project**, below the projects. Projects are listed in the order you give them; a new project goes at the bottom.
 - The sidebar has two tabs:
   - **Projects:** each project is collapsible. Inside it come its [parent-branch thread](project-parent-branch.md), then pinned threads, then one collapsible section per **status** in use, then threads without a status. Thread cards show the repo and branch.
-  - **Links on cards** (UR-24, ADR 0033): a card whose thread was started from a Jira
+  - **Links on cards** (UR-24, ADR 0036): a card whose thread was started from a Jira
     issue shows Jira's mark beside its title, and one whose task has a pull request
     shows GitHub's mark. Clicking a mark opens the issue or pull request in the browser
     and doesn't open the thread. The pull request is a local task's own link
@@ -58,4 +58,4 @@
 - Context menus aren't reachable from the keyboard or accessibility actions yet.
 - Removing a repo is only available from the CLI (`urushi repo rm`).
 - The marks have no tooltip (the toolkit has none); their accessible labels name the issue or pull request.
-- Only GitHub pull requests show; GitLab and Bitbucket ones from Jira are left out (ADR 0033).
+- Only GitHub pull requests show; GitLab and Bitbucket ones from Jira are left out (ADR 0036).

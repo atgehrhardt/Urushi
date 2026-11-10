@@ -1,5 +1,5 @@
 //! [`CloudJira`]'s read of an issue's pull requests from Jira's development info (ADR
-//! 0033): the summary says which code hosts have any, then each GitHub host's detail
+//! 0036): the summary says which code hosts have any, then each GitHub host's detail
 //! lists them. Most issues have none, so most reads are the one summary request.
 
 use urushi_core::board::PullRequest;

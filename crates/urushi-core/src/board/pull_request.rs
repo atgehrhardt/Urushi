@@ -1,4 +1,4 @@
-//! Pull requests a task points at (ADR 0033).
+//! Pull requests a task points at (ADR 0036).
 //!
 //! A local board's task can name one pull request by its URL ([`super::Task::pr_url`]);
 //! a Jira issue's pull requests come from Jira's development info
@@ -164,7 +164,7 @@ impl PullRequest {
 
 impl Board {
     /// The Jira ids of the issues whose task (at any depth) is linked to a thread: the
-    /// ones whose pull requests are read (ADR 0033).
+    /// ones whose pull requests are read (ADR 0036).
     pub fn linked_issue_ids(&self) -> Vec<String> {
         self.all_tasks()
             .filter(|t| t.thread.is_some())

@@ -77,7 +77,7 @@ impl AppState {
             }
         }
         if let Some(nav) = nav_mut(&mut next) {
-            nav.confirm_discard = false;
+            nav.settle();
         }
         self.open(next, Some(Field::TaskTitle));
         self.request_issue(fx);
@@ -98,7 +98,7 @@ impl AppState {
         };
         if let Some(nav) = nav_mut(&mut previous) {
             nav.back = back;
-            nav.confirm_discard = false;
+            nav.settle();
         }
         self.open(previous, Some(Field::TaskTitle));
     }
@@ -165,7 +165,7 @@ impl AppState {
     }
 
     /// Whether the task editor on screen has a pull request field: an existing task on
-    /// a local board (a Jira issue's pull requests come from Jira, ADR 0033).
+    /// a local board (a Jira issue's pull requests come from Jira, ADR 0036).
     pub(crate) fn shows_pr_field(&self) -> bool {
         let Some(Dialog::Task {
             board,
@@ -189,8 +189,9 @@ impl AppState {
         let Some(Dialog::Task { nav, .. }) = &mut self.dialog else {
             return false;
         };
-        if nav.confirm_discard {
-            nav.confirm_discard = false;
+        // A question on screen (discard, or delete a Jira issue): closing answers no.
+        if nav.confirm_discard || nav.confirm_delete.is_some() {
+            nav.settle();
             return true;
         }
         if dirty {
@@ -200,10 +201,10 @@ impl AppState {
         false
     }
 
-    /// "Keep editing" on the discard question.
+    /// "Keep editing" on the discard question, or "Keep" on the delete question.
     pub(super) fn keep_editing(&mut self) {
         if let Some(Dialog::Task { nav, .. }) = &mut self.dialog {
-            nav.confirm_discard = false;
+            nav.settle();
         }
     }
 

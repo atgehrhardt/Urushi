@@ -1,4 +1,4 @@
-//! The task editor's pull request link (ADR 0033): on a local board, the URL of the
+//! The task editor's pull request link (ADR 0036): on a local board, the URL of the
 //! pull request for the task, shown on its thread's card. A Jira issue's pull requests
 //! come from Jira, so a Jira board has no such field.
 

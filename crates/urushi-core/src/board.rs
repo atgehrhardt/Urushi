@@ -17,7 +17,7 @@
 //! then comes from Jira, and changes Jira owns are refused here with
 //! [`BoardError::FollowsJira`]. Any task can have a [`TaskKind`] (`kind.rs`). A local
 //! task can link its pull request, and a Jira issue keeps the ones Jira reports
-//! (`pull_request.rs`, ADR 0033).
+//! (`pull_request.rs`, ADR 0036).
 
 use serde::{Deserialize, Serialize};
 
@@ -199,7 +199,7 @@ pub struct Task {
     /// The Jira issue it shows, on a Jira board.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issue: Option<Issue>,
-    /// The pull request for it, on a local board (ADR 0033). A Jira issue's pull
+    /// The pull request for it, on a local board (ADR 0036). A Jira issue's pull
     /// requests come from Jira instead ([`Issue::pull_requests`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pr_url: Option<PrUrl>,

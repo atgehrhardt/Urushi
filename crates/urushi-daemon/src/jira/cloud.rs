@@ -10,7 +10,7 @@
 //! - Changes use the issue endpoints: transitions, edit (labels as add/remove
 //!   operations, so labels Urushi can't show are never touched), create and rank.
 //! - An issue's pull requests come from Jira's development info (`cloud/dev.rs`, ADR
-//!   0033).
+//!   0036).
 
 use std::sync::Arc;
 
@@ -313,6 +313,11 @@ impl JiraApi for CloudJira {
             Some(&body),
         )
         .map(drop)
+    }
+
+    fn delete_issue(&self, account: &Account, key: &str) -> JiraResult<()> {
+        let path = format!("/rest/api/3/issue/{}?deleteSubtasks=true", segment(key));
+        self.call(account, Method::Delete, &path, None).map(drop)
     }
 
     fn details(&self, account: &Account, key: &str, board: u64) -> JiraResult<IssueDetails> {

@@ -1,4 +1,4 @@
-//! Pull request links (ADR 0033) ↔ wire. A URL that isn't a valid [`PrUrl`] reads as
+//! Pull request links (ADR 0036) ↔ wire. A URL that isn't a valid [`PrUrl`] reads as
 //! none rather than failing the whole board, so one bad link can't hide a board.
 
 use urushi_core::board::{PrStatus, PrUrl, PullRequest};

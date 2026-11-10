@@ -268,7 +268,7 @@ fn blank(id: TaskId, created_at: Timestamp) -> Task {
 }
 
 /// `task` with Jira's fields from `synced`; its id, link and color are kept, and so
-/// are its issue's pull requests, which a search never reads (ADR 0033).
+/// are its issue's pull requests, which a search never reads (ADR 0036).
 fn refresh(mut task: Task, synced: SyncedIssue) -> Task {
     let title = clip(
         &synced

@@ -63,6 +63,8 @@ pub const SCENARIOS: &[&str] = &[
     "board-drag",
     "board-tab-drag",
     "task",
+    "task-error",
+    "board-error",
     "task-menu",
     "column-menu",
     "task-nested",
@@ -86,6 +88,8 @@ pub const SCENARIOS: &[&str] = &[
     "jira-new-epic",
     "jira-connect",
     "jira-import",
+    "jira-delete-issue",
+    "jira-delete-subtask",
     "project-base-thread",
     "project-settings",
 ];
@@ -126,6 +130,8 @@ const BOARD_SCENARIOS: &[&str] = &[
     "board-drag",
     "board-tab-drag",
     "task",
+    "task-error",
+    "board-error",
     "task-menu",
     "column-menu",
     "task-nested",
@@ -532,9 +538,16 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
                 state.update(Msg::Pointer(urushi_ui::Point::new(760.0, 110.0)));
                 state.update(Msg::OpenMenu(MenuTarget::Column("c2".into())));
             }
-            if name == "task" {
+            if name == "task" || name == "task-error" {
                 state.update(Msg::PressTask("k3".into()));
                 state.update(Msg::PressEnded);
+            }
+            if name.ends_with("-error") {
+                state.error = Some(
+                    "Jira refused the issue: Field 'customfield_10020' cannot be set. It is \
+                     not on the appropriate screen, or unknown."
+                        .into(),
+                );
             }
             if name == "board-tab-drag" {
                 // "Personal" held over "Billing launch": the line shows before it.

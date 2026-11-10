@@ -5,11 +5,13 @@ mod attention;
 mod board;
 mod daemon;
 mod dialogs;
+mod error;
 mod jira;
 mod labels;
 mod launcher;
 mod main_area;
 mod menu;
+mod modal;
 mod new_thread;
 mod project_settings;
 mod projects;
@@ -27,6 +29,7 @@ use std::collections::HashMap;
 use urushi_ui::widgets::panel;
 use urushi_ui::{CursorIcon, Insets, Key, Length, Node, Quad, Rect, Role, Theme, key};
 
+use crate::errors::ErrorPlace;
 use crate::msg::{Msg, SidebarMsg};
 use crate::state::AppState;
 
@@ -60,10 +63,17 @@ pub(crate) fn view(state: &AppState, theme: &Theme, scroll: &HashMap<Key, f32>) 
         .align(urushi_ui::Align::Stretch);
     if state.compact {
         // Phones: the thread list or the terminals, never both, edge to edge.
-        let page = if state.sidebar_open
-            || state.current_tab().is_none() && state.selected_thread.is_none()
-        {
-            sidebar::view(state, theme, sidebar_scroll, Length::Fill(1.0))
+        let page = if state.shows_thread_list_page() {
+            Node::column()
+                .width(Length::Fill(1.0))
+                .height(Length::Fill(1.0))
+                .child(sidebar::view(
+                    state,
+                    theme,
+                    sidebar_scroll,
+                    Length::Fill(1.0),
+                ))
+                .children(error::for_place(state, theme, ErrorPlace::Sidebar, None))
         } else {
             main_area::view(state, theme)
         };

@@ -70,7 +70,7 @@ impl<'a> TaskRef<'a> {
         *field!(self, kind)
     }
 
-    /// Its pull request link, on a local board; empty if none (1.21).
+    /// Its pull request link, on a local board; empty if none (1.22).
     pub fn pr_url(self) -> &'a str {
         field!(self, pr_url)
     }

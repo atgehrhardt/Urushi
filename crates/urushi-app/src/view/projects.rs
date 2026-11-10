@@ -229,7 +229,7 @@ fn group(
     project: Option<&str>,
     threads: &[&v1::Thread],
 ) -> Vec<Node<Msg>> {
-    // Each thread's Jira issue and pull request (ADR 0033), read in one pass.
+    // Each thread's Jira issue and pull request (ADR 0036), read in one pass.
     let links = state.workspace.thread_links();
     let thread_card = |t: &v1::Thread| thread_card(state, theme, t, links.get(&t.id));
     let mut out: Vec<Node<Msg>> = threads

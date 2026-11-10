@@ -1,6 +1,6 @@
 //! A thread's card in the sidebar: its title (with a dot when its agent finished or
 //! waits, and the Jira and GitHub marks of its task's issue and pull request, which
-//! open them in a browser, ADR 0033), the repo and branch it's on, and its lifecycle
+//! open them in a browser, ADR 0036), the repo and branch it's on, and its lifecycle
 //! badge. Click to open it,
 //! right-click for its menu, drag to file it under another project. A project's
 //! parent-branch thread (ADR 0029) stays at its project's top: it can't be dragged, and
@@ -122,7 +122,7 @@ pub(super) fn thread_card(
         ))
 }
 
-/// A thread's title, then the marks of its links (ADR 0033), then a dot when its
+/// A thread's title, then the marks of its links (ADR 0036), then a dot when its
 /// agent finished or waits (ADR 0017).
 fn thread_title(
     theme: &Theme,

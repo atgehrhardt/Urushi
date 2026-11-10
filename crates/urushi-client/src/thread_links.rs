@@ -1,4 +1,4 @@
-//! What a thread links to outside Urushi (ADR 0033): the Jira issue of a task started
+//! What a thread links to outside Urushi (ADR 0036): the Jira issue of a task started
 //! in it, and that task's pull request. Clients show both on the thread's card and
 //! open them in a browser. Several tasks can be linked to one thread (ADR 0018); the
 //! first one that has each link, parents first, gives it.

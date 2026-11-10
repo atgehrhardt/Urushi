@@ -76,12 +76,15 @@ impl Service {
         link: (TaskId, Option<TaskId>),
         shell: Option<String>,
     ) -> ServiceResult<TaskAgent> {
-        let by_reference = self.cli.is_some();
+        let cli = self
+            .cli
+            .as_deref()
+            .map(|p| p.to_string_lossy().into_owned());
         let (choice, prompt, delivery) = self.read(|s| {
             let agents = &s.settings.agents;
             Ok((
                 agents.task_agent.map(|a| (a, agents.task_mode)),
-                s.task_prompt(link, by_reference, agents.task_message.template())?,
+                s.task_prompt(link, cli.as_deref(), agents.task_message.template())?,
                 agents.task_delivery,
             ))
         })?;

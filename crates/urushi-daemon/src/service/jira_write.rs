@@ -1,13 +1,13 @@
 //! Writing changes to Jira boards through to Jira (ADR 0020).
 //!
 //! A change to a task on a Jira board is made in Jira first: a field edit, a
-//! transition, a new issue, a new rank. Then the issue is read back and merged, so the
-//! board shows what Jira did (automation, resolutions, a status the transition chose).
-//! If Jira refuses, the request fails and nothing changes here. Only a task's color is
-//! Urushi's own, and changes without Jira.
+//! transition, a new issue, a new rank, a deletion. Then the issue is read back and
+//! merged (or, once deleted, forgotten), so the board shows what Jira did (automation,
+//! resolutions, a status the transition chose). If Jira refuses, the request fails and
+//! nothing changes here. Only a task's color is Urushi's own, and changes without Jira.
 //!
-//! Creating issues is in `jira_create.rs`. Deleting issues, nesting them and changing
-//! their type are left to Jira.
+//! Creating issues is in `jira_create.rs`. Nesting issues and changing their type are
+//! left to Jira. Deleting one is confirmed by the client first (ADR 0034).
 
 use urushi_core::board::{
     JiraBoard, StatusCategory, SyncedIssue, task_notes, task_tags, task_title,
@@ -15,7 +15,7 @@ use urushi_core::board::{
 use urushi_core::{BoardId, ColumnId, Task, TaskId, TaskPatch};
 
 use super::{Service, ServiceError, ServiceResult, State, blocking, new_uuid};
-use crate::jira::{IssueEdit, IssueFields, Rank};
+use crate::jira::{IssueEdit, IssueFields, JiraError, Rank};
 
 /// A task on a Jira board, with what writing to Jira needs.
 pub(super) struct JiraTask {
@@ -268,11 +268,30 @@ impl Service {
         }
     }
 
-    /// Issues aren't deleted from Urushi.
-    pub(super) fn jira_delete_task(t: &JiraTask) -> ServiceResult<()> {
-        Err(ServiceError::Precondition(format!(
-            "{} is a Jira issue: delete it in Jira",
-            t.key
-        )))
+    /// Deletes a Jira issue (a card or a subtask) in Jira, with its sub-tasks, then
+    /// takes it off the board. An issue Jira no longer has is taken off too. If Jira
+    /// refuses (most often: the account may not delete issues), nothing changes here.
+    pub(super) async fn jira_delete_task(&self, t: JiraTask) -> ServiceResult<()> {
+        let account = self.jira_account()?;
+        // Under the board's lock, a sync can't merge the issue back as it goes.
+        let guard = self.jira.lock(t.board);
+        let _one_at_a_time = guard.lock().await;
+        let api = self.jira.api.clone();
+        let key = t.key.clone();
+        blocking(move || match api.delete_issue(&account, &key) {
+            Ok(()) | Err(JiraError::NotFound(_)) => Ok(()),
+            Err(e) => Err(e.into()),
+        })
+        .await?;
+        let gone = self.mutate(|state| Ok(state.board_mut(t.board)?.forget_issue(t.task.id)?))?;
+        let ids: Vec<String> = gone
+            .subtree()
+            .into_iter()
+            .filter_map(|x| Some(x.issue.as_ref()?.id.clone()))
+            .collect();
+        self.unsee(t.board, &ids);
+        // Its parent's progress and an epic's stories change in Jira too: look again.
+        self.poke(t.board);
+        Ok(())
     }
 }

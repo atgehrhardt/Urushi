@@ -1,5 +1,5 @@
 //! The Jira and GitHub marks a thread card shows for its linked issue and pull request
-//! (ADR 0033). They are Simple Icons' glyphs (`assets/brands/`), pre-rendered by
+//! (ADR 0036). They are Simple Icons' glyphs (`assets/brands/`), pre-rendered by
 //! `scripts/render-icons.swift` as white masks, and tinted here to a theme color so
 //! they sit with the card's text in every appearance.
 

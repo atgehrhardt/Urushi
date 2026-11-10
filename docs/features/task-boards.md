@@ -94,7 +94,7 @@ it back.
   card's or on-screen thread picked first. **Start in thread** opens a new tab there,
   running the task agent with the task as its prompt (a plain terminal without one), and
   links the task to that thread (ADR 0018).
-- **Pull request** (ADR 0033, 1.21 daemons): an existing task on a local board has a
+- **Pull request** (ADR 0036, 1.22 daemons): an existing task on a local board has a
   **Pull request** field under its tags. It takes the pull request's `https://` address
   (anything else is pointed out, and the daemon refuses it) and is saved with Save;
   **Open** opens it. Emptying it unlinks it. The thread linked to the task then shows
@@ -116,7 +116,8 @@ it back.
 - **Right-click or two-finger click** a card for its menu: **Open**, **Move to ›** (a
   column), **Make subtask of…**, **Color ›**, **Start thread…** / **Go to thread**, and
   **Delete task**, which deletes it
-  right away, as the editor's Delete does.
+  right away, as the editor's Delete does. On a Jira board it is **Delete issue…**, and
+  it asks first: the issue is deleted in Jira (see [Jira boards](jira-boards.md)).
 - Long names are cut short with an ellipsis instead of running over their neighbours:
   subtask titles in the editor, column names, board tabs and the card's thread chip.
 - **Drag** a card onto another card to put it above that card, or onto a column to put it

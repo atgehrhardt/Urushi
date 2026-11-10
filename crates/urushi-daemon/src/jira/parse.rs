@@ -138,7 +138,7 @@ pub(super) fn issue(v: &Value, fields: &IssueFields) -> Option<SyncedIssue> {
                 .unwrap_or_default(),
             updated: time(&f["updated"]),
             notes_editable: true,
-            // Read from development info for linked issues only (ADR 0033).
+            // Read from development info for linked issues only (ADR 0036).
             pull_requests: Vec::new(),
         },
         title: text(&f["summary"]),
