@@ -2,10 +2,16 @@
 //! in it (agents) can run it against this daemon (ADR 0024).
 //!
 //! Panes get `URUSHI_HOME` (so the CLI reaches this daemon, whichever home it runs in:
-//! the real one or a dev one) and, when the CLI is found, its directory first on `PATH`.
+//! the real one or a dev one) and, when the CLI is found, its absolute path in
+//! [`CLI_ENV`] and its directory first on `PATH`. A login shell may rebuild `PATH` and
+//! put another `urushi` ahead of it, so prompts name the CLI by its path (ADR 0033).
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+
+/// The pane variable holding the CLI's absolute path, for programs that must reach
+/// this daemon's CLI whatever comes first on `PATH`.
+pub const CLI_ENV: &str = "URUSHI_CLI";
 
 /// The CLI's file name on this platform.
 fn file_name() -> String {
@@ -19,15 +25,14 @@ pub fn locate() -> Option<PathBuf> {
     locate_from(exe.parent()?)
 }
 
-/// [`locate`] for a daemon in `dir`.
+/// [`locate`] for a daemon in `dir`. The bundle's directory is named without `..`, as
+/// the path shows up in agents' prompts.
 pub fn locate_from(dir: &Path) -> Option<PathBuf> {
     let name = file_name();
-    [
-        dir.to_path_buf(),
-        dir.join("..").join("Resources").join("bin"),
-    ]
-    .into_iter()
-    .find_map(|d| exact_file(&d, &name))
+    let bundle = dir.parent().map(|c| c.join("Resources").join("bin"));
+    std::iter::once(dir.to_path_buf())
+        .chain(bundle)
+        .find_map(|d| exact_file(&d, &name))
 }
 
 /// `dir/name` if a file of exactly that name is there. On a case-insensitive disk
@@ -42,13 +47,16 @@ fn exact_file(dir: &Path, name: &str) -> Option<PathBuf> {
     (listed && path.is_file()).then_some(path)
 }
 
-/// The variables a pane gets for the CLI: `URUSHI_HOME`, and `PATH` with the CLI's
-/// directory first (when it is known and `path` can hold it).
+/// The variables a pane gets for the CLI: `URUSHI_HOME`, and when the CLI is known,
+/// [`CLI_ENV`] and `PATH` with the CLI's directory first (when `path` can hold it).
 pub fn pane_env(home: &Path, cli: Option<&Path>, path: Option<OsString>) -> Vec<(String, String)> {
     let mut env = vec![(
         "URUSHI_HOME".to_owned(),
         home.to_string_lossy().into_owned(),
     )];
+    if let Some(cli) = cli {
+        env.push((CLI_ENV.to_owned(), cli.to_string_lossy().into_owned()));
+    }
     if let Some(dir) = cli.and_then(Path::parent) {
         let rest = path.map(|p| std::env::split_paths(&p).collect::<Vec<_>>());
         let all = std::iter::once(dir.to_path_buf()).chain(rest.into_iter().flatten());
@@ -76,8 +84,13 @@ mod tests {
         assert_eq!(locate_from(&macos), None);
         std::fs::write(bin.join(file_name()), b"").unwrap();
         assert_eq!(
-            locate_from(&macos).map(|p| p.ends_with(format!("bin/{}", file_name()))),
-            Some(true)
+            locate_from(&macos),
+            Some(
+                dir.path()
+                    .join("Urushi.app/Contents/Resources/bin")
+                    .join(file_name())
+            ),
+            "named without `..`"
         );
         std::fs::write(macos.join(file_name()), b"").unwrap();
         assert_eq!(locate_from(&macos), Some(macos.join(file_name())));
@@ -107,7 +120,9 @@ mod tests {
         let cli = Path::new("/opt/urushi/bin/urushi");
         let env = pane_env(home, Some(cli), Some(OsString::from("/usr/bin")));
         assert_eq!(env[0], ("URUSHI_HOME".into(), "/home/a/Urushi Dev".into()));
-        let path = &env[1].1;
+        assert_eq!(env[1], (CLI_ENV.into(), "/opt/urushi/bin/urushi".into()));
+        assert_eq!(env[2].0, "PATH");
+        let path = &env[2].1;
         let dirs: Vec<PathBuf> = std::env::split_paths(path).collect();
         assert_eq!(
             dirs,
@@ -116,7 +131,7 @@ mod tests {
         assert_eq!(
             pane_env(home, None, None).len(),
             1,
-            "no CLI: no PATH change"
+            "no CLI: no PATH change, no URUSHI_CLI"
         );
     }
 }
