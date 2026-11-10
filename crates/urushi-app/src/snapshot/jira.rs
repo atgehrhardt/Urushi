@@ -4,7 +4,9 @@
 //! (`jira-filters`) and the Filters menu's Assignee page (`jira-filter-menu`), an issue in
 //! full with its fields and comments (`jira-issue`) and its assignee picker open
 //! (`jira-issue-picker`), a new epic in the editor (`jira-new-epic`), signing in
-//! (`jira-connect`) and choosing a board to import (`jira-import`).
+//! (`jira-connect`), choosing a board to import (`jira-import`), and the questions
+//! before an issue is deleted in Jira: from its card's menu (`jira-delete-issue`) and
+//! for a subtask in the editor (`jira-delete-subtask`).
 
 use urushi_client::v1;
 
@@ -24,6 +26,8 @@ pub(super) const SCENARIOS: &[&str] = &[
     "jira-new-epic",
     "jira-connect",
     "jira-import",
+    "jira-delete-issue",
+    "jira-delete-subtask",
 ];
 
 const SITE: &str = "https://acme.atlassian.net";
@@ -171,6 +175,20 @@ fn new_epic(state: &mut AppState) {
     )));
 }
 
+/// The questions before an issue is deleted in Jira: from a card's menu, or for a
+/// subtask in its parent's editor.
+fn ask_to_delete(state: &mut AppState, name: &str) {
+    if name == "jira-delete-issue" {
+        state.update(Msg::Board(crate::msg::BoardMsg::DeleteTask(
+            "acme-139".into(),
+        )));
+    } else {
+        state.update(Msg::PressTask("acme-139".into()));
+        state.update(Msg::PressEnded);
+        state.update(Msg::DeleteSubtask("acme-141".into()));
+    }
+}
+
 /// Sets up a Jira scenario on a connected state.
 pub(super) fn show(state: &mut AppState, name: &str) {
     let mut workspace = state.workspace.raw().clone();
@@ -198,6 +216,7 @@ pub(super) fn show(state: &mut AppState, name: &str) {
             }
         }
         "jira-new-epic" => new_epic(state),
+        "jira-delete-issue" | "jira-delete-subtask" => ask_to_delete(state, name),
         "jira-filters" => {
             state.update(Msg::Filter(FilterMsg::Toggle(
                 Dim::Assignee,

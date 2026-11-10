@@ -66,7 +66,13 @@ pub(super) fn panel(state: &AppState, theme: &Theme) -> Node<Msg> {
     .slide_y(1.0 - eased)
     .child(header(state, theme))
     .child(urushi_ui::widgets::divider(theme, false))
-    .child(body(state, theme));
+    .child(body(state, theme))
+    .children(super::error::for_place(
+        state,
+        theme,
+        crate::errors::ErrorPlace::QuickTerminal,
+        None,
+    ));
     if cfg!(any(target_os = "ios", target_os = "android")) {
         card = card.child(super::terminal_area::key_bar(theme));
     }

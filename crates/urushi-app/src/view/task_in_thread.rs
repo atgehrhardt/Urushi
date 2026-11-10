@@ -3,13 +3,14 @@
 
 use std::collections::HashMap;
 
-use urushi_ui::widgets::{ButtonKind, SelectOption, button, modal};
+use urushi_ui::widgets::{ButtonKind, SelectOption, button};
 use urushi_ui::{Key, Node, Theme};
 
 use super::dialogs::{cancel, hint, label};
 use super::new_thread::options_list;
 use crate::msg::Msg;
 use crate::state::AppState;
+use crate::view::modal::modal;
 
 /// The "New thread | Existing thread" switch.
 pub(super) fn switch(theme: &Theme, existing: bool) -> Node<Msg> {
@@ -46,6 +47,7 @@ pub(super) fn dialog(
     picked: Option<&str>,
 ) -> Node<Msg> {
     modal(
+        state,
         theme,
         "Start in a thread",
         480.0,

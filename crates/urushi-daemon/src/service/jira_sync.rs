@@ -148,6 +148,13 @@ impl Service {
         seen.extend(issues.iter().map(|i| (i.issue.id.clone(), i.issue.updated)));
     }
 
+    /// Forgets when deleted issues last changed: they won't be read again.
+    pub(super) fn unsee(&self, board: BoardId, issue_ids: &[String]) {
+        if let Some(sync) = lock(&self.jira.boards).get_mut(&board) {
+            sync.seen.retain(|id, _| !issue_ids.contains(id));
+        }
+    }
+
     /// Reads a Jira board and merges what changed: completely when `full` (or when due),
     /// otherwise the issues that changed since the last read.
     pub async fn sync_board(&self, board: BoardId, full: bool) -> ServiceResult<()> {

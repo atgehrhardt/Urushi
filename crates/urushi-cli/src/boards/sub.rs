@@ -48,10 +48,14 @@ pub(crate) enum SubCmd {
         /// New title.
         title: String,
     },
-    /// Delete a subtask.
+    /// Delete a subtask. A Jira issue is deleted in Jira, for everyone, after a
+    /// question.
     Rm {
         /// Subtask id.
         subtask: String,
+        /// Don't ask before deleting a Jira issue.
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -96,8 +100,10 @@ pub(super) async fn sub(client: &Client, cmd: SubCmd) -> Result<()> {
         SubCmd::Rename { subtask, title } => Ok(client
             .update_subtask(&resolve(client, &subtask).await?, Some(&title), None)
             .await?),
-        SubCmd::Rm { subtask } => Ok(client
-            .delete_subtask(&resolve(client, &subtask).await?)
-            .await?),
+        SubCmd::Rm { subtask, yes } => {
+            let id = resolve(client, &subtask).await?;
+            super::confirm_jira_delete(client, &id, yes).await?;
+            Ok(client.delete_subtask(&id).await?)
+        }
     }
 }

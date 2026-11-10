@@ -1,4 +1,4 @@
-# 0033. Treat Claude as finished only when no background agent of its own still runs
+# 0035. Treat Claude as finished only when no background agent of its own still runs
 
 - **Status:** Accepted
 - **Date:** 2026-11-10

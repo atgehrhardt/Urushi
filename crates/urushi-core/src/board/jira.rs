@@ -333,6 +333,16 @@ impl Board {
         Ok(())
     }
 
+    /// Takes a task (a card, or a subtask at any depth) and its subtasks off a board
+    /// that follows Jira, once Jira has deleted its issue. Returns it. A board of
+    /// Urushi's own refuses: its tasks are removed with [`Board::remove_task`].
+    pub fn forget_issue(&mut self, id: super::TaskId) -> Result<super::Task, BoardError> {
+        if self.source.is_none() {
+            return Err(BoardError::FollowsJira("forgetting a deleted Jira issue"));
+        }
+        self.detach(id)
+    }
+
     /// The task showing the issue with this Jira id or key.
     pub fn task_for_issue(&self, id_or_key: &str) -> Option<&super::Task> {
         self.all_tasks().find(|t| {

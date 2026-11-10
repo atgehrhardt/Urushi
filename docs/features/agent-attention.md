@@ -2,7 +2,7 @@
 
 - **Status:** Shipped
 - **Owners (crates):** `urushi-core` (`attention`, `agent::hooks`), `urushi-mux` (`emulator/notices.rs`, `SessionStatus.alerts`, `SpawnSpec.tty_env`), `urushi-daemon` (`service/attention.rs`), `urushi-app` (`attention.rs`, `update/attention.rs`, `view/attention.rs`, `platform::notify`), `urushi-cli`
-- **Related ADRs:** [0017](../adr/0017-agent-attention-through-the-pane-terminal.md), [0033](../adr/0033-claude-is-done-when-no-background-agent-runs.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0014](../adr/0014-task-prompt-via-pane-environment.md)
+- **Related ADRs:** [0017](../adr/0017-agent-attention-through-the-pane-terminal.md), [0035](../adr/0035-claude-is-done-when-no-background-agent-runs.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0014](../adr/0014-task-prompt-via-pane-environment.md)
 
 ## What it does
 When an agent in a pane **finishes its response**, its thread gets a green dot and
@@ -22,7 +22,7 @@ has focus) or type into it.
    - Claude: `--settings "$URUSHI_CLAUDE_SETTINGS"`, with `Stop` → done
      (`claude_done_command`). It stays quiet while the hook input's `background_tasks`
      lists a running agent (`CLAUDE_AGENT_TASK_TYPES`: subagent, workflow, teammate,
-     cloud session), because Claude also ends a turn while those run (ADR 0033).
+     cloud session), because Claude also ends a turn while those run (ADR 0035).
      `Notification` (permission prompt, question) → waiting, and `SessionStart`
      (`startup`) → `ready` (`ready_command`). `ready` is **not attention**: it says
      Claude reads input, so a drafted task message can be pasted in

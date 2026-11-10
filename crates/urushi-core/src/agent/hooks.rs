@@ -9,7 +9,7 @@
 //! refers to it:
 //!
 //! - Claude: `--settings "$URUSHI_CLAUDE_SETTINGS"`, adding a `Stop` hook (done,
-//!   unless background agents still run: ADR 0033), a
+//!   unless background agents still run: ADR 0035), a
 //!   `Notification` hook for permission prompts and questions (waiting), and a
 //!   `SessionStart` hook on startup (ready: it runs once Claude's own startup dialogs,
 //!   such as folder trust, are answered, so a drafted task message can be typed in; ADR
@@ -39,7 +39,7 @@ pub fn signal_command(kind: AttentionKind) -> String {
 /// The kinds of Claude background task (the `type` of a `background_tasks` entry in
 /// its `Stop` hook input) that are agents still working on the user's request. Claude
 /// ends its turn while they run and again after each reports back, so a `Stop` then
-/// isn't the end of the response (ADR 0033). Shells, monitors and MCP tasks aren't
+/// isn't the end of the response (ADR 0035). Shells, monitors and MCP tasks aren't
 /// here: a server left running must not keep the agent from ever being done.
 pub const CLAUDE_AGENT_TASK_TYPES: &[&str] = &["subagent", "workflow", "teammate", "cloud session"];
 

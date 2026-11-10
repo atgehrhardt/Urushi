@@ -18,6 +18,7 @@ pub mod board;
 pub mod config;
 pub mod deletions;
 pub mod drafts;
+pub mod errors;
 mod files;
 pub mod filter;
 pub mod issue;
