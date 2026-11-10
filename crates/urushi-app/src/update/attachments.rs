@@ -18,6 +18,9 @@ impl AppState {
         match msg {
             BoardMsg::AddFiles(task) => fx.push(Effect::PickFiles { task }),
             BoardMsg::Attach { task, name, bytes } => {
+                let Some((name, bytes)) = self.attach_to_issue(&task, (name, bytes), fx) else {
+                    return;
+                };
                 let body = Body::AddAttachment(v1::AddAttachmentRequest {
                     task_id: task,
                     name,

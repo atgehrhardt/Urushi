@@ -3,12 +3,13 @@
 use super::*;
 
 fn put() -> Request {
-    Request {
-        method: Method::Put,
-        url: "https://acme.atlassian.net/rest/api/3/issue/A-1?x=%22y%22".into(),
-        headers: vec![("Authorization".into(), "Basic s3cr\"et\\".into())],
-        json: Some("{\"summary\":\"two\\nlines \\\"quoted\\\"\"}".into()),
-    }
+    let mut request = Request::new(
+        Method::Put,
+        "https://acme.atlassian.net/rest/api/3/issue/A-1?x=%22y%22".into(),
+        vec![("Authorization".into(), "Basic s3cr\"et\\".into())],
+    );
+    request.json = Some("{\"summary\":\"two\\nlines \\\"quoted\\\"\"}".into());
+    request
 }
 
 #[test]
@@ -19,7 +20,7 @@ fn quoting_escapes_what_curl_unescapes() {
 
 #[test]
 fn the_config_carries_the_whole_request_on_lines_of_their_own() {
-    let config = curl_config(&put());
+    let config = curl_config(&put(), None);
     let lines: Vec<_> = config.lines().collect();
     assert!(lines.contains(&"request = \"PUT\""));
     assert!(lines.contains(&"url = \"https://acme.atlassian.net/rest/api/3/issue/A-1?x=%22y%22\""));
@@ -89,7 +90,10 @@ fn requests_reach_curl_only_through_its_stdin() {
     assert_eq!(answer.status, 201);
     assert_eq!(answer.body, b"{\"ok\":true}");
     assert_eq!(std::fs::read_to_string(&args).unwrap().trim(), "--config -");
-    assert_eq!(std::fs::read_to_string(&seen).unwrap(), curl_config(&put()));
+    assert_eq!(
+        std::fs::read_to_string(&seen).unwrap(),
+        curl_config(&put(), None)
+    );
 }
 
 #[test]
@@ -117,4 +121,40 @@ fn the_system_curl_understands_the_config() {
     };
     let error = CurlHttp::default().send(&request).unwrap_err();
     assert_eq!(error.0, "the site refused the connection");
+}
+
+#[test]
+fn files_go_as_a_form_part_and_downloads_follow_redirects() {
+    let mut request = Request::new(
+        Method::Post,
+        "https://acme.atlassian.net/rest/api/3/issue/A-1/attachments".into(),
+        Vec::new(),
+    );
+    request.upload = Some(Upload {
+        field: "file".into(),
+        name: "plan \"v2\".png".into(),
+        data: b"bytes".to_vec(),
+    });
+    let staged = std::path::Path::new("/tmp/x y/upload");
+    let config = curl_config(&request, Some(staged));
+    let form = config.lines().find(|l| l.starts_with("form = ")).unwrap();
+    assert_eq!(
+        form,
+        r#"form = "file=@\"/tmp/x y/upload\";filename=\"plan \\\"v2\\\".png\"""#
+    );
+    assert!(!config.contains("location"));
+    let mut download = Request::new(Method::Get, "https://x.y/f".into(), Vec::new());
+    download.follow = true;
+    assert!(
+        curl_config(&download, None)
+            .lines()
+            .any(|l| l == "location")
+    );
+    // The staged file is the user's only, and goes once sent.
+    let file = UploadFile::write(request.upload.as_ref().unwrap()).unwrap();
+    assert_eq!(std::fs::read(&file.path).unwrap(), b"bytes");
+    let dir = file.dir.clone();
+    drop(file);
+    assert!(!dir.exists());
+    assert!(!format!("{request:?}").contains("bytes\""));
 }

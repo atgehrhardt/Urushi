@@ -15,6 +15,7 @@ use urushi_core::{BoardId, ColumnId, Task, TaskId, TaskKind, TaskPatch};
 
 use super::boards::NewTask;
 use super::{Service, ServiceError, ServiceResult, State, blocking, new_uuid};
+use crate::jira::details::FieldValue;
 use crate::jira::{Account, IssueEdit, IssueFields, JiraApi, NewIssue, Rank};
 
 /// A task on a Jira board, with what writing to Jira needs.
@@ -82,6 +83,8 @@ struct Creation {
     subtasks: Vec<String>,
     /// The statuses of the column it was added to.
     statuses: Vec<String>,
+    /// Values for its other fields (by id), written as their kinds say.
+    extra: Vec<(String, FieldValue)>,
 }
 
 impl Creation {
@@ -96,17 +99,20 @@ impl Creation {
             summary,
             notes,
             labels,
+            fields: Vec::new(),
         };
-        let key = api.create(
-            account,
-            &new(
-                self.kind,
-                None,
-                self.summary.clone(),
-                self.notes.clone(),
-                self.labels.clone(),
-            ),
-        )?;
+        let mut issue = new(
+            self.kind,
+            None,
+            self.summary.clone(),
+            self.notes.clone(),
+            self.labels.clone(),
+        );
+        if !self.extra.is_empty() {
+            let meta = api.create_fields(account, &self.jira.project_key, self.kind)?;
+            issue.fields = super::jira_edit::written(&meta, &self.extra)?;
+        }
+        let key = api.create(account, &issue)?;
         let mut keys = vec![key.clone()];
         for summary in &self.subtasks {
             let sub = new(
@@ -137,7 +143,11 @@ impl Creation {
 
 impl Service {
     /// Merges issues read back after a write into their board.
-    fn merge_written(&self, board: BoardId, issues: Vec<SyncedIssue>) -> ServiceResult<()> {
+    pub(super) fn merge_written(
+        &self,
+        board: BoardId,
+        issues: Vec<SyncedIssue>,
+    ) -> ServiceResult<()> {
         self.mutate_if_changed(|state| {
             let b = state.board_mut(board)?;
             Ok(
@@ -352,6 +362,7 @@ impl Service {
             labels: tags,
             subtasks,
             statuses,
+            extra: new.jira_fields.to_vec(),
         };
         let read = blocking(move || creation.run(api.as_ref(), &account)).await?;
         let issue_id = read.first().map(|i| i.issue.id.clone()).unwrap_or_default();
@@ -416,6 +427,7 @@ impl Service {
                     summary,
                     notes: String::new(),
                     labels: Vec::new(),
+                    fields: Vec::new(),
                 },
             )?;
             Ok(api.issue(&account, &key, &IssueFields::of(&jira))?)

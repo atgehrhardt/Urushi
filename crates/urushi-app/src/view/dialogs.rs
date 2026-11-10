@@ -64,11 +64,13 @@ pub(super) fn view(
             subtasks,
             labels,
             nav,
+            issue,
         } => super::tasks::editor(
             state,
             (theme, scroll),
             (board, column, task.as_deref(), nav),
             (title, notes, subtasks, labels),
+            issue,
         ),
         Dialog::DeleteBoard { board, name, tasks } => {
             let jira = state

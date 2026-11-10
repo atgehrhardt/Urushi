@@ -11,8 +11,8 @@ mod labels;
 use attachments::attachment_from_proto;
 pub use attachments::attachment_to_proto;
 pub use jira::{
-    epic_from_proto, epic_to_proto, issue_from_proto, issue_to_proto, kind_from_proto,
-    kind_to_proto, source_from_proto, source_to_proto,
+    category_to_proto, epic_from_proto, epic_to_proto, issue_from_proto, issue_to_proto,
+    kind_from_proto, kind_to_proto, source_from_proto, source_to_proto,
 };
 pub use labels::{color_from_proto, color_to_proto};
 

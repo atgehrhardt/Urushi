@@ -1,8 +1,8 @@
 # Feature: Jira boards
 
-- **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits)
-- **Owners (crates):** `urushi-core` (`board/{jira,sync,kind}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `jira/{api,cloud,parse,adf,credentials}.rs`, `service/{jira,jira_write}.rs`, `server/jira.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `convert/boards/jira.rs`), `urushi-client` (`jira.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`update/jira.rs`, `msg/jira.rs`, `view/jira.rs`, `view/board/jira.rs`, `view/tasks/jira.rs`, `view/menu/jira.rs`, `snapshot/jira.rs`), `urushi-cli` (`urushi jira`, `urushi board sync`)
-- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits, issues in full)
+- **Owners (crates):** `urushi-core` (`board/{jira,sync,kind}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `time.rs`, `jira/{api,cloud,cloud/details,parse,parse/details,details,adf,credentials}.rs`, `service/{jira,jira_write,jira_query,jira_details,jira_edit}.rs`, `server/{jira,jira_issue}.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `jira_issue.proto`, `convert/boards/jira/`), `urushi-client` (`jira.rs`, `jira_issue.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`filter.rs`, `issue.rs`, `update/{jira,filter,issue}.rs`, `msg/{jira,filter,issue}.rs`, `view/jira.rs`, `view/board/{jira,filter}.rs`, `view/tasks/{jira,header}.rs`, `view/tasks/issue/`, `view/menu/{jira,filter}.rs`, `snapshot/{jira,jira_issue}.rs`), `urushi-cli` (`urushi jira`, `urushi board sync`)
+- **Related ADRs:** [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 Any Jira Cloud board can be imported into the Tasks panel. It keeps Jira's columns and stays
@@ -34,6 +34,22 @@ changes made here go to Jira first.
   whenever the board changes while one is on); everything else is filtered here.
   Columns count "shown/all". On a phone the bar is the search and **Filters ▾**.
   Boards of Urushi's own get the search, type and label.
+- **Everything a Jira issue has, in its editor** (ADR 0022): opening an issue reads it
+  in full. On the right: its key with **Watch**/**Watching (n)** and **Open in Jira**,
+  **Status** (the transitions it can take, made at once), then every field Jira lets the
+  account edit, in Jira's order (type, assignee with **Assign to me**, reporter,
+  priority, parent, due date, components, fix versions, sprint, story points and the
+  site's own fields), each as its kind needs: a text or date field, a list of allowed
+  values, chips for several, people and issues searched in Jira (Enter). Changed fields
+  are marked • and go to Jira with **Save**. Under the notes, tabs: **Comments** (add in
+  Markdown; edit or delete your own), **Files** (open, add, delete), **Links** (open the
+  other issue here if it's on a board, else in Jira; add "this issue blocks / is blocked
+  by …", remove) and **Work** (time tracking, the log, and **Log work** with "1h 30m").
+  Those are made in Jira at once. Descriptions and comments keep their formatting as
+  Markdown. The editor is wider and scrolls; until Jira answers, the board's summary
+  shows.
+- **New issues** ask Jira which fields their type has; required ones (marked *) must be
+  filled in before Save, and go with the new issue.
 - **Changes go to Jira:** dragging a card (or the editor's column chips) takes a
   transition to a status the column shows, then ranks it among the column's cards; a move
   the workflow doesn't allow is refused with a message and the card stays. Title, notes
@@ -47,10 +63,10 @@ changes made here go to Jira first.
   and key. The parent's subtask rows show each subtask's kind and key.
 - **Urushi's own:** a card's color and the thread started for it stay here and survive every
   sync; threads start from Jira cards like any other.
-- **Left to Jira:** deleting issues, nesting them, changing their type, changing columns,
-  renaming the board and attachments. The editor shows the issue's key (**Open in Jira**),
-  type, status, assignee, priority and epic read-only, and has no Delete; the card menu
-  offers **Open in Jira** instead. A description too long to show whole is read-only.
+- **Left to Jira:** deleting issues, moving them between projects, changing columns and
+  renaming the board. The editor has no Delete; the card menu offers **Open in Jira**
+  instead. A description too long to show whole is read-only, and fields Urushi has no
+  kind for (e.g. cascading selects) show as text.
 - **Task kinds on every board:** any task can be a task, story, bug or epic (the editor's
   **Type**), shown by the same marker.
 
@@ -88,6 +104,18 @@ changes made here go to Jira first.
   tasks on Jira boards: Jira first (`edit` with label add/remove operations, `transition`,
   `create` with the project's issue type for the kind, `rank`), then `issue` read back and
   merged. Only the color changes locally.
+- **Daemon, one issue in full** (ADR 0022): `JiraApi::details` (`jira/cloud/details.rs`:
+  edit metadata, the values of those fields plus attachments, links and time tracking,
+  the board's open sprints, comments, watchers, work log, transitions, link kinds)
+  parsed by `jira/parse/details.rs` into `jira::details` types; a field's
+  `FieldKind` comes from its schema, and `FieldValue::to_json` writes an edit as Jira
+  takes it. `service/jira_details.rs` reads it (and remembers the fields' kinds per
+  issue in `JiraLink::kinds`), create fields, attachments (decoded for thumbnails), and
+  user and issue searches; `service/jira_edit.rs` makes an `IssueChange` under the
+  board's lock, merges the issue read back, and answers with the details afterwards.
+  Attachments go up as a multipart form through a private temporary file
+  (`http::Upload`) and come down following Jira's redirect, from the site only.
+  `jira/adf/` converts ADF ⇄ Markdown both ways.
 - **Sign-in** (`jira/credentials.rs`): `site_address` normalizes the site (https only);
   `CredentialStore` keeps it in `<home>/jira-credentials.json` (0600).
 - **Wire (1.13):** `JiraIssue.{type_id, assignee_id, reporter, priority_id, due, points,
@@ -131,16 +159,21 @@ changes made here go to Jira first.
 ## Tests
 - Core: `board/sync/tests.rs`, `board/kind.rs`, `tests/jira_sync_props.rs`.
 - Proto: `convert/boards/jira/tests.rs` (round trips, wire messages, issue addresses).
-- Daemon: `http/tests.rs` (config quoting, a fake and the real curl), `jira/cloud/tests.rs`
-  (requests, status mapping, paging), `jira/parse/tests.rs`, `jira/adf.rs`,
-  `jira/credentials.rs`, `service/jira.rs` (backoff), and `tests/jira_boards.rs` end to end
-  against an in-memory Jira (`tests/fake_jira/`: sign-in, import, remote changes,
-  transitions, refused moves, edits, subtasks, refusals, restart, sign-out, quick
-  filters).
+- Daemon: `http/tests.rs` (config quoting, uploads and redirects, a fake and the real
+  curl), `jira/cloud/tests.rs` (requests, status mapping, paging, opening an issue,
+  comments, files, links, watching, work), `jira/parse/tests.rs`,
+  `jira/parse/details/tests.rs` (field kinds and values), `jira/details.rs` (writing
+  values), `jira/adf/` (Markdown round trips), `jira/credentials.rs`,
+  `service/jira.rs` (backoff), `service/jira_edit.rs`, and end to end against an
+  in-memory Jira (`tests/fake_jira/`): `tests/jira_boards.rs` (sign-in, import, remote
+  changes, transitions, refused moves, edits, subtasks, refusals, restart, sign-out,
+  quick filters) and `tests/jira_issues.rs` (any field, comments, files, links,
+  watching, work, searches, required create fields).
 - UI: `textfield/secret.rs`. App: `filter/tests.rs` (each dimension, how they combine,
-  subtasks keeping their card), `update/tests/jira.rs` (a new issue created only on Save,
+  subtasks keeping their card), `issue.rs` (durations, drafts), `update/tests/jira.rs` (a new issue created only on
+  Save, field drafts sent with Save, changes made at once, required create fields,
   filters, quick-filter queries, the search's keyboard); `snapshot/tests.rs` (`jira-board`, `jira-task`, `jira-subtask` (the top
-  bar), `jira-filters`, `jira-filter-menu`, `jira-connect`, `jira-import` scenarios, card sizes, no
+  bar), `jira-filters`, `jira-filter-menu`, `jira-issue`, `jira-issue-picker`, `jira-connect`, `jira-import` scenarios, card sizes, no
   subtask delete on Jira boards, the Type picker).
 
 ## Limitations and follow-ups
@@ -148,9 +181,11 @@ changes made here go to Jira first.
   v2) and no OAuth sign-in.
 - Polling, not webhooks: changes take up to 15 s (2 min with no app open) to arrive.
 - Moves wait for Jira (about a second) before the card settles.
-- Jira attachments, comments, sprints/backlog views and changing an issue's assignee,
-  priority or type aren't shown or editable here.
-- Editing notes replaces the description with plain paragraphs (formatting is lost).
+- Sprint and backlog views aren't here; an issue's sprint is a field.
+- Markdown can't say everything ADF can: panels, colors and mentions as links read as
+  text and are written back as text when edited. Jira attachments don't show as
+  thumbnails on cards.
+- Opening an issue takes several requests (about a second) before its fields show.
 - Issues whose status no column shows, and done issues older than 14 days, aren't on the
   board; a board shows at most 500 tasks.
 - The sign-in is a file, not the OS keychain (ADR 0021). Claude's usage request still makes

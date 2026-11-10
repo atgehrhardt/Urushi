@@ -36,7 +36,8 @@ pub fn kind_from_proto(value: i32) -> Option<TaskKind> {
     }
 }
 
-fn category_to_proto(c: StatusCategory) -> i32 {
+/// Core status category → wire enum value.
+pub fn category_to_proto(c: StatusCategory) -> i32 {
     match c {
         StatusCategory::ToDo => v1::JiraStatusCategory::ToDo,
         StatusCategory::InProgress => v1::JiraStatusCategory::InProgress,

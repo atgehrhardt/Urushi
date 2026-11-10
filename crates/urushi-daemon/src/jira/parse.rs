@@ -32,7 +32,7 @@ fn time(v: &Value) -> Timestamp {
 }
 
 /// A user field (`assignee`, `reporter`).
-fn person(v: &Value) -> Option<Person> {
+pub(super) fn person(v: &Value) -> Option<Person> {
     Some(Person {
         account_id: some_text(&v["accountId"])?,
         name: text(&v["displayName"]),
@@ -140,7 +140,7 @@ pub(super) fn issue(v: &Value, fields: &IssueFields) -> Option<SyncedIssue> {
             notes_editable: true,
         },
         title: text(&f["summary"]),
-        notes: adf::to_text(&f["description"]),
+        notes: adf::to_markdown(&f["description"]),
         labels: f["labels"]
             .as_array()
             .map(|l| l.iter().filter_map(some_text).collect())
@@ -304,6 +304,8 @@ pub(super) fn error_message(body: &[u8]) -> String {
     }
     messages.join("; ")
 }
+
+pub(super) mod details;
 
 #[cfg(test)]
 mod tests;

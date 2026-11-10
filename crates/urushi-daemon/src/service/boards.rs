@@ -40,6 +40,8 @@ pub struct NewTask<'a> {
     pub subtasks: &'a [String],
     /// Its kind, if said (on a Jira board, the type of issue to create).
     pub kind: Option<TaskKind>,
+    /// On a Jira board, values for the new issue's other fields (by field id).
+    pub jira_fields: &'a [(String, crate::jira::details::FieldValue)],
 }
 
 impl State {

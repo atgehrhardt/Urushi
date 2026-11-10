@@ -33,6 +33,15 @@ macro_rules! focused_field {
             (Some(Dialog::Task { notes, .. }), Field::TaskNotes) => Some(notes),
             (Some(Dialog::Task { subtasks, .. }), Field::NewSubtask) => Some($($r)+ subtasks.new),
             (Some(Dialog::Task { labels, .. }), Field::TaskTag) => Some($($r)+ labels.input),
+            (Some(Dialog::Task { issue, .. }), Field::JiraSearch) => Some($($r)+ issue.search),
+            (Some(Dialog::Task { issue, .. }), Field::JiraComment) => Some($($r)+ issue.comment),
+            (Some(Dialog::Task { issue, .. }), Field::JiraWork) => Some($($r)+ issue.work),
+            (Some(Dialog::Task { issue, .. }), Field::JiraCommentEdit) => {
+                match $($r)+ issue.editing {
+                    Some((_, text)) => Some(text),
+                    None => None,
+                }
+            }
             (Some(Dialog::NestTask { query, .. }), Field::NestQuery)
             | (Some(Dialog::ImportJira { query, .. }), Field::JiraQuery) => Some(query),
             (Some(Dialog::ConnectJira { site, .. }), Field::JiraSite) => Some(site),
@@ -46,18 +55,26 @@ macro_rules! focused_field {
 impl AppState {
     /// The focused text field, if a dialog (or the board's search) has one.
     pub(crate) fn field(&self) -> Option<&TextField> {
-        match self.focus? {
-            Field::BoardSearch if self.dialog.is_none() => Some(&self.board.filter.search),
-            focus => focused_field!(&self.dialog, focus, &),
+        match (self.focus?, &self.dialog) {
+            (Field::BoardSearch, None) => Some(&self.board.filter.search),
+            (Field::JiraText(i), Some(Dialog::Task { issue, .. })) => issue.text_at(i),
+            (focus, _) => focused_field!(&self.dialog, focus, &),
         }
     }
 
     /// The focused text field, to edit.
     pub(super) fn field_mut(&mut self) -> Option<&mut TextField> {
-        match self.focus? {
-            Field::BoardSearch if self.dialog.is_none() => Some(&mut self.board.filter.search),
-            focus => focused_field!(&mut self.dialog, focus, &mut),
+        let focus = self.focus?;
+        if focus == Field::BoardSearch && self.dialog.is_none() {
+            return Some(&mut self.board.filter.search);
         }
+        if let Field::JiraText(i) = focus {
+            return match &mut self.dialog {
+                Some(Dialog::Task { issue, .. }) => issue.text_at_mut(i),
+                _ => None,
+            };
+        }
+        focused_field!(&mut self.dialog, focus, &mut)
     }
 
     /// The fields Tab cycles through, in order.
@@ -106,7 +123,7 @@ impl AppState {
             Some(Named::Enter) => {
                 if self.field_mut().is_some_and(TextField::newline) {
                     self.after_field_edit();
-                } else if !self.task_editor_enter() {
+                } else if !self.task_editor_enter(fx) {
                     self.submit(fx);
                 }
             }

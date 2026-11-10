@@ -11,12 +11,14 @@ use crate::state::{Field, FieldCommand, Launch, SettingToggle, TaskLink};
 
 mod board;
 mod filter;
+mod issue;
 mod jira;
 mod pane;
 mod sidebar;
 
 pub use board::BoardMsg;
 pub use filter::FilterMsg;
+pub use issue::IssueMsg;
 pub use jira::JiraMsg;
 pub use pane::PaneMsg;
 pub use sidebar::SidebarMsg;
@@ -184,6 +186,10 @@ pub enum Msg {
     Jira(JiraMsg),
     /// Filtering the shown board (`update/filter.rs`).
     Filter(FilterMsg),
+    /// The task editor's Jira side (`update/issue.rs`).
+    Issue(IssueMsg),
+    /// The window's height changed (logical pixels).
+    WindowHeight(f32),
     /// Ask to delete a board.
     OpenDeleteBoard(String),
     /// Confirmed: delete the board.
@@ -346,6 +352,12 @@ pub enum Followup {
     JiraBoards,
     /// The issues of this board its quick filters let through.
     QuickFilter(String),
+    /// Show this task's issue in full in its editor.
+    JiraIssue(String),
+    /// Show what this task's editor's picker searched for.
+    JiraFound(String),
+    /// Show the fields a new issue of this kind (a wire `TaskKind`) has.
+    JiraCreateFields(i32),
 }
 
 /// Something the app needs done.

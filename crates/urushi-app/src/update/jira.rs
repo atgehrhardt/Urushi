@@ -136,6 +136,10 @@ impl AppState {
         match (followup, &mut self.dialog) {
             (Followup::JiraAccount, _) => true,
             // Nothing hidden by the quick filters; the banner says why.
+            (Followup::JiraIssue(_), _) => {
+                self.issue_failed(followup);
+                false
+            }
             (Followup::QuickFilter(_), _) => {
                 self.board.quick_asking = false;
                 self.board.filter.quick_matches = None;
@@ -184,7 +188,7 @@ impl AppState {
             (Followup::QuickFilter(board), Outcome::JiraIssueIds(ids)) => {
                 self.quick_filter_answered(&board, Some(ids.ids), fx);
             }
-            other => return Some(other),
+            other => return self.issue_answered(other.0, other.1),
         }
         None
     }

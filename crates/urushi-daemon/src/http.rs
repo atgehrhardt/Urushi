@@ -26,6 +26,8 @@ pub enum Method {
     Post,
     /// PUT.
     Put,
+    /// DELETE.
+    Delete,
 }
 
 impl Method {
@@ -34,6 +36,7 @@ impl Method {
             Self::Get => "GET",
             Self::Post => "POST",
             Self::Put => "PUT",
+            Self::Delete => "DELETE",
         }
     }
 }
@@ -49,6 +52,36 @@ pub struct Request {
     pub headers: Vec<(String, String)>,
     /// A JSON body, sent with `Content-Type: application/json`.
     pub json: Option<String>,
+    /// A file to send as a multipart form (instead of a JSON body).
+    pub upload: Option<Upload>,
+    /// Follow redirects (e.g. to where a file is served from). Credentials aren't
+    /// sent to another host.
+    pub follow: bool,
+}
+
+impl Request {
+    /// A request with no body.
+    pub fn new(method: Method, url: String, headers: Vec<(String, String)>) -> Self {
+        Self {
+            method,
+            url,
+            headers,
+            json: None,
+            upload: None,
+            follow: false,
+        }
+    }
+}
+
+/// A file sent as one part of a multipart form.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Upload {
+    /// The form field (e.g. `file`).
+    pub field: String,
+    /// The file's name.
+    pub name: String,
+    /// Its contents.
+    pub data: Vec<u8>,
 }
 
 impl fmt::Debug for Request {
@@ -61,6 +94,11 @@ impl fmt::Debug for Request {
                 &self.headers.iter().map(|(n, _)| n).collect::<Vec<_>>(),
             )
             .field("json", &self.json.as_ref().map(String::len))
+            .field(
+                "upload",
+                &self.upload.as_ref().map(|u| (&u.name, u.data.len())),
+            )
+            .field("follow", &self.follow)
             .finish()
     }
 }
@@ -112,15 +150,48 @@ impl CurlHttp {
 
 impl HttpClient for CurlHttp {
     fn send(&self, request: &Request) -> Result<Response, HttpError> {
-        let config = curl_config(request);
+        // A file to upload goes through a private temporary file, named by curl's form.
+        let upload = request.upload.as_ref().map(UploadFile::write).transpose()?;
+        let config = curl_config(request, upload.as_ref().map(|u| u.path.as_path()));
         let out = exec::run(
             &self.program,
             &["--config", "-"],
             Some(config.as_bytes()),
             TIMEOUT + Duration::from_secs(5),
         )
-        .map_err(|e| HttpError(friendly(&e)))?;
-        parse_output(&out)
+        .map_err(|e| HttpError(friendly(&e)));
+        drop(upload);
+        parse_output(&out?)
+    }
+}
+
+/// An upload's contents in a file readable only by the user, removed when dropped.
+struct UploadFile {
+    dir: std::path::PathBuf,
+    path: std::path::PathBuf,
+}
+
+impl UploadFile {
+    fn write(upload: &Upload) -> Result<Self, HttpError> {
+        let unique = format!(
+            "urushi-upload-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        );
+        let dir = std::env::temp_dir().join(unique);
+        let failed = |e: std::io::Error| HttpError(format!("couldn't stage the file: {e}"));
+        std::fs::create_dir_all(&dir).map_err(failed)?;
+        let path = dir.join("upload");
+        crate::platform::write_private(&path, &upload.data).map_err(failed)?;
+        Ok(Self { dir, path })
+    }
+}
+
+impl Drop for UploadFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
@@ -142,8 +213,9 @@ fn friendly(error: &str) -> String {
     }
 }
 
-/// The curl config for a request: one `option = "value"` per line.
-pub(crate) fn curl_config(request: &Request) -> String {
+/// The curl config for a request: one `option = "value"` per line. `upload` is where
+/// the request's file was staged.
+pub(crate) fn curl_config(request: &Request, upload: Option<&std::path::Path>) -> String {
     let mut lines = vec![
         "silent".to_owned(),
         "show-error".to_owned(),
@@ -165,6 +237,22 @@ pub(crate) fn curl_config(request: &Request) -> String {
             quote("Content-Type: application/json")
         ));
         lines.push(format!("data-binary = {}", quote(json)));
+    }
+    if let (Some(file), Some(path)) = (&request.upload, upload) {
+        // `name=@"path";filename="name"`, quoted for curl's form parser.
+        let form_quote = |s: &str| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""));
+        lines.push(format!(
+            "form = {}",
+            quote(&format!(
+                "{}=@{};filename={}",
+                file.field,
+                form_quote(&path.to_string_lossy()),
+                form_quote(&file.name)
+            ))
+        ));
+    }
+    if request.follow {
+        lines.push("location".to_owned());
     }
     let mut config = lines.join("\n");
     config.push('\n');

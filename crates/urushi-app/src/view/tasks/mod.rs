@@ -12,11 +12,13 @@ use super::dialogs::{area, cancel, field, hint, label};
 use urushi_client::{FoundTask, TaskRef};
 
 use crate::board::TaskLabels;
+use crate::issue::IssueEditor;
 use crate::msg::{BoardMsg, Msg};
 use crate::state::{AppState, EditorNav, Field, SubtaskEditor, TaskLink};
 
 mod attachments;
 mod header;
+mod issue;
 mod jira;
 mod labels;
 mod nest;
@@ -33,6 +35,8 @@ pub(crate) fn subtasks_scroll_key() -> Key {
 
 /// Width of the editor with its two columns (desktop).
 const WIDE: f32 = 780.0;
+/// Width of the editor of a Jira issue in full (desktop).
+const FULL: f32 = 960.0;
 /// Width of the one-column editor (phones).
 const NARROW: f32 = 520.0;
 /// Height of the one-column editor's scrolling body (phones).
@@ -51,10 +55,13 @@ pub(super) fn editor(
     (theme, scroll): (&Theme, &HashMap<Key, f32>),
     (board, column, task, nav): (&str, &str, Option<&str>, &EditorNav),
     (title, notes, subtasks, labels): (&TextField, &TextField, &SubtaskEditor, &TaskLabels),
+    jira: &IssueEditor,
 ) -> Node<Msg> {
     let found = task.and_then(|t| state.workspace.find_task(t));
     let current = found.as_ref().map(FoundTask::task);
     let issue = current.and_then(TaskRef::issue);
+    // A Jira issue in full gets more room, and scrolls.
+    let full = jira.details.is_some() || jira.loading;
     let mut text = Node::column()
         .width(Length::Fill(1.0))
         .gap(8.0)
@@ -72,7 +79,17 @@ pub(super) fn editor(
         let offset = scroll.get(&subtasks_scroll_key()).copied().unwrap_or(0.0);
         text = text.children(subtasks::checklist(state, theme, current, subtasks, offset));
     }
-    let organize = organize(state, (theme, scroll), (board, column, current), labels);
+    if let (Some(task), true) = (task, issue.is_some() && full) {
+        let width = text_width(state, full);
+        text = text.children(issue::tabs(state, theme, (task, width), jira, scroll));
+    }
+    let organize = organize(
+        state,
+        (theme, scroll),
+        (board, column, current),
+        labels,
+        jira,
+    );
     let hint_text = if state.daemon_supports_subtasks() {
         format!(
             "Enter adds a subtask, a tag or a notes line. Nothing is saved until Save ({}).",
@@ -102,12 +119,18 @@ pub(super) fn editor(
             .align(Align::Start)
             .child(text.width(Length::Fill(1.4)))
             .child(organize.width(Length::Fill(1.0)));
-        let body = Node::column()
+        let mut body = Node::column()
             .width(Length::Fill(1.0))
             .gap(12.0)
             .child(columns)
             .child(hint(theme, &hint_text));
-        (body, WIDE)
+        if full {
+            let offset = scroll.get(&editor_scroll_key()).copied().unwrap_or(0.0);
+            body = body
+                .height(Length::Fixed(full_height(state)))
+                .scroll(editor_scroll_key(), offset);
+        }
+        (body, if full { FULL } else { WIDE })
     };
     let actions = if nav.confirm_discard {
         discard_question(theme)
@@ -170,20 +193,22 @@ fn organize(
     (theme, scroll): (&Theme, &HashMap<Key, f32>),
     (board, column, current): (&str, &str, Option<TaskRef<'_>>),
     labels: &TaskLabels,
+    jira: &IssueEditor,
 ) -> Node<Msg> {
     let on_board = state.workspace.board(board);
     let jira_board = on_board.is_some_and(|b| b.jira.is_some());
     let issue = current.and_then(TaskRef::issue);
     let mut organize = Node::column().width(Length::Fill(1.0)).gap(8.0);
-    if let (Some(i), Some(b), Some(c)) = (issue, on_board, current) {
+    let width = side_width(state);
+    if let (Some(i), Some(_), true) = (issue, on_board, jira.details.is_some()) {
+        organize = organize.children(issue::section(state, theme, (i, width), jira, scroll));
+    } else if let (Some(i), Some(b), Some(c)) = (issue, on_board, current) {
         organize = organize.children(jira::issue_section(theme, b, i, c.kind()));
     } else if state.daemon_supports_jira() && current.is_none_or(TaskRef::is_card) {
-        organize = organize.children(jira::kind_picker(
-            theme,
-            labels.kind,
-            jira_board,
-            side_width(state),
-        ));
+        organize = organize.children(jira::kind_picker(theme, labels.kind, jira_board, width));
+        if jira_board && current.is_none() {
+            organize = organize.children(issue::create_section(state, theme, jira, width, scroll));
+        }
     }
     organize = match current.filter(|c| !c.is_card()) {
         Some(sub) => organize.children(nested_status(theme, sub, issue.is_none())),
@@ -299,6 +324,26 @@ fn column_chips(
         (super::labels::text_width(&c.name, size) + 22.0, chip)
     });
     super::labels::wrap(chips.collect(), 6.0, width)
+}
+
+/// The width of the editor's left-hand column (the whole body on phones), for wrapping
+/// comments.
+fn text_width(state: &AppState, full: bool) -> f32 {
+    if state.compact {
+        NARROW - 40.0
+    } else {
+        ((if full { FULL } else { WIDE }) - 40.0 - 24.0) * 1.4 / 2.4
+    }
+}
+
+/// The height of a Jira issue's scrolling editor body: as much of the window as leaves
+/// room for its top bar and buttons.
+fn full_height(state: &AppState) -> f32 {
+    if state.window_height <= 0.0 {
+        640.0
+    } else {
+        (state.window_height - 200.0).clamp(360.0, 780.0)
+    }
 }
 
 /// The width of the editor's right-hand column (the whole body on phones), for

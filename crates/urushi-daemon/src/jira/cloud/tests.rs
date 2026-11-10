@@ -268,6 +268,7 @@ fn edits_send_fields_and_label_operations() {
                 notes: Some("line".into()),
                 labels_add: vec!["ui".into()],
                 labels_remove: vec!["old".into()],
+                fields: vec![("priority".into(), json!({ "id": "2" }))],
             },
         )
         .unwrap();
@@ -276,6 +277,7 @@ fn edits_send_fields_and_label_operations() {
     let body: Value = serde_json::from_str(r.json.as_deref().unwrap()).unwrap();
     assert_eq!(body["fields"]["summary"], "New");
     assert_eq!(body["fields"]["description"]["type"], "doc");
+    assert_eq!(body["fields"]["priority"]["id"], "2");
     assert_eq!(
         body["update"]["labels"],
         json!([{ "add": "ui" }, { "remove": "old" }])
@@ -304,6 +306,7 @@ fn creating_picks_the_projects_type_for_the_kind() {
                 summary: "Step".into(),
                 notes: String::new(),
                 labels: Vec::new(),
+                fields: vec![("customfield_1".into(), json!({ "id": "t1" }))],
             },
         )
         .unwrap();
@@ -317,6 +320,7 @@ fn creating_picks_the_projects_type_for_the_kind() {
     let body: Value = serde_json::from_str(seen[1].json.as_deref().unwrap()).unwrap();
     assert_eq!(body["fields"]["issuetype"]["id"], "5");
     assert_eq!(body["fields"]["parent"]["key"], "ACME-1");
+    assert_eq!(body["fields"]["customfield_1"]["id"], "t1");
     assert!(body["fields"].get("description").is_none());
 }
 
@@ -360,4 +364,133 @@ fn paging_that_repeats_itself_ends() {
         .unwrap();
     assert_eq!(fetched.issues.len(), 1);
     assert!(http.seen().len() <= 2, "{}", http.seen().len());
+}
+
+#[test]
+fn opening_an_issue_reads_its_fields_values_and_conversation() {
+    let http = Script::answering([
+        (
+            200,
+            json!({ "fields": {
+                "summary": { "name": "Summary", "schema": { "type": "string", "system": "summary" } },
+                "priority": { "name": "Priority", "required": false,
+                    "schema": { "type": "priority", "system": "priority" },
+                    "allowedValues": [{ "id": "1", "name": "Highest" }, { "id": "2", "name": "High" }] },
+                "customfield_10020": { "name": "Sprint",
+                    "schema": { "type": "array", "items": "json", "custom": "com.pyxis.greenhopper.jira:gh-sprint" } }
+            }}),
+        ),
+        (
+            200,
+            json!({ "fields": {
+                "priority": { "id": "2", "name": "High" },
+                "customfield_10020": [{ "id": 6, "name": "Sprint 6", "state": "active" }],
+                "attachment": [{ "id": "900", "filename": "a.png", "mimeType": "image/png", "size": 5,
+                    "content": "https://acme.atlassian.net/rest/api/3/attachment/content/900" }],
+                "issuelinks": [{ "id": "77", "type": { "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+                    "outwardIssue": { "id": "10002", "key": "A-2", "fields": { "summary": "Other", "status": { "name": "To Do" } } } }],
+                "timetracking": { "timeSpent": "1h" }
+            }}),
+        ),
+        (
+            200,
+            json!({ "values": [{ "id": 6, "name": "Sprint 6" }, { "id": 7, "name": "Sprint 7" }] }),
+        ),
+        (
+            200,
+            json!({ "comments": [{ "id": "5", "author": { "accountId": "acc-1", "displayName": "Ada" },
+                "body": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "hi" }] }] },
+                "created": "2026-11-09T10:20:30.123+0000" }] }),
+        ),
+        (
+            200,
+            json!({ "isWatching": true, "watchers": [{ "accountId": "acc-1", "displayName": "Ada" }] }),
+        ),
+        (
+            200,
+            json!({ "worklogs": [{ "id": "8", "timeSpentSeconds": 3600, "author": { "accountId": "acc-1" } }] }),
+        ),
+        (200, json!({ "transitions": [] })),
+        (
+            200,
+            json!({ "issueLinkTypes": [{ "name": "Blocks", "inward": "is blocked by", "outward": "blocks" }] }),
+        ),
+    ]);
+    let d = CloudJira::new(http.clone())
+        .details(&account(), "A-1", 7)
+        .unwrap();
+    let names: Vec<&str> = d.fields.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["Priority", "Sprint"],
+        "the summary has its own place"
+    );
+    assert_eq!(d.fields[0].value.options[0].name, "High");
+    assert_eq!(d.fields[0].allowed.len(), 2);
+    assert_eq!(d.fields[1].allowed.len(), 2, "the board's sprints");
+    assert_eq!(d.fields[1].value.options[0].id, "6");
+    assert_eq!(d.comments[0].body, "hi");
+    assert_eq!(d.attachments[0].name, "a.png");
+    assert_eq!(
+        (d.links[0].relation.as_str(), d.links[0].issue.key.as_str()),
+        ("blocks", "A-2")
+    );
+    assert!(d.watching);
+    assert_eq!(d.worklogs[0].seconds, 3600);
+    assert_eq!(d.time.spent, "1h");
+    assert_eq!(d.link_types[0].name, "Blocks");
+    let seen = http.seen();
+    assert!(
+        seen[1]
+            .url
+            .contains("fields=priority%2Ccustomfield_10020%2Cattachment"),
+        "{}",
+        seen[1].url
+    );
+    assert!(
+        seen[2]
+            .url
+            .ends_with("/rest/agile/1.0/board/7/sprint?state=active,future")
+    );
+}
+
+#[test]
+fn comments_attachments_links_and_watching_use_their_endpoints() {
+    let http = Script::answering((0..7).map(|_| (204, Value::Null)));
+    let jira = CloudJira::new(http.clone());
+    let mut me = account();
+    me.account_id = "acc-1".into();
+    jira.add_comment(&me, "A-1", "**done**").unwrap();
+    jira.delete_comment(&me, "A-1", "5").unwrap();
+    jira.attach(&me, "A-1", "notes.txt", b"hello").unwrap();
+    jira.link(&me, "Blocks", "A-1", "A-2").unwrap();
+    jira.watch(&me, "A-1", true).unwrap();
+    jira.watch(&me, "A-1", false).unwrap();
+    jira.log_work(&me, "A-1", 1800, "2026-11-09T10:00:00.000+0000", "")
+        .unwrap();
+    let seen = http.seen();
+    let body =
+        |i: usize| -> Value { serde_json::from_str(seen[i].json.as_deref().unwrap()).unwrap() };
+    assert!(seen[0].url.ends_with("/issue/A-1/comment"));
+    assert_eq!(
+        body(0)["body"]["content"][0]["content"][0]["marks"][0]["type"],
+        "strong"
+    );
+    assert_eq!(
+        (seen[1].method, seen[1].url.ends_with("/comment/5")),
+        (Method::Delete, true)
+    );
+    assert!(seen[2].url.ends_with("/issue/A-1/attachments"));
+    assert!(
+        seen[2]
+            .headers
+            .contains(&("X-Atlassian-Token".into(), "no-check".into()))
+    );
+    assert_eq!(seen[2].upload.as_ref().unwrap().name, "notes.txt");
+    assert_eq!(body(3)["outwardIssue"]["key"], "A-1");
+    assert_eq!(body(4), json!("acc-1"));
+    assert!(seen[5].url.ends_with("/watchers?accountId=acc-1"));
+    assert_eq!(body(6)["timeSpentSeconds"], 1800);
+    // Files are fetched from the site only.
+    assert!(jira.download(&me, "https://evil.example/x").is_err());
 }

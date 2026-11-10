@@ -6,6 +6,7 @@ mod boards;
 pub(crate) mod connection;
 pub(crate) mod handlers;
 mod jira;
+mod jira_issue;
 mod organize;
 pub(crate) mod remote;
 pub(crate) mod screen;

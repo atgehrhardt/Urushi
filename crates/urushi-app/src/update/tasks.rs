@@ -77,7 +77,7 @@ impl AppState {
     }
 
     /// Opens the editor for a new task in `column`.
-    pub(super) fn new_task(&mut self, board: String, column: String) {
+    pub(super) fn new_task(&mut self, board: String, column: String, fx: &mut Vec<Effect>) {
         self.open(
             Dialog::Task {
                 board,
@@ -88,19 +88,40 @@ impl AppState {
                 subtasks: Box::default(),
                 labels: Box::default(),
                 nav: Box::default(),
+                issue: Box::default(),
             },
             Some(Field::TaskTitle),
         );
+        self.request_create_fields(fx);
     }
 
     /// Enter in the task editor: in the title it moves on to the notes (it never saves,
     /// so a task isn't created, in Jira too, half typed); in the tag or subtask field it
     /// adds what's typed. Returns whether it did something (otherwise Enter saves).
-    pub(super) fn task_editor_enter(&mut self) -> bool {
+    pub(super) fn task_editor_enter(&mut self, fx: &mut Vec<Effect>) -> bool {
         let focus = self.focus;
-        if focus == Some(Field::TaskTitle) && matches!(self.dialog, Some(Dialog::Task { .. })) {
-            self.focus = Some(Field::TaskNotes);
-            return true;
+        if !matches!(self.dialog, Some(Dialog::Task { .. })) {
+            return false;
+        }
+        match focus {
+            Some(Field::TaskTitle) => {
+                self.focus = Some(Field::TaskNotes);
+                return true;
+            }
+            // The Jira side: Enter searches, posts, logs, or leaves a field.
+            Some(Field::JiraSearch) => {
+                self.update_issue(crate::msg::IssueMsg::Search, fx);
+                return true;
+            }
+            Some(Field::JiraWork) => {
+                self.update_issue(crate::msg::IssueMsg::LogWork, fx);
+                return true;
+            }
+            Some(Field::JiraText(_)) => {
+                self.focus = None;
+                return true;
+            }
+            _ => {}
         }
         let Some(Dialog::Task {
             subtasks, labels, ..
@@ -135,6 +156,7 @@ impl AppState {
             notes,
             subtasks,
             labels,
+            issue,
             ..
         }) = &self.dialog
         else {
@@ -144,6 +166,12 @@ impl AppState {
             return;
         }
         if task.is_none() {
+            // Jira refuses an issue without its required fields: say which first.
+            let missing = Self::missing_fields(issue);
+            if !missing.is_empty() {
+                self.error = Some(format!("Fill in {} first.", missing.join(", ")));
+                return;
+            }
             // A subtask typed but not yet added goes with the task too.
             let typed = Some(subtasks.new.text().trim().to_owned()).filter(|t| !t.is_empty());
             let body = Body::CreateTask(v1::CreateTaskRequest {
@@ -155,6 +183,7 @@ impl AppState {
                 color: labels.color,
                 tags: labels.with_typed(),
                 kind: labels.kind,
+                jira_fields: issue.edits(),
             });
             fx.push(request(body, Followup::CloseDialog));
             return;
@@ -188,6 +217,7 @@ impl AppState {
             notes,
             subtasks,
             labels,
+            issue,
             ..
         } = dialog
         else {
@@ -204,6 +234,10 @@ impl AppState {
                 task_id: task.clone(),
                 title,
             });
+            out.push(request(body, Followup::None));
+        }
+        // A Jira issue's other fields (assignee, priority…): one change, made in Jira.
+        if let Some(body) = Self::issue_edits(task, issue) {
             out.push(request(body, Followup::None));
         }
         if current.is_card() && found.column.id != *column {
@@ -259,5 +293,6 @@ pub(super) fn editor_for(found: &FoundTask<'_>) -> Dialog {
             input: TextField::default(),
         }),
         nav: Box::default(),
+        issue: Box::default(),
     }
 }

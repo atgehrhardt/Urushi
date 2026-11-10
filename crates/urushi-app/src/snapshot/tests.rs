@@ -414,3 +414,28 @@ fn a_jira_board_filters_by_people_and_its_quick_filters() {
         "{phone}"
     );
 }
+
+#[test]
+fn an_issue_in_full_edits_every_field_and_shows_the_conversation() {
+    for width in [1280.0, 402.0] {
+        let issue = dump("jira-issue", width);
+        for text in [
+            "\"Issue Type\"",
+            "\"Sprint 6\"",
+            "\"Story points\"",
+            "\"Watching (1)\"",
+            "\"Comments 2\"",
+            "\"Add a comment… (Markdown)\"",
+        ] {
+            assert!(issue.contains(text), "{text} missing at {width}: {issue}");
+        }
+    }
+    let picker = dump("jira-issue-picker", 1280.0);
+    for text in [
+        "\"Assign to me\"",
+        "\"Alan Turing\"",
+        "\"Find a person (Enter)\"",
+    ] {
+        assert!(picker.contains(text), "{text} missing: {picker}");
+    }
+}

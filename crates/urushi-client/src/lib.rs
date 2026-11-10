@@ -10,6 +10,7 @@
 mod boards;
 mod connection;
 mod jira;
+mod jira_issue;
 mod launcher;
 mod platform;
 mod requests;

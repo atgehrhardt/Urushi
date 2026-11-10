@@ -1,0 +1,231 @@
+// One Jira issue in full, for the task editor (ADR 0020): every field the account may
+// edit (a site's own fields too), its comments, attachments, links, watchers and work
+// log, read when an issue is opened rather than kept in the workspace. Changes are made
+// in Jira first, and answer with the issue as it is afterwards. Since protocol 1.13.
+syntax = "proto3";
+
+package urushi.v1;
+
+import "urushi/v1/boards.proto";
+
+// How a field holds its value. Clients show values of kinds they don't know as text
+// and don't offer to change them.
+enum JiraFieldKind {
+  JIRA_FIELD_KIND_UNSPECIFIED = 0;
+  // One line of text.
+  JIRA_FIELD_KIND_TEXT = 1;
+  // Rich text, as Markdown.
+  JIRA_FIELD_KIND_RICH_TEXT = 2;
+  JIRA_FIELD_KIND_NUMBER = 3;
+  // YYYY-MM-DD.
+  JIRA_FIELD_KIND_DATE = 4;
+  // RFC 3339.
+  JIRA_FIELD_KIND_DATE_TIME = 5;
+  // One of `allowed`.
+  JIRA_FIELD_KIND_OPTION = 6;
+  // Any of `allowed`.
+  JIRA_FIELD_KIND_OPTIONS = 7;
+  // A person (option ids are account ids; SearchJiraUsers finds them).
+  JIRA_FIELD_KIND_USER = 8;
+  JIRA_FIELD_KIND_USERS = 9;
+  // Free labels (option names).
+  JIRA_FIELD_KIND_LABELS = 10;
+  // Another issue, by key in `text` (SearchJiraIssues finds them).
+  JIRA_FIELD_KIND_ISSUE = 11;
+  // One of the board's open or future sprints, in `allowed`.
+  JIRA_FIELD_KIND_SPRINT = 12;
+  // Something Urushi can't change; its value as text.
+  JIRA_FIELD_KIND_OTHER = 13;
+}
+
+message JiraField {
+  // E.g. "priority", "customfield_10016".
+  string id = 1;
+  string name = 2;
+  JiraFieldKind kind = 3;
+  // Jira refuses the issue without it.
+  bool required = 4;
+  repeated JiraOption allowed = 5;
+  JiraFieldValue value = 6;
+}
+
+message JiraTransition {
+  string id = 1;
+  string name = 2;
+  // The status it leads to.
+  string to_status = 3;
+  JiraStatusCategory to_category = 4;
+}
+
+message JiraComment {
+  string id = 1;
+  JiraUser author = 2;
+  // Markdown.
+  string body = 3;
+  int64 created_ms = 4;
+  int64 updated_ms = 5;
+  // Written by the signed-in account (which may change or delete it).
+  bool mine = 6;
+}
+
+message JiraAttachment {
+  string id = 1;
+  string name = 2;
+  string media_type = 3;
+  uint64 size = 4;
+  int64 created_ms = 5;
+  JiraUser author = 6;
+}
+
+// Another issue.
+message JiraIssueRef {
+  string id = 1;
+  string key = 2;
+  string summary = 3;
+  string status = 4;
+  string type_name = 5;
+  string url = 6;
+}
+
+message JiraLink {
+  string id = 1;
+  // From this issue's side: "blocks", "is blocked by".
+  string relation = 2;
+  JiraIssueRef issue = 3;
+}
+
+message JiraLinkType {
+  // E.g. "Blocks".
+  string name = 1;
+  // "is blocked by".
+  string inward = 2;
+  // "blocks".
+  string outward = 3;
+}
+
+message JiraWorklog {
+  string id = 1;
+  JiraUser author = 2;
+  uint64 seconds = 3;
+  int64 started_ms = 4;
+  // Markdown.
+  string comment = 5;
+}
+
+// Answers GetJiraIssue, GetJiraCreateFields (fields only) and ChangeJiraIssue.
+message JiraIssueDetails {
+  // The task it is about; empty for create fields.
+  string task_id = 1;
+  repeated JiraField fields = 2;
+  repeated JiraTransition transitions = 3;
+  repeated JiraComment comments = 4;
+  repeated JiraAttachment attachments = 5;
+  repeated JiraLink links = 6;
+  repeated JiraLinkType link_types = 7;
+  repeated JiraUser watchers = 8;
+  bool watching = 9;
+  repeated JiraWorklog worklogs = 10;
+  // Time tracking, as Jira words it ("3h 20m"); empty when not tracked.
+  string original_estimate = 11;
+  string remaining_estimate = 12;
+  string time_spent = 13;
+}
+
+// Everything the editor shows of the issue a task on a Jira board shows. Answered with
+// JiraIssueDetails; FAILED_PRECONDITION for a task that isn't a Jira issue.
+message GetJiraIssueRequest {
+  string task_id = 1;
+}
+
+// The fields a new issue of `kind` on a Jira board has, required ones marked, to send
+// with CreateTask.jira_fields. Answered with JiraIssueDetails.
+message GetJiraCreateFieldsRequest {
+  string board_id = 1;
+  TaskKind kind = 2;
+}
+
+message JiraCommentEdit {
+  string comment_id = 1;
+  // Markdown.
+  string body = 2;
+}
+
+message JiraNewAttachment {
+  string name = 1;
+  // At most 6 MiB, as Urushi's own attachments.
+  bytes data = 2;
+}
+
+message JiraNewLink {
+  // A JiraLinkType name.
+  string link_type = 1;
+  // The other issue's key.
+  string issue_key = 2;
+  // This issue is on the outward side ("this blocks that"); else the inward.
+  bool outward = 3;
+}
+
+message JiraNewWorklog {
+  uint64 seconds = 1;
+  int64 started_ms = 2;
+  // Markdown; may be empty.
+  string comment = 3;
+}
+
+// One change to a Jira issue, made in Jira; answered with the issue's JiraIssueDetails
+// afterwards (and the board changes with the next workspace change). What Jira refuses
+// is INVALID_ARGUMENT or PERMISSION_DENIED, and changes nothing.
+message ChangeJiraIssueRequest {
+  string task_id = 1;
+  oneof change {
+    // Field values (assignee, priority, type, parent, sprint, story points, due date,
+    // components, any custom field…).
+    JiraFieldEdits edit = 2;
+    // Take this transition (a status change).
+    string transition_id = 3;
+    // Markdown.
+    string add_comment = 4;
+    JiraCommentEdit update_comment = 5;
+    string delete_comment_id = 6;
+    JiraNewAttachment attach = 7;
+    string delete_attachment_id = 8;
+    JiraNewLink link = 9;
+    string unlink_id = 10;
+    // Start (true) or stop watching.
+    bool watch = 11;
+    JiraNewWorklog log_work = 12;
+  }
+}
+
+// An attachment of a Jira issue: the file, or an image's thumbnail as raw RGBA fitting
+// 320 px (FAILED_PRECONDITION for a thumbnail of a non-image). Answered with
+// AttachmentData.
+message GetJiraAttachmentRequest {
+  string task_id = 1;
+  string attachment_id = 2;
+  bool thumbnail = 3;
+}
+
+// People whose name matches `query`: those who may be assigned the task's issue with
+// `assignable`, else anyone on the site (and anyone when `task_id` is empty, for a new
+// issue). Answered with JiraUsers.
+message SearchJiraUsersRequest {
+  string task_id = 1;
+  string query = 2;
+  bool assignable = 3;
+}
+
+message JiraUsers {
+  repeated JiraUser users = 1;
+}
+
+// Issues of the board's project whose key or text matches `query` (recently updated
+// first, at most 20). Answered with JiraIssueRefs.
+message SearchJiraIssuesRequest {
+  string board_id = 1;
+  string query = 2;
+}
+
+message JiraIssueRefs {
+  repeated JiraIssueRef issues = 1;
+}

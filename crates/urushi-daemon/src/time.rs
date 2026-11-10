@@ -1,5 +1,29 @@
-//! RFC 3339 timestamps (as usage endpoints and Jira send them) → milliseconds since
+//! RFC 3339 timestamps (as usage endpoints and Jira send them) ⇄ milliseconds since
 //! the epoch.
+
+/// Milliseconds since the epoch as Jira takes a time: `2026-11-09T10:20:30.123+0000`
+/// (UTC).
+pub(crate) fn jira_time(ms: i64) -> String {
+    let days = ms.div_euclid(86_400_000);
+    let in_day = ms.rem_euclid(86_400_000);
+    // Howard Hinnant's civil-from-days.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{:03}+0000",
+        in_day / 3_600_000,
+        in_day / 60_000 % 60,
+        in_day / 1000 % 60,
+        in_day % 1000
+    )
+}
 
 /// Parses `2026-11-13T05:59:59.531229+00:00` (or `…Z`, or Jira's `…+0000`). `None` if
 /// malformed.

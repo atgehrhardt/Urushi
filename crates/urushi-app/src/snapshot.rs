@@ -69,6 +69,8 @@ pub const SCENARIOS: &[&str] = &[
     "jira-subtask",
     "jira-filters",
     "jira-filter-menu",
+    "jira-issue",
+    "jira-issue-picker",
     "jira-connect",
     "jira-import",
 ];
@@ -506,6 +508,7 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
 }
 
 mod jira;
+mod jira_issue;
 
 #[cfg(test)]
 mod tests;

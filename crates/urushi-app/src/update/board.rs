@@ -42,11 +42,11 @@ impl AppState {
                 }
                 self.board.selected = Some(id);
             }
-            Msg::NewTask { board, column } => self.new_task(board, column),
+            Msg::NewTask { board, column } => self.new_task(board, column, fx),
             Msg::PressTask(task) => self.board.pressed = Some(task),
             Msg::PressEnded => {
                 if let Some(task) = self.board.pressed.take() {
-                    self.edit_task(&task);
+                    self.edit_task(&task, fx);
                 }
             }
             Msg::DragTask(task) => {

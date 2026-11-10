@@ -17,6 +17,7 @@ pub mod board;
 pub mod config;
 mod files;
 pub mod filter;
+pub mod issue;
 pub mod keys;
 pub mod msg;
 pub mod organize;

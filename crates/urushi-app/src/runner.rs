@@ -274,6 +274,9 @@ impl Runner {
         if compact != self.state.compact {
             self.state.update(Msg::SetCompact(compact));
         }
+        if (bounds.height - self.state.window_height).abs() >= 0.5 {
+            self.state.update(Msg::WindowHeight(bounds.height));
+        }
         if (bounds.width - self.state.sidebar.window_width()).abs() >= 0.5 {
             self.dispatch(Msg::Sidebar(SidebarMsg::WindowWidth(bounds.width)));
         }

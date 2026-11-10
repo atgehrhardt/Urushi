@@ -6,6 +6,7 @@ package urushi.v1;
 
 import "urushi/v1/boards.proto";
 import "urushi/v1/jira.proto";
+import "urushi/v1/jira_issue.proto";
 import "urushi/v1/remote.proto";
 import "urushi/v1/settings.proto";
 import "urushi/v1/terminal.proto";
@@ -111,6 +112,12 @@ message Request {
     SyncBoardRequest sync_board = 61;
     // Since 1.13.
     QueryJiraFilterRequest query_jira_filter = 62;
+    GetJiraIssueRequest get_jira_issue = 63;
+    GetJiraCreateFieldsRequest get_jira_create_fields = 64;
+    ChangeJiraIssueRequest change_jira_issue = 65;
+    GetJiraAttachmentRequest get_jira_attachment = 66;
+    SearchJiraUsersRequest search_jira_users = 67;
+    SearchJiraIssuesRequest search_jira_issues = 68;
   }
 }
 
@@ -148,6 +155,9 @@ message Response {
     JiraBoardList jira_boards = 26;
     // Since 1.13.
     JiraIssueIds jira_issue_ids = 27;
+    JiraIssueDetails jira_issue_details = 28;
+    JiraUsers jira_users = 29;
+    JiraIssueRefs jira_issue_refs = 30;
   }
 }
 

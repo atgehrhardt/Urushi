@@ -258,7 +258,35 @@ message CreateTaskRequest {
   repeated string tags = 7;
   // Since 1.12.
   TaskKind kind = 8;
+  // On a Jira board, values for the new issue's other fields (from
+  // GetJiraCreateFields; required ones must be given). Since 1.13.
+  repeated JiraFieldEdit jira_fields = 9;
 }
+
+// Since 1.13 (used with jira_issue.proto):
+// A value Jira names: an option, a person, a sprint, an issue.
+message JiraOption {
+  string id = 1;
+  string name = 2;
+}
+
+// A field's value: `text` for text-like kinds, `options` for the others. Empty clears
+// the field.
+message JiraFieldValue {
+  string text = 1;
+  repeated JiraOption options = 2;
+}
+
+// A new value for one field.
+message JiraFieldEdit {
+  string field_id = 1;
+  JiraFieldValue value = 2;
+}
+
+message JiraFieldEdits {
+  repeated JiraFieldEdit edits = 1;
+}
+
 
 // Changes a task's (or, since 1.8, a subtask's) text, color or tags. Unset fields are
 // kept.

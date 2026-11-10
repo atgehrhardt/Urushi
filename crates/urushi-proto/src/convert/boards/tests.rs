@@ -176,6 +176,16 @@ fn messages_round_trip_on_the_wire() {
             color: v1::LabelColor::Teal.into(),
             tags: vec!["ui".into()],
             kind: v1::TaskKind::Bug.into(),
+            jira_fields: vec![v1::JiraFieldEdit {
+                field_id: "customfield_1".into(),
+                value: Some(v1::JiraFieldValue {
+                    text: String::new(),
+                    options: vec![v1::JiraOption {
+                        id: "t1".into(),
+                        name: "Payments".into(),
+                    }],
+                }),
+            }],
         }),
         Body::CreateSubtask(v1::CreateSubtaskRequest {
             task_id: "3".into(),

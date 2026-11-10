@@ -421,3 +421,223 @@ fn a_new_jira_task_is_created_only_on_save() {
         "{fx:?}"
     );
 }
+
+/// The Jira board on a 1.13 daemon, the editor open on ACME-1, its issue answered.
+fn editing_issue() -> AppState {
+    let mut s = with_jira();
+    s.daemon_minor = 13;
+    s.jira = Some(signed_in());
+    let fx = s.update(Msg::Board(BoardMsg::OpenTask("j1".into())));
+    assert!(
+        matches!(&fx[..], [Effect::Request { body: Body::GetJiraIssue(r), followup: Followup::JiraIssue(t) }] if r.task_id == "j1" && t == "j1"),
+        "{fx:?}"
+    );
+    let option = |id: &str, name: &str| v1::JiraOption {
+        id: id.into(),
+        name: name.into(),
+    };
+    let details = v1::JiraIssueDetails {
+        task_id: "j1".into(),
+        fields: vec![
+            v1::JiraField {
+                id: "priority".into(),
+                name: "Priority".into(),
+                kind: v1::JiraFieldKind::Option.into(),
+                allowed: vec![option("1", "Highest"), option("2", "High")],
+                value: Some(v1::JiraFieldValue {
+                    text: String::new(),
+                    options: vec![option("2", "High")],
+                }),
+                ..Default::default()
+            },
+            v1::JiraField {
+                id: "duedate".into(),
+                name: "Due date".into(),
+                kind: v1::JiraFieldKind::Date.into(),
+                ..Default::default()
+            },
+            v1::JiraField {
+                id: "labels".into(),
+                name: "Labels".into(),
+                kind: v1::JiraFieldKind::Labels.into(),
+                ..Default::default()
+            },
+        ],
+        link_types: vec![v1::JiraLinkType {
+            name: "Blocks".into(),
+            inward: "is blocked by".into(),
+            outward: "blocks".into(),
+        }],
+        ..Default::default()
+    };
+    answer(
+        &mut s,
+        Followup::JiraIssue("j1".into()),
+        Outcome::JiraIssueDetails(details),
+    );
+    s
+}
+
+fn issue(s: &AppState) -> &crate::issue::IssueEditor {
+    let Some(Dialog::Task { issue, .. }) = &s.dialog else {
+        panic!("{:?}", s.dialog);
+    };
+    issue
+}
+
+#[test]
+fn an_issues_fields_are_drafts_until_save() {
+    use crate::msg::IssueMsg;
+    let mut s = editing_issue();
+    assert!(issue(&s).details.is_some());
+    s.update(Msg::Issue(IssueMsg::Open(Some("priority".into()))));
+    let fx = s.update(Msg::Issue(IssueMsg::Pick {
+        field: "priority".into(),
+        option: Some(v1::JiraOption {
+            id: "1".into(),
+            name: "Highest".into(),
+        }),
+    }));
+    assert!(fx.is_empty(), "nothing reaches Jira before Save");
+    assert!(issue(&s).open.is_none());
+    // A date typed into its field, and a label added as typed.
+    s.update(Msg::FocusField(Field::JiraText(1)));
+    s.update(Msg::Text("2026-12-01".into()));
+    s.update(Msg::Issue(IssueMsg::Open(Some("labels".into()))));
+    s.update(Msg::Text("urgent".into()));
+    assert!(
+        s.update(Msg::Key(super::named(crate::keys::Named::Enter)))
+            .is_empty()
+    );
+    let fx = s.update(Msg::Submit);
+    let [
+        Body::ChangeJiraIssue(v1::ChangeJiraIssueRequest {
+            task_id,
+            change: Some(v1::change_jira_issue_request::Change::Edit(edits)),
+        }),
+    ] = &bodies(&fx)[..]
+    else {
+        panic!("{fx:?}");
+    };
+    assert_eq!(task_id, "j1");
+    let shown: Vec<(&str, String)> = edits
+        .edits
+        .iter()
+        .map(|e| {
+            let v = e.value.as_ref().unwrap();
+            (
+                e.field_id.as_str(),
+                format!(
+                    "{}{:?}",
+                    v.text,
+                    v.options.iter().map(|o| &o.name).collect::<Vec<_>>()
+                ),
+            )
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            ("labels", "[\"urgent\"]".to_owned()),
+            ("priority", "[\"Highest\"]".to_owned()),
+            ("duedate", "2026-12-01[]".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn comments_links_work_and_files_go_to_jira_at_once() {
+    use crate::msg::IssueMsg;
+    use v1::change_jira_issue_request::Change;
+    let mut s = editing_issue();
+    let change = |fx: &[Effect]| match bodies(fx)[..] {
+        [
+            Body::ChangeJiraIssue(v1::ChangeJiraIssueRequest {
+                change: Some(c), ..
+            }),
+        ] => c.clone(),
+        _ => panic!("{fx:?}"),
+    };
+    s.update(Msg::FocusField(Field::JiraComment));
+    s.update(Msg::Paste("Looks **good**".into()));
+    let fx = s.update(Msg::Issue(IssueMsg::Comment));
+    assert_eq!(change(&fx), Change::AddComment("Looks **good**".into()));
+    assert!(issue(&s).comment.text().is_empty());
+    s.update(Msg::Issue(IssueMsg::LinkKind(0, false)));
+    let fx = s.update(Msg::Issue(IssueMsg::Link("ACME-2".into())));
+    assert!(
+        matches!(change(&fx), Change::Link(l) if l.link_type == "Blocks" && !l.outward && l.issue_key == "ACME-2")
+    );
+    s.update(Msg::FocusField(Field::JiraWork));
+    s.update(Msg::Paste("1h 30m".into()));
+    let fx = s.update(Msg::Key(super::named(crate::keys::Named::Enter)));
+    assert!(matches!(change(&fx), Change::LogWork(w) if w.seconds == 5400));
+    s.update(Msg::Paste("soon".into()));
+    assert!(s.update(Msg::Issue(IssueMsg::LogWork)).is_empty());
+    assert!(s.error.is_some(), "says how to type it");
+    let fx = s.update(Msg::Board(BoardMsg::Attach {
+        task: "j1".into(),
+        name: "plan.txt".into(),
+        bytes: b"x".to_vec(),
+    }));
+    assert!(matches!(change(&fx), Change::Attach(a) if a.name == "plan.txt"));
+    assert!(
+        matches!(&fx[0], Effect::Request { followup: Followup::JiraIssue(t), .. } if t == "j1")
+    );
+}
+
+#[test]
+fn a_new_jira_task_needs_its_required_fields() {
+    let mut s = with_jira();
+    s.daemon_minor = 13;
+    let fx = s.update(Msg::NewTask {
+        board: "jb".into(),
+        column: "todo".into(),
+    });
+    assert!(
+        matches!(bodies(&fx)[..], [Body::GetJiraCreateFields(_)]),
+        "{fx:?}"
+    );
+    answer(
+        &mut s,
+        Followup::JiraCreateFields(v1::TaskKind::Task.into()),
+        Outcome::JiraIssueDetails(v1::JiraIssueDetails {
+            fields: vec![v1::JiraField {
+                id: "customfield_1".into(),
+                name: "Team".into(),
+                kind: v1::JiraFieldKind::Option.into(),
+                required: true,
+                allowed: vec![v1::JiraOption {
+                    id: "t1".into(),
+                    name: "Payments".into(),
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+    );
+    s.update(Msg::Text("Ship".into()));
+    assert!(s.update(Msg::Submit).is_empty());
+    assert_eq!(s.error.as_deref(), Some("Fill in Team first."));
+    s.update(Msg::Issue(crate::msg::IssueMsg::Pick {
+        field: "customfield_1".into(),
+        option: Some(v1::JiraOption {
+            id: "t1".into(),
+            name: "Payments".into(),
+        }),
+    }));
+    let fx = s.update(Msg::Submit);
+    assert!(
+        matches!(&bodies(&fx)[..], [Body::CreateTask(r)] if r.jira_fields.len() == 1 && r.jira_fields[0].field_id == "customfield_1"),
+        "{fx:?}"
+    );
+    // Another type asks again.
+    s.update(Msg::NewTask {
+        board: "jb".into(),
+        column: "todo".into(),
+    });
+    let fx = s.update(Msg::Board(BoardMsg::PickKind(v1::TaskKind::Bug.into())));
+    assert!(
+        matches!(bodies(&fx)[..], [Body::GetJiraCreateFields(r)] if r.kind == i32::from(v1::TaskKind::Bug))
+    );
+}

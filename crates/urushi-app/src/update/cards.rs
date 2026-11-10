@@ -19,7 +19,12 @@ impl AppState {
             | BoardMsg::PickKind(_)
             | BoardMsg::AddTag(_)
             | BoardMsg::RemoveTag(_) => {
+                let kind = matches!(msg, BoardMsg::PickKind(_));
                 self.edit_labels(msg);
+                // A new Jira issue of another type may have other fields.
+                if kind {
+                    self.request_create_fields(fx);
+                }
             }
             BoardMsg::AddFiles(_)
             | BoardMsg::Attach { .. }
@@ -58,7 +63,7 @@ impl AppState {
                     fx.push(request(body, Followup::CloseDialog));
                 }
             }
-            BoardMsg::OpenTask(task) => self.edit_task(&task),
+            BoardMsg::OpenTask(task) => self.edit_task(&task, fx),
             BoardMsg::EditorBack => self.editor_back(),
             BoardMsg::KeepEditing => self.keep_editing(),
             BoardMsg::DiscardEdits => self.discard_editor(),

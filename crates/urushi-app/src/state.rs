@@ -120,6 +120,16 @@ pub enum Field {
     JiraQuery,
     /// The board's search field (outside any dialog).
     BoardSearch,
+    /// Task editor (Jira): a text-like field, by its place in the issue's fields.
+    JiraText(u16),
+    /// Task editor (Jira): the open picker's search.
+    JiraSearch,
+    /// Task editor (Jira): a new comment.
+    JiraComment,
+    /// Task editor (Jira): the comment being changed.
+    JiraCommentEdit,
+    /// Task editor (Jira): time to log.
+    JiraWork,
 }
 
 /// An editing command on the focused text field, from a shortcut or its context menu.
@@ -260,6 +270,8 @@ pub enum Dialog {
         labels: Box<crate::board::TaskLabels>,
         /// The editors this one was opened from, and whether closing asks first.
         nav: Box<EditorNav>,
+        /// For a Jira issue: the issue in full, and its drafts.
+        issue: Box<crate::issue::IssueEditor>,
     },
     /// The first-run setup wizard: which agent (and mode) threads started from tasks run.
     Setup {
@@ -458,6 +470,8 @@ pub struct AppState {
     pub usage_pending: bool,
     /// Wall-clock time of the last tick (ms since the epoch), for "resets in …".
     pub now_ms: i64,
+    /// The window's height in logical pixels (0 before the first frame).
+    pub window_height: f32,
     /// When the setup wizard may open.
     pub setup: crate::task_agent::SetupGate,
 }
@@ -508,6 +522,7 @@ impl AppState {
             usage: None,
             usage_pending: false,
             now_ms: 0,
+            window_height: 0.0,
             setup: crate::task_agent::SetupGate::default(),
         }
     }

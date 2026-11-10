@@ -1,7 +1,9 @@
 //! The Jira scenarios: a board that follows Jira (`jira-board`), a Jira issue in the
 //! editor (`jira-task`), one of its subtasks opened from it, under the epic and the
 //! parent in the top bar (`jira-subtask`), the board filtered to one person's issues
-//! (`jira-filters`) and the Filters menu's Assignee page (`jira-filter-menu`), signing in (`jira-connect`) and choosing a board to import
+//! (`jira-filters`) and the Filters menu's Assignee page (`jira-filter-menu`), an issue in
+//! full with its fields and comments (`jira-issue`) and its assignee picker open
+//! (`jira-issue-picker`), signing in (`jira-connect`) and choosing a board to import
 //! (`jira-import`).
 
 use urushi_client::v1;
@@ -17,6 +19,8 @@ pub(super) const SCENARIOS: &[&str] = &[
     "jira-subtask",
     "jira-filters",
     "jira-filter-menu",
+    "jira-issue",
+    "jira-issue-picker",
     "jira-connect",
     "jira-import",
 ];
@@ -196,6 +200,27 @@ pub(super) fn show(state: &mut AppState, name: &str) {
                 Dim::Assignee,
                 "acc-grace-hopper".into(),
             )));
+        }
+        "jira-issue" | "jira-issue-picker" => {
+            state.update(Msg::PressTask("acme-139".into()));
+            state.update(Msg::PressEnded);
+            state.update(Msg::Response {
+                followup: crate::msg::Followup::JiraIssue("acme-139".into()),
+                result: Ok(v1::response::Outcome::JiraIssueDetails(
+                    super::jira_issue::details(),
+                )),
+            });
+            if name == "jira-issue-picker" {
+                state.update(Msg::Issue(crate::msg::IssueMsg::Open(Some(
+                    "assignee".into(),
+                ))));
+                state.update(Msg::Response {
+                    followup: crate::msg::Followup::JiraFound("assignee".into()),
+                    result: Ok(v1::response::Outcome::JiraUsers(v1::JiraUsers {
+                        users: super::jira_issue::people(),
+                    })),
+                });
+            }
         }
         "jira-connect" => {
             state.update(Msg::Jira(JiraMsg::OpenConnect));

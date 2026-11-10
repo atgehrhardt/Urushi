@@ -13,12 +13,14 @@
 use std::sync::Arc;
 
 use serde_json::{Value, json};
-use urushi_core::board::SyncedIssue;
+use urushi_core::TaskKind;
+use urushi_core::board::{Person, SyncedIssue};
 
 use super::api::{
     BoardConfig, BoardInfo, Fetched, IssueEdit, IssueFields, IssueQuery, JiraApi, JiraError,
     JiraResult, Me, NewIssue, Rank, Transition,
 };
+use super::details::{Field, IssueDetails, IssueRef};
 use super::{Account, adf, parse};
 use crate::http::{HttpClient, Method, Request, base64, encode_query};
 
@@ -52,20 +54,38 @@ impl CloudJira {
         path: &str,
         body: Option<&Value>,
     ) -> JiraResult<Value> {
+        let mut request = Self::request(account, method, &format!("{}{path}", account.site));
+        request.json = body.map(Value::to_string);
+        let body = self.send(&request)?;
+        if body.iter().all(u8::is_ascii_whitespace) {
+            return Ok(Value::Null);
+        }
+        serde_json::from_slice(&body)
+            .map_err(|_| JiraError::Unavailable("Jira sent an unreadable answer".into()))
+    }
+
+    /// A request to `url` signed in as the account.
+    fn request(account: &Account, method: Method, url: &str) -> Request {
         let auth = base64(format!("{}:{}", account.email, account.token).as_bytes());
-        let request = Request {
+        Request::new(
             method,
-            url: format!("{}{path}", account.site),
-            headers: vec![
+            url.to_owned(),
+            vec![
                 ("Authorization".into(), format!("Basic {auth}")),
                 ("Accept".into(), "application/json".into()),
             ],
-            json: body.map(Value::to_string),
-        };
+        )
+    }
+
+    /// Sends a request; the body of a successful answer, or what went wrong.
+    fn send(&self, request: &Request) -> JiraResult<Vec<u8>> {
         let answer = self
             .http
-            .send(&request)
+            .send(request)
             .map_err(|e| JiraError::Unavailable(e.0))?;
+        if (200..=299).contains(&answer.status) {
+            return Ok(answer.body);
+        }
         let message = || {
             let m = parse::error_message(&answer.body);
             if m.is_empty() {
@@ -75,9 +95,6 @@ impl CloudJira {
             }
         };
         match answer.status {
-            200..=299 if answer.body.iter().all(u8::is_ascii_whitespace) => Ok(Value::Null),
-            200..=299 => serde_json::from_slice(&answer.body)
-                .map_err(|_| JiraError::Unavailable("Jira sent an unreadable answer".into())),
             401 => Err(JiraError::Unauthorized),
             403 => Err(JiraError::Forbidden(message())),
             404 => Err(JiraError::NotFound(message())),
@@ -93,6 +110,23 @@ impl CloudJira {
         self.call(account, Method::Get, path, None)
     }
 
+    /// The issue type of `project` for `kind`, by id.
+    fn issue_type(&self, account: &Account, project: &str, kind: TaskKind) -> JiraResult<String> {
+        let types = self.get(
+            account,
+            &format!(
+                "/rest/api/3/issue/createmeta/{}/issuetypes",
+                segment(project)
+            ),
+        )?;
+        parse::issue_type(&types, kind).ok_or_else(|| {
+            JiraError::Rejected(format!(
+                "project {project} has no issue type for a {}",
+                kind.name()
+            ))
+        })
+    }
+
     fn fields(fields: &IssueFields) -> String {
         std::iter::once(FIELDS)
             .chain(fields.ids())
@@ -106,31 +140,6 @@ impl CloudJira {
             &self.get(account, "/rest/api/3/field")?,
         ))
     }
-}
-
-/// The JQL for a board's issues.
-pub fn jql(query: &IssueQuery) -> String {
-    let mut clauses = vec![format!("filter = {}", query.filter_id)];
-    if let Some(sub) = query.sub_query.as_deref().filter(|q| !q.trim().is_empty()) {
-        clauses.push(format!("({sub})"));
-    }
-    if query.scrum {
-        clauses.push("sprint in openSprints()".into());
-    }
-    clauses.push(format!(
-        "(statusCategory != Done OR updated >= -{DONE_DAYS}d)"
-    ));
-    if let Some(minutes) = query.updated_within_minutes {
-        clauses.push(format!("updated >= -{minutes}m"));
-    }
-    clauses.extend(
-        query
-            .extra_jql
-            .iter()
-            .filter(|q| !q.trim().is_empty())
-            .map(|q| format!("({q})")),
-    );
-    format!("{} ORDER BY Rank ASC", clauses.join(" AND "))
 }
 
 /// An issue key or id as a path segment.
@@ -185,74 +194,11 @@ impl JiraApi for CloudJira {
     }
 
     fn issues(&self, account: &Account, query: &IssueQuery) -> JiraResult<Fetched> {
-        let base = format!(
-            "/rest/api/3/search/jql?jql={}&fields={}&maxResults={PAGE}",
-            encode_query(&jql(query)),
-            encode_query(&Self::fields(&query.fields)),
-        );
-        let mut fetched = Fetched::default();
-        let mut seen = std::collections::HashSet::new();
-        let mut token: Option<String> = None;
-        // Guards against paging that doesn't end (tokens that repeat, or that lead back
-        // to pages already read): a bounded number of pages, each adding something new.
-        for _ in 0..=query.limit / PAGE + 1 {
-            let path = match &token {
-                Some(t) => format!("{base}&nextPageToken={}", encode_query(t)),
-                None => base.clone(),
-            };
-            let (issues, next) = parse::search(&self.get(account, &path)?, &query.fields);
-            let before = fetched.issues.len();
-            fetched.issues.extend(
-                issues
-                    .into_iter()
-                    .filter(|i| seen.insert(i.issue.id.clone())),
-            );
-            if fetched.issues.len() >= query.limit {
-                fetched.more = next.is_some() || fetched.issues.len() > query.limit;
-                fetched.issues.truncate(query.limit);
-                return Ok(fetched);
-            }
-            match next {
-                Some(next) if fetched.issues.len() > before && token.as_ref() != Some(&next) => {
-                    token = Some(next);
-                }
-                _ => return Ok(fetched),
-            }
-        }
-        Ok(fetched)
+        self.search_issues(account, query)
     }
 
     fn issue_ids(&self, account: &Account, query: &IssueQuery) -> JiraResult<Vec<String>> {
-        let base = format!(
-            "/rest/api/3/search/jql?jql={}&fields=id&maxResults={PAGE}",
-            encode_query(&jql(query)),
-        );
-        let mut ids: Vec<String> = Vec::new();
-        let mut token: Option<String> = None;
-        for _ in 0..=query.limit / PAGE + 1 {
-            let path = match &token {
-                Some(t) => format!("{base}&nextPageToken={}", encode_query(t)),
-                None => base.clone(),
-            };
-            let (page, next) = parse::search_ids(&self.get(account, &path)?);
-            let before = ids.len();
-            ids.extend(
-                page.into_iter()
-                    .filter(|id| !ids.contains(id))
-                    .collect::<Vec<_>>(),
-            );
-            if ids.len() >= query.limit {
-                ids.truncate(query.limit);
-                break;
-            }
-            match next {
-                Some(next) if ids.len() > before && token.as_ref() != Some(&next) => {
-                    token = Some(next);
-                }
-                _ => break,
-            }
-        }
-        Ok(ids)
+        self.search_ids(account, query)
     }
 
     fn issue(&self, account: &Account, key: &str, fields: &IssueFields) -> JiraResult<SyncedIssue> {
@@ -285,8 +231,11 @@ impl JiraApi for CloudJira {
         if let Some(notes) = &edit.notes {
             fields.insert(
                 "description".into(),
-                adf::from_text(notes).unwrap_or(Value::Null),
+                adf::from_markdown(notes).unwrap_or(Value::Null),
             );
+        }
+        for (id, value) in &edit.fields {
+            fields.insert(id.clone(), value.clone());
         }
         let labels: Vec<Value> = edit
             .labels_add
@@ -304,26 +253,13 @@ impl JiraApi for CloudJira {
     }
 
     fn create(&self, account: &Account, issue: &NewIssue) -> JiraResult<String> {
-        let types = self.get(
-            account,
-            &format!(
-                "/rest/api/3/issue/createmeta/{}/issuetypes",
-                segment(&issue.project_key)
-            ),
-        )?;
-        let type_id = parse::issue_type(&types, issue.kind).ok_or_else(|| {
-            JiraError::Rejected(format!(
-                "project {} has no issue type for a {}",
-                issue.project_key,
-                issue.kind.name()
-            ))
-        })?;
+        let type_id = self.issue_type(account, &issue.project_key, issue.kind)?;
         let mut fields = json!({
             "project": { "key": issue.project_key },
             "issuetype": { "id": type_id },
             "summary": issue.summary,
         });
-        if let Some(description) = adf::from_text(&issue.notes) {
+        if let Some(description) = adf::from_markdown(&issue.notes) {
             fields["description"] = description;
         }
         if !issue.labels.is_empty() {
@@ -331,6 +267,9 @@ impl JiraApi for CloudJira {
         }
         if let Some(parent) = &issue.parent_key {
             fields["parent"] = json!({ "key": parent });
+        }
+        for (id, value) in &issue.fields {
+            fields[id] = value.clone();
         }
         let created = self.call(
             account,
@@ -357,7 +296,109 @@ impl JiraApi for CloudJira {
         )
         .map(drop)
     }
+
+    fn details(&self, account: &Account, key: &str, board: u64) -> JiraResult<IssueDetails> {
+        self.read_details(account, key, board)
+    }
+
+    fn create_fields(
+        &self,
+        account: &Account,
+        project: &str,
+        kind: TaskKind,
+    ) -> JiraResult<Vec<Field>> {
+        let type_id = self.issue_type(account, project, kind)?;
+        self.read_create_fields(account, project, &type_id)
+    }
+
+    fn users(&self, account: &Account, query: &str, key: Option<&str>) -> JiraResult<Vec<Person>> {
+        self.find_users(account, query, key)
+    }
+
+    fn search(
+        &self,
+        account: &Account,
+        project: &str,
+        query: &str,
+        limit: usize,
+    ) -> JiraResult<Vec<IssueRef>> {
+        self.find_issues(account, project, query, limit)
+    }
+
+    fn add_comment(&self, account: &Account, key: &str, body: &str) -> JiraResult<()> {
+        self.comment(account, key, None, Some(body))
+    }
+
+    fn update_comment(&self, account: &Account, key: &str, id: &str, body: &str) -> JiraResult<()> {
+        self.comment(account, key, Some(id), Some(body))
+    }
+
+    fn delete_comment(&self, account: &Account, key: &str, id: &str) -> JiraResult<()> {
+        self.comment(account, key, Some(id), None)
+    }
+
+    fn attach(&self, account: &Account, key: &str, name: &str, data: &[u8]) -> JiraResult<()> {
+        self.upload(account, key, name, data)
+    }
+
+    fn delete_attachment(&self, account: &Account, id: &str) -> JiraResult<()> {
+        let path = format!("/rest/api/3/attachment/{}", segment(id));
+        self.call(account, Method::Delete, &path, None).map(drop)
+    }
+
+    fn download(&self, account: &Account, url: &str) -> JiraResult<Vec<u8>> {
+        self.fetch(account, url)
+    }
+
+    fn link(&self, account: &Account, kind: &str, outward: &str, inward: &str) -> JiraResult<()> {
+        let body = json!({
+            "type": { "name": kind },
+            "outwardIssue": { "key": outward },
+            "inwardIssue": { "key": inward },
+        });
+        self.call(account, Method::Post, "/rest/api/3/issueLink", Some(&body))
+            .map(drop)
+    }
+
+    fn unlink(&self, account: &Account, id: &str) -> JiraResult<()> {
+        let path = format!("/rest/api/3/issueLink/{}", segment(id));
+        self.call(account, Method::Delete, &path, None).map(drop)
+    }
+
+    fn watch(&self, account: &Account, key: &str, watch: bool) -> JiraResult<()> {
+        let path = format!("/rest/api/3/issue/{}/watchers", segment(key));
+        if watch {
+            // The body is the account id as a JSON string.
+            let me = json!(account.account_id);
+            self.call(account, Method::Post, &path, Some(&me)).map(drop)
+        } else {
+            let path = format!("{path}?accountId={}", encode_query(&account.account_id));
+            self.call(account, Method::Delete, &path, None).map(drop)
+        }
+    }
+
+    fn log_work(
+        &self,
+        account: &Account,
+        key: &str,
+        seconds: u64,
+        started: &str,
+        comment: &str,
+    ) -> JiraResult<()> {
+        let mut body = json!({ "timeSpentSeconds": seconds, "started": started });
+        if let Some(comment) = adf::from_markdown(comment) {
+            body["comment"] = comment;
+        }
+        let path = format!("/rest/api/3/issue/{}/worklog", segment(key));
+        self.call(account, Method::Post, &path, Some(&body))
+            .map(drop)
+    }
 }
+
+mod details;
+mod search;
+
+pub use search::jql;
 
 #[cfg(test)]
 mod tests;

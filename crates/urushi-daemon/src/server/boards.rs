@@ -34,6 +34,7 @@ pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcom
                         tags: &r.tags,
                         subtasks: &r.subtasks,
                         kind: convert::kind_from_proto(r.kind),
+                        jira_fields: &super::jira_issue::edits_from_proto(&r.jira_fields),
                     },
                 )
                 .await?;

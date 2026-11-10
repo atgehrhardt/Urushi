@@ -45,6 +45,9 @@ pub(crate) struct JiraLink {
     store: CredentialStore,
     account: Mutex<Option<Account>>,
     boards: Mutex<HashMap<BoardId, BoardSync>>,
+    /// The kinds of the fields of issues opened lately (by issue key, then field id),
+    /// to write edits to them as Jira takes them.
+    pub(super) kinds: Mutex<HashMap<String, HashMap<String, crate::jira::details::FieldKind>>>,
 }
 
 /// Who the daemon is signed in to Jira as (never the token).
@@ -85,6 +88,7 @@ impl JiraLink {
             store,
             account: Mutex::new(account),
             boards: Mutex::new(HashMap::new()),
+            kinds: Mutex::new(HashMap::new()),
         }
     }
 

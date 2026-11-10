@@ -303,6 +303,12 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         | Body::ImportJiraBoard(_)
         | Body::SyncBoard(_)
         | Body::QueryJiraFilter(_)) => super::jira::route(service, body).await?,
+        body @ (Body::GetJiraIssue(_)
+        | Body::GetJiraCreateFields(_)
+        | Body::ChangeJiraIssue(_)
+        | Body::GetJiraAttachment(_)
+        | Body::SearchJiraUsers(_)
+        | Body::SearchJiraIssues(_)) => super::jira_issue::route(service, body).await?,
         body @ (Body::AddAttachment(_) | Body::GetAttachment(_) | Body::DeleteAttachment(_)) => {
             super::boards::route_attachments(service, body).await?
         }

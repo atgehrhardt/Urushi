@@ -27,7 +27,7 @@ impl AppState {
     /// Opens the editor on an existing task or subtask. From the editor of another
     /// task, that editor is kept (unsaved edits too) for **Back**; a task already
     /// opened on the way here is returned to as it was left.
-    pub(super) fn edit_task(&mut self, id: &str) {
+    pub(super) fn edit_task(&mut self, id: &str, fx: &mut Vec<Effect>) {
         let Some(found) = self.workspace.find_task(id) else {
             return;
         };
@@ -60,6 +60,7 @@ impl AppState {
             nav.confirm_discard = false;
         }
         self.open(next, Some(Field::TaskTitle));
+        self.request_issue(fx);
     }
 
     /// **Back**: the editor this one was opened from, as it was left.
@@ -94,9 +95,13 @@ impl AppState {
         out.extend(self.task_changes(current, Followup::CloseDialog));
         if let Some(Dialog::Task { nav, .. }) = &mut self.dialog {
             for earlier in &mut nav.back {
-                if let Dialog::Task { subtasks, .. } = earlier {
+                if let Dialog::Task {
+                    subtasks, issue, ..
+                } = earlier
+                {
                     subtasks.drafts.clear();
                     subtasks.new.clear();
+                    issue.saved();
                 }
             }
         }

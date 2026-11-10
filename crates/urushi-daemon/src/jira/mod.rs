@@ -14,6 +14,7 @@ pub mod adf;
 mod api;
 mod cloud;
 mod credentials;
+pub mod details;
 mod parse;
 
 pub use api::{

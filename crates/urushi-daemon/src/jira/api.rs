@@ -5,7 +5,9 @@
 use std::time::Duration;
 
 use urushi_core::TaskKind;
-use urushi_core::board::{JiraBoard, JiraColumn, QuickFilter, StatusCategory, SyncedIssue};
+use urushi_core::board::{JiraBoard, JiraColumn, Person, QuickFilter, StatusCategory, SyncedIssue};
+
+use super::details::{Field, IssueDetails, IssueRef};
 
 use super::Account;
 
@@ -173,6 +175,8 @@ pub struct IssueEdit {
     pub labels_add: Vec<String>,
     /// Labels to remove.
     pub labels_remove: Vec<String>,
+    /// Other fields, as Jira's edit API takes them (`null` clears one).
+    pub fields: Vec<(String, serde_json::Value)>,
 }
 
 impl IssueEdit {
@@ -182,6 +186,7 @@ impl IssueEdit {
             && self.notes.is_none()
             && self.labels_add.is_empty()
             && self.labels_remove.is_empty()
+            && self.fields.is_empty()
     }
 }
 
@@ -200,6 +205,8 @@ pub struct NewIssue {
     pub notes: String,
     /// Its labels.
     pub labels: Vec<String>,
+    /// Other fields, as Jira's create API takes them.
+    pub fields: Vec<(String, serde_json::Value)>,
 }
 
 /// Where to rank an issue.
@@ -236,4 +243,54 @@ pub trait JiraApi: Send + Sync {
     fn create(&self, account: &Account, issue: &NewIssue) -> JiraResult<String>;
     /// Moves an issue in the board's ranking.
     fn rank(&self, account: &Account, key: &str, rank: &Rank) -> JiraResult<()>;
+
+    // ---- One issue in full (the editor) -------------------------------------------
+    /// Everything the editor shows of an issue: its editable fields with their values
+    /// (sprints offered from `board`), transitions, comments, attachments, links,
+    /// watchers and work log.
+    fn details(&self, account: &Account, key: &str, board: u64) -> JiraResult<IssueDetails>;
+    /// The fields a new issue of `kind` in `project` has (with what each allows).
+    fn create_fields(
+        &self,
+        account: &Account,
+        project: &str,
+        kind: TaskKind,
+    ) -> JiraResult<Vec<Field>>;
+    /// People who may be assigned `key` (or anyone, without a key) whose name matches.
+    fn users(&self, account: &Account, query: &str, key: Option<&str>) -> JiraResult<Vec<Person>>;
+    /// Issues of `project` whose key or text matches `query`, at most `limit`.
+    fn search(
+        &self,
+        account: &Account,
+        project: &str,
+        query: &str,
+        limit: usize,
+    ) -> JiraResult<Vec<IssueRef>>;
+    /// Adds a comment (Markdown).
+    fn add_comment(&self, account: &Account, key: &str, body: &str) -> JiraResult<()>;
+    /// Changes a comment.
+    fn update_comment(&self, account: &Account, key: &str, id: &str, body: &str) -> JiraResult<()>;
+    /// Deletes a comment.
+    fn delete_comment(&self, account: &Account, key: &str, id: &str) -> JiraResult<()>;
+    /// Attaches a file.
+    fn attach(&self, account: &Account, key: &str, name: &str, data: &[u8]) -> JiraResult<()>;
+    /// Deletes an attachment.
+    fn delete_attachment(&self, account: &Account, id: &str) -> JiraResult<()>;
+    /// An attachment's contents, from its content address.
+    fn download(&self, account: &Account, url: &str) -> JiraResult<Vec<u8>>;
+    /// Links `outward` to `inward` with a kind of link ("`outward` blocks `inward`").
+    fn link(&self, account: &Account, kind: &str, outward: &str, inward: &str) -> JiraResult<()>;
+    /// Removes a link.
+    fn unlink(&self, account: &Account, id: &str) -> JiraResult<()>;
+    /// Starts or stops the account watching an issue.
+    fn watch(&self, account: &Account, key: &str, watch: bool) -> JiraResult<()>;
+    /// Logs work (`started` in Jira's `2026-11-09T10:00:00.000+0000` form).
+    fn log_work(
+        &self,
+        account: &Account,
+        key: &str,
+        seconds: u64,
+        started: &str,
+        comment: &str,
+    ) -> JiraResult<()>;
 }

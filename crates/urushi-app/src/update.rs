@@ -67,6 +67,8 @@ impl AppState {
             Msg::Response { followup, result } => self.on_response(followup, result, &mut fx),
             Msg::SelectThread(id) => self.select_thread(id, &mut fx),
             Msg::SetCompact(compact) => self.compact = compact,
+            Msg::WindowHeight(height) => self.window_height = height,
+            Msg::Issue(msg) => self.issue_msg(msg, &mut fx),
             Msg::ShowSidebar => self.sidebar_open = true,
             Msg::SelectTab(id) => self.select_tab(id, &mut fx),
             Msg::OpenAddProject => self.open_add_repo(),
@@ -835,6 +837,7 @@ mod daemon;
 mod fields;
 mod filter;
 mod intake;
+mod issue;
 mod jira;
 mod launcher;
 mod organize;
