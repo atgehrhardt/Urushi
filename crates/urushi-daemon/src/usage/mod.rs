@@ -16,9 +16,7 @@
 mod cache;
 pub mod claude;
 pub mod codex;
-mod exec;
 pub mod process;
-mod time;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -26,8 +24,8 @@ use std::time::{Duration, Instant};
 
 use urushi_core::{Agent, Timestamp};
 
+pub(crate) use crate::exec::run as exec_run;
 pub use cache::Failure;
-pub(crate) use exec::run as exec_run;
 pub use process::Process;
 
 use crate::service::{blocking, lock};

@@ -4,6 +4,7 @@ mod attention;
 mod board;
 mod daemon;
 mod dialogs;
+mod jira;
 mod labels;
 mod launcher;
 mod main_area;
@@ -509,6 +510,71 @@ mod tests {
                 .iter()
                 .any(|h| matches!(h.on_drag, Some(Msg::Sidebar(SidebarMsg::StartResize)))),
             "no edge while hidden"
+        );
+    }
+
+    /// Collapses the sidebar (the slide finished) and clicks "Show sidebar", which
+    /// must exist and bring it back whatever the main area shows.
+    fn collapse_and_show(state: &mut AppState, text: &mut TextSystem, case: &str) {
+        use crate::msg::SidebarMsg;
+        state.update(Msg::Sidebar(SidebarMsg::Toggle));
+        state.update(Msg::Sidebar(SidebarMsg::Reveal(0.0)));
+        let frame = render(state, text);
+        // A button the user can see and click: one covered by the board doesn't count.
+        let reachable = frame
+            .access
+            .iter()
+            .filter(|a| a.label == "Show sidebar")
+            .any(|a| {
+                matches!(
+                    frame.click(a.rect.center()),
+                    Some(Msg::Sidebar(SidebarMsg::Toggle))
+                )
+            });
+        assert!(reachable, "{case}: no way to show the sidebar");
+        state.update(Msg::Sidebar(SidebarMsg::Toggle));
+        state.update(Msg::Sidebar(SidebarMsg::Reveal(1.0)));
+        assert!(
+            render(state, text).scene.dump().contains("Thread b"),
+            "{case}: shown again"
+        );
+    }
+
+    #[test]
+    fn a_collapsed_sidebar_can_always_be_shown_again() {
+        let mut text = TextSystem::bundled_only();
+        // No thread chosen yet (as after a restart with the sidebar collapsed).
+        let mut state = organized();
+        collapse_and_show(&mut state, &mut text, "no thread");
+        // A thread with no tabs (the launcher).
+        state.update(Msg::SelectThread("a".into()));
+        collapse_and_show(&mut state, &mut text, "launcher");
+        // The task board out over the terminals.
+        state.update(Msg::ToggleBoard);
+        state.update(Msg::BoardReveal(1.0));
+        collapse_and_show(&mut state, &mut text, "task board");
+        state.update(Msg::ToggleBoard);
+        state.update(Msg::BoardReveal(0.0));
+        // Nothing to show at all: no repos yet.
+        let mut empty = organized();
+        empty.update(Msg::Daemon(
+            urushi_client::v1::event::Body::WorkspaceChanged(
+                urushi_client::v1::Workspace::default(),
+            ),
+        ));
+        empty.update(Msg::Sidebar(crate::msg::SidebarMsg::Toggle));
+        empty.update(Msg::Sidebar(crate::msg::SidebarMsg::Reveal(0.0)));
+        let frame = render(&empty, &mut text);
+        assert!(
+            frame
+                .access
+                .iter()
+                .filter(|a| a.label == "Show sidebar")
+                .any(|a| matches!(
+                    frame.click(a.rect.center()),
+                    Some(Msg::Sidebar(crate::msg::SidebarMsg::Toggle))
+                )),
+            "empty workspace: no way to show the sidebar"
         );
     }
 }

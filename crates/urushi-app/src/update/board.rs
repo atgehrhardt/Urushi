@@ -31,6 +31,7 @@ impl AppState {
                 let shown = self.board.board(&self.workspace).map(|b| b.id.as_str());
                 if shown != Some(id.as_str()) {
                     self.board.tag_filter = None;
+                    self.board.epic_filter = None;
                 }
                 self.board.selected = Some(id);
             }

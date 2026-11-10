@@ -140,6 +140,7 @@ impl AppState {
             | Msg::Board(_)
             | Msg::OpenDeleteBoard(_)
             | Msg::ConfirmDeleteBoard) => self.board_msg(msg, &mut fx),
+            Msg::Jira(msg) => self.jira_msg(msg, &mut fx),
             Msg::Tick(now_ms) => self.tick(now_ms, &mut fx),
             Msg::WindowFocused(focused) => self.attention.in_background = !focused,
             // The mouse over terminals: `update/pointer.rs`.
@@ -222,6 +223,8 @@ impl AppState {
             Body::TailnetStatus(v1::TailnetStatusRequest {}),
             Followup::TailnetStatus,
         ));
+        self.jira = None;
+        self.request_jira_account(fx);
     }
 
     fn select_thread(&mut self, id: String, fx: &mut Vec<Effect>) {
@@ -256,6 +259,7 @@ impl AppState {
             Body::TailnetStatus(v1::TailnetStatusRequest {}),
             Followup::TailnetStatus,
         ));
+        self.request_jira_account(fx);
     }
 
     fn confirm_delete(&mut self, fx: &mut Vec<Effect>) {
@@ -446,6 +450,7 @@ impl AppState {
                 }
                 return;
             }
+            Err(message) if self.jira_failed(&followup, &message) => return,
             Err(message) => {
                 if let Followup::Attached(pane) = &followup {
                     self.attaching.remove(pane);
@@ -458,6 +463,9 @@ impl AppState {
             }
         };
         let Some((followup, outcome)) = self.attachment_answered(followup, outcome, fx) else {
+            return;
+        };
+        let Some((followup, outcome)) = self.jira_answered(followup, outcome, fx) else {
             return;
         };
         match (followup, outcome) {
@@ -596,6 +604,7 @@ impl AppState {
                 }
             }
             Some(Dialog::Task { .. }) => self.submit_task(fx),
+            Some(Dialog::ConnectJira { .. } | Dialog::ImportJira { .. }) => self.submit_jira(fx),
             Some(Dialog::NewTab { highlighted }) => {
                 let choices = self.launch_choices();
                 let choice = choices[(*highlighted).min(choices.len() - 1)];
@@ -817,6 +826,7 @@ mod cards;
 mod daemon;
 mod fields;
 mod intake;
+mod jira;
 mod launcher;
 mod organize;
 mod panes;

@@ -2,14 +2,16 @@
 //! (tags, subtask progress, the thread chip); a colored task has a stripe and a tint.
 //! When an agent in a thread linked to the task (or one of its subtasks) finished or
 //! waits for the user, the card shows a badge by its title and a border in that color
-//! (ADR 0017). The copy that follows the pointer while dragging is the same card.
+//! (ADR 0017). A task with a kind has a marker in its color before the title; a Jira
+//! issue its key there, and its epic and assignee in the footer. The copy that follows
+//! the pointer while dragging is the same card.
 
 use urushi_client::v1;
 use urushi_ui::widgets;
 use urushi_ui::{Color, Font, Insets, Length, Node, Point, Role, TextSystem, Theme, key};
 
 use super::super::{attention, labels};
-use super::{CARD_PADDING, CARD_ROW_GAP, FOOTER_HEIGHT, GHOST_WIDTH, NOTES_LINES, shorten};
+use super::{CARD_PADDING, CARD_ROW_GAP, FOOTER_HEIGHT, GHOST_WIDTH, NOTES_LINES, jira, shorten};
 use crate::msg::Msg;
 use crate::organize::MenuTarget;
 use crate::state::{AppState, TaskLink};
@@ -117,12 +119,26 @@ fn card_body(
     row.child(content)
 }
 
-/// The title, cut short to make room for the attention badge when there is one.
+/// The kind marker and issue key, then the title, cut short to make room for the
+/// attention badge when there is one.
 fn title_row(state: &AppState, theme: &Theme, task: &v1::Task, color: Color) -> Node<Msg> {
+    let muted = if color == theme.text {
+        theme.text_muted
+    } else {
+        color
+    };
     Node::row()
         .width(Length::Fill(1.0))
         .gap(6.0)
         .align(urushi_ui::Align::Center)
+        .children(jira::kind_marker(theme, task.kind, 8.0))
+        // Phones need the room for the title; the editor shows the key.
+        .children(
+            task.issue
+                .as_deref()
+                .filter(|_| !state.compact)
+                .map(|i| jira::key_label(theme, i, muted)),
+        )
         .child(
             Node::text(&task.title, Font::UiMedium, theme.font_size, color)
                 .width(Length::Fill(1.0)),
@@ -213,10 +229,13 @@ fn card_footer(
     } else {
         theme.text_muted
     };
+    let board = state.board.board(&state.workspace);
     let mut row = Node::row()
         .width(Length::Fill(1.0))
         .height(Length::Fixed(FOOTER_HEIGHT))
         .gap(6.0)
+        .align(urushi_ui::Align::Center)
+        .children(board.and_then(|b| jira::epic_chip(theme, b, task)))
         .children(footer_tags(theme, task, dragged));
     if !task.subtasks.is_empty() {
         let done = task.subtasks.iter().filter(|s| s.done).count();
@@ -273,8 +292,10 @@ fn card_footer(
                 .role(Role::Button, format!("Go to thread {}", thread.title));
         }
         row = row.child(Node::spacer()).child(chip);
+    } else {
+        row = row.child(Node::spacer());
     }
-    row
+    row.children(jira::assignee(theme, task))
 }
 
 /// A raised copy of the dragged card, under the pointer.

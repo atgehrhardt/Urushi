@@ -78,4 +78,8 @@ pub enum BoardMsg {
     OpenAttachment(String),
     /// Delete an attachment.
     DeleteAttachment(String),
+    /// In the task editor: choose the kind (a wire `TaskKind` value; 0: none).
+    PickKind(i32),
+    /// Show only a Jira board's tasks in this epic (by key), or all with `None`.
+    FilterEpic(Option<String>),
 }

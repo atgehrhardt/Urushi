@@ -13,6 +13,19 @@ pub(crate) fn secure_dir(dir: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)
 }
 
+/// Replaces the file at `path` with `bytes`: a temp file, flushed, then renamed over it.
+/// Like the home it lives in, it inherits the user-only ACL of `%LOCALAPPDATA%`.
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("tmp");
+    {
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)
+}
+
 /// Accepts local connections on a named pipe, forever. Remote (SMB) clients are rejected.
 pub(crate) async fn serve_local(
     service: Arc<Service>,

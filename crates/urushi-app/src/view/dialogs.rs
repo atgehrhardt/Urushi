@@ -69,7 +69,35 @@ pub(super) fn view(
             (board, column, task.as_deref()),
             (title, notes, subtasks, labels),
         ),
-        Dialog::DeleteBoard { name, tasks, .. } => super::board::delete_board(theme, name, *tasks),
+        Dialog::DeleteBoard { board, name, tasks } => {
+            let jira = state
+                .workspace
+                .board(board)
+                .is_some_and(|b| b.jira.is_some());
+            super::board::delete_board(theme, name, *tasks, jira)
+        }
+        Dialog::ConnectJira {
+            site,
+            email,
+            token,
+            busy,
+            error,
+        } => super::jira::connect(
+            state,
+            theme,
+            (site, email, token),
+            (*busy, error.as_deref()),
+        ),
+        Dialog::ImportJira {
+            query,
+            boards,
+            error,
+        } => super::jira::import(
+            state,
+            (theme, scroll),
+            query,
+            (boards.as_deref(), error.as_deref()),
+        ),
         Dialog::NestTask { task, query } => {
             super::tasks::nest_picker(state, (theme, scroll), task, query)
         }
@@ -413,6 +441,7 @@ fn settings_dialog(
             "Off by default. When on, the agent runs commands and edits files without asking.",
         ))
         .children(super::setup::settings_rows(state, theme))
+        .children(super::jira::settings_rows(state, theme))
         .child(label(theme, "Branch prefix"))
         .child(prefix)
         .child(label(theme, "Default shell"))

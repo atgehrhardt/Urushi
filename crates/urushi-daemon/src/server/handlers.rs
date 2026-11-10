@@ -29,6 +29,7 @@ fn error_outcome(error: &ServiceError) -> Outcome {
         ServiceError::Conflict(_) => ErrorCode::Conflict,
         ServiceError::Forbidden(_) => ErrorCode::PermissionDenied,
         ServiceError::Git(_) => ErrorCode::GitFailed,
+        ServiceError::Unavailable(_) => ErrorCode::Unavailable,
         ServiceError::Mux(_) | ServiceError::Store(_) | ServiceError::Internal(_) => {
             ErrorCode::Internal
         }
@@ -294,7 +295,13 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         | Body::UpdateColumn(_)
         | Body::MoveColumn(_)
         | Body::DeleteColumn(_)
-        | Body::NestTask(_)) => super::boards::route(service, body)?,
+        | Body::NestTask(_)) => super::boards::route(service, body).await?,
+        body @ (Body::ConnectJira(_)
+        | Body::GetJiraAccount(_)
+        | Body::DisconnectJira(_)
+        | Body::ListJiraBoards(_)
+        | Body::ImportJiraBoard(_)
+        | Body::SyncBoard(_)) => super::jira::route(service, body).await?,
         body @ (Body::AddAttachment(_) | Body::GetAttachment(_) | Body::DeleteAttachment(_)) => {
             super::boards::route_attachments(service, body).await?
         }

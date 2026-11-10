@@ -9,6 +9,7 @@
 
 mod boards;
 mod connection;
+mod jira;
 mod launcher;
 mod platform;
 mod requests;

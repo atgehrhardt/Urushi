@@ -69,8 +69,8 @@ pub(super) fn checklist(
 }
 
 /// One subtask: its check box, its title (which opens it, on a daemon that keeps
-/// subtasks as tasks), its color, its own progress, its thread, and ×. A right-click
-/// opens its menu.
+/// subtasks as tasks), its color, its own progress, its thread, and × (not for a Jira
+/// issue). A right-click opens its menu.
 fn subtask_row(state: &AppState, theme: &Theme, s: &v1::Subtask) -> Node<Msg> {
     let link = state.workspace.find_task(&s.id).map(|f| TaskLink::of(&f));
     let started = link
@@ -148,6 +148,15 @@ fn subtask_row(state: &AppState, theme: &Theme, s: &v1::Subtask) -> Node<Msg> {
             &format!("{what} for {}", s.title),
             Msg::StartThread(link),
         ));
+    }
+    // Jira issues are deleted in Jira.
+    let on_jira = s.issue.is_some()
+        || state
+            .workspace
+            .find_task(&s.id)
+            .is_some_and(|f| f.board.jira.is_some());
+    if on_jira {
+        return row;
     }
     row.child(icon_button(
         theme,

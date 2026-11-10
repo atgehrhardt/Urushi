@@ -1,6 +1,8 @@
-//! RFC 3339 timestamps (as usage endpoints send them) → milliseconds since the epoch.
+//! RFC 3339 timestamps (as usage endpoints and Jira send them) → milliseconds since
+//! the epoch.
 
-/// Parses `2026-11-13T05:59:59.531229+00:00` (or `…Z`). `None` if malformed.
+/// Parses `2026-11-13T05:59:59.531229+00:00` (or `…Z`, or Jira's `…+0000`). `None` if
+/// malformed.
 pub(crate) fn rfc3339_ms(s: &str) -> Option<i64> {
     let s = s.trim();
     let (date, rest) = s.split_once(['T', 't', ' '])?;
@@ -18,7 +20,10 @@ pub(crate) fn rfc3339_ms(s: &str) -> Option<i64> {
         let at = rest.rfind(['+', '-'])?;
         let (time, offset) = rest.split_at(at);
         let sign = if offset.starts_with('-') { -1 } else { 1 };
-        let (h, m) = offset[1..].split_once(':')?;
+        let digits = &offset[1..];
+        let (h, m) = digits
+            .split_once(':')
+            .or_else(|| (digits.len() == 4).then(|| digits.split_at(2)))?;
         let minutes = h.parse::<i64>().ok()? * 60 + m.parse::<i64>().ok()?;
         (time, sign * minutes)
     };
@@ -65,6 +70,10 @@ mod tests {
         );
         assert_eq!(
             rfc3339_ms("2026-11-13T07:59:59.5+02:00"),
+            rfc3339_ms("2026-11-13T05:59:59.500Z")
+        );
+        assert_eq!(
+            rfc3339_ms("2026-11-13T07:59:59.500+0200"),
             rfc3339_ms("2026-11-13T05:59:59.500Z")
         );
         assert_eq!(rfc3339_ms("garbage"), None);

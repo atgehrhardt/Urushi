@@ -10,6 +10,90 @@ message Board {
   string name = 2;
   int64 created_at_ms = 3;
   repeated BoardColumn columns = 4;
+  // Set when the board follows a Jira board (ADR 0020): its content comes from Jira,
+  // and changes Jira owns (columns, its name, nesting, deleting issues, attachments)
+  // are refused with FAILED_PRECONDITION. Since 1.12.
+  JiraBoardSource jira = 5;
+  // The epics its issues belong to, by key. Since 1.12.
+  repeated Epic epics = 6;
+}
+
+// The Jira board a board follows. Since 1.12.
+message JiraBoardSource {
+  // The site's address, e.g. https://acme.atlassian.net.
+  string site = 1;
+  uint64 board_id = 2;
+  // The board's name in Jira.
+  string name = 3;
+  // The project new issues are created in.
+  string project_key = 4;
+  // A scrum board shows its open sprints; a kanban board everything on it.
+  bool scrum = 5;
+  // When the board last matched Jira; 0 before the first sync.
+  int64 synced_at_ms = 6;
+  // Why the last sync failed; empty if it didn't.
+  string error = 7;
+  // Issues left out because the board was too big.
+  uint32 dropped = 8;
+  // The board's web page.
+  string url = 9;
+}
+
+// An epic that issues on a Jira board belong to. Not a card: issues name it by key.
+// Since 1.12.
+message Epic {
+  string key = 1;
+  string summary = 2;
+  LabelColor color = 3;
+  // Its web page.
+  string url = 4;
+}
+
+// What sort of work a task is. Clients treat values they don't know as unspecified.
+// Since 1.12.
+enum TaskKind {
+  // Not said.
+  TASK_KIND_UNSPECIFIED = 0;
+  TASK_KIND_TASK = 1;
+  TASK_KIND_STORY = 2;
+  TASK_KIND_BUG = 3;
+  TASK_KIND_EPIC = 4;
+  TASK_KIND_SUBTASK = 5;
+}
+
+// Which of Jira's status groups an issue's status is in. Since 1.12.
+enum JiraStatusCategory {
+  JIRA_STATUS_CATEGORY_UNSPECIFIED = 0;
+  JIRA_STATUS_CATEGORY_TO_DO = 1;
+  JIRA_STATUS_CATEGORY_IN_PROGRESS = 2;
+  JIRA_STATUS_CATEGORY_DONE = 3;
+}
+
+// The Jira issue a task on a Jira board shows. Since 1.12.
+message JiraIssue {
+  // Its id in Jira.
+  string id = 1;
+  // E.g. PROJ-123.
+  string key = 2;
+  // Its web page.
+  string url = 3;
+  // Its type's name as the site calls it ("Story", "Bug", "Spike"…).
+  string type_name = 4;
+  string status_id = 5;
+  string status = 6;
+  JiraStatusCategory category = 7;
+  // Display names; empty when unassigned or without a priority.
+  string assignee = 8;
+  string priority = 9;
+  // The key of its epic; empty if none.
+  string epic_key = 10;
+  // False when the description was too long to show whole: the notes are read-only.
+  bool notes_editable = 11;
+  // The Jira id of its parent issue, for a subtask.
+  string parent_id = 12;
+  // Its place in the board's ranking; compares as text.
+  string rank = 13;
+  int64 updated_ms = 14;
 }
 
 // One column of a board (e.g. "To do"), with its tasks top to bottom.
@@ -19,6 +103,8 @@ message BoardColumn {
   repeated Task tasks = 3;
   // Unspecified: no color. Since 1.8.
   LabelColor color = 4;
+  // On a Jira board, the ids of the Jira statuses it shows. Since 1.12.
+  repeated string jira_statuses = 5;
 }
 
 // A color from the board palette. Clients choose the shade for their theme, and treat
@@ -59,6 +145,10 @@ message Task {
   repeated string tags = 8;
   // Files attached to it. Since 1.8.
   repeated Attachment attachments = 9;
+  // Since 1.12.
+  TaskKind kind = 10;
+  // The Jira issue it shows, on a Jira board. Since 1.12.
+  JiraIssue issue = 11;
 }
 
 // A task nested in another (ADR 0015). Since protocol 1.6 (as a checklist item: id,
@@ -78,6 +168,9 @@ message Subtask {
   // Its own subtasks, in order.
   repeated Subtask subtasks = 9;
   repeated Attachment attachments = 10;
+  // Since 1.12.
+  TaskKind kind = 11;
+  JiraIssue issue = 12;
 }
 
 // A file attached to a task (ADR 0016). The bytes stay in the daemon; fetch them with
@@ -111,7 +204,9 @@ message DeleteBoardRequest {
   string board_id = 1;
 }
 
-// Adds a task at the bottom of a column. Answered with the Task.
+// Adds a task at the bottom of a column. Answered with the Task. On a Jira board (1.12)
+// this creates an issue of `kind` (a task when unspecified) in the board's project,
+// moved to the column; subtasks, color and tags apply as usual.
 message CreateTaskRequest {
   string board_id = 1;
   string column_id = 2;
@@ -122,6 +217,8 @@ message CreateTaskRequest {
   // Since 1.8.
   LabelColor color = 6;
   repeated string tags = 7;
+  // Since 1.12.
+  TaskKind kind = 8;
 }
 
 // Changes a task's (or, since 1.8, a subtask's) text, color or tags. Unset fields are
@@ -134,10 +231,14 @@ message UpdateTaskRequest {
   optional LabelColor color = 4;
   // Replaces all the tags. Since 1.8.
   TagList tags = 5;
+  // Set to TASK_KIND_UNSPECIFIED to clear it. Not on a Jira board, where Jira owns
+  // an issue's type. Since 1.12.
+  optional TaskKind kind = 6;
 }
 
 // Moves a task to `index` in a column of the same board (clamped; past the end means
-// the bottom). Since 1.8 the task may be a subtask: it comes out of its parent onto the
+// the bottom). On a Jira board (1.12) this transitions the issue to a status the column
+// shows and ranks it there; FAILED_PRECONDITION when its workflow doesn't allow it. Since 1.8 the task may be a subtask: it comes out of its parent onto the
 // board, unchecked.
 message MoveTaskRequest {
   string task_id = 1;
@@ -145,7 +246,8 @@ message MoveTaskRequest {
   uint32 index = 3;
 }
 
-// Deletes a task (since 1.8 also a subtask of any depth) with its subtasks.
+// Deletes a task (since 1.8 also a subtask of any depth) with its subtasks. Refused on
+// a Jira board (FAILED_PRECONDITION): issues are deleted in Jira.
 message DeleteTaskRequest {
   string task_id = 1;
 }

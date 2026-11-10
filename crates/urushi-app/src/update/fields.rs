@@ -33,7 +33,11 @@ macro_rules! focused_field {
             (Some(Dialog::Task { notes, .. }), Field::TaskNotes) => Some(notes),
             (Some(Dialog::Task { subtasks, .. }), Field::NewSubtask) => Some($($r)+ subtasks.new),
             (Some(Dialog::Task { labels, .. }), Field::TaskTag) => Some($($r)+ labels.input),
-            (Some(Dialog::NestTask { query, .. }), Field::NestQuery) => Some(query),
+            (Some(Dialog::NestTask { query, .. }), Field::NestQuery)
+            | (Some(Dialog::ImportJira { query, .. }), Field::JiraQuery) => Some(query),
+            (Some(Dialog::ConnectJira { site, .. }), Field::JiraSite) => Some(site),
+            (Some(Dialog::ConnectJira { email, .. }), Field::JiraEmail) => Some(email),
+            (Some(Dialog::ConnectJira { token, .. }), Field::JiraToken) => Some(token),
             _ => None,
         }
     };
@@ -65,6 +69,10 @@ impl AppState {
             Some(Dialog::Connect { .. }) => vec![Field::Host],
             Some(Dialog::Prompt { .. }) => vec![Field::Prompt],
             Some(Dialog::NestTask { .. }) => vec![Field::NestQuery],
+            Some(Dialog::ConnectJira { .. }) => {
+                vec![Field::JiraSite, Field::JiraEmail, Field::JiraToken]
+            }
+            Some(Dialog::ImportJira { .. }) => vec![Field::JiraQuery],
             Some(Dialog::Task { .. }) => {
                 let mut fields = vec![Field::TaskTitle, Field::TaskNotes];
                 if self.daemon_supports_board_extras() {

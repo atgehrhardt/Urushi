@@ -7,6 +7,7 @@
 mod boards;
 mod commands;
 mod daemon;
+mod jira;
 mod render;
 
 use std::path::PathBuf;
@@ -54,6 +55,9 @@ enum Command {
     /// Manage task boards.
     #[command(subcommand)]
     Board(boards::BoardCmd),
+    /// Sign in to Jira Cloud, and import its boards.
+    #[command(subcommand)]
+    Jira(jira::JiraCmd),
     /// Show which agent runs in a pane and how much of its plan is used.
     Usage {
         /// Pane id.

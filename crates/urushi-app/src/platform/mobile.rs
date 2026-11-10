@@ -48,6 +48,14 @@ pub(crate) fn open_path(_path: &std::path::Path) -> std::io::Result<()> {
     ))
 }
 
+/// Opening web pages isn't wired to the mobile shells yet.
+pub(crate) fn open_url(_url: &str) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "opening web pages isn't supported on this device yet",
+    ))
+}
+
 /// Mobile apps don't post notifications yet (they need the OS's push setup); threads
 /// still show their attention dots.
 pub(crate) fn notify(_title: &str, _body: &str) {}

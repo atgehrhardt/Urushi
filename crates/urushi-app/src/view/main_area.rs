@@ -31,6 +31,17 @@ pub(super) fn view(state: &AppState, theme: &Theme) -> Node<Msg> {
             .child(tab_bar(state, theme))
             .child(super::launcher::inline(state, theme, &thread.title));
     } else {
+        // Without a tab bar, the button that shows a collapsed sidebar goes on top.
+        if !state.compact && state.sidebar.collapsed() {
+            column = column.child(
+                Node::row()
+                    .width(Length::Fill(1.0))
+                    .height(Length::Fixed(40.0))
+                    .padding(Insets::symmetric(0.0, 8.0))
+                    .align(Align::Center)
+                    .child(super::sidebar_toggle(state, theme)),
+            );
+        }
         column = column.child(empty_state(state, theme));
     }
     if let Some(error) = &state.error {

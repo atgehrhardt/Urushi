@@ -27,30 +27,10 @@ pub(super) fn task_items(
     };
     let task = found.task();
     let id = task.id().to_owned();
-    match menu.page {
-        MenuPage::Move => {
-            let mut items = vec![back(theme, "Move to")];
-            items.extend(found.board.columns.iter().map(|c| {
-                item(
-                    theme,
-                    &c.name,
-                    check(task.is_card() && c.id == found.column.id),
-                    theme.text,
-                    act(BoardMsg::MoveTask {
-                        task: id.clone(),
-                        column: c.id.clone(),
-                    }),
-                )
-            }));
-            return items;
-        }
-        MenuPage::Color => {
-            return color_page(theme, task.color(), |c| BoardMsg::ColorTask {
-                task: id.clone(),
-                color: c,
-            });
-        }
-        MenuPage::Main | MenuPage::Status => {}
+    // Jira owns nesting and deleting its issues.
+    let issue = task.issue();
+    if let Some(items) = task_page(theme, menu, &found) {
+        return items;
     }
     let extras = state.daemon_supports_board_extras();
     let mut items = vec![item(
@@ -68,7 +48,7 @@ pub(super) fn task_items(
             theme.text,
             Msg::MenuPage(MenuPage::Move),
         ));
-    } else {
+    } else if issue.is_none() {
         items.push(item(
             theme,
             "Make standalone",
@@ -78,13 +58,15 @@ pub(super) fn task_items(
         ));
     }
     if extras {
-        items.push(item(
-            theme,
-            "Make subtask of…",
-            "",
-            theme.text,
-            act(BoardMsg::OpenNest(id.clone())),
-        ));
+        if issue.is_none() {
+            items.push(item(
+                theme,
+                "Make subtask of…",
+                "",
+                theme.text,
+                act(BoardMsg::OpenNest(id.clone())),
+            ));
+        }
         items.push(item(
             theme,
             "Color",
@@ -102,6 +84,16 @@ pub(super) fn task_items(
         };
         items.push(item(theme, label, "", theme.text, Msg::StartThread(link)));
     }
+    if let Some(issue) = issue {
+        items.push(item(
+            theme,
+            "Open in Jira",
+            &issue.key,
+            theme.text,
+            Msg::Jira(crate::msg::JiraMsg::Open(issue.url.clone())),
+        ));
+        return items;
+    }
     items.push(separator(theme));
     items.push(item(
         theme,
@@ -115,6 +107,39 @@ pub(super) fn task_items(
         act(BoardMsg::DeleteTask(id)),
     ));
     items
+}
+
+/// A task menu's sub-page (move to a column, color), if one is open.
+fn task_page(
+    theme: &Theme,
+    menu: &ContextMenu,
+    found: &urushi_client::FoundTask<'_>,
+) -> Option<Vec<Node<Msg>>> {
+    let task = found.task();
+    let id = task.id().to_owned();
+    match menu.page {
+        MenuPage::Move => {
+            let mut items = vec![back(theme, "Move to")];
+            items.extend(found.board.columns.iter().map(|c| {
+                item(
+                    theme,
+                    &c.name,
+                    check(task.is_card() && c.id == found.column.id),
+                    theme.text,
+                    act(BoardMsg::MoveTask {
+                        task: id.clone(),
+                        column: c.id.clone(),
+                    }),
+                )
+            }));
+            Some(items)
+        }
+        MenuPage::Color => Some(color_page(theme, task.color(), |c| BoardMsg::ColorTask {
+            task: id.clone(),
+            color: c,
+        })),
+        MenuPage::Main | MenuPage::Status => None,
+    }
 }
 
 pub(super) fn column_items(
@@ -132,6 +157,17 @@ pub(super) fn column_items(
             color: c,
         });
     }
+    let color_item = item(
+        theme,
+        "Color",
+        &format!("{}  ›", color_name(column.color)),
+        theme.text,
+        Msg::MenuPage(MenuPage::Color),
+    );
+    // Jira owns a Jira board's columns; only their color is Urushi's.
+    if board.jira.is_some() {
+        return vec![color_item];
+    }
     let at = board.columns.iter().position(|c| c.id == id).unwrap_or(0);
     let moved = |index: usize| {
         act(BoardMsg::MoveColumn {
@@ -147,13 +183,7 @@ pub(super) fn column_items(
             theme.text,
             Msg::OpenPrompt(Prompt::RenameColumn(column.id.clone())),
         ),
-        item(
-            theme,
-            "Color",
-            &format!("{}  ›", color_name(column.color)),
-            theme.text,
-            Msg::MenuPage(MenuPage::Color),
-        ),
+        color_item,
     ];
     if at > 0 {
         items.push(item(theme, "Move left", "", theme.text, moved(at - 1)));
@@ -231,7 +261,7 @@ fn color_page(theme: &Theme, current: i32, pick: impl Fn(i32) -> BoardMsg) -> Ve
 }
 
 /// A menu row with a color dot before its label, and a check mark when chosen.
-fn dot_item(
+pub(super) fn dot_item(
     theme: &Theme,
     (label, fill): (&str, Option<urushi_ui::Color>),
     chosen: bool,

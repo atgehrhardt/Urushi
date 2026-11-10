@@ -9,6 +9,7 @@ use crate::msg::Msg;
 use crate::organize::{ContextMenu, Dragged, MenuPage, MenuTarget, Prompt};
 use crate::state::{AppState, FieldCommand};
 
+mod jira;
 mod pane;
 mod tasks;
 
@@ -26,6 +27,8 @@ pub(super) fn overlay(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
         MenuTarget::Task(id) => tasks::task_items(state, theme, menu, id),
         MenuTarget::Column(id) => tasks::column_items(state, theme, menu, id),
         MenuTarget::TagFilter(board) => tasks::tag_filter_items(state, theme, board),
+        MenuTarget::EpicFilter(board) => jira::epic_filter_items(state, theme, board),
+        MenuTarget::NewBoard => jira::new_board_items(theme),
         MenuTarget::Pane(pane) => pane::pane_items(state, theme, pane),
     };
     let backdrop = Node::new()
@@ -131,7 +134,9 @@ fn back(theme: &Theme, title: &str) -> Node<Msg> {
 /// Cut, copy, paste and select all, for a text field. Cut and copy are dimmed with
 /// nothing selected.
 fn field_items(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
-    let selected = state.field().is_some_and(|f| f.selection().is_some());
+    let selected = state
+        .field()
+        .is_some_and(|f| f.selection().is_some() && !f.is_secret());
     let hint = |letter: &str| {
         if cfg!(any(target_os = "macos", target_os = "ios")) {
             format!("⌘{letter}")

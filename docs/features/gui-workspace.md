@@ -13,8 +13,9 @@ and the main area float over them as translucent, rounded glass panels. Overlays
 window. On phones the panels fill the screen edge to edge.
 - **Hiding and resizing the sidebar** (desktop and tablet widths):
   - The sidebar button (a window outline) in the sidebar's header slides it away; the
-    same button then sits at the left of the tab bar to bring it back. Cmd+\ (Ctrl+Shift+\
-    elsewhere) does both.
+    same button then brings it back from wherever it can be seen: the left of the tab
+    bar, the top of the empty screen (no thread or no repo yet), or the task panel's
+    header while the panel covers the tab bar. Cmd+\ (Ctrl+Shift+\ elsewhere) does both.
   - Drag the gap between the sidebar and the main panel to resize it, from 200 px up to
     560 px or half the window. Dragging it narrower than 140 px collapses it, and it
     reopens at its last width.
@@ -72,11 +73,12 @@ window. On phones the panels fill the screen edge to edge.
 ## Invariants
 - The app holds no authoritative state. Every change goes through a daemon request.
 - There is no path from the UI to `DeleteThread` without a plan shown in the dialog (`update/tests.rs::deleting_a_thread_always_goes_through_the_warning`).
+- A collapsed sidebar always has a visible, clickable button to bring it back, whatever the main area shows (`view/mod.rs::a_collapsed_sidebar_can_always_be_shown_again`).
 
 ## Tests
 - `crates/urushi-app/src/update/tests.rs`: connect, attach, resize, screen updates, typing vs shortcuts, the deletion flow, dialog editing, connect-required mode, selection and copy. `update/tests/fields.rs`: field shortcuts, mouse selection and the field menu; `urushi-ui/tests/fields.rs`: pointer → caret, scrolling, selection painting.
 - `crates/urushi-app/src/update/tests/daemon.rs`: the restart confirmation and reconnecting.
-- `crates/urushi-app/src/sidebar.rs` and `update/tests/sidebar.rs`: hiding, the shortcut, resizing within limits, snapping shut, phones ignoring both; `view/mod.rs` tests: the edge, its cursor, and the show button while hidden.
+- `crates/urushi-app/src/sidebar.rs` and `update/tests/sidebar.rs`: hiding, the shortcut, resizing within limits, snapping shut, phones ignoring both; `view/mod.rs` tests: the edge, its cursor, and a reachable show button while hidden (with a thread, the launcher, the task panel out, and an empty workspace).
 - `crates/urushi-app/src/update/tests/flows.rs`: launcher, branch name following the title, adding repos, dropped files, agent settings. `update/tests/organize.rs`: menus, prompts, drag and drop, selectors. `update/tests/panes.rs`: the pane menu and focus after a pane closes.
 - `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `new-thread-project`, `settings`, `menu`, `menu-status`, `drag`, `drag-project`, `repos`, `board`, `board-drag`, `task`, `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `sidebar-collapsed`, `setup`, `setup-mode`) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
 - `crates/urushi-app/src/terminal.rs`: pane geometry, dividers, selection text, painting.

@@ -34,6 +34,8 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0017 – Learn when an agent finished or waits from what it writes to its pane's terminal](adr/0017-agent-attention-through-the-pane-terminal.md)
 - [0018 – Start a task in an existing thread through `CreateTab`, linking it there](adr/0018-start-tasks-in-existing-threads.md)
 - [0019 – Draw frosted glass in our own renderer, with a backdrop-blur pass](adr/0019-in-app-frosted-glass.md)
+- [0020 – Follow Jira boards from the daemon: Jira is the source of truth, edits write through, polling keeps them current](adr/0020-jira-boards-as-daemon-mirrors.md)
+- [0021 – Make HTTPS requests through `curl --config -`, and keep the Jira sign-in in a private file](adr/0021-https-through-curl-and-a-private-credentials-file.md)
 
 ## Features
 - [_template](features/_template.md)
@@ -45,6 +47,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [Agent launcher](features/agent-launcher.md)
 - [Organizing threads (projects, pins, statuses)](features/thread-organization.md)
 - [Task boards](features/task-boards.md)
+- [Jira boards](features/jira-boards.md)
 - [Task agent and first-run setup](features/task-agent.md)
 - [Agent usage in the status bar](features/agent-usage.md)
 - [Agent attention (finished / needs input)](features/agent-attention.md)

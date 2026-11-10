@@ -171,12 +171,14 @@ fn field_box<M>(
         .on_click(on_focus)
         .cursor(CursorIcon::Text)
         .role(Role::TextInput, placeholder);
+    // A secret field's text never reaches the scene (or screen readers): only bullets.
+    let (text, caret, selection) = field.shown();
     node.children.push(
         Node {
             content: Content::Field {
-                text: field.text().to_owned(),
-                caret: focused.then(|| field.caret()),
-                selection: field.selection().filter(|_| focused),
+                text,
+                caret: focused.then_some(caret),
+                selection: selection.filter(|_| focused),
                 placeholder: placeholder.to_owned(),
                 color: theme.text,
                 placeholder_color: theme.text_muted,

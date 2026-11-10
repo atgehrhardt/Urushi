@@ -2,9 +2,12 @@
 //! nesting and deleting their tasks, which may be subtasks of any depth (ADR 0015). The rules live in
 //! `urushi_core::board`; this module finds the board, applies the change and persists
 //! it. Boards never touch git or terminals (threads link themselves to tasks when they
-//! are created, in `threads.rs`).
+//! are created, in `threads.rs`). On a board that follows Jira, task changes are
+//! written to Jira first (`jira_write.rs`).
 
-use urushi_core::{Board, BoardError, BoardId, ColumnId, LabelColor, Task, TaskId, TaskPatch};
+use urushi_core::{
+    Board, BoardError, BoardId, ColumnId, LabelColor, Task, TaskId, TaskKind, TaskPatch,
+};
 
 use super::{Service, ServiceError, ServiceResult, State, new_uuid, now};
 
@@ -14,7 +17,9 @@ impl From<BoardError> for ServiceError {
             BoardError::NoSuchColumn(id) => Self::NotFound(format!("column {id}")),
             BoardError::NoSuchTask(id) => Self::NotFound(format!("task {id}")),
             BoardError::NoSuchAttachment(id) => Self::NotFound(format!("attachment {id}")),
-            BoardError::LastColumn => Self::Precondition(e.to_string()),
+            BoardError::LastColumn | BoardError::FollowsJira(_) => {
+                Self::Precondition(e.to_string())
+            }
             _ => Self::Invalid(e.to_string()),
         }
     }
@@ -33,6 +38,8 @@ pub struct NewTask<'a> {
     pub tags: &'a [String],
     /// Titles of subtasks to create with it.
     pub subtasks: &'a [String],
+    /// Its kind, if said (on a Jira board, the type of issue to create).
+    pub kind: Option<TaskKind>,
 }
 
 impl State {
@@ -118,16 +125,27 @@ impl Service {
         Ok(())
     }
 
-    /// Adds a task at the bottom of a column.
-    pub fn create_task(
+    /// Adds a task at the bottom of a column (on a Jira board, creates an issue).
+    pub async fn create_task(
         &self,
         board: BoardId,
         column: ColumnId,
         new: &NewTask<'_>,
     ) -> ServiceResult<Task> {
+        let follows_jira = self.read(|state| {
+            Ok(state
+                .boards
+                .iter()
+                .find(|b| b.id == board)
+                .is_some_and(|b| b.jira().is_some()))
+        })?;
+        if follows_jira {
+            return self.jira_create_task(board, column, new).await;
+        }
         let mut task = Task::new(TaskId::from_uuid(new_uuid()), new.title, new.notes, now())?;
         task.color = new.color;
         task.tags = urushi_core::board::task_tags(new.tags)?;
+        task.kind = new.kind;
         if new.subtasks.len() > urushi_core::board::MAX_SUBTASKS {
             return Err(BoardError::TooManySubtasks.into());
         }
@@ -142,18 +160,33 @@ impl Service {
         })
     }
 
-    /// Changes a task's title, notes, color and/or tags (`None` keeps them).
-    pub fn update_task(&self, task: TaskId, patch: &TaskPatch) -> ServiceResult<()> {
+    /// Changes a task's title, notes, color, tags, kind and/or check mark (`None`
+    /// keeps them).
+    pub async fn update_task(&self, task: TaskId, patch: &TaskPatch) -> ServiceResult<()> {
+        if let Some(t) = self.read(|state| state.jira_task(task))? {
+            return self.jira_update_task(t, patch).await;
+        }
         self.mutate(|state| Ok(state.board_of_task(task)?.update_task(task, patch)?))
     }
 
     /// Moves a task to `index` in a column of its board.
-    pub fn move_task(&self, task: TaskId, column: ColumnId, index: usize) -> ServiceResult<()> {
+    pub async fn move_task(
+        &self,
+        task: TaskId,
+        column: ColumnId,
+        index: usize,
+    ) -> ServiceResult<()> {
+        if let Some(t) = self.read(|state| state.jira_task(task))? {
+            return self.jira_move_task(t, column, index).await;
+        }
         self.mutate(|state| Ok(state.board_of_task(task)?.move_task(task, column, index)?))
     }
 
-    /// Deletes a task.
+    /// Deletes a task (never a Jira issue).
     pub fn delete_task(&self, task: TaskId) -> ServiceResult<()> {
+        if let Some(t) = self.read(|state| state.jira_task(task))? {
+            return Self::jira_delete_task(&t);
+        }
         let removed = self.mutate(|state| Ok(state.board_of_task(task)?.remove_task(task)?))?;
         self.forget_attachments(&super::attachments::of_task(&removed));
         Ok(())
@@ -165,7 +198,10 @@ impl Service {
     }
 
     /// Adds a subtask at the end of a task's (at any depth) subtasks.
-    pub fn create_subtask(&self, parent: TaskId, title: &str) -> ServiceResult<Task> {
+    pub async fn create_subtask(&self, parent: TaskId, title: &str) -> ServiceResult<Task> {
+        if let Some(t) = self.read(|state| state.jira_task(parent))? {
+            return self.jira_create_subtask(t, title).await;
+        }
         let subtask = Task::new(TaskId::from_uuid(new_uuid()), title, "", now())?;
         self.mutate(|state| {
             state

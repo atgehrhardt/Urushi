@@ -34,6 +34,10 @@ pub enum MenuTarget {
     Column(String),
     /// The board's tag filter (by board id).
     TagFilter(String),
+    /// A Jira board's epic filter (by board id).
+    EpicFilter(String),
+    /// The board panel's "+": a new board, or one imported from Jira.
+    NewBoard,
     /// A terminal pane (by pane id): split, copy, paste, close.
     Pane(String),
 }

@@ -65,6 +65,16 @@ impl<'a> TaskRef<'a> {
         field!(self, thread_id)
     }
 
+    /// Its kind (a wire `TaskKind`; 0 is unspecified). Since 1.12.
+    pub fn kind(self) -> i32 {
+        *field!(self, kind)
+    }
+
+    /// The Jira issue it shows, on a Jira board (1.12).
+    pub fn issue(self) -> Option<&'a v1::JiraIssue> {
+        field!(self, issue).as_deref()
+    }
+
     /// Checked off (a card's progress is its column, so a card never is).
     pub fn done(self) -> bool {
         match self {

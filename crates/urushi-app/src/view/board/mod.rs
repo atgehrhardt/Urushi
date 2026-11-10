@@ -32,6 +32,7 @@ const FOOTER_HEIGHT: f32 = 18.0;
 mod card;
 mod column;
 mod dialogs;
+pub(in crate::view) mod jira;
 
 pub(in crate::view) use card::drag_ghost;
 use column::column;
@@ -112,6 +113,7 @@ pub(super) fn panel(
 /// Board tabs, "+", and the shown board's actions.
 fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
     let shown = state.board.board(&state.workspace).map(|b| b.id.clone());
+    let compact = state.compact;
     let tabs = state.workspace.boards().iter().map(|b| {
         let active = shown.as_deref() == Some(b.id.as_str());
         Node::row()
@@ -126,6 +128,9 @@ fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
             .key(key(&["board-tab", &b.id]))
             .on_click(Msg::SelectBoard(b.id.clone()))
             .role(Role::Item, format!("Board {}", b.name))
+            .gap(6.0)
+            .align(Align::Center)
+            .children(jira::tab_badge(theme, b))
             .child(Node::text(
                 shorten(&b.name, TAB_CHARS),
                 Font::UiMedium,
@@ -138,8 +143,12 @@ fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
         .height(Length::Fixed(44.0))
         .padding(Insets::symmetric(0.0, 12.0))
         .gap(4.0);
+    // The panel covers the tab bar and its "Show sidebar" button, so it has its own.
+    if !compact && state.sidebar.collapsed() {
+        row = row.child(super::sidebar_toggle(state, theme));
+    }
     // Phones need the room for the board tabs and actions.
-    if !state.compact {
+    if !compact {
         row = row
             .child(Node::text(
                 "Tasks",
@@ -150,7 +159,13 @@ fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
             .child(Node::new().width(Length::Fixed(8.0)));
     }
     row = row.children(tabs);
-    if state.daemon_minor >= BOARDS_SINCE_MINOR {
+    if state.daemon_supports_jira() {
+        // A new board, or one imported from Jira.
+        row = row.child(
+            icon_button(theme, "+", "New board", Msg::OpenMenu(MenuTarget::NewBoard))
+                .key(key(&["board-new"])),
+        );
+    } else if state.daemon_minor >= BOARDS_SINCE_MINOR {
         row = row.child(icon_button(
             theme,
             "+",
@@ -159,27 +174,31 @@ fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
         ));
     }
     row = row.child(Node::spacer());
-    if let Some(filter) = state
-        .board
-        .board(&state.workspace)
-        .and_then(|b| tag_filter(state, theme, b))
-    {
+    let board = state.board.board(&state.workspace);
+    if let Some(filter) = board.and_then(|b| jira::epic_filter(state, theme, b)) {
         row = row.child(filter);
     }
-    if let Some(id) = shown {
-        row = row
-            .child(button(
-                theme,
-                "Rename",
-                ButtonKind::Ghost,
-                Msg::OpenPrompt(Prompt::RenameBoard(id.clone())),
-            ))
-            .child(button(
-                theme,
-                "Delete",
-                ButtonKind::Ghost,
-                Msg::OpenDeleteBoard(id),
-            ));
+    if let Some(filter) = board.and_then(|b| tag_filter(state, theme, b)) {
+        row = row.child(filter);
+    }
+    match board {
+        Some(b) if b.jira.is_some() => row = row.children(jira::actions(state, theme, b)),
+        Some(b) => {
+            row = row
+                .child(button(
+                    theme,
+                    "Rename",
+                    ButtonKind::Ghost,
+                    Msg::OpenPrompt(Prompt::RenameBoard(b.id.clone())),
+                ))
+                .child(button(
+                    theme,
+                    "Delete",
+                    ButtonKind::Ghost,
+                    Msg::OpenDeleteBoard(b.id.clone()),
+                ));
+        }
+        None => {}
     }
     row.child(icon_button(
         theme,
@@ -231,7 +250,9 @@ fn columns(
             column(state, theme, board, c, offset)
         }))
         .children(
-            (state.daemon_supports_board_extras() && board.columns.len() < MAX_COLUMNS)
+            (state.daemon_supports_board_extras()
+                && board.jira.is_none()
+                && board.columns.len() < MAX_COLUMNS)
                 .then(|| add_column(theme, &board.id)),
         )
 }

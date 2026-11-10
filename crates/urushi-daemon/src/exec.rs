@@ -1,5 +1,9 @@
 //! Running a helper program (`curl`, `security`, `ps`) with a time limit.
 //! Blocking: call it off the async runtime.
+//!
+//! Input and output each move on their own thread, so a program that answers while it
+//! still reads a large input (curl sending a request body) can't stall the pipe, and
+//! the time limit always applies.
 
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
@@ -41,12 +45,17 @@ fn run_status(
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("cannot run {program}: {e}"))?;
-    if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
-        // Dropping stdin afterwards closes it, so the program sees end of input.
-        stdin
-            .write_all(input)
-            .map_err(|e| format!("{program}: {e}"))?;
-    }
+    let writer = match (input, child.stdin.take()) {
+        (Some(input), Some(mut stdin)) => {
+            let input = input.to_vec();
+            // Dropping stdin when done closes it, so the program sees end of input. A
+            // program that exits without reading it all is not an error here.
+            Some(std::thread::spawn(move || {
+                let _ = stdin.write_all(&input);
+            }))
+        }
+        _ => None,
+    };
     let mut stdout = child
         .stdout
         .take()
@@ -74,6 +83,9 @@ fn run_status(
     let out = reader
         .join()
         .map_err(|_| format!("{program}: reading its output failed"))?;
+    if let Some(writer) = writer {
+        let _ = writer.join();
+    }
     Ok((status, out))
 }
 
@@ -91,5 +103,13 @@ mod tests {
         assert!(slow.unwrap_err().contains("timed out"));
         assert!(started.elapsed() < Duration::from_secs(3));
         assert!(run("/no/such/program", &[], None, Duration::from_secs(1)).is_err());
+    }
+
+    #[test]
+    fn a_large_input_doesnt_stall_a_program_that_answers_while_reading() {
+        // Larger than any pipe buffer: `cat` writes back before it has read it all.
+        let input = vec![b'x'; 4 * 1024 * 1024];
+        let out = run("cat", &[], Some(&input), Duration::from_secs(20)).unwrap();
+        assert_eq!(out.len(), input.len());
     }
 }

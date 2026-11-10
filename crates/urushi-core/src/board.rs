@@ -11,6 +11,10 @@
 //! organization only: they never touch git, terminals or files (the daemon stores
 //! attachments' bytes). Ids and timestamps are passed
 //! in by the daemon.
+//!
+//! A board can also follow a Jira board (`jira.rs`, `sync.rs`, ADR 0020): its content
+//! then comes from Jira, and changes Jira owns are refused here with
+//! [`BoardError::FollowsJira`]. Any task can have a [`TaskKind`] (`kind.rs`).
 
 use serde::{Deserialize, Serialize};
 
@@ -18,8 +22,11 @@ use crate::{AttachmentId, BoardId, ColumnId, TaskId, ThreadId, Timestamp};
 
 mod attachments;
 mod columns;
+mod jira;
+mod kind;
 mod labels;
 mod prompt;
+mod sync;
 mod tree;
 
 pub use attachments::{
@@ -27,8 +34,13 @@ pub use attachments::{
     media_type,
 };
 pub use columns::MAX_COLUMNS;
+pub use jira::{
+    BoardSource, Epic, Issue, JiraBoard, JiraColumn, StatusCategory, SyncState, SyncedIssue,
+};
+pub use kind::TaskKind;
 pub use labels::{LabelColor, MAX_TAG, MAX_TAGS, tag_color, task_tags};
 pub use prompt::{MAX_PROMPT_BYTES, task_prompt};
+pub use sync::{MAX_SYNCED_ISSUES, MergeReport};
 pub use tree::{MAX_DEPTH, MAX_SUBTASKS};
 
 /// Longest board or column name, in characters.
@@ -94,6 +106,9 @@ pub enum BoardError {
     /// More than [`MAX_TAGS`] tags.
     #[error("a task can have at most {MAX_TAGS} tags")]
     TooManyTags,
+    /// The board follows Jira, which owns this change.
+    #[error("{0} isn't possible on a Jira board: change it in Jira")]
+    FollowsJira(&'static str),
 }
 
 /// A kanban board.
@@ -107,6 +122,12 @@ pub struct Board {
     pub created_at: Timestamp,
     /// Columns, left to right.
     pub columns: Vec<Column>,
+    /// Where its content comes from, when it follows Jira.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<BoardSource>,
+    /// The epics its Jira issues belong to, by key.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub epics: Vec<Epic>,
 }
 
 /// One column of a board.
@@ -122,6 +143,9 @@ pub struct Column {
     /// Tasks, top to bottom.
     #[serde(default)]
     pub tasks: Vec<Task>,
+    /// On a Jira board, the ids of the Jira statuses it shows.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub statuses: Vec<String>,
 }
 
 /// A task: a card on a board.
@@ -155,6 +179,12 @@ pub struct Task {
     /// The thread started for this task, if any. It may have been deleted since.
     #[serde(default)]
     pub thread: Option<ThreadId>,
+    /// What sort of work it is, if said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<TaskKind>,
+    /// The Jira issue it shows, on a Jira board.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue: Option<Issue>,
 }
 
 impl Task {
@@ -176,6 +206,8 @@ impl Task {
             attachments: Vec::new(),
             subtasks: Vec::new(),
             thread: None,
+            kind: None,
+            issue: None,
         })
     }
 }
@@ -193,6 +225,20 @@ pub struct TaskPatch {
     pub tags: Option<Vec<String>>,
     /// Check or uncheck it (a subtask).
     pub done: Option<bool>,
+    /// New kind; `Some(None)` clears it.
+    pub kind: Option<Option<TaskKind>>,
+}
+
+impl TaskPatch {
+    /// Whether it changes only what Urushi keeps for itself on a Jira board (the
+    /// color), so it needs no write to Jira.
+    pub fn is_local(&self) -> bool {
+        self.title.is_none()
+            && self.notes.is_none()
+            && self.tags.is_none()
+            && self.done.is_none()
+            && self.kind.is_none()
+    }
 }
 
 /// A board name, with runs of whitespace collapsed. Blank and over-long names are refused.
@@ -246,13 +292,17 @@ impl Board {
                     name: (*name).to_owned(),
                     color: None,
                     tasks: Vec::new(),
+                    statuses: Vec::new(),
                 })
                 .collect(),
+            source: None,
+            epics: Vec::new(),
         })
     }
 
     /// Renames the board.
     pub fn rename(&mut self, name: &str) -> Result<(), BoardError> {
+        self.local_only("renaming the board")?;
         self.name = board_name(name)?;
         Ok(())
     }
@@ -264,13 +314,18 @@ impl Board {
 
     /// Adds `task` at the bottom of `column`.
     pub fn add_task(&mut self, column: ColumnId, task: Task) -> Result<(), BoardError> {
+        self.local_only("adding a task this way")?;
         self.column_mut(column)?.tasks.push(task);
         Ok(())
     }
 
-    /// Changes a task's (at any depth) title, notes, color, tags and/or check mark.
-    /// Nothing changes unless every given value is valid.
+    /// Changes a task's (at any depth) title, notes, color, tags, kind and/or check
+    /// mark. Nothing changes unless every given value is valid. On a Jira board only
+    /// the color can change here; the rest is written to Jira and merged back.
     pub fn update_task(&mut self, id: TaskId, patch: &TaskPatch) -> Result<(), BoardError> {
+        if !patch.is_local() {
+            self.local_only("editing a task this way")?;
+        }
         let title = patch.title.as_deref().map(task_title).transpose()?;
         let notes = patch.notes.as_deref().map(task_notes).transpose()?;
         let tags = patch.tags.as_deref().map(task_tags).transpose()?;
@@ -290,6 +345,9 @@ impl Board {
         if let Some(done) = patch.done {
             task.done = done;
         }
+        if let Some(kind) = patch.kind {
+            task.kind = kind;
+        }
         Ok(())
     }
 
@@ -302,9 +360,10 @@ impl Board {
         column: ColumnId,
         index: usize,
     ) -> Result<(), BoardError> {
+        self.local_only("moving a task this way")?;
         // Check the destination first, so a failed move leaves the task where it was.
         self.column_mut(column)?;
-        let mut task = self.remove_task(id)?;
+        let mut task = self.detach(id)?;
         task.done = false;
         let tasks = &mut self.column_mut(column)?.tasks;
         tasks.insert(index.min(tasks.len()), task);

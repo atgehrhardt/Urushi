@@ -58,6 +58,7 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
         Command::Tab(cmd) => tab(client, cmd).await,
         Command::Pane(cmd) => pane(client, cmd).await,
         Command::Board(cmd) => crate::boards::run(client, cmd).await,
+        Command::Jira(cmd) => crate::jira::run(client, cmd).await,
         Command::Usage { pane } => {
             crate::boards::usage(client, &resolve(client, &pane).await?).await
         }

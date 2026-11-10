@@ -6,20 +6,25 @@
 //! - git worktrees and branches ([`git`]),
 //! - finding installed agent CLIs ([`agents`]),
 //! - restore points, so panes come back as they were after a restart ([`restore`]),
-//! - remote access over Tailscale ([`tailscale`]).
+//! - remote access over Tailscale ([`tailscale`]),
+//! - boards that follow Jira, and its sign-in ([`jira`], over [`http`]).
 //!
 //! It is a library as well as a binary, so tests (and future embedders) can run a daemon
 //! in-process with fakes injected through [`DaemonOptions`].
 
 pub mod agents;
 mod attachments;
+mod exec;
 pub mod git;
+pub mod http;
+pub mod jira;
 mod platform;
 pub mod restore;
 mod server;
 pub mod service;
 pub mod store;
 pub mod tailscale;
+mod time;
 pub mod usage;
 
 use std::fs::{File, TryLockError};
@@ -33,6 +38,8 @@ use urushi_proto::endpoint::{LocalEndpoint, local_endpoint};
 
 use crate::agents::AgentLocator;
 use crate::git::{CliGit, Git};
+use crate::http::CurlHttp;
+use crate::jira::{CloudJira, JiraApi};
 use crate::service::{Service, ServiceConfig, ServiceError};
 use crate::store::JsonFileStore;
 use crate::tailscale::{CliTailscale, TailscaleProvider};
@@ -66,6 +73,8 @@ pub struct DaemonOptions {
     pub agents: Arc<AgentLocator>,
     /// Lists processes and reads agents' plan usage.
     pub usage: Arc<dyn UsageSource>,
+    /// Jira, for boards that follow it.
+    pub jira: Arc<dyn JiraApi>,
 }
 
 impl DaemonOptions {
@@ -78,6 +87,7 @@ impl DaemonOptions {
             tailscale: Arc::new(CliTailscale::default()),
             agents: Arc::new(AgentLocator::system()),
             usage: Arc::new(SystemUsage),
+            jira: Arc::new(CloudJira::new(Arc::new(CurlHttp::default()))),
         }
     }
 }
@@ -112,6 +122,7 @@ pub async fn run(
         tailscale: options.tailscale,
         agents: options.agents,
         usage: Arc::new(UsageMonitor::new(options.usage)),
+        jira: options.jira,
     })?;
 
     server::remote::reconcile(&service).await;

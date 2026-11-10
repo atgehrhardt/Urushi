@@ -30,7 +30,9 @@ pub use agent::{
     Agent, AgentMode, AgentSessionId, AgentSettings, InvalidSessionId, TASK_PROMPT_ENV,
 };
 pub use attention::AttentionKind;
-pub use board::{Board, BoardError, Column, LabelColor, Task, TaskPatch, task_prompt};
+pub use board::{
+    Board, BoardError, BoardSource, Column, LabelColor, Task, TaskKind, TaskPatch, task_prompt,
+};
 pub use ids::{
     AttachmentId, BoardId, ColumnId, PaneId, ProjectId, RepoId, TabId, TaskId, ThreadId,
 };

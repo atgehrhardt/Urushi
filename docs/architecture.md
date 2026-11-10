@@ -33,6 +33,8 @@ The multiplexer is **invisible infrastructure**. It exists so terminal sessions 
    store             JSON document (ADR 0008): repos, projects, threads, layouts, boards, settings
    restore           per-pane restore points: output, directory, agent conversation or running program (ADR 0013)
    attachments       files attached to board tasks, and image thumbnails as raw RGBA (ADR 0016)
+   jira              boards that follow Jira Cloud: polling sync, edits written through (ADR 0020)
+   http              HTTPS through the system's curl, request on stdin (ADR 0021)
    remote            Tailscale provider (status/whois) + tailnet listener
 ```
 
@@ -69,7 +71,7 @@ urushi-cli ─► urushi-client
 | **Thread** | One unit of agent work. **Always** owns exactly one git worktree and its primary branch (named by the user, or `urushi/<slug>-<short-id>`). |
 | **Tab** | A layout tree of panes inside a thread. |
 | **Layout** | An n-ary tree. Leaves are panes. Splits have an axis and child ratios that sum to 1. |
-| **Board** | A kanban board of **tasks** in columns (To do, In progress, Done). A task's **subtasks** are tasks nested inside it (ADR 0015), a task can have files attached (kept by the daemon, ADR 0016), and any task can name the thread started for it (ADR 0012). Only organization: it never touches git or terminals. |
+| **Board** | A kanban board of **tasks** in columns (To do, In progress, Done). A task's **subtasks** are tasks nested inside it (ADR 0015), a task can have a kind (task, story, bug, epic) and files attached (kept by the daemon, ADR 0016), and any task can name the thread started for it (ADR 0012). A board can follow a Jira board (`Board.source`): Jira is then its source of truth, and changes are written to Jira first (ADR 0020). Only organization: it never touches git or terminals. |
 | **Pane** | One terminal session. Its shell starts in the thread's worktree, with `URUSHI_THREAD_ID`, `URUSHI_PANE_ID`, `URUSHI_WORKTREE`, `URUSHI_TTY` (its terminal device) and the agent hook settings in its environment. A pane whose agent finished or waits for the user carries **attention**, kept in the daemon's memory ([agent attention](features/agent-attention.md)). A tab opened for an agent (Claude, Codex, Cursor) is the same, with the agent's command typed into the shell. |
 
 The pure model lives in `urushi-core`. The daemon persists it and applies changes.
@@ -119,5 +121,6 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
 
 ## Dependencies on external programs
 
-- `git` and `tailscale` are run as separate processes, never linked. So are `ps` (which agent runs in a pane), `curl` (Claude's usage endpoint) and, on macOS, `security` (Claude's keychain sign-in); see ADR 0011.
+- `git` and `tailscale` are run as separate processes, never linked. So are `ps` (which agent runs in a pane), `curl` (Claude's usage endpoint, ADR 0011; Jira Cloud's REST APIs, ADR 0021) and, on macOS, `security` (Claude's keychain sign-in); see ADR 0011.
+- The Jira sign-in (site, email, API token) is kept by the daemon in `<home>/jira-credentials.json` (0600) and never sent to clients (ADR 0021).
 - Their absence is reported in the UI with a clear explanation.

@@ -9,7 +9,7 @@ use urushi_ui::{Font, Insets, Length, Node, Theme, key};
 use super::super::labels;
 use super::card::card;
 use super::{CARD_GAP, column_scroll_key};
-use crate::board::shows;
+use crate::board::passes;
 use crate::msg::Msg;
 use crate::organize::MenuTarget;
 use crate::state::AppState;
@@ -40,7 +40,7 @@ pub(super) fn column(
     let shown: Vec<&v1::Task> = column
         .tasks
         .iter()
-        .filter(|t| shows(state.board.tag_filter.as_deref(), t))
+        .filter(|t| passes(&state.board, t))
         .collect();
     let count = if shown.len() == column.tasks.len() {
         column.tasks.len().to_string()

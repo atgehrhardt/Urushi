@@ -15,7 +15,9 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use super::{Failure, Usage, Window, exec, plan_label, time::rfc3339_ms};
+use super::{Failure, Usage, Window, plan_label};
+use crate::exec;
+use crate::time::rfc3339_ms;
 
 const URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const BETA: &str = "oauth-2025-04-20";

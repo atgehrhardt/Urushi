@@ -54,8 +54,11 @@ pub(crate) enum BoardCmd {
         /// A tag (repeat for more).
         #[arg(long = "tag")]
         tags: Vec<String>,
+        /// Kind: task, story, bug or epic (on a Jira board, the issue type).
+        #[arg(long)]
+        kind: Option<String>,
     },
-    /// Change a task's title, notes, color or tags.
+    /// Change a task's title, notes, color, tags or kind.
     Edit {
         /// Task id.
         task: String,
@@ -74,6 +77,9 @@ pub(crate) enum BoardCmd {
         /// Remove a tag (repeat for more).
         #[arg(long = "untag")]
         untags: Vec<String>,
+        /// New kind (task, story, bug, epic, subtask), or "none" to clear it.
+        #[arg(long)]
+        kind: Option<String>,
     },
     /// Move a task (or a subtask, which then becomes a card) to a column of its board.
     Mv {
@@ -116,6 +122,21 @@ pub(crate) enum BoardCmd {
     /// Fetch or delete an attachment.
     #[command(subcommand)]
     Attachment(AttachmentCmd),
+    /// Sync a Jira board now, completely.
+    Sync {
+        /// Board id.
+        board: String,
+    },
+}
+
+/// A `--kind` value as a wire kind; "none" is unspecified.
+fn kind_arg(kind: &str) -> Result<i32> {
+    if kind.trim().eq_ignore_ascii_case("none") {
+        return Ok(v1::TaskKind::Unspecified.into());
+    }
+    let kind = urushi_core::TaskKind::parse(kind)
+        .with_context(|| format!("{kind:?} isn't a kind: task, story, bug, epic or subtask"))?;
+    Ok(urushi_proto::convert::kind_to_proto(Some(kind)))
 }
 
 #[derive(Subcommand)]
@@ -169,6 +190,7 @@ pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
             notes,
             color,
             tags,
+            kind,
         } => {
             let board = resolve(client, &board).await?;
             let column = column_id(client, &board, &column).await?;
@@ -185,10 +207,20 @@ pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
                         .unwrap_or_default()
                         .into(),
                     tags,
+                    kind: kind
+                        .as_deref()
+                        .map(kind_arg)
+                        .transpose()?
+                        .unwrap_or_default(),
                     ..Default::default()
                 })
                 .await?;
-            out(&format!("task {} {}", short(&task.id), task.title))
+            let key = task
+                .issue
+                .as_ref()
+                .map(|i| format!(" {}", i.key))
+                .unwrap_or_default();
+            out(&format!("task {}{key} {}", short(&task.id), task.title))
         }
         cmd @ BoardCmd::Edit { .. } => edit(client, cmd).await,
         BoardCmd::Mv {
@@ -225,6 +257,10 @@ pub(crate) async fn run(client: &Client, cmd: BoardCmd) -> Result<()> {
         BoardCmd::Col(cmd) => columns::run(client, cmd).await,
         BoardCmd::Attach { task, file } => attachments::attach(client, &task, &file).await,
         BoardCmd::Attachment(cmd) => attachments::run(client, cmd).await,
+        BoardCmd::Sync { board } => {
+            client.sync_board(&resolve(client, &board).await?).await?;
+            out("synced")
+        }
     }
 }
 
@@ -238,6 +274,7 @@ async fn edit(client: &Client, cmd: BoardCmd) -> Result<()> {
         color,
         tags,
         untags,
+        kind,
     } = cmd
     else {
         return Ok(());
@@ -264,6 +301,7 @@ async fn edit(client: &Client, cmd: BoardCmd) -> Result<()> {
             notes,
             color: color.as_deref().map(color_arg).transpose()?.map(Into::into),
             tags,
+            kind: kind.as_deref().map(kind_arg).transpose()?,
         })
         .await?)
 }

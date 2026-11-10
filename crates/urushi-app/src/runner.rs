@@ -120,6 +120,12 @@ impl Runner {
                         self.dispatch(Msg::Board(crate::msg::BoardMsg::AttachFailed(reason)));
                     }
                 }
+                Effect::OpenUrl(url) => {
+                    if let Err(e) = platform::open_url(&url) {
+                        let reason = format!("Can't open {url}: {e}");
+                        self.dispatch(Msg::Board(crate::msg::BoardMsg::AttachFailed(reason)));
+                    }
+                }
                 Effect::SystemNotification { title, body } => platform::notify(&title, &body),
                 Effect::StopDaemon => {
                     if let crate::config::ConnectTarget::Local(home) = &self.state.target {

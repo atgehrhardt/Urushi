@@ -82,3 +82,6 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | Git integration | `urushi-daemon::git` | We run the user's `git` binary; libgit2 is GPL with a linking exception (ADR 0004). |
 | Tailscale integration | `urushi-daemon::tailscale` | We read the installed CLI's JSON output; nothing is linked (ADR 0005). |
 | Key encoding (xterm) | `urushi-mux::keys` | A small table that depends on terminal modes. |
+| HTTPS client | `urushi-daemon::http` | We run the system's `curl` with the request as a config on stdin; a TLS stack would be a large tree, and `webpki-roots` isn't on our license allowlist (ADR 0021). |
+| Base64, percent-encoding | `urushi-daemon::http` | A few lines each, for Basic auth and query strings. |
+| Atlassian Document Format ⇄ text | `urushi-daemon::jira::adf` | Only plain-text reading and paragraph writing are needed. |

@@ -17,6 +17,7 @@ impl Board {
 
     /// Adds an empty column named `name` at `index` (clamped; past the end means last).
     pub fn add_column(&mut self, id: ColumnId, name: &str, index: usize) -> Result<(), BoardError> {
+        self.local_only("changing columns")?;
         let name = column_name(name)?;
         if self.columns.len() >= MAX_COLUMNS {
             return Err(BoardError::TooManyColumns);
@@ -26,6 +27,7 @@ impl Board {
             name,
             color: None,
             tasks: Vec::new(),
+            statuses: Vec::new(),
         };
         self.columns.insert(index.min(self.columns.len()), column);
         Ok(())
@@ -39,6 +41,9 @@ impl Board {
         name: Option<&str>,
         color: Option<Option<LabelColor>>,
     ) -> Result<(), BoardError> {
+        if name.is_some() {
+            self.local_only("renaming a column")?;
+        }
         let name = name.map(column_name).transpose()?;
         let column = self.column_mut(id)?;
         if let Some(name) = name {
@@ -52,6 +57,7 @@ impl Board {
 
     /// Moves a column to `index` (counted without it; clamped to the end).
     pub fn move_column(&mut self, id: ColumnId, index: usize) -> Result<(), BoardError> {
+        self.local_only("changing columns")?;
         let at = self.column_index(id)?;
         let column = self.columns.remove(at);
         self.columns.insert(index.min(self.columns.len()), column);
@@ -70,6 +76,7 @@ impl Board {
     /// [`column_heir`](Self::column_heir). Returns where they went. The last column
     /// can't be removed.
     pub fn remove_column(&mut self, id: ColumnId) -> Result<ColumnId, BoardError> {
+        self.local_only("changing columns")?;
         let heir = self.column_heir(id)?.ok_or(BoardError::LastColumn)?;
         let at = self.column_index(id)?;
         let removed = self.columns.remove(at);

@@ -5,6 +5,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = "../../proto";
     println!("cargo:rerun-if-changed={root}");
     let descriptors = protox::compile(["urushi/v1/envelope.proto"], [root])?;
-    prost_build::Config::new().compile_fds(descriptors)?;
+    prost_build::Config::new()
+        // Rarely set and large: boxed, so the messages that may hold them (and enums of
+        // those messages) stay small.
+        .boxed(".urushi.v1.Task.issue")
+        .boxed(".urushi.v1.Subtask.issue")
+        .boxed(".urushi.v1.Board.jira")
+        .compile_fds(descriptors)?;
     Ok(())
 }

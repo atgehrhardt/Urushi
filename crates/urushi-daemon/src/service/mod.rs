@@ -17,6 +17,8 @@ mod attention;
 mod boards;
 mod columns;
 mod deletion;
+mod jira;
+mod jira_write;
 mod projects;
 mod repos;
 mod restore;
@@ -41,6 +43,7 @@ use urushi_proto::v1;
 pub use attachments::AttachmentData;
 pub use boards::NewTask;
 pub use deletion::DeletionPlan;
+pub use jira::{ACTIVE_INTERVAL, FULL_INTERVAL, IDLE_INTERVAL, JiraSignIn, NOT_SIGNED_IN};
 pub use projects::{Assign, ThreadUpdate};
 pub(crate) use state::State;
 pub use threads::ThreadRequest;
@@ -80,6 +83,9 @@ pub enum ServiceError {
     /// The peer isn't allowed to do this.
     #[error("{0}")]
     Forbidden(String),
+    /// A service the daemon relies on (Jira) couldn't be reached or failed.
+    #[error("{0}")]
+    Unavailable(String),
     /// An unexpected internal failure.
     #[error("internal error: {0}")]
     Internal(String),
@@ -105,6 +111,8 @@ pub struct ServiceConfig {
     pub agents: Arc<AgentLocator>,
     /// Which agent runs in a pane, and its plan usage.
     pub usage: Arc<UsageMonitor>,
+    /// Jira, for boards that follow it.
+    pub jira: Arc<dyn crate::jira::JiraApi>,
 }
 
 /// The workspace service. Always used as `Arc<Service>`.
@@ -124,6 +132,8 @@ pub struct Service {
     restore: RestoreStore,
     /// Attached files on disk (`<home>/attachments`).
     attachments: crate::attachments::AttachmentStore,
+    /// The Jira sign-in and how each Jira board's sync is going (`jira.rs`).
+    jira: jira::JiraLink,
     /// The last restore point saved for each pane, and the screen version its output
     /// was taken at (so unchanged output isn't read again).
     restore_points: Mutex<HashMap<PaneId, (u64, PaneRecord)>>,
@@ -188,6 +198,7 @@ impl Service {
             remote: Mutex::new(RemoteState::default()),
             restore: RestoreStore::new(config.home.join("restore")),
             attachments: crate::attachments::AttachmentStore::new(config.home.join("attachments")),
+            jira: jira::JiraLink::new(config.jira, &config.home),
             restore_points: Mutex::new(HashMap::new()),
             attention: Mutex::new(HashMap::new()),
             home: config.home,
@@ -199,6 +210,7 @@ impl Service {
         service.sweep_attachments();
         service.persist()?;
         service.keep_restore_points();
+        service.keep_jira_synced();
         Ok(service)
     }
 

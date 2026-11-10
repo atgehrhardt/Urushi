@@ -118,6 +118,7 @@ impl Board {
 
     /// Adds `task` at the end of `parent`'s subtasks.
     pub fn add_subtask(&mut self, parent: TaskId, task: Task) -> Result<(), BoardError> {
+        self.local_only("adding a subtask this way")?;
         self.check_room(parent, &task)?;
         self.task_mut(parent)?.subtasks.push(task);
         Ok(())
@@ -132,6 +133,7 @@ impl Board {
         parent: TaskId,
         index: usize,
     ) -> Result<(), BoardError> {
+        self.local_only("nesting tasks")?;
         let task = self.task(id).ok_or(BoardError::NoSuchTask(id))?;
         if task.find(parent).is_some() {
             return Err(BoardError::Cycle);
@@ -151,7 +153,7 @@ impl Board {
             .columns
             .iter()
             .position(|c| c.tasks.iter().any(|t| t.id == id));
-        let mut task = self.remove_task(id)?;
+        let mut task = self.detach(id)?;
         if let Some(column) = card_in {
             task.done = column + 1 == self.columns.len();
         }
@@ -213,8 +215,14 @@ impl Board {
     }
 
     /// Removes a task (a card, or a subtask of any depth) with its subtasks, and
-    /// returns it.
+    /// returns it. Issues aren't deleted from a Jira board.
     pub fn remove_task(&mut self, id: TaskId) -> Result<Task, BoardError> {
+        self.local_only("deleting a task")?;
+        self.detach(id)
+    }
+
+    /// Takes a task out of its place, to put it elsewhere or drop it.
+    pub(crate) fn detach(&mut self, id: TaskId) -> Result<Task, BoardError> {
         for column in &mut self.columns {
             if let Some(at) = column.tasks.iter().position(|t| t.id == id) {
                 return Ok(column.tasks.remove(at));

@@ -389,6 +389,7 @@ mod board;
 mod daemon;
 mod fields;
 mod flows;
+mod jira;
 mod labels;
 mod organize;
 mod panes;

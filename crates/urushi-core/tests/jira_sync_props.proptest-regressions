@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc f0525819e2ed655d963df675286bfee0a15a3a8a8eec8eacd610bc81861ccb60 # shrinks to merges = [([Shot { n: 6, status: 0, parent: None, epic: false }, Shot { n: 6, status: 0, parent: None, epic: true }], false)]

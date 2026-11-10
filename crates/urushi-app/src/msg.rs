@@ -10,10 +10,12 @@ use crate::organize::{DropTarget, MenuPage, MenuTarget, Prompt, Select, SidebarT
 use crate::state::{Field, FieldCommand, Launch, SettingToggle, TaskLink};
 
 mod board;
+mod jira;
 mod pane;
 mod sidebar;
 
 pub use board::BoardMsg;
+pub use jira::JiraMsg;
 pub use pane::PaneMsg;
 pub use sidebar::SidebarMsg;
 
@@ -176,6 +178,8 @@ pub enum Msg {
     DeleteTask,
     /// A card acted on from outside the editor (its context menu).
     Board(BoardMsg),
+    /// Jira: signing in, importing and syncing boards (`update/jira.rs`).
+    Jira(JiraMsg),
     /// Ask to delete a board.
     OpenDeleteBoard(String),
     /// Confirmed: delete the board.
@@ -330,6 +334,12 @@ pub enum Followup {
         /// File name.
         name: String,
     },
+    /// Remember who the daemon is signed in to Jira as.
+    JiraAccount,
+    /// Signed in from the connect dialog: go on to importing a board.
+    JiraConnected,
+    /// Show the site's boards in the import dialog.
+    JiraBoards,
 }
 
 /// Something the app needs done.
@@ -374,6 +384,8 @@ pub enum Effect {
         /// What happened, e.g. "Claude finished".
         body: String,
     },
+    /// Open a web page (e.g. an issue in Jira) in the system's browser.
+    OpenUrl(String),
     /// Save an attachment's bytes to a temporary file and open it with the system's app.
     OpenFile {
         /// Attachment id (keeps files of the same name apart).

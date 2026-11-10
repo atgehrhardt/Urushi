@@ -56,7 +56,7 @@ fn the_editor_sends_color_and_tags_only_when_they_change() {
     assert!(
         matches!(
             bodies(&fx)[..],
-            [Body::UpdateTask(v1::UpdateTaskRequest { task_id, title: None, notes: None, color: Some(c), tags: Some(tags) })]
+            [Body::UpdateTask(v1::UpdateTaskRequest { task_id, title: None, notes: None, color: Some(c), tags: Some(tags), kind: None })]
                 if task_id == "a" && *c == i32::from(v1::LabelColor::Red)
                     && tags.tags == ["backend", "Docs", "later"]
         ),

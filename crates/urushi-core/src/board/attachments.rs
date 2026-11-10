@@ -114,6 +114,7 @@ impl Board {
         task: TaskId,
         attachment: Attachment,
     ) -> Result<(), BoardError> {
+        self.local_only("attaching files")?;
         let task = self.task_mut(task)?;
         if task.attachments.len() >= MAX_ATTACHMENTS {
             return Err(BoardError::TooManyAttachments);

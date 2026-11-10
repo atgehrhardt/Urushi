@@ -15,7 +15,10 @@ impl AppState {
         self.menu = None;
         self.board.pressed = None;
         match msg {
-            BoardMsg::PickColor(_) | BoardMsg::AddTag(_) | BoardMsg::RemoveTag(_) => {
+            BoardMsg::PickColor(_)
+            | BoardMsg::PickKind(_)
+            | BoardMsg::AddTag(_)
+            | BoardMsg::RemoveTag(_) => {
                 self.edit_labels(msg);
             }
             BoardMsg::AddFiles(_)
@@ -56,6 +59,7 @@ impl AppState {
                 }
             }
             BoardMsg::FilterTag(tag) => self.board.tag_filter = tag,
+            BoardMsg::FilterEpic(epic) => self.board.epic_filter = epic,
             BoardMsg::OpenTask(task) => self.edit_task(&task, fx),
             BoardMsg::MakeStandalone(task) => {
                 if let Some(found) = self.workspace.find_task(&task) {
@@ -137,6 +141,7 @@ impl AppState {
         };
         match msg {
             BoardMsg::PickColor(color) => labels.color = color,
+            BoardMsg::PickKind(kind) => labels.kind = kind,
             BoardMsg::AddTag(tag) => labels.add(&tag),
             BoardMsg::RemoveTag(tag) => labels.tags.retain(|t| *t != tag),
             _ => {}

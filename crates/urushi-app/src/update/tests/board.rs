@@ -35,6 +35,7 @@ pub(super) fn board() -> v1::Board {
                 ..Default::default()
             },
         ],
+        ..Default::default()
     }
 }
 

@@ -268,3 +268,99 @@ fn the_new_thread_dialog_offers_every_project_or_none() {
         "{open}"
     );
 }
+
+#[test]
+fn jira_boards_show_their_issues_and_leave_jiras_part_to_jira() {
+    let board = dump("jira-board", 1280.0);
+    for text in [
+        "\"ACME-142\"",
+        "\"Checkout with saved cards\"",
+        "\"Payments\"",
+        "\"AL\"",
+        "\"Synced 2 min ago\"",
+        "\"Sync now\"",
+        "\"Open in Jira\"",
+        "\"Remove\"",
+        "\"All epics  ▾\"",
+    ] {
+        assert!(board.contains(text), "{text} missing: {board}");
+    }
+    for text in ["\"Rename\"", "\"+ Column\""] {
+        assert!(!board.contains(text), "{text} shown: {board}");
+    }
+
+    let task = dump("jira-task", 1280.0);
+    for text in [
+        "\"ACME-139\"",
+        "\"Grace Hopper\"",
+        "\"In Progress\"",
+        "\"Billing (ACME-8)\"",
+    ] {
+        assert!(task.contains(text), "{text} missing: {task}");
+    }
+    for text in ["\"Delete task\"", "\"Add files…\""] {
+        assert!(!task.contains(text), "{text} shown: {task}");
+    }
+
+    let connect = dump("jira-connect", 1280.0);
+    assert!(connect.contains("\"Connect Jira\"") && connect.contains("\"API token\""));
+    let import = dump("jira-import", 1280.0);
+    assert!(import.contains("\"Mobile sprint\"") && import.contains("imported"));
+}
+
+#[test]
+fn ordinary_tasks_offer_a_type() {
+    let task = dump("task", 1280.0);
+    for text in ["\"Type\"", "\"Story\"", "\"Bug\"", "\"Epic\""] {
+        assert!(task.contains(text), "{text} missing: {task}");
+    }
+}
+
+#[test]
+fn jira_cards_are_the_same_size_as_any_other() {
+    let theme = Theme::dark();
+    let mut text = TextSystem::bundled_only();
+    let frame = scenario_frame("jira-board", &theme, &mut text, 1280.0, 820.0).unwrap();
+    let heights: Vec<f32> = frame
+        .access
+        .iter()
+        .filter(|a| a.label.starts_with("Task "))
+        .map(|a| a.rect.height)
+        .collect();
+    assert!(heights.len() >= 4, "{heights:?}");
+    assert!(
+        heights.windows(2).all(|w| (w[0] - w[1]).abs() < 0.5),
+        "{heights:?}"
+    );
+}
+
+/// The accessibility labels of a scenario at desktop size.
+fn access_labels(name: &str) -> Vec<String> {
+    let theme = Theme::dark();
+    let mut text = TextSystem::bundled_only();
+    scenario_frame(name, &theme, &mut text, 1280.0, 820.0)
+        .unwrap()
+        .access
+        .iter()
+        .map(|a| a.label.clone())
+        .collect()
+}
+
+#[test]
+fn jira_subtasks_cant_be_deleted_here() {
+    let ordinary = access_labels("task");
+    assert!(
+        ordinary.iter().any(|l| l.starts_with("Delete subtask ")),
+        "{ordinary:?}"
+    );
+    let jira = access_labels("jira-task");
+    assert!(
+        jira.iter()
+            .any(|l| l == "Task Template" || l.contains("Template")),
+        "{jira:?}"
+    );
+    assert!(
+        !jira.iter().any(|l| l.starts_with("Delete subtask ")),
+        "{jira:?}"
+    );
+}

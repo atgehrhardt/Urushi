@@ -98,6 +98,14 @@ pub enum Field {
     NestQuery,
     /// Task editor: the "add a tag" field.
     TaskTag,
+    /// Connect Jira: the site.
+    JiraSite,
+    /// Connect Jira: the account's email.
+    JiraEmail,
+    /// Connect Jira: the API token (a secret field).
+    JiraToken,
+    /// Import from Jira: the search field.
+    JiraQuery,
 }
 
 /// An editing command on the focused text field, from a shortcut or its context menu.
@@ -264,6 +272,28 @@ pub enum Dialog {
         /// The name of the column they move to.
         into: String,
     },
+    /// Sign the daemon in to Jira Cloud.
+    ConnectJira {
+        /// The site ("acme" or its address).
+        site: TextField,
+        /// The Atlassian account's email.
+        email: TextField,
+        /// The API token (a secret field).
+        token: TextField,
+        /// Waiting for Jira to check the sign-in.
+        busy: bool,
+        /// Why the last try failed.
+        error: Option<String>,
+    },
+    /// Choose a Jira board to import.
+    ImportJira {
+        /// Narrows the list by name (sent to Jira with Enter).
+        query: TextField,
+        /// The boards found; `None` while loading.
+        boards: Option<Vec<v1::JiraBoardInfo>>,
+        /// Why listing or importing failed.
+        error: Option<String>,
+    },
     /// Confirm deleting a board and its tasks.
     DeleteBoard {
         /// Board id.
@@ -364,6 +394,8 @@ pub struct AppState {
     pub drag: Option<Drag>,
     /// Settings, once loaded.
     pub settings: Option<v1::Settings>,
+    /// Who the daemon is signed in to Jira as, once asked (protocol 1.12).
+    pub jira: Option<v1::JiraAccount>,
     /// Tailnet status, once loaded.
     pub tailnet: Option<v1::TailnetStatus>,
     /// Pane focused locally (tab id → pane id) before the daemon confirms it. Dropped
@@ -437,6 +469,7 @@ impl AppState {
             selection: None,
             drag: None,
             settings: None,
+            jira: None,
             tailnet: None,
             focused_override: HashMap::new(),
             compact: false,
@@ -490,6 +523,11 @@ impl AppState {
     /// Whether the daemon keeps colors, tags and changeable columns (protocol 1.8).
     pub fn daemon_supports_board_extras(&self) -> bool {
         self.daemon_minor >= crate::board::BOARD_EXTRAS_SINCE_MINOR
+    }
+
+    /// Whether the daemon follows Jira boards and keeps task kinds (protocol 1.12).
+    pub fn daemon_supports_jira(&self) -> bool {
+        self.daemon_minor >= crate::board::JIRA_SINCE_MINOR
     }
 
     /// Whether the daemon can reorder projects (protocol 1.11).

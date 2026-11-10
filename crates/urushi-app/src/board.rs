@@ -12,6 +12,8 @@ pub const BOARDS_SINCE_MINOR: u32 = 5;
 pub const SUBTASKS_SINCE_MINOR: u32 = 6;
 /// First protocol minor version with colors, tags and changeable columns.
 pub const BOARD_EXTRAS_SINCE_MINOR: u32 = 8;
+/// First protocol minor version with Jira boards and task kinds.
+pub const JIRA_SINCE_MINOR: u32 = 12;
 
 /// How long the panel takes to slide fully in or out, in seconds.
 pub const SLIDE_SECONDS: f32 = 0.18;
@@ -35,6 +37,8 @@ pub struct BoardPanel {
     pub over: Option<(String, Option<String>)>,
     /// Show only the tasks with this tag (compared ignoring case); `None` shows all.
     pub tag_filter: Option<String>,
+    /// On a Jira board, show only the tasks in this epic (by key); `None` shows all.
+    pub epic_filter: Option<String>,
     /// Image attachments' thumbnails, fetched from the daemon as they come into view.
     pub thumbnails: Thumbnails,
 }
@@ -82,11 +86,13 @@ pub fn wanted_thumbnails(
     out
 }
 
-/// The color and tags part of the task editor, kept as drafts and sent with Save.
+/// The color, tags and kind part of the task editor, kept as drafts and sent with Save.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TaskLabels {
     /// The chosen color, as a wire `LabelColor` value (0: none).
     pub color: i32,
+    /// The chosen kind, as a wire `TaskKind` value (0: none).
+    pub kind: i32,
     /// The tags, in order.
     pub tags: Vec<String>,
     /// The "add a tag" field.
@@ -152,6 +158,30 @@ pub fn nest_candidates(
 /// Whether `task` passes the tag filter.
 pub fn shows(filter: Option<&str>, task: &v1::Task) -> bool {
     filter.is_none_or(|f| task.tags.iter().any(|t| t.eq_ignore_ascii_case(f)))
+}
+
+/// Whether `task` passes the panel's filters: its tag and its epic.
+pub fn passes(panel: &BoardPanel, task: &v1::Task) -> bool {
+    shows(panel.tag_filter.as_deref(), task)
+        && panel
+            .epic_filter
+            .as_deref()
+            .is_none_or(|e| task.issue.as_ref().is_some_and(|i| i.epic_key == e))
+}
+
+/// The epics a Jira board's cards belong to, in the board's order.
+pub fn board_epics(board: &v1::Board) -> Vec<&v1::Epic> {
+    board
+        .epics
+        .iter()
+        .filter(|e| {
+            board
+                .columns
+                .iter()
+                .flat_map(|c| &c.tasks)
+                .any(|t| t.issue.as_ref().is_some_and(|i| i.epic_key == e.key))
+        })
+        .collect()
 }
 
 /// Every tag used on a board, in first-seen order (ignoring case), for suggestions and
@@ -263,6 +293,7 @@ mod tests {
             name: "B".into(),
             created_at_ms: 0,
             columns: vec![column("todo", &["a", "b", "c"]), column("done", &["d"])],
+            ..Default::default()
         }
     }
 

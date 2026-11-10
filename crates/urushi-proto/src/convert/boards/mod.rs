@@ -1,14 +1,19 @@
 //! Task boards: core ⇄ wire (`v1::Board`, since protocol 1.5; subtasks and thread links
 //! since 1.6; colors, tags, column changes, subtasks as full nested tasks and
-//! attachments since 1.8).
+//! attachments since 1.8; task kinds and Jira boards since 1.12).
 
 use urushi_core::{Board, Column, Task, ThreadId};
 
 mod attachments;
+mod jira;
 mod labels;
 
 use attachments::attachment_from_proto;
 pub use attachments::attachment_to_proto;
+pub use jira::{
+    epic_from_proto, epic_to_proto, issue_from_proto, issue_to_proto, kind_from_proto,
+    kind_to_proto, source_from_proto, source_to_proto,
+};
 pub use labels::{color_from_proto, color_to_proto};
 
 use super::{ConvertError, millis_from_proto, millis_to_proto, parse_id};
@@ -16,42 +21,75 @@ use crate::v1;
 
 /// Core board → wire.
 pub fn board_to_proto(b: &Board) -> v1::Board {
+    let site = b.jira().map(|j| j.site.as_str());
     v1::Board {
         id: b.id.to_string(),
         name: b.name.clone(),
         created_at_ms: millis_to_proto(b.created_at),
-        columns: b.columns.iter().map(column_to_proto).collect(),
+        columns: b.columns.iter().map(|c| column_on(c, site)).collect(),
+        jira: source_to_proto(b.source.as_ref()).map(Box::new),
+        epics: b
+            .epics
+            .iter()
+            .map(|e| epic_to_proto(e, site.unwrap_or_default()))
+            .collect(),
     }
 }
 
 /// Core column → wire (also the answer to `CreateColumn`).
 pub fn column_to_proto(c: &Column) -> v1::BoardColumn {
+    column_on(c, None)
+}
+
+fn column_on(c: &Column, site: Option<&str>) -> v1::BoardColumn {
     v1::BoardColumn {
         id: c.id.to_string(),
         name: c.name.clone(),
-        tasks: c.tasks.iter().map(task_to_proto).collect(),
+        tasks: c.tasks.iter().map(|t| task_on(t, site)).collect(),
         color: color_to_proto(c.color),
+        jira_statuses: c.statuses.clone(),
     }
 }
 
 /// Core task → wire (also the answer to `CreateTask`). Its subtasks become
-/// [`v1::Subtask`]s, which carry the same fields.
+/// [`v1::Subtask`]s, which carry the same fields. An issue's web address needs its
+/// board: see [`task_in_board_to_proto`].
 pub fn task_to_proto(t: &Task) -> v1::Task {
+    task_on(t, None)
+}
+
+/// A task of `board` → wire, with its issue's web address.
+pub fn task_in_board_to_proto(t: &Task, board: &Board) -> v1::Task {
+    task_on(t, board.jira().map(|j| j.site.as_str()))
+}
+
+/// A subtask of `board` → wire, with its issue's web address.
+pub fn subtask_in_board_to_proto(s: &Task, board: &Board) -> v1::Subtask {
+    subtask_on(s, board.jira().map(|j| j.site.as_str()))
+}
+
+fn task_on(t: &Task, site: Option<&str>) -> v1::Task {
     v1::Task {
         id: t.id.to_string(),
         title: t.title.clone(),
         notes: t.notes.clone(),
         created_at_ms: millis_to_proto(t.created_at),
-        subtasks: t.subtasks.iter().map(subtask_to_proto).collect(),
+        subtasks: t.subtasks.iter().map(|s| subtask_on(s, site)).collect(),
         thread_id: link_to_proto(t.thread),
         color: color_to_proto(t.color),
         tags: t.tags.clone(),
         attachments: t.attachments.iter().map(attachment_to_proto).collect(),
+        kind: kind_to_proto(t.kind),
+        issue: t.issue.as_ref().map(|i| Box::new(issue_to_proto(i, site))),
     }
 }
 
 /// A nested core task → wire (also the answer to `CreateSubtask`).
 pub fn subtask_to_proto(s: &Task) -> v1::Subtask {
+    subtask_on(s, None)
+}
+
+fn subtask_on(s: &Task, site: Option<&str>) -> v1::Subtask {
     v1::Subtask {
         id: s.id.to_string(),
         title: s.title.clone(),
@@ -61,8 +99,10 @@ pub fn subtask_to_proto(s: &Task) -> v1::Subtask {
         created_at_ms: millis_to_proto(s.created_at),
         color: color_to_proto(s.color),
         tags: s.tags.clone(),
-        subtasks: s.subtasks.iter().map(subtask_to_proto).collect(),
+        subtasks: s.subtasks.iter().map(|s| subtask_on(s, site)).collect(),
         attachments: s.attachments.iter().map(attachment_to_proto).collect(),
+        kind: kind_to_proto(s.kind),
+        issue: s.issue.as_ref().map(|i| Box::new(issue_to_proto(i, site))),
     }
 }
 
@@ -100,6 +140,8 @@ fn subtask_from_proto(s: &v1::Subtask) -> Result<Task, ConvertError> {
         attachments: attachments_from_proto(&s.attachments)?,
         subtasks: subtasks_from_proto(&s.subtasks)?,
         thread: link_from_proto(&s.thread_id, "board.task.subtask.thread_id")?,
+        kind: kind_from_proto(s.kind),
+        issue: s.issue.as_deref().map(issue_from_proto),
     })
 }
 
@@ -115,6 +157,8 @@ fn task_from_proto(t: &v1::Task) -> Result<Task, ConvertError> {
         attachments: attachments_from_proto(&t.attachments)?,
         subtasks: subtasks_from_proto(&t.subtasks)?,
         thread: link_from_proto(&t.thread_id, "board.task.thread_id")?,
+        kind: kind_from_proto(t.kind),
+        issue: t.issue.as_deref().map(issue_from_proto),
     })
 }
 
@@ -137,9 +181,12 @@ pub fn board_from_proto(b: &v1::Board) -> Result<Board, ConvertError> {
                         .iter()
                         .map(task_from_proto)
                         .collect::<Result<_, ConvertError>>()?,
+                    statuses: c.jira_statuses.clone(),
                 })
             })
             .collect::<Result<_, ConvertError>>()?,
+        source: source_from_proto(b.jira.as_deref()),
+        epics: b.epics.iter().map(epic_from_proto).collect(),
     })
 }
 

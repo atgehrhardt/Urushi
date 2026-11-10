@@ -80,6 +80,24 @@ pub(crate) fn open_path(path: &std::path::Path) -> std::io::Result<()> {
     command.arg(path).spawn().map(drop)
 }
 
+/// Opens a web page in the system's browser. Only `https` addresses: anything else
+/// (or an address the opener could read as an option) is refused.
+pub(crate) fn open_url(url: &str) -> std::io::Result<()> {
+    if !url.starts_with("https://") || url.chars().any(char::is_whitespace) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a web address",
+        ));
+    }
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("explorer");
+    #[cfg(target_os = "linux")]
+    let mut command = std::process::Command::new("xdg-open");
+    command.arg(url).spawn().map(drop)
+}
+
 /// The window and taskbar icon (Windows, Linux; macOS uses the bundle's icon instead):
 /// the app icon as raw 64×64 RGBA, rendered by `scripts/render-icons.swift`.
 pub(crate) fn window_icon() -> Option<winit::window::Icon> {

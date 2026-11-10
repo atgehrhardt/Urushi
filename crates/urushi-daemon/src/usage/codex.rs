@@ -12,7 +12,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use super::{Usage, Window, capitalize, time::rfc3339_ms};
+use super::{Usage, Window, capitalize};
+use crate::time::rfc3339_ms;
 
 /// How much of the end of a session file is searched.
 const TAIL: u64 = 1024 * 1024;

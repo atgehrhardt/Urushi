@@ -37,7 +37,7 @@ pub fn scene(
 /// thread in `task-in-thread`), a terminal with an agent's plan
 /// usage in the `status` bar (and its pane's context menu in `pane-menu`), the same with
 /// the sidebar hidden (`sidebar-collapsed`), and the first-run `setup` wizard (its mode
-/// step in `setup-mode`).
+/// step in `setup-mode`), and the Jira screens (`snapshot/jira.rs`).
 pub const SCENARIOS: &[&str] = &[
     "launcher",
     "picker",
@@ -64,6 +64,10 @@ pub const SCENARIOS: &[&str] = &[
     "sidebar-collapsed",
     "setup",
     "setup-mode",
+    "jira-board",
+    "jira-task",
+    "jira-connect",
+    "jira-import",
 ];
 
 fn sample_attachment(id: &str, name: &str, (width, height): (u32, u32)) -> v1::Attachment {
@@ -203,6 +207,7 @@ fn sample_board() -> v1::Board {
             },
             column("c3", "Done", vec![task("k4", "Stripe sandbox keys", "")]),
         ],
+        ..Default::default()
     }
 }
 
@@ -368,6 +373,7 @@ fn scenario_frame(
             state.update(Msg::Sidebar(crate::msg::SidebarMsg::Toggle));
             state.update(Msg::Sidebar(crate::msg::SidebarMsg::Reveal(0.0)));
         }
+        name if jira::SCENARIOS.contains(&name) => jira::show(&mut state, name),
         name if BOARD_SCENARIOS.contains(&name) || name == "status" || name == "pane-menu" => {
             show_board_or_usage(&mut state, name);
         }
@@ -495,6 +501,8 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
         _ => {}
     }
 }
+
+mod jira;
 
 #[cfg(test)]
 mod tests;

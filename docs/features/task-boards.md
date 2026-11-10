@@ -1,6 +1,6 @@
 # Feature: Task boards
 
-- **Status:** Shipped (manual boards, columns, colors, tags, nested subtasks, attachments, threads started from tasks)
+- **Status:** Shipped (manual boards, columns, colors, tags, kinds, nested subtasks, attachments, threads started from tasks; Jira boards in [jira-boards](jira-boards.md))
 - **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,prompt}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/`, `view/tasks/`, `view/labels.rs`, `view/menu/tasks.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
 - **Related ADRs:** [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
 
@@ -90,8 +90,13 @@ it back.
   outlined, and a raised copy of the card follows the pointer.
 - On phones the panel covers the whole screen.
 
+- **Kinds** (1.12): the editor's **Type** makes a task a task, story, bug or epic (click
+  the chosen one again to clear it). Cards show a small marker in the kind's color before
+  the title.
+- **Jira boards** are further tabs in the same panel: see [Jira boards](jira-boards.md).
+
 Boards live in the daemon, so every client sees the same boards, and they survive
-restarts. Jira boards are planned as further tabs in the same panel.
+restarts.
 
 ## How it works
 - **Model** (`urushi_core::board`): `Board{columns[Column{color, tasks[Task{done, color,
@@ -285,6 +290,4 @@ restarts. Jira boards are planned as further tabs in the same panel.
   wrapped lines of a long paragraph (the editing model doesn't know the layout).
 - A card's title is one line, cut short with an ellipsis.
 - A dragged card doesn't scroll a column that is taller than the panel.
-- Jira integration: boards from Jira as extra tabs, optional per user. It will need a
-  board `source` field and a sync service in the daemon.
 - The ⌘ shortcuts (e.g. close pane) still act on the terminals while the panel is out.

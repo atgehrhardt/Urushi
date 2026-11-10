@@ -6,6 +6,9 @@
 //! `\n`, Enter adds one, and Up/Down/Home/End work on lines). Multiline moves count
 //! `\n`-separated lines and characters: the model knows nothing of fonts or wrapping.
 //!
+//! A secret field (`secret.rs`) is single-line, is drawn as bullets, and never gives
+//! its text out through the selection (copy, cut).
+//!
 //! Every edit replaces the selection when there is one, as text fields do everywhere.
 //! Moves take `extend`: with it they grow the selection (Shift+arrow), without it they
 //! collapse it.
@@ -26,6 +29,8 @@ pub struct TextField {
     redo: Vec<(String, usize)>,
     /// Keeps line breaks (see the module docs).
     multiline: bool,
+    /// Hides its text (`secret.rs`).
+    secret: bool,
 }
 
 /// How characters group into words for word-wise moves and double-click selection.
@@ -89,14 +94,20 @@ impl TextField {
         (anchor != self.caret).then(|| (anchor.min(self.caret), anchor.max(self.caret)))
     }
 
-    /// The selected text (empty when nothing is selected).
+    /// The selected text (empty when nothing is selected, and always for a secret
+    /// field).
     pub fn selected_text(&self) -> &str {
+        if self.secret {
+            return "";
+        }
         self.selection().map_or("", |(a, b)| &self.text[a..b])
     }
 
     /// Replaces the text, with the caret at the end. Clears the undo history.
     pub fn set(&mut self, text: impl Into<String>) {
+        let secret = self.secret;
         *self = Self::with_mode(&text.into(), self.multiline);
+        self.secret = secret;
     }
 
     /// Inserts at the caret, replacing the selection. Tabs become spaces and other
@@ -182,7 +193,7 @@ impl TextField {
     /// Removes the selection and returns it (Cut). Empty when nothing is selected.
     pub fn cut(&mut self) -> String {
         let taken = self.selected_text().to_owned();
-        if !taken.is_empty() {
+        if self.selection().is_some() {
             self.checkpoint();
             self.delete_selected();
         }
@@ -449,6 +460,8 @@ fn clean(s: &str, multiline: bool) -> String {
         })
         .collect()
 }
+
+mod secret;
 
 #[cfg(test)]
 mod tests;

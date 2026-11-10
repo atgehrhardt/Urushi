@@ -172,6 +172,7 @@ impl AppState {
                 subtasks: subtasks.drafts.iter().cloned().chain(typed).collect(),
                 color: labels.color,
                 tags: labels.with_typed(),
+                kind: labels.kind,
             });
             fx.push(request(body, Followup::CloseDialog));
             return;
@@ -242,11 +243,15 @@ impl AppState {
                 .then_some(notes),
             color: (labels.color != current.color()).then_some(labels.color),
             tags: (tags != current.tags()).then_some(v1::TagList { tags }),
+            // Jira owns an issue's type.
+            kind: (labels.kind != current.kind() && current.issue().is_none())
+                .then_some(labels.kind),
         };
         if update.title.is_some()
             || update.notes.is_some()
             || update.color.is_some()
             || update.tags.is_some()
+            || update.kind.is_some()
         {
             out.push(request(Body::UpdateTask(update), last));
         }
@@ -266,6 +271,7 @@ fn editor_for(found: &FoundTask<'_>) -> Dialog {
         subtasks: Box::default(),
         labels: Box::new(TaskLabels {
             color: task.color(),
+            kind: task.kind(),
             tags: task.tags().to_vec(),
             input: TextField::default(),
         }),

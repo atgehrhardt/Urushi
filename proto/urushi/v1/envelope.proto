@@ -5,6 +5,7 @@ syntax = "proto3";
 package urushi.v1;
 
 import "urushi/v1/boards.proto";
+import "urushi/v1/jira.proto";
 import "urushi/v1/remote.proto";
 import "urushi/v1/settings.proto";
 import "urushi/v1/terminal.proto";
@@ -101,6 +102,13 @@ message Request {
     ClearAttentionRequest clear_attention = 54;
     // Since 1.11.
     MoveFolderRequest move_folder = 55;
+    // Since 1.12.
+    ConnectJiraRequest connect_jira = 56;
+    GetJiraAccountRequest get_jira_account = 57;
+    DisconnectJiraRequest disconnect_jira = 58;
+    ListJiraBoardsRequest list_jira_boards = 59;
+    ImportJiraBoardRequest import_jira_board = 60;
+    SyncBoardRequest sync_board = 61;
   }
 }
 
@@ -133,6 +141,9 @@ message Response {
     BoardColumn column = 22;
     Attachment attachment = 23;
     AttachmentData attachment_data = 24;
+    // Since 1.12.
+    JiraAccount jira_account = 25;
+    JiraBoardList jira_boards = 26;
   }
 }
 
@@ -180,4 +191,7 @@ enum ErrorCode {
   ERROR_CODE_UNSUPPORTED = 6;
   ERROR_CODE_GIT_FAILED = 7;
   ERROR_CODE_INTERNAL = 8;
+  // A service the daemon relies on (Jira) couldn't be reached or failed. Since 1.12;
+  // older clients read it as unspecified.
+  ERROR_CODE_UNAVAILABLE = 9;
 }

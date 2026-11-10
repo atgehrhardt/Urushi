@@ -175,6 +175,7 @@ fn messages_round_trip_on_the_wire() {
             subtasks: vec!["s1".into(), "s2".into()],
             color: v1::LabelColor::Teal.into(),
             tags: vec!["ui".into()],
+            kind: v1::TaskKind::Bug.into(),
         }),
         Body::CreateSubtask(v1::CreateSubtaskRequest {
             task_id: "3".into(),
@@ -196,6 +197,7 @@ fn messages_round_trip_on_the_wire() {
             tags: Some(v1::TagList {
                 tags: vec!["a".into(), "b".into()],
             }),
+            kind: Some(v1::TaskKind::Story.into()),
         }),
         Body::MoveTask(v1::MoveTaskRequest {
             task_id: "3".into(),
@@ -255,6 +257,7 @@ fn unset_fields_are_told_apart_from_empty_ones() {
         notes: None,
         color: None,
         tags: None,
+        kind: None,
     };
     let decoded = v1::UpdateTaskRequest::decode(keep.encode_to_vec().as_slice()).unwrap();
     assert!(decoded.notes.is_none());
