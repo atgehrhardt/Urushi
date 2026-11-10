@@ -38,6 +38,7 @@ When the daemon itself stops (**Restart daemon…**, a reboot, a crash), the pro
 - Pastes can't break out of bracketed-paste mode (embedded end markers are stripped).
 - A session id only reaches a shell if it is letters, digits, `-` and `_` (`AgentSessionId::new`); a job's arguments are quoted, and a job with a control character in an argument isn't typed (`shell::job_command_line`); replayed output carries no control characters (`replay::to_ansi`).
 - A missing, corrupt or unreadable restore point never stops a pane from starting: it starts as a plain shell in its worktree (`RestoreStore::load`).
+- A stopping daemon never records its own kills as panes exiting. `Service::shutdown` freezes the workspace before it kills the sessions: `on_pane_exited` does nothing, and `Service::mutate` refuses every change (`Unavailable`, "the daemon is stopping"), so the stored layout keeps every pane for the next daemon. This matters most when the daemon runs inside a longer-lived process (the tests), where connections and session watchers outlive `run`.
 
 ## Tests
 - `crates/urushi-mux/src/emulator/alacritty.rs`: spans, wide characters, damage, replies, modes, scrollback.
@@ -50,7 +51,8 @@ When the daemon itself stops (**Restart daemon…**, a reboot, a crash), the pro
 - `crates/urushi-daemon/tests/restore.rs`: a real daemon restarted: old output above the new shell, the shell back in its subdirectory, a (fake) Claude resumed with its session id, a running program started again with an argument containing a space; closed panes' restore points deleted.
 - `crates/urushi-app/src/ui_state.rs` and `update/tests.rs::reopening_shows_the_remembered_thread_and_tab`.
 - Manually verified against a throwaway daemon home with zsh and Claude Code 2.1: output, colours and directory restored; Claude typed `--resume` with the id from its session file, and an empty session came back as a fresh Claude; `less "my notes.txt"`, `python3 -m http.server` (serving again) and a `yes | head | sleep` pipeline ran again.
-- `crates/urushi-daemon/tests/restart.rs`: stopping the real `urushid` by request and by signal, and the next daemon restoring the workspace. `tests/e2e.rs`: `ShutdownDaemon` refused over the tailnet.
+- `crates/urushi-daemon/tests/restart.rs`: stopping the real `urushid` by request and by signal, and the next daemon restoring the workspace.
+- `crates/urushi-daemon/tests/shutdown.rs`: after a stop, the killed shell's pane is still in `workspace.json`, and a change sent over a connection that outlived the daemon is refused without writing the store. `tests/e2e.rs`: `ShutdownDaemon` refused over the tailnet.
 - `crates/urushi-daemon/tests/mouse.rs`: SGR reports reaching a real program, arrow keys on the alternate screen, scrollback in a plain shell.
 - `crates/urushi-mux/tests/pty_session.rs`: real processes (output, echo, exit codes, resize, incremental frames, env/cwd).
 - `crates/urushi-daemon/tests/e2e.rs`:

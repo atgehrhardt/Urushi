@@ -41,6 +41,7 @@ mod threads;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -98,7 +99,8 @@ pub enum ServiceError {
     /// The peer isn't allowed to do this.
     #[error("{0}")]
     Forbidden(String),
-    /// A service the daemon relies on (Jira) couldn't be reached or failed.
+    /// A service the daemon relies on (Jira) couldn't be reached or failed, or the daemon
+    /// itself is stopping.
     #[error("{0}")]
     Unavailable(String),
     /// An unexpected internal failure.
@@ -163,6 +165,10 @@ pub struct Service {
     changes: watch::Sender<u64>,
     /// Woken when a client asks the daemon to stop (`ShutdownDaemon`).
     shutdown: tokio::sync::Notify,
+    /// Set once [`Service::shutdown`] begins. From then on the workspace is frozen: the
+    /// panes it kills stay in the layout for the next daemon to restore, and work that
+    /// outlives the daemon (open connections, session watchers) can't change or save it.
+    stopping: AtomicBool,
     me: Weak<Service>,
     /// The `urushi` CLI, for agents in panes (ADR 0024).
     cli: Option<PathBuf>,
@@ -228,6 +234,7 @@ impl Service {
             cli: config.cli,
             changes: watch::channel(revision).0,
             shutdown: tokio::sync::Notify::new(),
+            stopping: AtomicBool::new(false),
             me: me.clone(),
         });
         service.restore_sessions();
@@ -282,11 +289,15 @@ impl Service {
     }
 
     /// Applies `f` to the state, then persists and notifies subscribers. `f` must not
-    /// block. If it fails, the change is abandoned.
+    /// block. If it fails, the change is abandoned. Once the daemon is stopping, every
+    /// change is refused.
     pub(crate) fn mutate<R>(
         &self,
         f: impl FnOnce(&mut State) -> ServiceResult<R>,
     ) -> ServiceResult<R> {
+        if self.is_stopping() {
+            return Err(ServiceError::Unavailable("the daemon is stopping".into()));
+        }
         let result = {
             let mut state = lock(&self.state);
             let result = f(&mut state)?;
@@ -295,6 +306,11 @@ impl Service {
         };
         self.persist()?;
         Ok(result)
+    }
+
+    /// Whether [`Service::shutdown`] has begun.
+    pub(crate) fn is_stopping(&self) -> bool {
+        self.stopping.load(Ordering::SeqCst)
     }
 
     /// Reads the state.
@@ -318,8 +334,10 @@ impl Service {
         Ok(())
     }
 
-    /// Kills every session. Called on shutdown.
+    /// Freezes the workspace, then kills every session. Called on shutdown. The kills
+    /// aren't recorded as panes exiting, so the stored layout keeps every pane.
     pub fn shutdown(&self) {
+        self.stopping.store(true, Ordering::SeqCst);
         let all: Vec<PaneId> = lock(&self.sessions).keys().copied().collect();
         self.kill_sessions(all);
     }

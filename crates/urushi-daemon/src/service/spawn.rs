@@ -160,6 +160,10 @@ impl Service {
     }
 
     pub(super) fn on_pane_exited(&self, pane: PaneId) {
+        // The daemon killed it on its way out: the pane stays, to be restored.
+        if self.is_stopping() {
+            return;
+        }
         self.forget_attention(&[pane]);
         let removed = lock(&self.sessions).remove(&pane);
         if let Some(session) = removed {
