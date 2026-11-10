@@ -17,7 +17,7 @@ pub(crate) async fn connect_local(local: &LocalEndpoint) -> std::io::Result<Box<
         match ClientOptions::new().open(name) {
             Ok(client) => return Ok(Box::new(client)),
             Err(e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY) => {
-                tokio::time::sleep(Duration::from_millis(20)).await
+                tokio::time::sleep(Duration::from_millis(20)).await;
             }
             Err(e) => return Err(e),
         }

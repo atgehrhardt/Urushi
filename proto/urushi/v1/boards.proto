@@ -306,7 +306,6 @@ message JiraFieldEdits {
   repeated JiraFieldEdit edits = 1;
 }
 
-
 // Changes a task's (or, since 1.8, a subtask's) text, color or tags. Unset fields are
 // kept.
 message UpdateTaskRequest {
