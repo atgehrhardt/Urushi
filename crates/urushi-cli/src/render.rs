@@ -212,6 +212,9 @@ pub(crate) fn print_settings(s: &v1::Settings) -> Result<()> {
         }
     )?;
     writeln!(o, "allow-tagged-nodes      {}", t.allow_tagged_nodes)?;
+    let lan = s.lan.unwrap_or_default();
+    writeln!(o, "lan-access              {}", lan.enabled)?;
+    writeln!(o, "lan-port                {}", lan.port)?;
     let a = s.agents.clone().unwrap_or_default();
     writeln!(o, "claude-skip-permissions {}", a.claude_skip_permissions)?;
     writeln!(o, "codex-skip-permissions  {}", a.codex_skip_permissions)?;

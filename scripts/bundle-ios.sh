@@ -58,7 +58,7 @@ cat > "$APP/Info.plist" <<PLIST
   </dict></dict>
   <key>UIRequiresFullScreen</key><true/>
   <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
-  <key>NSLocalNetworkUsageDescription</key><string>Urushi connects to your Urushi host over your tailnet.</string>
+  <key>NSLocalNetworkUsageDescription</key><string>Urushi connects to your Urushi host over your tailnet or your local network.</string>
 </dict>
 </plist>
 PLIST

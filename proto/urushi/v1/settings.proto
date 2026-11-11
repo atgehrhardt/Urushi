@@ -22,6 +22,8 @@ message Settings {
   // start from the newer commit (ADR 0028). Unset from an older daemon, which doesn't.
   // Since 1.16.
   bool update_base_from_remote = 8;
+  // LAN access (ADR 0041). Unset from an older daemon, which has none. Since 1.26.
+  LanSettings lan = 9;
 }
 
 // How the app looks: the backdrop's colors and the accent, and the logo. Since 1.13.
@@ -89,6 +91,13 @@ message AgentSettings {
   string task_message = 8;
 }
 
+// LAN access (ADR 0041). Since 1.26.
+message LanSettings {
+  bool enabled = 1;
+  // 0 means the default, 7421.
+  uint32 port = 2;
+}
+
 message TailnetSettings {
   bool serve = 1;
   uint32 port = 2;
@@ -123,6 +132,9 @@ message SettingsPatch {
   optional bool task_draft = 17;
   optional bool task_message_custom = 18;
   optional string task_message = 19;
+  // Accepted only from clients on the host itself. Since 1.26.
+  optional bool lan_enabled = 20;
+  optional uint32 lan_port = 21;
 }
 
 message UpdateSettingsRequest {

@@ -34,3 +34,54 @@ message TailnetPeer {
 message SetTailnetServeRequest {
   bool serve = 1;
 }
+
+// LAN access (ADR 0041): encrypted connections from paired devices on this machine's
+// private addresses. Since 1.26.
+message LanStatusRequest {}
+
+message LanStatus {
+  // LAN access is switched on in the settings.
+  bool enabled = 1;
+  // The daemon is listening on at least one LAN address.
+  bool serving = 2;
+  // The addresses it listens on, without the port.
+  repeated string addresses = 3;
+  uint32 port = 4;
+  // Human-readable problem, if any.
+  string error = 5;
+  repeated LanDevice devices = 6;
+  // Set while a pairing code is active. Sent only to clients on the host itself.
+  LanPairing pairing = 7;
+  // A short form of the daemon's key, to compare with what a device shows.
+  string fingerprint = 8;
+}
+
+message LanDevice {
+  string id = 1;
+  // The name the device gave when it paired.
+  string name = 2;
+  // A short form of the device's key.
+  string fingerprint = 3;
+  int64 paired_at_ms = 4;
+  // 0 if it has never connected.
+  int64 last_seen_ms = 5;
+  // Connected right now.
+  bool connected = 6;
+}
+
+message LanPairing {
+  // The one-time code, grouped like ABCDE-FGH12-34567-89JKM.
+  string code = 1;
+  uint32 expires_in_secs = 2;
+}
+
+// Starts pairing (replacing any active code). Host only. Answered with LanStatus.
+message StartLanPairingRequest {}
+
+// Ends pairing without pairing anything. Host only. Answered with LanStatus.
+message CancelLanPairingRequest {}
+
+// Forgets a paired device and closes its connections. Host only. Answered with LanStatus.
+message RevokeLanDeviceRequest {
+  string device_id = 1;
+}

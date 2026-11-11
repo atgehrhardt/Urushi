@@ -123,7 +123,8 @@ where
     Ok(Some(Envelope::decode(payload.as_slice())?))
 }
 
-/// Writes one envelope as a frame. Does not flush.
+/// Writes one envelope as a frame and flushes it. Flushing costs nothing on a plain
+/// socket, and an encrypted LAN stream needs it to send its last message.
 #[cfg(feature = "io")]
 pub async fn write_envelope<W>(writer: &mut W, envelope: &Envelope) -> Result<(), FrameError>
 where
@@ -132,6 +133,7 @@ where
     use tokio::io::AsyncWriteExt;
 
     writer.write_all(&encode_frame(envelope)?).await?;
+    writer.flush().await?;
     Ok(())
 }
 

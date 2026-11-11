@@ -219,6 +219,8 @@ fn settings_round_trip() {
     };
     s.tailnet.serve = true;
     s.tailnet.allowed_logins = vec!["me@example.com".into()];
+    s.lan.enabled = true;
+    s.lan.port = 9100;
     s.agents
         .set_skip_permissions(urushi_core::Agent::Claude, true);
     s.agents
@@ -238,6 +240,13 @@ fn settings_round_trip() {
     assert_eq!(
         settings_from_proto(&settings_to_proto(&Settings::default())).unwrap(),
         Settings::default()
+    );
+    // An older daemon sends no LAN settings: LAN access is off, on the default port.
+    let mut old = settings_to_proto(&Settings::default());
+    old.lan = None;
+    assert_eq!(
+        settings_from_proto(&old).unwrap().lan,
+        urushi_core::LanSettings::default()
     );
 }
 

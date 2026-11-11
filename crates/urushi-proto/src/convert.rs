@@ -9,9 +9,9 @@ use std::str::FromStr;
 use thiserror::Error;
 use urushi_core::layout::{Child, Node};
 use urushi_core::{
-    Agent, AgentMode, AgentSettings, Axis, BranchName, BranchPrefix, Direction, Layout, PaneId,
-    PromptDelivery, Repo, RepoSettingsOverrides, Settings, Slug, Status, Tab, TabId,
-    TailnetSettings, TaskMessage, Thread, ThreadKind, ThreadState, Timestamp,
+    Agent, AgentMode, AgentSettings, Axis, BranchName, BranchPrefix, Direction, LanSettings,
+    Layout, PaneId, PromptDelivery, Repo, RepoSettingsOverrides, Settings, Slug, Status, Tab,
+    TabId, TailnetSettings, TaskMessage, Thread, ThreadKind, ThreadState, Timestamp,
 };
 
 use crate::v1;
@@ -334,6 +334,10 @@ pub fn settings_to_proto(s: &Settings) -> v1::Settings {
             allowed_logins: s.tailnet.allowed_logins.clone(),
             allow_tagged_nodes: s.tailnet.allow_tagged_nodes,
         }),
+        lan: Some(v1::LanSettings {
+            enabled: s.lan.enabled,
+            port: u32::from(s.lan.port),
+        }),
         agents: Some(v1::AgentSettings {
             claude_skip_permissions: s.agents.skips_permissions(Agent::Claude),
             codex_skip_permissions: s.agents.skips_permissions(Agent::Codex),
@@ -355,6 +359,7 @@ pub fn settings_to_proto(s: &Settings) -> v1::Settings {
 /// Wire settings → core.
 pub fn settings_from_proto(s: &v1::Settings) -> Result<Settings, ConvertError> {
     let tailnet = s.tailnet.clone().unwrap_or_default();
+    let lan = s.lan.unwrap_or_default();
     Ok(Settings {
         delete_remote_branches: s.delete_remote_branches,
         branch_prefix: BranchPrefix::new(s.branch_prefix.clone())
@@ -367,6 +372,10 @@ pub fn settings_from_proto(s: &v1::Settings) -> Result<Settings, ConvertError> {
             port: port_from_proto(tailnet.port)?,
             allowed_logins: tailnet.allowed_logins,
             allow_tagged_nodes: tailnet.allow_tagged_nodes,
+        },
+        lan: LanSettings {
+            enabled: lan.enabled,
+            port: lan_port_from_proto(lan.port)?,
         },
         agents: agent_settings_from_proto(s.agents.clone().unwrap_or_default()),
         appearance: appearance_from_proto(s.appearance.as_ref()),
@@ -427,10 +436,19 @@ pub fn agent_mode_from_proto(mode: i32) -> AgentMode {
     }
 }
 
-/// Validates a wire port number. Zero means the default port.
+/// Validates a wire tailnet port number. Zero means the default port.
 pub fn port_from_proto(port: u32) -> Result<u16, ConvertError> {
+    port_or(port, TailnetSettings::DEFAULT_PORT)
+}
+
+/// Validates a wire LAN port number. Zero means the default port.
+pub fn lan_port_from_proto(port: u32) -> Result<u16, ConvertError> {
+    port_or(port, LanSettings::DEFAULT_PORT)
+}
+
+fn port_or(port: u32, default: u16) -> Result<u16, ConvertError> {
     if port == 0 {
-        return Ok(TailnetSettings::DEFAULT_PORT);
+        return Ok(default);
     }
     u16::try_from(port).map_err(|_| ConvertError::new("port", format!("{port} is out of range")))
 }

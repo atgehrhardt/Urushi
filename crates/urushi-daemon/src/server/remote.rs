@@ -165,6 +165,7 @@ async fn accept_loop(service: Weak<Service>, listener: TcpListener) {
                         Peer {
                             description,
                             local: false,
+                            close: None,
                         },
                     )
                     .await;

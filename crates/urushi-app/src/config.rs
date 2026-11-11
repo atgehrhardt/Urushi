@@ -8,7 +8,8 @@ use std::sync::Arc;
 pub enum ConnectTarget {
     /// The local daemon, started on demand. `None` home uses the default.
     Local(Option<PathBuf>),
-    /// A remote daemon at `host[:port]` (usually a tailnet name).
+    /// A remote daemon at `host[:port]`: a tailnet name, or a LAN host this device
+    /// paired with (reached through the encrypted LAN channel).
     Remote(String),
     /// Not chosen yet (mobile, first launch): show the connect dialog.
     Ask,
@@ -25,6 +26,9 @@ pub struct AppConfig {
     pub target: ConnectTarget,
     /// Platform-provided safe area, if winit's isn't accurate.
     pub safe_area: Option<SafeAreaFn>,
+    /// Where this device keeps its LAN keyring (ADR 0041). `None`: the local home
+    /// (`URUSHI_HOME`, then the app data dir). Mobile shells pass their app's data dir.
+    pub data_dir: Option<PathBuf>,
 }
 
 impl AppConfig {
@@ -33,6 +37,7 @@ impl AppConfig {
         Self {
             target,
             safe_area: None,
+            data_dir: None,
         }
     }
 }
@@ -48,6 +53,7 @@ impl std::fmt::Debug for AppConfig {
         f.debug_struct("AppConfig")
             .field("target", &self.target)
             .field("safe_area", &self.safe_area.is_some())
+            .field("data_dir", &self.data_dir)
             .finish()
     }
 }

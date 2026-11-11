@@ -71,6 +71,8 @@ pub use threads::ThreadRequest;
 
 use crate::agents::AgentLocator;
 use crate::git::{Git, GitError};
+use crate::lan::LanInterfaces;
+use crate::lan::state::LanState;
 use crate::restore::{PaneRecord, RestoreStore};
 use crate::server::remote::RemoteState;
 use crate::store::{Store, StoreError};
@@ -129,6 +131,8 @@ pub struct ServiceConfig {
     pub pty: Arc<dyn Pty>,
     /// Tailscale access.
     pub tailscale: Arc<dyn TailscaleProvider>,
+    /// This machine's private addresses, for LAN access.
+    pub lan_interfaces: Arc<dyn LanInterfaces>,
     /// Finds installed agent CLIs.
     pub agents: Arc<AgentLocator>,
     /// Which agent runs in a pane, and its plan usage.
@@ -152,6 +156,9 @@ pub struct Service {
     agents: Arc<AgentLocator>,
     usage: Arc<UsageMonitor>,
     pub(crate) remote: Mutex<RemoteState>,
+    pub(crate) lan_interfaces: Arc<dyn LanInterfaces>,
+    /// LAN access: key, paired devices, pairing, listeners (ADR 0041).
+    pub(crate) lan: Mutex<LanState>,
     /// Restore points on disk (`<home>/restore`).
     restore: RestoreStore,
     /// Attached files on disk (`<home>/attachments`).
@@ -232,6 +239,8 @@ impl Service {
             agents: config.agents,
             usage: config.usage,
             remote: Mutex::new(RemoteState::default()),
+            lan_interfaces: config.lan_interfaces,
+            lan: Mutex::new(LanState::new(&config.home)),
             restore: RestoreStore::new(config.home.join("restore")),
             attachments: crate::attachments::AttachmentStore::new(config.home.join("attachments")),
             jira: jira::JiraLink::new(config.jira, &config.home),

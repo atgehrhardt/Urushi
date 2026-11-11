@@ -152,6 +152,14 @@ pub enum Msg {
     OpenSettings,
     /// Open the "connect to host" dialog.
     OpenConnect,
+    /// Connect to a LAN host this device paired with (its `host:port`).
+    ConnectTo(String),
+    /// Pairing with a LAN host finished: its `host:port`, or why it failed.
+    LanPaired(Result<String, String>),
+    /// The LAN hosts this device paired with.
+    LanHosts(Vec<PairedHost>),
+    /// LAN access on the host (Settings).
+    Lan(LanMsg),
 
     // ---- the quick terminal (`update/quick.rs`) --------------------------------------
     /// The quick-terminal panel.
@@ -334,6 +342,26 @@ pub enum Msg {
     Copy,
 }
 
+/// A LAN host this device paired with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PairedHost {
+    /// `host:port`, to connect to.
+    pub address: String,
+    /// The host's name.
+    pub host_name: String,
+}
+
+/// LAN access on the host, from the Settings dialog (ADR 0041).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LanMsg {
+    /// Show a one-time pairing code.
+    StartPairing,
+    /// Withdraw the pairing code.
+    CancelPairing,
+    /// Forget a paired device (its id) and close its connections.
+    Revoke(String),
+}
+
 /// What to do when a request completes.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Followup {
@@ -365,6 +393,11 @@ pub enum Followup {
     Settings,
     /// Show tailnet status in settings.
     TailnetStatus,
+    /// Show LAN access status in settings.
+    LanStatus,
+    /// LAN access was switched: show the settings, then ask for the LAN status (only
+    /// now, since the daemon answers requests concurrently).
+    LanSwitched,
     /// Remember which agents are installed.
     Agents,
     /// Remember a repo's branches (for the new-thread dialog).
@@ -426,6 +459,13 @@ pub enum Effect {
     PickFolder,
     /// Drop the connection and connect to another daemon.
     Reconnect(ConnectTarget),
+    /// Pair with a LAN host using its one-time code; deliver [`Msg::LanPaired`].
+    PairLan {
+        /// `host` or `host:port`.
+        host: String,
+        /// The code the host shows.
+        code: String,
+    },
     /// Drop the connection, stop the local daemon, and deliver [`Msg::DaemonStopped`].
     StopDaemon,
     /// Show the system file picker, then read the chosen files and deliver each as

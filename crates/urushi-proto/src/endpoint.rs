@@ -2,7 +2,8 @@
 //!
 //! Local daemons live under the user's Urushi *home* directory (the app data dir). They
 //! listen on a Unix socket there, or on a named pipe derived from it on Windows. Remote
-//! daemons are reached over TCP on a tailnet address. `URUSHI_HOME` overrides the home
+//! daemons are reached over TCP on a tailnet address, or on a LAN address through an
+//! encrypted channel (`lan`). `URUSHI_HOME` overrides the home
 //! directory, which keeps tests and side-by-side installs isolated.
 
 use std::fmt;
@@ -90,26 +91,35 @@ pub fn local_endpoint(home: &Path) -> LocalEndpoint {
 
 /// Parses `host:port` (or `[v6]:port`). A missing port uses `default_port`.
 pub fn parse_tcp(spec: &str, default_port: u16) -> Option<Endpoint> {
+    let (host, port) = split_host_port(spec)?;
+    Some(Endpoint::Tcp {
+        host,
+        port: port.unwrap_or(default_port),
+    })
+}
+
+/// Splits `host`, `host:port`, `[v6]:port` or a bare IPv6 address into the host and the
+/// port, if one was given. A trailing dot on the host is dropped. `None` if `spec` is
+/// empty or its port isn't a number.
+pub fn split_host_port(spec: &str) -> Option<(String, Option<u16>)> {
     let spec = spec.trim();
     if spec.is_empty() {
         return None;
     }
     let (host, port) = if let Some(rest) = spec.strip_prefix('[') {
         let (host, after) = rest.split_once(']')?;
-        let port = after
-            .strip_prefix(':')
-            .map_or(Some(default_port), |p| p.parse().ok())?;
-        (host.to_owned(), port)
+        let port = match after.strip_prefix(':') {
+            Some(p) => Some(p.parse().ok()?),
+            None => None,
+        };
+        (host, port)
     } else if spec.matches(':').count() == 1 {
         let (host, port) = spec.split_once(':')?;
-        (host.to_owned(), port.parse().ok()?)
+        (host, Some(port.parse().ok()?))
     } else {
-        (spec.to_owned(), default_port)
+        (spec, None)
     };
-    Some(Endpoint::Tcp {
-        host: host.trim_end_matches('.').to_owned(),
-        port,
-    })
+    Some((host.trim_end_matches('.').to_owned(), port))
 }
 
 #[cfg(test)]
@@ -137,6 +147,25 @@ mod tests {
         assert_eq!(parse_tcp("fd7a::1", 7420), tcp("fd7a::1", 7420));
         assert_eq!(parse_tcp("", 7420), None);
         assert_eq!(parse_tcp("host:notaport", 7420), None);
+    }
+
+    #[test]
+    fn splits_host_and_optional_port() {
+        assert_eq!(
+            split_host_port("mac.local"),
+            Some(("mac.local".into(), None))
+        );
+        assert_eq!(
+            split_host_port(" 192.168.1.10:7421 "),
+            Some(("192.168.1.10".into(), Some(7421)))
+        );
+        assert_eq!(split_host_port("[fd12::1]"), Some(("fd12::1".into(), None)));
+        assert_eq!(split_host_port("fd12::1"), Some(("fd12::1".into(), None)));
+        assert_eq!(
+            split_host_port("[fd12::1]:5"),
+            Some(("fd12::1".into(), Some(5)))
+        );
+        assert_eq!(split_host_port("[fd12::1]:x"), None);
     }
 
     #[test]

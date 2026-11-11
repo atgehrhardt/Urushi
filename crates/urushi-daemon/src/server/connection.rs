@@ -28,8 +28,13 @@ pub(crate) struct Peer {
     /// For logging.
     pub(crate) description: String,
     /// Connected through the local socket or pipe (the same OS user on this machine),
-    /// not over the tailnet. Only local peers may stop the daemon.
+    /// not over the tailnet or the LAN. Only local peers may stop the daemon or change
+    /// LAN access.
     pub(crate) local: bool,
+    /// Ends the connection when it changes or its sender is dropped: a LAN device that
+    /// was revoked, or LAN access turned off. `None` for connections that only end
+    /// when the client or the daemon goes.
+    pub(crate) close: Option<tokio::sync::watch::Receiver<bool>>,
 }
 
 /// State shared by a connection's tasks.
@@ -121,9 +126,24 @@ where
         watching: Mutex::new(None),
         local: peer.local,
     });
+    let mut close = peer.close.clone();
+    let closed = async move {
+        match close.as_mut() {
+            Some(close) => {
+                let _ = close.changed().await;
+            }
+            None => std::future::pending().await,
+        }
+    };
+    tokio::pin!(closed);
     loop {
         let read = tokio::select! {
             read = read_envelope(&mut reader) => read,
+            () = &mut closed => {
+                tracing::info!(peer = %peer.description, "closing a connection whose access ended");
+                writer_task.abort();
+                break;
+            }
             // A stopped daemon hangs up, so clients see it go and a pipe or socket of
             // the old daemon never lingers (on Windows it would keep the next daemon
             // from creating its pipe).

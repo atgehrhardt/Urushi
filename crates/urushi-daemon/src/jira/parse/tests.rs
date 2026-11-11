@@ -66,10 +66,10 @@ fn a_subtask_names_its_parent_not_an_epic() {
     let mut v = story();
     v["fields"]["issuetype"] = json!({ "name": "Sub-task", "subtask": true });
     v["fields"]["parent"] =
-        json!({ "id": "10040", "key": "ACME-40", "fields": { "summary": "Parent" } });
+        json!({ "id": "10041", "key": "ACME-40", "fields": { "summary": "Parent" } });
     let s = issue(&v, &IssueFields::default()).unwrap();
     assert_eq!(s.kind, TaskKind::Subtask);
-    assert_eq!(s.issue.parent.as_deref(), Some("10040"));
+    assert_eq!(s.issue.parent.as_deref(), Some("10041"));
     assert_eq!((s.issue.epic, s.epic_summary), (None, None));
     assert_eq!(s.issue.rank, "");
 }

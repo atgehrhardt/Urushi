@@ -72,6 +72,13 @@ fn apply_patch(settings: &mut Settings, patch: &v1::SettingsPatch) -> ServiceRes
     if let Some(v) = patch.allow_tagged_nodes {
         settings.tailnet.allow_tagged_nodes = v;
     }
+    if let Some(enabled) = patch.lan_enabled {
+        settings.lan.enabled = enabled;
+    }
+    if let Some(port) = patch.lan_port {
+        settings.lan.port =
+            convert::lan_port_from_proto(port).map_err(|e| ServiceError::Invalid(e.to_string()))?;
+    }
     for (agent, skip) in [
         (Agent::Claude, patch.claude_skip_permissions),
         (Agent::Codex, patch.codex_skip_permissions),
@@ -249,5 +256,35 @@ mod tests {
             ..Default::default()
         };
         assert!(apply_patch(&mut s, &bad_port).is_err());
+        let bad_lan_port = v1::SettingsPatch {
+            lan_port: Some(70_000),
+            ..Default::default()
+        };
+        assert!(apply_patch(&mut s, &bad_lan_port).is_err());
+    }
+
+    #[test]
+    fn lan_access_is_switched_and_its_port_set() {
+        let mut s = Settings::default();
+        apply_patch(
+            &mut s,
+            &v1::SettingsPatch {
+                lan_enabled: Some(true),
+                lan_port: Some(9100),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(s.lan.enabled);
+        assert_eq!(s.lan.port, 9100);
+        apply_patch(
+            &mut s,
+            &v1::SettingsPatch {
+                lan_port: Some(0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(s.lan.port, urushi_core::LanSettings::DEFAULT_PORT);
     }
 }

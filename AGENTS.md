@@ -9,7 +9,7 @@ Urushi is a **cross-platform graphical workspace for AI agents**. It runs on mac
 - The sidebar lists **Projects → Threads** (projects group threads from any repo) and **Repos**. Every thread is backed by its own **git worktree** of a repo.
 - A thread has **tabs**. Each tab is a tree of **split panes**, and each pane is a terminal.
 - Terminal sessions are **recoverable**. A headless in-house multiplexer inside the `urushid` daemon keeps processes and screen state alive across window close, app crash or client disconnect.
-- Mobile apps are remote-only clients. They reach a desktop or server daemon over **Tailscale**.
+- Mobile apps are remote-only clients. They reach a desktop or server daemon over **Tailscale**, or as paired devices over the **LAN** when the host allows it (off by default, ADR 0041).
 
 All documentation is indexed in [`docs/README.md`](docs/README.md): architecture, decisions (ADRs), features, protocol and dependencies.
 
@@ -30,9 +30,9 @@ Crates marked ⏳ are planned but don't exist yet. Create them where listed; don
 | Crate | Role |
 |---|---|
 | `crates/urushi-core` | Pure domain model: ids, repos, projects, threads, tabs, layout tree, task boards, settings, branch-ownership rules. **No IO, no async, compiles on every target.** |
-| `crates/urushi-proto` | Protobuf types (prost + protox) and the length-prefixed frame codec. |
+| `crates/urushi-proto` | Protobuf types (prost + protox), the length-prefixed frame codec, and the Noise channel for LAN connections. |
 | `crates/urushi-mux` | `Pty` / `Emulator` traits + adapters, the per-pane Session actor, screen diffs, key encoding. |
-| `crates/urushi-daemon` | `urushid`: server, request router, JSON document store, git worktree lifecycle, Tailscale, agent usage, Jira board sync. |
+| `crates/urushi-daemon` | `urushid`: server, request router, JSON document store, git worktree lifecycle, Tailscale, LAN access, agent usage, Jira board sync. |
 | `crates/urushi-client` | Protocol client, state mirror, transports (Unix socket / named pipe / TCP), daemon launcher. |
 | `crates/urushi-ui` | In-house widget toolkit (Elm-style). Produces a renderer-agnostic `Scene`. |
 | `crates/urushi-render` | wgpu backend: quads, glyph atlas (cosmic-text), backdrop blur. |

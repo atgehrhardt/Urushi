@@ -49,3 +49,11 @@ pub(crate) fn terminate(_pid: u32) -> std::io::Result<()> {
 pub(crate) fn is_running(_pid: u32) -> bool {
     false
 }
+
+/// Replaces the file at `path` with `bytes`. It lives in the user's profile, whose
+/// default ACL already keeps other users out.
+pub(crate) fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)
+}

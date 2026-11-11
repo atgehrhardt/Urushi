@@ -132,6 +132,11 @@ message Request {
     DeleteQuickFilterRequest delete_quick_filter = 75;
     // Since 1.24.
     MoveThreadRequest move_thread = 76;
+    // Since 1.26.
+    LanStatusRequest lan_status = 77;
+    StartLanPairingRequest start_lan_pairing = 78;
+    CancelLanPairingRequest cancel_lan_pairing = 79;
+    RevokeLanDeviceRequest revoke_lan_device = 80;
   }
 }
 
@@ -176,6 +181,8 @@ message Response {
     QuickTerminal quick_terminal = 31;
     // Since 1.23.
     QuickFilterSaved quick_filter_saved = 32;
+    // Since 1.26.
+    LanStatus lan_status = 33;
   }
 }
 

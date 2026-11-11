@@ -1,4 +1,5 @@
-//! Dialogs: add repo, the deletion warning, settings, connect, and one-line prompts.
+//! Dialogs: add repo, the deletion warning, settings, and one-line prompts. The connect
+//! dialog and the LAN rows of settings are in `lan.rs`.
 //! The new-thread dialog is in `new_thread.rs`, the launcher in `launcher.rs`, the task
 //! dialogs in `tasks.rs`.
 
@@ -48,7 +49,7 @@ pub(super) fn view(
             message,
             look,
         } => settings_dialog(state, (theme, scroll), (prefix, shell, message), look),
-        Dialog::Connect { host } => connect(state, theme, host),
+        dialog @ Dialog::Connect { .. } => super::lan::connect(state, theme, dialog)?,
         Dialog::RestartDaemon {
             terminals,
             threads,
@@ -257,39 +258,6 @@ fn add_project(state: &AppState, theme: &Theme, path: &TextField) -> Node<Msg> {
     )
 }
 
-fn connect(state: &AppState, theme: &Theme, host: &TextField) -> Node<Msg> {
-    let body = Node::column()
-        .width(Length::Fill(1.0))
-        .gap(8.0)
-        .child(label(theme, "Host"))
-        .child(field(
-            state,
-            theme,
-            host,
-            Field::Host,
-            "machine.tailnet.ts.net",
-        ))
-        .child(hint(
-            theme,
-            "The MagicDNS name (or tailnet IP) of a machine serving Urushi on your tailnet.",
-        ));
-    let dismiss = (state.target != crate::config::ConnectTarget::Ask).then_some(Msg::CloseDialog);
-    let mut actions = Vec::new();
-    if dismiss.is_some() {
-        actions.push(cancel(theme));
-    }
-    actions.push(button(theme, "Connect", ButtonKind::Primary, Msg::Submit));
-    modal(
-        state,
-        theme,
-        "Connect to a host",
-        460.0,
-        body,
-        actions,
-        dismiss,
-    )
-}
-
 /// One line of the deletion warning: what, then the detail in `color`.
 fn plan_row(theme: &Theme, what: &str, detail: String, color: Color) -> Node<Msg> {
     Node::row()
@@ -484,6 +452,7 @@ fn settings_dialog(
                 left: 42.0,
             }),
         )
+        .children(super::lan::settings_rows(state, theme))
         .child(label(theme, "Agents"))
         .children(urushi_core::Agent::ALL.into_iter().map(|agent| {
             let mut switch = toggle(

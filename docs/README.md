@@ -55,6 +55,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0038 – Reorder threads by moving them in the one stored list, and let a drop join the target's group](adr/0038-reorder-threads-in-the-stored-list.md)
 - [0039 – Learn that an agent is running from its prompt and tool hooks, and end it on Stop, prompts, session end or an interrupt key](adr/0039-running-agents-from-their-hooks.md)
 - [0040 – Release the Android APK from the same tag, signed with a release key kept in repository secrets; no iOS release yet](adr/0040-release-android-apks-signed-with-a-repository-secret-key.md)
+- [0041 – Allow LAN access only from paired devices, through Noise, on private addresses](adr/0041-lan-access-through-paired-noise-channels.md)
 
 ## Features
 - [_template](features/_template.md)
@@ -62,6 +63,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [Thread worktrees and safe deletion](features/thread-worktrees.md)
 - [Recoverable terminal sessions](features/recoverable-sessions.md)
 - [Remote access over Tailscale](features/remote-access.md)
+- [LAN access (paired devices, no Tailscale)](features/lan-access.md)
 - [The workspace GUI](features/gui-workspace.md)
 - [Agent launcher](features/agent-launcher.md)
 - [Organizing threads (projects, pins, statuses)](features/thread-organization.md)

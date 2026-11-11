@@ -116,6 +116,7 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
         Command::Tailnet(TailnetCmd::Status) => print_tailnet(&client.tailnet_status().await?),
         Command::Tailnet(TailnetCmd::On) => print_tailnet(&client.set_tailnet_serve(true).await?),
         Command::Tailnet(TailnetCmd::Off) => print_tailnet(&client.set_tailnet_serve(false).await?),
+        Command::Lan(cmd) => crate::lan::run(client, cmd).await,
     }
 }
 
@@ -369,6 +370,7 @@ fn patch(key: &str, value: &str) -> Result<v1::SettingsPatch> {
                 .collect();
         }
         "allow-tagged-nodes" => p.allow_tagged_nodes = Some(flag(value)?),
+        "lan-port" => p.lan_port = Some(value.parse().context("expected a port number")?),
         "claude-skip-permissions" => p.claude_skip_permissions = Some(flag(value)?),
         "codex-skip-permissions" => p.codex_skip_permissions = Some(flag(value)?),
         "cursor-skip-permissions" => p.cursor_skip_permissions = Some(flag(value)?),

@@ -10,9 +10,13 @@ publish.workspace = true
 default = []
 # Async frame reading/writing over tokio streams.
 io = ["dep:tokio"]
+# Encrypted, paired LAN connections over Noise (ADR 0041).
+lan = ["io", "dep:snow", "dep:getrandom"]
 
 [dependencies]
+getrandom = { workspace = true, optional = true }
 prost = { workspace = true }
+snow = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, optional = true, features = ["io-util"] }
 urushi-core = { workspace = true }
@@ -22,7 +26,7 @@ prost-build = { workspace = true }
 protox = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["io-util", "rt", "macros"] }
+tokio = { workspace = true, features = ["io-util", "rt", "macros", "time"] }
 
 [lints]
 workspace = true
