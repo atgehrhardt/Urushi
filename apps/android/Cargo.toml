@@ -16,6 +16,7 @@ urushi-app = { workspace = true }
 [target.'cfg(target_os = "android")'.dependencies]
 tracing-subscriber = { workspace = true }
 winit = { workspace = true, features = ["android-native-activity"] }
+jni = { workspace = true }
 
 [lints]
 workspace = true

@@ -411,6 +411,7 @@ mod quick_filters;
 mod running;
 mod setup;
 mod sidebar;
+mod soft_keyboard;
 mod subtask_drafts;
 mod task_in_thread;
 mod task_message;

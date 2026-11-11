@@ -3,6 +3,8 @@
 //! "connect to a host" dialog. Package with `scripts/build-android.sh`.
 
 #[cfg(target_os = "android")]
+mod keyboard;
+#[cfg(target_os = "android")]
 mod log;
 
 /// Entry point called by `android-activity` (through winit) on the app's main thread.
@@ -22,6 +24,7 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
     // The app's private storage keeps the LAN keyring (ADR 0041).
     let data_dir = app.internal_data_path();
     let insets_app = app.clone();
+    let soft_keyboard = keyboard::switch(app.clone());
     let safe_area: urushi_app::SafeAreaFn = std::sync::Arc::new(move || {
         let r = insets_app.content_rect();
         Some([r.left, r.top, r.right, r.bottom])
@@ -33,6 +36,7 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
         Ok(event_loop) => {
             let mut config = urushi_app::AppConfig::new(urushi_app::ConnectTarget::Ask);
             config.safe_area = Some(safe_area);
+            config.soft_keyboard = Some(soft_keyboard);
             config.data_dir = data_dir;
             if let Err(e) = urushi_app::run_with(event_loop, config) {
                 tracing_log(&e.to_string());

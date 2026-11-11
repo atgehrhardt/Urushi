@@ -72,6 +72,12 @@ pub(crate) struct Runner {
     pub(crate) scroll: HashMap<Key, f32>,
     pub(crate) clipboard: Clipboard,
     pub(crate) safe_area: Option<crate::config::SafeAreaFn>,
+    /// The safe area last laid out in; a change (Android's keyboard opening) redraws.
+    pub(crate) last_safe_area: Option<[i32; 4]>,
+    /// Whether the on-screen keyboard should be up (`soft_keyboard.rs`).
+    pub(crate) keyboard: crate::soft_keyboard::SoftKeyboard,
+    /// The platform's keyboard switch, where winit's doesn't work (Android).
+    pub(crate) soft_keyboard: Option<crate::config::SoftKeyboardFn>,
     /// When the board panel's slide last advanced (`None`: not sliding).
     pub(crate) animated_at: Option<std::time::Instant>,
     /// The running indicators' pulse: its brightness and when its next frame is due.
@@ -144,7 +150,25 @@ impl Runner {
             }
         }
         self.remember_ui();
+        self.sync_keyboard(false);
         self.request_redraw();
+    }
+
+    /// Shows or hides the on-screen keyboard (touch devices only) when what has focus
+    /// changes, or re-asks when `force`d: the OS may have put it away on its own.
+    fn sync_keyboard(&mut self, force: bool) {
+        if !cfg!(any(target_os = "ios", target_os = "android")) {
+            return;
+        }
+        let Some(show) = self.keyboard.sync(&self.state, force) else {
+            return;
+        };
+        tracing::debug!(show, "soft keyboard");
+        if let Some(switch) = &self.soft_keyboard {
+            switch(show);
+        } else if let Some(window) = &self.window {
+            window.set_ime_allowed(show);
+        }
     }
 
     /// Reads files to attach to `task`, delivering each (or why it can't be attached).
@@ -471,6 +495,39 @@ impl Runner {
     }
 
     /// Carries out what a touch gesture means (see `touch.rs`).
+    /// Follows a finger (`touch.rs`). A tap also brings up the on-screen keyboard if it
+    /// landed on a terminal or the focused field.
+    fn touch_event(&mut self, touch: winit::event::Touch) {
+        use winit::event::TouchPhase;
+        #[allow(clippy::cast_possible_truncation, reason = "screen coordinates")]
+        let p = Point::new(
+            touch.location.x as f32 / self.scale(),
+            touch.location.y as f32 / self.scale(),
+        );
+        let now = std::time::Instant::now();
+        let actions = match touch.phase {
+            TouchPhase::Started => {
+                let grab = self.state.divider_at(p).is_some();
+                self.touches.began(touch.id, p, now, grab)
+            }
+            TouchPhase::Moved => self.touches.moved(touch.id, p, now),
+            TouchPhase::Ended => self.touches.ended(touch.id, p, false),
+            TouchPhase::Cancelled => self.touches.ended(touch.id, p, true),
+        };
+        let tap = crate::touch::tap_at(&actions);
+        for action in actions {
+            self.touch(action);
+        }
+        if let Some(p) = tap {
+            self.keyboard.tapped(self.state.terminal_at(p));
+            self.sync_keyboard(true);
+        }
+        if matches!(touch.phase, TouchPhase::Ended | TouchPhase::Cancelled) {
+            self.pointer = None;
+        }
+        self.request_redraw();
+    }
+
     fn touch(&mut self, action: crate::touch::TouchAction) {
         use crate::touch::TouchAction;
         tracing::trace!(?action, "touch");
@@ -597,6 +654,7 @@ impl ApplicationHandler<UserEvent> for Runner {
                 self.create_renderer();
                 self.request_redraw();
             }
+            self.sync_keyboard(true);
             return;
         }
         let mut attributes = Window::default_attributes()
@@ -622,10 +680,11 @@ impl ApplicationHandler<UserEvent> for Runner {
             &window,
             self.proxy.clone(),
         ));
-        window.set_ime_allowed(cfg!(any(target_os = "ios", target_os = "android")));
         window.set_visible(true);
         self.window = Some(window);
         self.create_renderer();
+        // After `set_visible`: iOS can't give the keyboard to a hidden window.
+        self.sync_keyboard(true);
         self.request_redraw();
     }
 
@@ -639,7 +698,13 @@ impl ApplicationHandler<UserEvent> for Runner {
         }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Focused(focused) => self.dispatch(Msg::WindowFocused(focused)),
+            WindowEvent::Focused(focused) => {
+                self.dispatch(Msg::WindowFocused(focused));
+                // Android ignores keyboard requests from a window without focus.
+                if focused {
+                    self.sync_keyboard(true);
+                }
+            }
             WindowEvent::Occluded(occluded) => {
                 self.occluded = occluded;
                 self.request_redraw();
@@ -684,31 +749,7 @@ impl ApplicationHandler<UserEvent> for Runner {
             WindowEvent::MouseInput { state, button, .. } => self.mouse_button(state, button),
             // Touchscreens: dragging scrolls, a tap clicks, and a long press acts as the
             // left button (`touch.rs`).
-            WindowEvent::Touch(touch) => {
-                use winit::event::TouchPhase;
-                #[allow(clippy::cast_possible_truncation, reason = "screen coordinates")]
-                let p = Point::new(
-                    touch.location.x as f32 / self.scale(),
-                    touch.location.y as f32 / self.scale(),
-                );
-                let now = std::time::Instant::now();
-                let actions = match touch.phase {
-                    TouchPhase::Started => {
-                        let grab = self.state.divider_at(p).is_some();
-                        self.touches.began(touch.id, p, now, grab)
-                    }
-                    TouchPhase::Moved => self.touches.moved(touch.id, p, now),
-                    TouchPhase::Ended => self.touches.ended(touch.id, p, false),
-                    TouchPhase::Cancelled => self.touches.ended(touch.id, p, true),
-                };
-                for action in actions {
-                    self.touch(action);
-                }
-                if matches!(touch.phase, TouchPhase::Ended | TouchPhase::Cancelled) {
-                    self.pointer = None;
-                }
-                self.request_redraw();
-            }
+            WindowEvent::Touch(touch) => self.touch_event(touch),
             WindowEvent::MouseWheel { delta, .. } => self.wheel(delta),
             WindowEvent::ModifiersChanged(m) => {
                 self.mods = Mods::from(m.state());
@@ -733,9 +774,16 @@ impl ApplicationHandler<UserEvent> for Runner {
         }
     }
 
-    /// While an agent runs, wakes up for the next frame of its indicator's pulse;
-    /// otherwise sleeps until something happens.
+    /// Lays out again if the safe area moved. While an agent runs, wakes up for the next
+    /// frame of its indicator's pulse; otherwise sleeps until something happens.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // winit doesn't report Android's content rect changing (the keyboard opening or
+        // closing resizes it), so look for it here and lay out again.
+        let safe_area = self.safe_area.as_ref().and_then(|f| f());
+        if safe_area != self.last_safe_area {
+            self.last_safe_area = safe_area;
+            self.request_redraw();
+        }
         if !self.pulsing() {
             event_loop.set_control_flow(ControlFlow::Wait);
             return;

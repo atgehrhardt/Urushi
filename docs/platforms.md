@@ -5,8 +5,8 @@
 | macOS | daemon + app + CLI | `make app` → `build/Urushi.app` (`Urushi` and `urushid` in `Contents/MacOS`, the CLI in `Contents/Resources/bin/urushi`). Pushing a `vX.Y.Z` tag publishes it as a GitHub Release ([CI and releases](features/ci-and-releases.md)). | Yes: GUI, input, accessibility, dialogs, tailnet serving |
 | Linux | daemon + app + CLI | `cargo build --release -p urushi-desktop -p urushi-daemon -p urushi-cli` | Type-checks (`cargo check --target x86_64-unknown-linux-gnu`); CI runs the tests |
 | Windows | daemon + app + CLI | Same as Linux. The local daemon listens on a per-home named pipe. | Type-checks (`--target x86_64-pc-windows-msvc`); CI runs the unit tests and the in-process daemon tests that don't need a Unix shell (e.g. the Jira ones) |
-| iOS | remote client | `make ios-sim` (simulator .app, installs, launches and screenshots). `make ios` → `build/ios/Urushi.ipa`, an **unsigned** device build. Both come from `scripts/bundle-ios.sh`, and CI builds both on every pull request. Not released (needs a paid Apple Developer account, ADR 0040). | Yes, in the simulator (iOS 18.3, 2026-11-10): connected to a daemon, rendered the workspace and the first-run setup dialog |
-| Android | remote client | `make android` → `build/android/urushi.apk` (NDK and SDK command-line tools, no Gradle; macOS or Linux). CI builds it on every pull request, and tagged releases publish it ([CI and releases](features/ci-and-releases.md)). | Yes, in the emulator (API 36, arm64, 2026-11-10), headless and with a window (host GPU): connected through the dialog, opened a thread, typed into a shell on the Mac, ^C from the key bar, split a pane |
+| iOS | remote client | `make ios-sim` (simulator .app, installs, launches and screenshots). `make ios` → `build/ios/Urushi.ipa`, an **unsigned** device build. Both come from `scripts/bundle-ios.sh`, and CI builds both on every pull request. Not released (needs a paid Apple Developer account, ADR 0040). | Yes, in the simulator (iOS 18.3, 2026-11-10): connected to a daemon, rendered the workspace and the first-run setup dialog. 2026-11-11: the on-screen keyboard opens for the connect dialog |
+| Android | remote client | `make android` → `build/android/urushi.apk` (NDK and SDK command-line tools, no Gradle; macOS or Linux). CI builds it on every pull request, and tagged releases publish it ([CI and releases](features/ci-and-releases.md)). | Yes, in the emulator (API 36, arm64, 2026-11-10), headless and with a window (host GPU): connected through the dialog, opened a thread, typed into a shell on the Mac, ^C from the key bar, split a pane. 2026-11-11: typed the host and shell commands on the on-screen keyboard |
 
 ## Installing on macOS for daily use
 - `make install` builds the release bundle and swaps it into `/Applications/Urushi.app` (override with `INSTALL_DIR`). The swap uses renames, so a running app and daemon are never disturbed.
@@ -24,6 +24,11 @@
 - **Layout and input:**
   - Windows narrower than 700 logical pixels use the one-column layout: the thread list, then a thread's terminals with a back button.
   - A key bar adds Esc, Tab, ^C, ^D and arrows.
+  - On-screen keyboard (`soft_keyboard.rs`, unit-tested):
+    - It opens when a text field has focus, such as the connect dialog's host field at launch.
+    - A terminal gets it only when tapped, so output has the whole screen until you type.
+    - It closes on the thread list, and in a dialog without a text field.
+    - If the system put it away (Back, the dismiss key), tapping the field or terminal again brings it back.
   - Touch (`touch.rs`, unit-tested):
     - Dragging a finger scrolls whatever is under it. In a terminal it works like the wheel: scrollback, or the running app's own scrolling.
     - A tap clicks.
@@ -31,7 +36,9 @@
     - A touch that starts on a split divider drags it at once.
     - Only one finger is followed. There's no fling momentum yet.
 - **Platform hooks:**
-  - Android: the shell passes `android-activity`'s content rect as `AppConfig::safe_area`, because winit doesn't report system-bar insets there.
+  - Android: the shell passes `android-activity`'s content rect as `AppConfig::safe_area`, because winit doesn't report system-bar insets there. The keyboard shrinks that rect (`adjustResize`). winit doesn't report the change, so the runner checks the rect after each batch of events and lays out again.
+  - Android: the shell opens and closes the keyboard itself (`AppConfig::soft_keyboard`, `keyboard.rs`), with JNI calls to the `InputMethodManager` on the UI thread (ADR 0042). winit's own request targets a view the IME ignores.
+  - iOS: winit's `becomeFirstResponder` opens the keyboard. The app asks only once the window is visible.
   - iOS: the app lays out inside winit's safe area.
   - Android: wgpu runs without debug labels, because some Vulkan drivers (including the emulator's) crash on them.
   - Android: the renderer tries Vulkan, then GL, with one backend per wgpu instance (`urushi_render::surface::backend_attempts`). With both in one instance, the emulator picked GL and its EGL surface failed on the already-connected window, which crashed the app at start.
@@ -69,9 +76,15 @@ $U repo add <some git repo> && $U thread new <repo-id> "Mobile test"
 
 - **iOS:** the simulator shares the Mac's network. Run `./scripts/bundle-ios.sh`, then
   `SIMCTL_CHILD_URUSHI_HOST=127.0.0.1:7431 xcrun simctl launch "iPhone 16 Pro" app.urushi.Urushi`.
+  The simulator hides the on-screen keyboard while the Mac's keyboard counts as connected.
+  To see it, use I/O → Keyboard → Connect Hardware Keyboard (off) in Simulator, or set
+  `defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false` before
+  booting a device.
 - **Android:** the emulator reaches the Mac's loopback at `10.0.2.2`. Run
-  `make android && adb install -r build/android/urushi.apk`, launch it, then type the host with
-  `adb shell input text 10.0.2.2:7431 && adb shell input keyevent 66`. Drive it with
+  `make android && adb install -r build/android/urushi.apk` and launch it. Type the host with
+  `adb shell input text 10.0.2.2:7431 && adb shell input keyevent 66`; that bypasses the
+  on-screen keyboard, so to test the keyboard itself tap its keys (`adb shell input tap`) and
+  check `adb shell dumpsys input_method | grep mInputShown`. Drive it with
   `adb shell input tap X Y`, take screenshots with `adb exec-out screencap -p`, and read the
   daemon's side with `$U screen <pane-id>`.
 - **Clean up:** `$U daemon stop --yes` with the same `URUSHI_HOME` still set. It stops only that
@@ -98,7 +111,8 @@ the real daemon may be serving on it.
 ## Known gaps
 - **Host isn't remembered:** the mobile apps open the connect dialog on every launch.
   There's no saved host yet. On iOS, `URUSHI_HOST` is the only way to skip it.
-- **Soft keyboard:** the Android soft keyboard doesn't open for `NativeActivity` (a winit limitation). Hardware keyboards and the key bar work. A small Java `showSoftInput` shim is the follow-up.
+- **Keyboard covers the screen on iOS:** winit doesn't report the keyboard's frame, so the keyboard hides the bottom of the layout, including a terminal's last lines and the key bar. The connect dialog's fields stay above it. Android re-lays out above the keyboard.
+- **No composing input on Android:** the keyboard types through key events (no `InputConnection`, ADR 0042), so autocorrect, swipe typing and composed (e.g. CJK) text don't apply.
 - **Edge-to-edge:** Android targets SDK 34 to avoid forced edge-to-edge until insets are handled everywhere.
 - **Signing:** releases are ad-hoc signed and not notarized ([CI and releases](features/ci-and-releases.md), ADR 0032), so macOS asks the user to allow the first launch. Windows and Linux have no release builds yet.
 - **Icons:** there's no Windows `.ico` embedded in the `.exe` yet (the window icon is set at runtime), and the iOS icons are loose files rather than an asset catalog.
