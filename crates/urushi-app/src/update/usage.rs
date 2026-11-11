@@ -15,6 +15,7 @@ impl AppState {
     pub(super) fn tick(&mut self, now_ms: i64, fx: &mut Vec<Effect>) {
         self.now_ms = now_ms;
         self.poll_usage(fx);
+        self.poll_lan_pairing(fx);
     }
 
     /// Asks for the focused pane's agent usage, unless a request is in flight or the

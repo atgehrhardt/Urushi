@@ -8,6 +8,7 @@ mod dialogs;
 mod error;
 mod jira;
 mod labels;
+mod lan;
 mod launcher;
 mod main_area;
 mod menu;

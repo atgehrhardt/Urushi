@@ -19,7 +19,7 @@
 ## Mobile clients
 - iOS and Android can't host agent shells, so they never start a local daemon.
 - **Connecting:**
-  - They open with **Connect to a host**. Enter the MagicDNS name or tailnet IP of a machine where `urushi tailnet on` (or Settings → Serve on my tailnet) is enabled.
+  - They open with **Connect to a host**. Enter the MagicDNS name or tailnet IP of a machine where `urushi tailnet on` (or Settings → Serve on my tailnet) is enabled. Or enter the LAN address of a machine with LAN access on, plus the pairing code it shows the first time (ADR 0040). Paired hosts are listed in the dialog afterwards. The keyring lives in the app's private storage.
   - On iOS, setting `URUSHI_HOST` skips the dialog (e.g. `SIMCTL_CHILD_URUSHI_HOST=host:port`).
 - **Layout and input:**
   - Windows narrower than 700 logical pixels use the one-column layout: the thread list, then a thread's terminals with a back button.

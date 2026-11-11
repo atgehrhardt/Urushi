@@ -6,7 +6,7 @@
 //! - git worktrees and branches ([`git`]),
 //! - finding installed agent CLIs ([`agents`]),
 //! - restore points, so panes come back as they were after a restart ([`restore`]),
-//! - remote access over Tailscale ([`tailscale`]),
+//! - remote access over Tailscale ([`tailscale`]) and from paired LAN devices ([`lan`]),
 //! - boards that follow Jira, and its sign-in ([`jira`], over [`http`]).
 //!
 //! It is a library as well as a binary, so tests (and future embedders) can run a daemon
@@ -19,6 +19,7 @@ mod exec;
 pub mod git;
 pub mod http;
 pub mod jira;
+pub mod lan;
 mod platform;
 pub mod restore;
 mod server;
@@ -41,6 +42,7 @@ use crate::agents::AgentLocator;
 use crate::git::{CliGit, Git};
 use crate::http::CurlHttp;
 use crate::jira::{CloudJira, JiraApi};
+use crate::lan::{LanInterfaces, SystemInterfaces};
 use crate::service::{Service, ServiceConfig, ServiceError};
 use crate::store::JsonFileStore;
 use crate::tailscale::{CliTailscale, TailscaleProvider};
@@ -70,6 +72,8 @@ pub struct DaemonOptions {
     pub pty: Arc<dyn Pty>,
     /// Tailscale access.
     pub tailscale: Arc<dyn TailscaleProvider>,
+    /// This machine's private addresses, for LAN access.
+    pub lan_interfaces: Arc<dyn LanInterfaces>,
     /// Finds installed agent CLIs.
     pub agents: Arc<AgentLocator>,
     /// Lists processes and reads agents' plan usage.
@@ -89,6 +93,7 @@ impl DaemonOptions {
             git: Arc::new(CliGit::default()),
             pty: Arc::new(NativePty),
             tailscale: Arc::new(CliTailscale::default()),
+            lan_interfaces: Arc::new(SystemInterfaces),
             agents: Arc::new(AgentLocator::system()),
             usage: Arc::new(SystemUsage),
             jira: Arc::new(CloudJira::new(Arc::new(CurlHttp::default()))),
@@ -130,6 +135,7 @@ pub async fn run(
         git: options.git,
         pty: options.pty,
         tailscale: options.tailscale,
+        lan_interfaces: options.lan_interfaces,
         agents: options.agents,
         usage: Arc::new(UsageMonitor::new(options.usage)),
         jira: options.jira,
@@ -138,6 +144,8 @@ pub async fn run(
 
     server::remote::reconcile(&service).await;
     let watchdog = server::remote::spawn_watchdog(Arc::downgrade(&service));
+    server::lan::reconcile(&service).await;
+    let lan_watchdog = server::lan::spawn_watchdog(Arc::downgrade(&service));
 
     let result = tokio::select! {
         result = platform::serve_local(service.clone(), &endpoint) => result.map_err(DaemonError::from),
@@ -147,6 +155,7 @@ pub async fn run(
 
     tracing::info!("shutting down");
     watchdog.abort();
+    lan_watchdog.abort();
     // Save what every pane is doing before its process ends, so the next daemon can
     // bring it back.
     let save = service.save_restore_points();

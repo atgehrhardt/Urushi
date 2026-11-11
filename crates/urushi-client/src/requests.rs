@@ -440,6 +440,43 @@ impl Client {
         expect!(self.request(body).await?, TailnetStatus, "SetTailnetServe")
     }
 
+    /// LAN access: listening addresses, paired devices and, on the host, the pairing
+    /// code (ADR 0040).
+    pub async fn lan_status(&self) -> Result<v1::LanStatus, ClientError> {
+        let body = Body::LanStatus(v1::LanStatusRequest {});
+        expect!(self.request(body).await?, LanStatus, "LanStatus")
+    }
+
+    /// Turns LAN access on or off. Only the host itself may.
+    pub async fn set_lan_enabled(&self, enabled: bool) -> Result<v1::LanStatus, ClientError> {
+        self.update_settings(v1::SettingsPatch {
+            lan_enabled: Some(enabled),
+            ..Default::default()
+        })
+        .await?;
+        self.lan_status().await
+    }
+
+    /// Shows a new one-time pairing code. Only the host itself may.
+    pub async fn start_lan_pairing(&self) -> Result<v1::LanStatus, ClientError> {
+        let body = Body::StartLanPairing(v1::StartLanPairingRequest {});
+        expect!(self.request(body).await?, LanStatus, "StartLanPairing")
+    }
+
+    /// Withdraws the pairing code. Only the host itself may.
+    pub async fn cancel_lan_pairing(&self) -> Result<v1::LanStatus, ClientError> {
+        let body = Body::CancelLanPairing(v1::CancelLanPairingRequest {});
+        expect!(self.request(body).await?, LanStatus, "CancelLanPairing")
+    }
+
+    /// Forgets a paired device and ends its connections. Only the host itself may.
+    pub async fn revoke_lan_device(&self, device_id: &str) -> Result<v1::LanStatus, ClientError> {
+        let body = Body::RevokeLanDevice(v1::RevokeLanDeviceRequest {
+            device_id: device_id.into(),
+        });
+        expect!(self.request(body).await?, LanStatus, "RevokeLanDevice")
+    }
+
     /// Acknowledges a screen update so the next one can be sent.
     pub async fn ack_screen(&self, pane_id: &str, seq: u64) -> Result<(), ClientError> {
         self.notify(notification::Body::AckScreen(v1::AckScreen {

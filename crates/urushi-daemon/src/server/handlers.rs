@@ -10,7 +10,7 @@ use urushi_proto::convert;
 use urushi_proto::v1::{self, ErrorCode, request::Body, response::Outcome};
 
 use super::connection::Connection;
-use super::remote;
+use super::{lan, remote};
 use crate::service::{DeletionPlan, ServiceError, ServiceResult, ThreadRequest, lock};
 
 /// An error outcome for a malformed request.
@@ -62,6 +62,18 @@ where
 fn size(cols: u32, rows: u32) -> TermSize {
     let clamp = |v: u32| u16::try_from(v.clamp(1, 1000)).unwrap_or(1000);
     TermSize::new(clamp(cols), clamp(rows))
+}
+
+/// Refuses `what` unless the client is on this machine, so a remote device can never
+/// widen remote access (ADR 0040).
+fn host_only(connection: &Connection, what: &str) -> ServiceResult<()> {
+    if connection.local {
+        Ok(())
+    } else {
+        Err(ServiceError::Forbidden(format!(
+            "{what} from the host itself"
+        )))
+    }
 }
 
 pub(super) const fn ok() -> Outcome {
@@ -277,10 +289,17 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         }
         Body::GetSettings(_) => Outcome::Settings(convert::settings_to_proto(&service.settings())),
         Body::UpdateSettings(r) => {
-            let before = service.settings().tailnet;
-            let settings = service.update_settings(&r.patch.unwrap_or_default())?;
-            if settings.tailnet != before {
+            let patch = r.patch.unwrap_or_default();
+            if patch.lan_enabled.is_some() || patch.lan_port.is_some() {
+                host_only(connection, "LAN access can only be changed")?;
+            }
+            let before = service.settings();
+            let settings = service.update_settings(&patch)?;
+            if settings.tailnet != before.tailnet {
                 remote::reconcile(service).await;
+            }
+            if settings.lan != before.lan {
+                lan::reconcile(service).await;
             }
             Outcome::Settings(convert::settings_to_proto(&settings))
         }
@@ -368,6 +387,22 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             let index = usize::try_from(r.index).unwrap_or(usize::MAX);
             service.move_thread(parse(&r.thread_id, "thread_id")?, index)?;
             ok()
+        }
+        Body::LanStatus(_) => Outcome::LanStatus(lan::status(service, connection.local)),
+        Body::StartLanPairing(_) => {
+            host_only(connection, "devices can only be paired")?;
+            lan::start_pairing(service)?;
+            Outcome::LanStatus(lan::status(service, true))
+        }
+        Body::CancelLanPairing(_) => {
+            host_only(connection, "pairing can only be cancelled")?;
+            lan::cancel_pairing(service);
+            Outcome::LanStatus(lan::status(service, true))
+        }
+        Body::RevokeLanDevice(r) => {
+            host_only(connection, "LAN devices can only be revoked")?;
+            lan::revoke(service, &r.device_id)?;
+            Outcome::LanStatus(lan::status(service, true))
         }
         Body::TailnetStatus(_) => Outcome::TailnetStatus(remote::status(service).await),
         Body::SetTailnetServe(r) => {

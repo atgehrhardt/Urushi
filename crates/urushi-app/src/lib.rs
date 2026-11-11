@@ -92,7 +92,8 @@ pub fn run_with(event_loop: EventLoop<UserEvent>, config: AppConfig) -> Result<(
     let mut text = TextSystem::new();
     tracing::debug!("fonts loaded");
     let cell = text.cell_metrics(theme.terminal_font_size);
-    let backend = backend::Backend::start(&config.target, proxy.clone())?;
+    let keyring_dir = config.data_dir.clone().or_else(urushi_client::home_dir);
+    let backend = backend::Backend::start(&config.target, proxy.clone(), keyring_dir)?;
     // Show the thread and tabs the window showed when it was last closed.
     let ui_state_path = ui_state::UiState::path(&config.target);
     let ui_state = ui_state_path

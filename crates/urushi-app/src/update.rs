@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use urushi_client::v1::{notification, request::Body, response::Outcome};
-use urushi_client::{ScreenState, WorkspaceMirror, v1};
+use urushi_client::{ScreenState, v1};
 use urushi_ui::TextField;
 
 use crate::config::ConnectTarget;
@@ -105,12 +105,11 @@ impl AppState {
                 ));
             }
             Msg::OpenSettings => self.open_settings(&mut fx),
-            Msg::OpenConnect => self.open(
-                Dialog::Connect {
-                    host: TextField::default(),
-                },
-                Some(Field::Host),
-            ),
+            Msg::OpenConnect => self.open(Dialog::connect(), Some(Field::Host)),
+            msg @ (Msg::ConnectTo(_) | Msg::LanPaired(_) | Msg::LanHosts(_)) => {
+                self.lan_connect_msg(msg, &mut fx);
+            }
+            Msg::Lan(msg) => self.lan_msg(msg, &mut fx),
             Msg::NewTab => self.open_launcher(&mut fx),
             Msg::Launch(choice) => self.launch(choice, &mut fx),
             Msg::CloseTab(tab_id) => fx.push(request(
@@ -273,6 +272,8 @@ impl AppState {
             Body::TailnetStatus(v1::TailnetStatusRequest {}),
             Followup::TailnetStatus,
         ));
+        self.lan = None;
+        self.request_lan_status(fx);
         self.jira = None;
         self.request_jira_account(fx);
     }
@@ -313,6 +314,7 @@ impl AppState {
             Body::TailnetStatus(v1::TailnetStatusRequest {}),
             Followup::TailnetStatus,
         ));
+        self.request_lan_status(fx);
         self.request_jira_account(fx);
     }
 
@@ -533,6 +535,9 @@ impl AppState {
             (Followup::TailnetStatus, Outcome::TailnetStatus(status)) => {
                 self.tailnet = Some(status);
             }
+            (followup @ (Followup::LanStatus | Followup::LanSwitched), outcome) => {
+                self.lan_answered(&followup, outcome, fx);
+            }
             (Followup::Usage(pane), Outcome::AgentUsage(usage)) => {
                 self.usage_answered(pane, Some(usage));
             }
@@ -649,18 +654,7 @@ impl AppState {
                 self.dialog = None;
                 self.focus = None;
             }
-            Some(Dialog::Connect { host }) if !host.text().trim().is_empty() => {
-                let target = ConnectTarget::Remote(host.text().trim().to_owned());
-                self.target = target.clone();
-                self.dialog = None;
-                self.focus = None;
-                self.connection = Connection::Connecting;
-                self.workspace = WorkspaceMirror::default();
-                self.deletions = crate::deletions::Deletions::default();
-                self.selected_thread = None;
-                self.reset_panes();
-                fx.push(Effect::Reconnect(target));
-            }
+            Some(Dialog::Connect { .. }) => self.submit_connect(fx),
             // Enter never confirms a deletion: the user must click the Delete button.
             _ => {}
         }
@@ -699,6 +693,7 @@ impl AppState {
             SettingToggle::TaskSend | SettingToggle::TaskMessageCustom => {
                 self.toggle_task_message(toggle, fx);
             }
+            SettingToggle::LanAccess => self.toggle_lan(fx),
             SettingToggle::ServeTailnet => {
                 let serving = self.tailnet.as_ref().is_some_and(|t| t.serving);
                 fx.push(request(
@@ -744,6 +739,7 @@ mod issue;
 mod issue_deletion;
 mod jira;
 mod keys;
+pub(crate) mod lan;
 mod launcher;
 mod organize;
 mod panes;

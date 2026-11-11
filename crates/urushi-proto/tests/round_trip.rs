@@ -244,6 +244,12 @@ fn all_request_kinds() {
                 filter: Some(v1::quick_filter_ref::Filter::Id("q".into())),
             }),
         }),
+        B::LanStatus(v1::LanStatusRequest {}),
+        B::StartLanPairing(v1::StartLanPairingRequest {}),
+        B::CancelLanPairing(v1::CancelLanPairingRequest {}),
+        B::RevokeLanDevice(v1::RevokeLanDeviceRequest {
+            device_id: "d".into(),
+        }),
     ];
     for (i, body) in bodies.into_iter().enumerate() {
         round_trip(&envelope::request(i as u64, body));
@@ -508,4 +514,30 @@ fn quick_terminal() -> v1::QuickTerminal {
             since_ms: 2,
         }],
     }
+}
+
+#[test]
+fn lan_status_round_trips() {
+    use v1::response::Outcome as O;
+    let outcome = O::LanStatus(v1::LanStatus {
+        enabled: true,
+        serving: true,
+        addresses: vec!["192.168.1.10".into()],
+        port: 7421,
+        error: String::new(),
+        devices: vec![v1::LanDevice {
+            id: "d".into(),
+            name: "phone".into(),
+            fingerprint: "3f2a-91c0-77de-0b14".into(),
+            paired_at_ms: 1,
+            last_seen_ms: 2,
+            connected: true,
+        }],
+        pairing: Some(v1::LanPairing {
+            code: "ABCDE-FGH12-34567-89JKM".into(),
+            expires_in_secs: 600,
+        }),
+        fingerprint: "0011-2233-4455-6677".into(),
+    });
+    round_trip(&envelope::response(1, outcome));
 }

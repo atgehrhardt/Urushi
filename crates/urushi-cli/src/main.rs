@@ -8,16 +8,16 @@ mod boards;
 mod commands;
 mod daemon;
 mod jira;
+mod lan;
 mod look;
 mod project_settings;
 mod render;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
-use urushi_client::{Client, Events, ensure_local_daemon, parse_tcp};
-use urushi_core::TailnetSettings;
+use urushi_client::{Client, Events, LanKeyring, ensure_local_daemon};
 
 #[derive(Parser)]
 #[command(
@@ -29,7 +29,8 @@ struct Cli {
     /// Local daemon home (defaults to `URUSHI_HOME`, then the app data dir).
     #[arg(long, global = true)]
     home: Option<PathBuf>,
-    /// Connect to a remote daemon over the tailnet instead, e.g. `box.tail1234.ts.net`.
+    /// Connect to a remote daemon instead: a tailnet name like `box.tail1234.ts.net`, or
+    /// the LAN address of a host paired with `urushi lan pair`.
     #[arg(long, global = true)]
     host: Option<String>,
     #[command(subcommand)]
@@ -97,6 +98,9 @@ enum Command {
     /// Serve the daemon on your tailnet.
     #[command(subcommand)]
     Tailnet(TailnetCmd),
+    /// Let paired devices on your LAN connect, or pair this CLI with a host.
+    #[command(subcommand)]
+    Lan(lan::LanCmd),
 }
 
 #[derive(Subcommand)]
@@ -348,6 +352,7 @@ enum SettingsCmd {
     /// Change one setting: delete-remote-branches, branch-prefix, default-shell,
     /// worktree-root, update-base-from-remote (fetch a new thread's base from its remote
     /// first), tailnet-port, allowed-logins (comma-separated), allow-tagged-nodes,
+    /// lan-port (LAN access is switched with `urushi lan on|off`),
     /// claude-skip-permissions, codex-skip-permissions, cursor-skip-permissions,
     /// task-agent (claude, codex, cursor or none), task-mode (normal or plan), task-send
     /// (off: the task's message is typed into the agent for you to send),
@@ -373,16 +378,19 @@ enum TailnetCmd {
     Off,
 }
 
-async fn connect(cli: &Cli) -> Result<(Client, Events)> {
-    match &cli.host {
+async fn connect(home: Option<&Path>, host: Option<&str>) -> Result<(Client, Events)> {
+    match host {
         Some(host) => {
-            let endpoint =
-                parse_tcp(host, TailnetSettings::DEFAULT_PORT).context("invalid --host")?;
-            Client::connect(&endpoint, "urushi-cli")
+            // A host paired with `lan pair` is reached over the encrypted LAN channel.
+            let keyring = match lan::keyring_dir(home) {
+                Ok(dir) => Some(LanKeyring::open(&dir)?),
+                Err(_) => None,
+            };
+            Client::connect_remote(host, keyring.as_ref(), "urushi-cli")
                 .await
-                .with_context(|| format!("connecting to {endpoint}"))
+                .with_context(|| format!("connecting to {host}"))
         }
-        None => ensure_local_daemon(cli.home.as_deref(), "urushi-cli")
+        None => ensure_local_daemon(home, "urushi-cli")
             .await
             .context("connecting to the local daemon"),
     }
@@ -395,6 +403,14 @@ async fn main() -> Result<()> {
     if let Command::Daemon(cmd) = cli.command {
         return daemon::run(cli.home.as_deref(), cli.host.as_deref(), cmd).await;
     }
-    let (client, _events) = connect(&cli).await?;
+    // Pairing and the keyring need no daemon (and must not start one).
+    if let Command::Lan(cmd) = cli.command {
+        if cmd.is_local() {
+            return lan::run_local(cli.home.as_deref(), cmd).await;
+        }
+        let (client, _events) = connect(cli.home.as_deref(), cli.host.as_deref()).await?;
+        return lan::run(&client, cmd).await;
+    }
+    let (client, _events) = connect(cli.home.as_deref(), cli.host.as_deref()).await?;
     commands::run(&client, cli.command).await
 }

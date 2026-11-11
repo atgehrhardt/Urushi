@@ -113,6 +113,7 @@ impl Runner {
                     self.dispatch(Msg::FolderPicked(picked));
                 }
                 Effect::Reconnect(target) => self.backend.connect(target),
+                Effect::PairLan { host, code } => self.backend.pair_lan(host, code),
                 Effect::PickFiles { task } => {
                     let paths = platform::pick_files();
                     self.read_files(&task, &paths);

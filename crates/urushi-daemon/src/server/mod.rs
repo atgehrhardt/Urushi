@@ -1,4 +1,4 @@
-//! The protocol server: local IPC and tailnet listeners feed connections into
+//! The protocol server: local IPC, tailnet and LAN listeners feed connections into
 //! [`connection::serve`], which translates frames into calls on the service.
 
 pub(crate) mod attach;
@@ -7,6 +7,7 @@ pub(crate) mod connection;
 pub(crate) mod handlers;
 mod jira;
 mod jira_issue;
+pub(crate) mod lan;
 mod organize;
 mod quick_filters;
 pub(crate) mod remote;

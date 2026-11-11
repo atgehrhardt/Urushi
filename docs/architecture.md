@@ -24,6 +24,7 @@ The multiplexer is **invisible infrastructure**. It exists so terminal sessions 
    urushi-client  protocol client, state mirror, transports
         │  versioned protobuf frames (docs/protocol.md)
         │  Unix socket (macOS/Linux) | named pipe (Windows) | TCP on tailnet IP (remote)
+        │  | Noise-encrypted TCP on a private LAN address (paired devices, ADR 0040)
  urushid (Rust; macOS/Linux/Windows) ← single source of truth
    workspace model   Repo → Thread → Tab → Layout → Pane; Quick terminal → Layout → Pane; Project groups Threads; Boards of Tasks
    mux               per-pane Session actor: PTY ⇄ VT emulator → damage → diffs
@@ -38,6 +39,7 @@ The multiplexer is **invisible infrastructure**. It exists so terminal sessions 
                      linked to threads from Jira's development info (ADR 0020, 0022, 0023, 0036)
    http              HTTPS through the system's curl, request on stdin (ADR 0021)
    remote            Tailscale provider (status/whois) + tailnet listener
+   lan               private-address listener, pairing codes, paired-device keys (ADR 0040)
 ```
 
 ## Crates and dependency direction
@@ -109,12 +111,13 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
 
   If a step fails partway, the thread is marked `DeletionFailed`, which can be retried.
 
-## Remote access (Tailscale)
+## Remote access (Tailscale, LAN)
 
 - The daemon uses the **installed** Tailscale client (through its CLI, behind the `TailscaleProvider` trait).
 - With "Serve on tailnet" enabled, it binds only on its tailnet IPs and re-binds when they change.
 - Every connection is authorized with `whois` against an allowlist. The default allows only the host owner's login, and tagged nodes are denied.
 - WireGuard already encrypts the traffic.
+- **LAN access** (ADR 0040, off by default) is the other way in. The daemon binds only this machine's private addresses (`lan::addresses`, re-checked every 30 s by `server::lan`) and never touches a router or firewall. Connections run the protocol inside a Noise channel (`urushi_proto::lan`). A device must first pair with a one-time code the host shows; after that, only paired keys are answered. Changing LAN access, pairing and revoking are allowed only over the local socket (`handlers::host_only`). Revoking a device closes its connections, through `Peer.close`.
 - Local IPC is authorized by OS user:
   - On Unix, the socket is mode 0600 inside a 0700 home, and the peer's user id is checked.
   - The socket lives at `<home>/urushid.sock`. Homes too long for a socket path use `~/.urushi/sockets/<hash>.sock` instead.

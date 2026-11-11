@@ -28,6 +28,8 @@ pub struct Settings {
     pub update_base_from_remote: bool,
     /// Remote access over Tailscale.
     pub tailnet: TailnetSettings,
+    /// Remote access from paired devices on the LAN (ADR 0040).
+    pub lan: LanSettings,
     /// How agent CLIs (Claude, Codex, Cursor) are started.
     pub agents: AgentSettings,
     /// How the app looks: its colors and logo.
@@ -43,6 +45,7 @@ impl Default for Settings {
             worktree_root: None,
             update_base_from_remote: true,
             tailnet: TailnetSettings::default(),
+            lan: LanSettings::default(),
             agents: AgentSettings::default(),
             appearance: Appearance::default(),
         }
@@ -75,6 +78,34 @@ impl Default for TailnetSettings {
             port: Self::DEFAULT_PORT,
             allowed_logins: Vec::new(),
             allow_tagged_nodes: false,
+        }
+    }
+}
+
+/// Settings for accepting connections from paired devices on the LAN (ADR 0040).
+///
+/// Off by default. When on, the daemon listens only on this machine's private
+/// addresses, and only devices paired with a one-time code can connect, over an
+/// encrypted channel. Nothing is ever opened on a router or firewall.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LanSettings {
+    /// Whether to listen on this machine's private LAN addresses. Default: `false`.
+    pub enabled: bool,
+    /// TCP port to listen on.
+    pub port: u16,
+}
+
+impl LanSettings {
+    /// Default TCP port, one above the tailnet's so the two never clash.
+    pub const DEFAULT_PORT: u16 = 7421;
+}
+
+impl Default for LanSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: Self::DEFAULT_PORT,
         }
     }
 }
@@ -131,6 +162,8 @@ mod tests {
         assert!(s.delete_remote_branches);
         assert_eq!(s.branch_prefix.as_str(), "urushi/");
         assert!(!s.tailnet.serve);
+        assert!(!s.lan.enabled, "LAN access is off by default");
+        assert_eq!(s.lan.port, LanSettings::DEFAULT_PORT);
         assert!(s.update_base_from_remote);
     }
 

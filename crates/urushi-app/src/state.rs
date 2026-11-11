@@ -143,6 +143,8 @@ pub enum Field {
     DefaultShell,
     /// Connect: host.
     Host,
+    /// Connect: the one-time code from a LAN host, to pair first (ADR 0040).
+    PairingCode,
     /// Task editor: title.
     TaskTitle,
     /// Task editor: notes.
@@ -211,6 +213,8 @@ pub enum SettingToggle {
     UpdateBaseFromRemote,
     /// Serve the daemon on the tailnet.
     ServeTailnet,
+    /// Let paired devices connect over the LAN (ADR 0040).
+    LanAccess,
     /// Start an agent with its skip-permissions flag.
     SkipPermissions(urushi_core::Agent),
     /// Send a task's message to its agent, or only draft it there (protocol 1.19).
@@ -311,10 +315,16 @@ pub enum Dialog {
         /// The restart is under way.
         restarting: bool,
     },
-    /// Choose a daemon to connect to.
+    /// Choose a daemon to connect to, and pair with a LAN host first if a code is given.
     Connect {
         /// Host field.
         host: TextField,
+        /// Pairing code field (LAN hosts, first time only).
+        code: TextField,
+        /// Pairing is under way.
+        busy: bool,
+        /// Why pairing failed.
+        error: Option<String>,
     },
     /// Create or edit a task on a board.
     Task {
@@ -507,6 +517,10 @@ pub struct AppState {
     pub jira: Option<v1::JiraAccount>,
     /// Tailnet status, once loaded.
     pub tailnet: Option<v1::TailnetStatus>,
+    /// LAN access status, once loaded (only from the daemon on this machine).
+    pub lan: Option<v1::LanStatus>,
+    /// LAN hosts this device paired with, for the connect dialog.
+    pub lan_hosts: Vec<crate::msg::PairedHost>,
     /// Pane focused locally (tab id → pane id) before the daemon confirms it. Dropped
     /// once the daemon agrees, or when the pane is gone.
     pub focused_override: HashMap<String, String>,
@@ -567,9 +581,7 @@ pub struct AppState {
 impl AppState {
     /// Initial state.
     pub fn new(target: ConnectTarget, cell: CellMetrics) -> Self {
-        let dialog = (target == ConnectTarget::Ask).then(|| Dialog::Connect {
-            host: TextField::default(),
-        });
+        let dialog = (target == ConnectTarget::Ask).then(Dialog::connect);
         Self {
             focus: dialog.as_ref().map(|_| Field::Host),
             target,
@@ -590,6 +602,8 @@ impl AppState {
             settings: None,
             jira: None,
             tailnet: None,
+            lan: None,
+            lan_hosts: Vec::new(),
             focused_override: HashMap::new(),
             compact: false,
             attention: crate::attention::AttentionTracker::default(),
@@ -748,5 +762,17 @@ impl AppState {
     /// terminals: it was asked for, or there is nothing else to show.
     pub fn shows_thread_list_page(&self) -> bool {
         self.sidebar_open || self.current_tab().is_none() && self.selected_thread.is_none()
+    }
+}
+
+impl Dialog {
+    /// An empty connect dialog.
+    pub(crate) fn connect() -> Self {
+        Self::Connect {
+            host: TextField::default(),
+            code: TextField::default(),
+            busy: false,
+            error: None,
+        }
     }
 }

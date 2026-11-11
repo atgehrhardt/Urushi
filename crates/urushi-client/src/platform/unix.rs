@@ -56,3 +56,22 @@ pub(crate) fn is_running(pid: u32) -> bool {
     let state = state.trim();
     !state.is_empty() && !state.starts_with('Z')
 }
+
+/// Replaces the file at `path` with `bytes`, readable and writable only by this user
+/// (0600): a temp file made with that mode, then renamed over it.
+pub(crate) fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let tmp = path.with_extension("tmp");
+    let _ = std::fs::remove_file(&tmp);
+    {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)
+}

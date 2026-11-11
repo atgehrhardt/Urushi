@@ -3,6 +3,7 @@
 - **Status:** Shipped in the daemon and CLI. The GUI status pill and host picker are pending.
 - **Owners (crates):** `urushi-daemon` (`tailscale.rs`, `server/remote.rs`), `urushi-client`, `urushi-cli`
 - **Related ADRs:** [0005](../adr/0005-tailscale-remote.md)
+- **See also:** [LAN access](lan-access.md), for reaching the daemon without Tailscale.
 
 ## What it does
 With `tailnet.serve` on (`urushi tailnet on`, or the app's toggle), the daemon is reachable from your other devices at `<machine>.<tailnet>.ts.net:7420`. That includes the mobile apps and `urushi --host`. Only you can connect by default.
@@ -28,5 +29,5 @@ With `tailnet.serve` on (`urushi tailnet on`, or the app's toggle), the daemon i
 - `tests/e2e.rs`: serving admits the owner over TCP and refuses another user (using a `StaticTailscale` fake).
 
 ## Limitations and follow-ups
-- Requires the Tailscale app or daemon on both ends. An embedded `tsnet` sidecar is a possible future option (see the ADR).
+- Requires the Tailscale app or daemon on both ends. Without it, use [LAN access](lan-access.md). An embedded `tsnet` sidecar is a possible future option (see the ADR).
 - The CLI-based provider spawns a process per check. Tailscale's local API would be cheaper.

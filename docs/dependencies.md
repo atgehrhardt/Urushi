@@ -36,6 +36,9 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | `alacritty_terminal` | Apache-2.0 | mux | VT emulation. Behind the `Emulator` trait (ADR 0001). |
 | `serde_json` | MIT/Apache-2.0 | daemon | Store document (ADR 0008) and the Tailscale CLI's JSON. |
 | `sysinfo` | MIT | daemon | Exact arguments and working directories of pane processes, for restore points (ADR 0013). Reading them ourselves needs `unsafe` FFI on macOS (`KERN_PROCARGS2`) and Windows; `ps` loses argument boundaries. Only the `system` feature; its dependencies (`libc`, `objc2-*`, `windows`, `ntapi`, `memchr`) were already in the tree. |
+| `snow` | Apache-2.0/MIT | proto (`lan` feature), so daemon and client | The Noise protocol for LAN connections (ADR 0040). It is small, pure Rust and builds for iOS and Android, unlike a TLS stack with `ring` or `aws-lc`. Writing a Noise handshake ourselves would be cryptography we must not hand-roll. Default features are off, and only ChaCha20-Poly1305, BLAKE2 and Curve25519 are on (`chacha20poly1305`, `blake2`, `curve25519-dalek`, BSD-3; all RustCrypto/dalek, MIT/Apache otherwise). `std` is off because it pulls in `ring`. |
+| `getrandom` | MIT/Apache-2.0 | proto (`lan`), daemon | The OS's random numbers, for pairing codes. Already in the tree through `uuid` and `snow`. |
+| `if-addrs` | MIT/BSD-3-Clause | daemon | Lists this machine's interface addresses for LAN access (ADR 0040). The alternative is `getifaddrs` and `GetAdaptersAddresses` through `unsafe` FFI on each OS. Its dependencies (`libc`, `windows-sys`) were already in the tree. |
 | `tempfile` *(dev)* | MIT/Apache-2.0 | tests | Temp dirs for git and daemon tests. |
 | `winit` | Apache-2.0 | app | Windowing and input on all five platforms. |
 | `wgpu` | MIT/Apache-2.0 | render | One GPU API over Metal, Vulkan, DX12 and GLES. |

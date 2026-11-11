@@ -33,7 +33,8 @@ macro_rules! focused_field {
             (Some(Dialog::Settings { look, .. }), Field::LookColor(i)) => {
                 ($($r)+ look.hex).into_iter().nth(usize::from(i))
             }
-            (Some(Dialog::Connect { host }), Field::Host) => Some(host),
+            (Some(Dialog::Connect { host, .. }), Field::Host) => Some(host),
+            (Some(Dialog::Connect { code, .. }), Field::PairingCode) => Some(code),
             (Some(Dialog::Task { notes, .. }), Field::TaskNotes) => Some(notes),
             (Some(Dialog::Task { subtasks, .. }), Field::NewSubtask) => Some($($r)+ subtasks.new),
             (Some(Dialog::Task { labels, .. }), Field::TaskTag) => Some($($r)+ labels.input),
@@ -109,7 +110,7 @@ impl AppState {
                 }
                 fields
             }
-            Some(Dialog::Connect { .. }) => vec![Field::Host],
+            Some(Dialog::Connect { .. }) => vec![Field::Host, Field::PairingCode],
             Some(Dialog::Prompt { .. }) => vec![Field::Prompt],
             Some(Dialog::NestTask { .. }) => vec![Field::NestQuery],
             Some(Dialog::ConnectJira { .. }) => {

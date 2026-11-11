@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.25 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.26 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -10,6 +10,13 @@
 | Local, macOS/Linux | Unix domain socket in the runtime dir, mode 0600 | Peer's OS user id must match the daemon's user |
 | Local, Windows | Named pipe | DACL limited to the current user |
 | Remote | TCP bound **only** to Tailscale IPs | Tailscale `whois` → allowlist of tailnet logins |
+| LAN (off by default) | TCP bound **only** to this machine's private addresses, frames inside a Noise channel | Only keys of devices paired with a one-time code (ADR 0040) |
+
+### The LAN channel (ADR 0040)
+A LAN connection starts with a 12-byte plaintext prelude: `URUSHI-LAN`, version `1`, then the mode (`0` connect, `1` pair). Noise handshake messages follow, each with a `u16` big-endian length; the prelude is the handshake's prologue.
+- **Pair:** `Noise_XXpsk3_25519_ChaChaPoly_BLAKE2s`. The PSK is `urushi-lan-pair1` followed by the code's 100 bits as a big-endian `u128`. The device's third message carries its name (≤ 64 bytes). The host then sends one transport message, `0x01` followed by its name, and closes. A host with no active code, or a wrong code, hangs up.
+- **Connect:** `Noise_IK_25519_ChaChaPoly_BLAKE2s`, with the host key pinned when pairing. A host that doesn't know the device's key hangs up without answering.
+- Afterwards every frame of this document travels inside Noise transport messages, each with a `u16` length and at most 65 519 bytes of plaintext. Code: `urushi_proto::lan`.
 
 The protocol never assumes client and daemon are on the same machine. No file paths are exchanged for content, and there is no shared memory. (Attachments travel as bytes, ADR 0016.)
 
@@ -37,6 +44,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 26 | LAN access (ADR 0040). `Settings.lan` (`LanSettings{enabled, port}`; unset from older daemons = off, port 0 = 7421). `SettingsPatch.{lan_enabled, lan_port}`. `LanStatus` → `LanStatus{enabled, serving, addresses, port, error, devices[LanDevice{id, name, fingerprint, paired_at_ms, last_seen_ms, connected}], pairing (LanPairing{code, expires_in_secs}), fingerprint}`. `StartLanPairing`, `CancelLanPairing` and `RevokeLanDevice{device_id}` → `LanStatus`. Changing LAN access (the `lan_*` patch fields, pairing, revoking) from anything but the host's local socket is `PERMISSION_DENIED`. Only local clients see the pairing code. Pairing with LAN access off is `INVALID_ARGUMENT`; an unknown device is `NOT_FOUND`. `write_envelope` now flushes each frame, which the encrypted stream needs. Clients check `Welcome.protocol_minor ≥ 26`. |
 | 25 | Running agents (ADR 0039): `Tab.running` and `QuickTerminal.running` (`PaneRunning{pane_id, since_ms}`) list panes whose agent is working, as its hooks say. Like attention, running panes aren't stored: changes arrive as `WorkspaceChanged` with the same `revision`. Esc or Ctrl+C sent as `Input` to a pane ends its running. Older daemons send none, so nothing shows as running. |
 | 24 | `MoveThread{thread_id, index}` reorders threads (ADR 0038): the index is into `Workspace.threads`, counted without the moved thread and clamped to the end; an unknown thread is `NOT_FOUND`. A thread's project, pin and status don't change. `Workspace.threads` is in display order: the sidebar shows each group (project, pin, status) in it. Clients check `Welcome.protocol_minor ≥ 24` before sending it. |
 | 23 | Quick filters that can be made, changed and removed (ADR 0037): `CreateQuickFilter{board_id, name, rule}` → `QuickFilterSaved{filter, kept_here}`, `UpdateQuickFilter{board_id, filter, name, rule}` (an empty name and an unset rule keep them) and `DeleteQuickFilter{board_id, filter}` → `Empty`, where `filter` is a `QuickFilterRef` (`jira_id` for a Jira board's own, `id` for one the board keeps) and `rule` a `QuickFilterRule{search, kinds, tags, jql}`. On a Jira board the rule is JQL, checked with a search (unreadable JQL is `INVALID_ARGUMENT`) and written to Jira; if Jira won't take a new one, the daemon keeps it in `Board.quick_filters` and `kept_here` says why. Elsewhere the rule is a search, kinds and tags, kept in `Board.quick_filters` and evaluated by clients. A rule that filters by nothing or doesn't suit the board is `INVALID_ARGUMENT`; an unknown filter `NOT_FOUND`. Also `JiraQuickFilter.jql` and `QueryJiraFilter.kept_quick_filter_ids` (the board's own JQL filters). Clients check `Welcome.protocol_minor ≥ 23`. |
@@ -75,7 +83,7 @@ v1 field names are frozen (`buf breaking` uses `WIRE_JSON`). On the wire, **`Pro
   - Events: `PaneExited`, `PaneBell`.
 - **Task boards:** `CreateBoard`, `RenameBoard`, `MoveBoard` (since 1.17: a board to `index` among the others, counted without it and clamped; `Workspace.boards` is in that order), `DeleteBoard`, `CreateColumn`, `UpdateColumn`, `MoveColumn`, `DeleteColumn`, `CreateTask` (since 1.14 with `subtask_details`: `NewSubtask`s carrying notes, color, tags, kind and Jira fields), `UpdateTask`, `MoveTask`, `NestTask`, `DeleteTask`, `CreateSubtask` (since 1.14 with the same details; older daemons read only the title), `UpdateSubtask`, `DeleteSubtask`, `AddAttachment`, `GetAttachment`, `DeleteAttachment`, and since 1.21 `CreateQuickFilter`, `UpdateQuickFilter`, `DeleteQuickFilter` (a board's quick filters; on a Jira board written to Jira). Boards arrive with the workspace (`Workspace.boards`), so subscribers see changes through `WorkspaceChanged`.
 - **Settings:** `GetSettings`, `UpdateSettings` (global and per repo).
-- **Remote:** `TailnetStatus`, `SetTailnetServe`.
+- **Remote:** `TailnetStatus`, `SetTailnetServe`; since 1.26 `LanStatus`, `StartLanPairing`, `CancelLanPairing`, `RevokeLanDevice`.
 
 ## Screen encoding
 

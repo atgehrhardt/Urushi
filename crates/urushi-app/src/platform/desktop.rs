@@ -132,6 +132,17 @@ mod notifications {
     const BUNDLE_ID: &str = "app.urushi.Urushi";
 }
 
+/// This computer's name, which a LAN host lists this device under when it pairs.
+pub(crate) fn device_name() -> String {
+    std::process::Command::new("hostname")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "Urushi desktop".into())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

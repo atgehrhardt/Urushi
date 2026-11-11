@@ -399,6 +399,7 @@ mod flows;
 mod jira;
 mod jira_deletion;
 mod labels;
+mod lan;
 mod organize;
 mod panes;
 mod pointer;

@@ -6,11 +6,14 @@
 //!   `ScreenUpdate`s.
 //! - [`WorkspaceMirror`]: the workspace as last reported, with domain-typed lookups.
 //! - [`ensure_local_daemon`]: connects to the local daemon, starting it if needed.
+//! - [`LanKeyring`], [`pair_lan`] and [`Client::connect_remote`]: paired, encrypted
+//!   connections over the LAN (ADR 0040).
 
 mod boards;
 mod connection;
 mod jira;
 mod jira_issue;
+mod lan;
 mod launcher;
 mod platform;
 mod projects;
@@ -23,6 +26,7 @@ mod thread_links;
 mod workspace;
 
 pub use connection::{Client, Events};
+pub use lan::{LanHost, LanKeyring, pair_lan};
 pub use launcher::{
     DAEMON_BIN_ENV, StopMethod, StoppedDaemon, ensure_local_daemon, local_daemon_endpoint,
     restart_local_daemon, stop_local_daemon,
@@ -32,7 +36,7 @@ pub use quick_filters::{QUICK_FILTERS_SINCE_MINOR, jira_filter, kept_filter};
 pub use screen::{Cell, ScreenState};
 pub use tasks::{FoundTask, TaskRef};
 pub use thread_links::{IssueLink, PrLink, ThreadLinks};
-pub use urushi_proto::endpoint::{Endpoint, parse_tcp};
+pub use urushi_proto::endpoint::{Endpoint, home_dir, parse_tcp};
 pub use urushi_proto::v1;
 pub use workspace::WorkspaceMirror;
 
@@ -69,6 +73,12 @@ pub enum ClientError {
     /// Framing or I/O failure.
     #[error(transparent)]
     Frame(#[from] urushi_proto::codec::FrameError),
+    /// A LAN pairing or handshake failed.
+    #[error(transparent)]
+    Lan(#[from] urushi_proto::lan::LanError),
+    /// The LAN keyring couldn't be read or written.
+    #[error("LAN keyring: {0}")]
+    Keyring(String),
 }
 
 impl ClientError {

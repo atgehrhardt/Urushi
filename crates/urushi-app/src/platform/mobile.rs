@@ -59,3 +59,13 @@ pub(crate) fn open_url(_url: &str) -> std::io::Result<()> {
 /// Mobile apps don't post notifications yet (they need the OS's push setup); threads
 /// still show their attention dots.
 pub(crate) fn notify(_title: &str, _body: &str) {}
+
+/// What a LAN host lists this device as when it pairs: mobile apps can't ask the
+/// device's own name.
+pub(crate) fn device_name() -> String {
+    match std::env::consts::OS {
+        "ios" => "iPhone or iPad".into(),
+        "android" => "Android device".into(),
+        os => format!("Urushi on {os}"),
+    }
+}

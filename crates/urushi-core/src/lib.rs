@@ -51,7 +51,9 @@ pub use pane_group::PaneGroup;
 pub use project::{BaseCheckout, Project, ProjectBase, ProjectSettings, base_checkout};
 pub use quick_terminal::QuickTerminal;
 pub use repo::Repo;
-pub use settings::{EffectiveSettings, RepoSettingsOverrides, Settings, TailnetSettings};
+pub use settings::{
+    EffectiveSettings, LanSettings, RepoSettingsOverrides, Settings, TailnetSettings,
+};
 pub use status::{Status, StatusError};
 pub use tab::Tab;
 pub use thread::{NewThread, Thread, ThreadKind, ThreadState, ThreadStateError};

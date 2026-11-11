@@ -69,6 +69,7 @@ pub(crate) async fn serve_local(
             Peer {
                 description: "local".into(),
                 local: true,
+                close: None,
             },
         ));
     }

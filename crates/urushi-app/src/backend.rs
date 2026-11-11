@@ -5,19 +5,18 @@
 //! thread as [`Msg`]s through the winit event-loop proxy. The UI thread never blocks on
 //! the network.
 
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
-use urushi_client::{
-    Client, Endpoint, StopMethod, ensure_local_daemon, parse_tcp, stop_local_daemon,
-};
+use urushi_client::{Client, LanKeyring, StopMethod, ensure_local_daemon, stop_local_daemon};
 use winit::event_loop::EventLoopProxy;
 
 use crate::UserEvent;
 use crate::config::ConnectTarget;
-use crate::msg::{Effect, Msg};
+use crate::msg::{Effect, Msg, PairedHost};
 
 const RETRY: Duration = Duration::from_secs(2);
 /// How often [`Msg::Tick`] is sent.
@@ -30,13 +29,17 @@ pub(crate) struct Backend {
     proxy: EventLoopProxy<UserEvent>,
     client: Arc<Mutex<Option<Client>>>,
     connection: Option<JoinHandle<()>>,
+    /// Where this device's LAN keyring lives (`None`: nowhere to keep one).
+    keyring_dir: Option<PathBuf>,
 }
 
 impl Backend {
-    /// Starts the runtime and connects to `target` (unless it is `Ask`).
+    /// Starts the runtime and connects to `target` (unless it is `Ask`). LAN hosts are
+    /// paired in a keyring in `keyring_dir`.
     pub(crate) fn start(
         target: &ConnectTarget,
         proxy: EventLoopProxy<UserEvent>,
+        keyring_dir: Option<PathBuf>,
     ) -> std::io::Result<Self> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -49,7 +52,9 @@ impl Backend {
             proxy,
             client: Arc::new(Mutex::new(None)),
             connection: None,
+            keyring_dir,
         };
+        backend.send_lan_hosts();
         backend.connect(target.clone());
         Ok(backend)
     }
@@ -64,7 +69,50 @@ impl Backend {
             return;
         }
         let (proxy, slot) = (self.proxy.clone(), self.client.clone());
-        self.connection = Some(self.runtime.spawn(connection_loop(target, proxy, slot)));
+        let keyring_dir = self.keyring_dir.clone();
+        self.connection =
+            Some(
+                self.runtime
+                    .spawn(connection_loop(target, keyring_dir, proxy, slot)),
+            );
+    }
+
+    /// Pairs with the LAN host at `host` using `code`, off the UI thread, then sends
+    /// [`Msg::LanPaired`] and the new list of paired hosts.
+    pub(crate) fn pair_lan(&self, host: String, code: String) {
+        let proxy = self.proxy.clone();
+        let dir = self.keyring_dir.clone();
+        self.runtime.spawn(async move {
+            let result = async {
+                let dir = dir.ok_or("this device has nowhere to keep a LAN keyring")?;
+                let mut keyring = LanKeyring::open(&dir).map_err(|e| e.to_string())?;
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+                let name = crate::platform::device_name();
+                let paired = urushi_client::pair_lan(&host, &code, &name, &mut keyring, now)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                send(&proxy, Msg::LanHosts(paired_hosts(&keyring)));
+                Ok::<_, String>(paired.address())
+            }
+            .await;
+            send(&proxy, Msg::LanPaired(result));
+        });
+    }
+
+    /// Sends [`Msg::LanHosts`] with the hosts in the keyring.
+    fn send_lan_hosts(&self) {
+        let Some(dir) = self.keyring_dir.clone() else {
+            return;
+        };
+        let proxy = self.proxy.clone();
+        self.runtime.spawn(async move {
+            match LanKeyring::open(&dir) {
+                Ok(keyring) => send(&proxy, Msg::LanHosts(paired_hosts(&keyring))),
+                Err(e) => tracing::warn!(error = %e, "cannot read the LAN keyring"),
+            }
+        });
     }
 
     /// Drops the connection and stops the local daemon in `home`, then sends
@@ -143,15 +191,33 @@ async fn ticks(proxy: EventLoopProxy<UserEvent>) {
     }
 }
 
-async fn connect(target: &ConnectTarget) -> Result<(Client, urushi_client::Events), String> {
+fn paired_hosts(keyring: &LanKeyring) -> Vec<PairedHost> {
+    keyring
+        .hosts()
+        .iter()
+        .map(|h| PairedHost {
+            address: h.address(),
+            host_name: h.host_name.clone(),
+        })
+        .collect()
+}
+
+async fn connect(
+    target: &ConnectTarget,
+    keyring_dir: Option<&Path>,
+) -> Result<(Client, urushi_client::Events), String> {
     match target {
         ConnectTarget::Local(home) => ensure_local_daemon(home.as_deref(), CLIENT_NAME)
             .await
             .map_err(|e| e.to_string()),
         ConnectTarget::Remote(host) => {
-            let endpoint: Endpoint = parse_tcp(host, urushi_core::TailnetSettings::DEFAULT_PORT)
-                .ok_or_else(|| format!("invalid host {host:?}"))?;
-            Client::connect(&endpoint, CLIENT_NAME)
+            // Paired LAN hosts go through the encrypted channel; others are tailnet.
+            let keyring = match keyring_dir.map(LanKeyring::open) {
+                Some(Ok(keyring)) => Some(keyring),
+                Some(Err(e)) => return Err(e.to_string()),
+                None => None,
+            };
+            Client::connect_remote(host, keyring.as_ref(), CLIENT_NAME)
                 .await
                 .map_err(|e| e.to_string())
         }
@@ -161,11 +227,12 @@ async fn connect(target: &ConnectTarget) -> Result<(Client, urushi_client::Event
 
 async fn connection_loop(
     target: ConnectTarget,
+    keyring_dir: Option<PathBuf>,
     proxy: EventLoopProxy<UserEvent>,
     slot: Arc<Mutex<Option<Client>>>,
 ) {
     loop {
-        match connect(&target).await {
+        match connect(&target, keyring_dir.as_deref()).await {
             Ok((client, mut events)) => match client.list_workspace(true).await {
                 Ok(workspace) => {
                     *slot.lock().unwrap_or_else(PoisonError::into_inner) = Some(client.clone());

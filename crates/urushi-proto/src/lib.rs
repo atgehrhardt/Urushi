@@ -6,6 +6,8 @@
 //! - [`convert`]: lossless conversions between wire types and `urushi-core` domain types.
 //! - [`envelope`]: small constructors for building envelopes without boilerplate.
 //! - [`endpoint`]: where daemons listen (local socket or pipe, or tailnet TCP).
+//! - [`lan`] (feature `lan`): the encrypted, paired channel LAN connections use
+//!   (ADR 0040).
 //!
 //! The evolution rules are in `docs/protocol.md` and the `change-protocol` skill.
 
@@ -13,6 +15,8 @@ pub mod codec;
 pub mod convert;
 pub mod endpoint;
 pub mod envelope;
+#[cfg(feature = "lan")]
+pub mod lan;
 mod platform;
 
 /// Generated protobuf types for protocol v1.
@@ -30,4 +34,4 @@ pub mod v1 {
 /// Major protocol version. Clients with a different major version are rejected.
 pub const PROTOCOL_MAJOR: u32 = 1;
 /// Minor protocol version. Increases with each additive change that clients may detect.
-pub const PROTOCOL_MINOR: u32 = 25;
+pub const PROTOCOL_MINOR: u32 = 26;
