@@ -391,6 +391,7 @@ mod attachments;
 mod attention;
 mod board;
 mod board_order;
+mod board_phone;
 mod daemon;
 mod deletion;
 mod errors;

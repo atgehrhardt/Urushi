@@ -177,6 +177,11 @@ pub enum Msg {
     BoardBackground,
     /// Show a board.
     SelectBoard(String),
+    /// On a phone, which shows one column at a time: show this column (its tab).
+    ShowColumn(String),
+    /// A finger swiped sideways by `dx` logical pixels (negative: to the left). On a
+    /// phone's board it shows the next column (left) or the previous one (right).
+    Swipe(f32),
     /// Open the editor for a new task in a column.
     NewTask {
         /// Board id.

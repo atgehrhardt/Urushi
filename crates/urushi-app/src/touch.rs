@@ -6,7 +6,9 @@
 //! is a tap: a left click where it touched down. Selecting text and dragging things
 //! (reordering threads, moving a text caret) need the mouse's press-and-drag, so a
 //! finger held still for [`LONG_PRESS`] before it moves acts as the left button. A touch
-//! that starts on a split divider grabs it at once, so splits resize with one drag.
+//! that starts on a split divider grabs it at once, so splits resize with one drag. A
+//! finger that sets off sideways is a swipe: it scrolls nothing, and lifting it after
+//! [`SWIPE`] reports which way it went (a phone's board changes column, ADR 0046).
 //!
 //! Only one finger is followed at a time; others are ignored until it lifts. Time comes
 //! in as a value, so the gestures are unit-tested without a clock.
@@ -20,6 +22,8 @@ pub(crate) const SLOP: f32 = 8.0;
 /// How long a finger must rest before moving it drags like the mouse instead of
 /// scrolling.
 pub(crate) const LONG_PRESS: Duration = Duration::from_millis(400);
+/// How far (logical pixels) a sideways finger must travel to count as a swipe.
+pub(crate) const SWIPE: f32 = 60.0;
 
 /// What the runner should do for a touch event.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -33,6 +37,9 @@ pub(crate) enum TouchAction {
     /// Scroll what's under `at` by `dy` logical pixels. Positive when the finger moves
     /// down, which reveals what's above (older terminal output).
     Scroll { at: Point, dy: f32 },
+    /// A sideways swipe that started at `at` and went `dx` logical pixels (negative:
+    /// to the left).
+    Swipe { at: Point, dx: f32 },
 }
 
 /// What the followed finger is doing.
@@ -42,6 +49,8 @@ enum Mode {
     Undecided,
     /// Scrolling.
     Scrolling,
+    /// Swiping sideways: reported when it lifts.
+    Swiping,
     /// Acting as the left mouse button.
     Pointer,
 }
@@ -102,6 +111,10 @@ impl Touches {
                     active.mode = Mode::Pointer;
                     active.last = p;
                     vec![TouchAction::Press(active.start), TouchAction::Drag(p)]
+                } else if (p.x - active.start.x).abs() > 2.0 * (p.y - active.start.y).abs() {
+                    active.mode = Mode::Swiping;
+                    active.last = p;
+                    Vec::new()
                 } else {
                     active.mode = Mode::Scrolling;
                     // Include the slop, so the content stays under the finger.
@@ -109,6 +122,10 @@ impl Touches {
                 }
             }
             Mode::Scrolling => Self::scroll(active, p),
+            Mode::Swiping => {
+                active.last = p;
+                Vec::new()
+            }
             Mode::Pointer => {
                 active.last = p;
                 vec![TouchAction::Drag(p)]
@@ -129,7 +146,13 @@ impl Touches {
                 TouchAction::Press(active.start),
                 TouchAction::Release(active.start),
             ],
-            Mode::Undecided | Mode::Scrolling => Vec::new(),
+            Mode::Swiping if !cancelled && (p.x - active.start.x).abs() >= SWIPE => {
+                vec![TouchAction::Swipe {
+                    at: active.start,
+                    dx: p.x - active.start.x,
+                }]
+            }
+            Mode::Undecided | Mode::Scrolling | Mode::Swiping => Vec::new(),
             // The lift can arrive without a move to where it happened (Android batches a
             // last move with the lift), so drag there first: a selection ends under the
             // finger.
@@ -198,6 +221,42 @@ mod tests {
             }]
         );
         assert!(touches.ended(1, at(101.0, 110.0), false).is_empty());
+    }
+
+    #[test]
+    fn a_finger_that_sets_off_sideways_swipes_when_it_lifts() {
+        let t0 = Instant::now();
+        let mut touches = Touches::default();
+        touches.began(1, at(300.0, 400.0), t0, false);
+        let t = t0 + Duration::from_millis(50);
+        assert!(
+            touches.moved(1, at(270.0, 405.0), t).is_empty(),
+            "no scroll"
+        );
+        assert!(touches.moved(1, at(200.0, 430.0), t).is_empty());
+        assert_eq!(
+            touches.ended(1, at(180.0, 430.0), false),
+            vec![TouchAction::Swipe {
+                at: at(300.0, 400.0),
+                dx: -120.0
+            }]
+        );
+        // Too short, or taken over by the system: nothing.
+        touches.began(1, at(100.0, 100.0), t0, false);
+        touches.moved(1, at(130.0, 100.0), t);
+        assert!(touches.ended(1, at(140.0, 100.0), false).is_empty());
+        touches.began(1, at(100.0, 100.0), t0, false);
+        touches.moved(1, at(200.0, 100.0), t);
+        assert!(touches.ended(1, at(200.0, 100.0), true).is_empty());
+        // Mostly downwards still scrolls.
+        touches.began(1, at(100.0, 100.0), t0, false);
+        assert_eq!(
+            touches.moved(1, at(115.0, 130.0), t),
+            vec![TouchAction::Scroll {
+                at: at(100.0, 100.0),
+                dy: 30.0
+            }]
+        );
     }
 
     #[test]

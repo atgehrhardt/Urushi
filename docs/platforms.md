@@ -35,6 +35,7 @@
     - A tap clicks.
     - Holding still for 0.4 s, then moving, acts as the left button: select text, reorder threads.
     - A touch that starts on a split divider drags it at once.
+    - A finger that sets off sideways is a swipe: it scrolls nothing, and once it has gone 60 pt it changes the board's column (ADR 0046). Elsewhere it does nothing.
     - Only one finger is followed. There's no fling momentum yet.
 - **Platform hooks:**
   - Android: the shell passes `android-activity`'s content rect as `AppConfig::safe_area`, because winit doesn't report system-bar insets there. The keyboard shrinks that rect (`adjustResize`). winit doesn't report the change, so the runner checks the rect after each batch of events and lays out again.

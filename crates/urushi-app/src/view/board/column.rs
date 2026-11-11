@@ -144,15 +144,12 @@ fn header(
             )
             .width(Length::Fill(1.0)),
         );
-    // Phones have little room for the name; the count goes first.
-    if !state.compact {
-        head = head.child(Node::text(
-            count,
-            Font::Ui,
-            theme.font_size_small,
-            theme.text_muted,
-        ));
-    }
+    head = head.child(Node::text(
+        count,
+        Font::Ui,
+        theme.font_size_small,
+        theme.text_muted,
+    ));
     if extras {
         let menu = Msg::OpenMenu(MenuTarget::Column(column.id.clone()));
         head = head.on_secondary_click(menu.clone()).child(icon_button(

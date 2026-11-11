@@ -60,6 +60,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0043 – Remember the remote hosts a device connected to in a plain file, and go back to the last one at launch](adr/0043-mobile-clients-remember-recent-hosts.md)
 - [0044 – Let the client a person last clicked, tapped or typed in decide a shared pane's size](adr/0044-the-last-human-interaction-sizes-a-shared-pane.md)
 - [0045 – Release the unsigned iOS .ipa from the same tag, for users to sideload (supersedes 0040's iOS part)](adr/0045-release-the-unsigned-ios-ipa-for-sideloading.md)
+- [0046 – Show one board column at a time on phones, switched by tabs and swipes](adr/0046-one-board-column-at-a-time-on-phones.md)
 
 ## Features
 - [_template](features/_template.md)

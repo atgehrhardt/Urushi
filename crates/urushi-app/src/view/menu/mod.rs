@@ -36,6 +36,7 @@ pub(super) fn overlay(
         MenuTarget::Task(id) => tasks::task_items(state, theme, menu, id),
         MenuTarget::Column(id) => tasks::column_items(state, theme, menu, id),
         MenuTarget::Board(id) => boards::board_items(state, theme, id),
+        MenuTarget::Boards => boards::picker_items(state, theme),
         MenuTarget::Filter(board) => filter::filter_items(state, theme, (board, menu.page), scroll),
         MenuTarget::QuickFilter(board, filter) => {
             quick_filter::quick_filter_items(state, theme, (board, filter))

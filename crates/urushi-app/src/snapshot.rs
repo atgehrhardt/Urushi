@@ -648,4 +648,6 @@ mod quick;
 mod quick_filters;
 
 #[cfg(test)]
+mod phone_board;
+#[cfg(test)]
 mod tests;
