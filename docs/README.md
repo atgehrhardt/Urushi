@@ -54,6 +54,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0037 – Write quick filters to Jira through its board-settings endpoint, and keep them here when Jira refuses](adr/0037-quick-filters-written-to-jira-or-kept-here.md)
 - [0038 – Reorder threads by moving them in the one stored list, and let a drop join the target's group](adr/0038-reorder-threads-in-the-stored-list.md)
 - [0039 – Learn that an agent is running from its prompt and tool hooks, and end it on Stop, prompts, session end or an interrupt key](adr/0039-running-agents-from-their-hooks.md)
+- [0040 – Release the Android APK from the same tag, signed with a release key kept in repository secrets; no iOS release yet](adr/0040-release-android-apks-signed-with-a-repository-secret-key.md)
 
 ## Features
 - [_template](features/_template.md)
