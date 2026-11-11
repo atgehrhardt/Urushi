@@ -56,6 +56,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0039 – Learn that an agent is running from its prompt and tool hooks, and end it on Stop, prompts, session end or an interrupt key](adr/0039-running-agents-from-their-hooks.md)
 - [0040 – Release the Android APK from the same tag, signed with a release key kept in repository secrets; no iOS release yet](adr/0040-release-android-apks-signed-with-a-repository-secret-key.md)
 - [0041 – Allow LAN access only from paired devices, through Noise, on private addresses](adr/0041-lan-access-through-paired-noise-channels.md)
+- [0042 – Open Android's soft keyboard with JNI calls from the Rust shell](adr/0042-android-soft-keyboard-through-jni-from-the-shell.md)
 
 ## Features
 - [_template](features/_template.md)

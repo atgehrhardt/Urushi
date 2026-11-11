@@ -156,6 +156,15 @@ impl Touches {
     }
 }
 
+/// Where a gesture's actions were a tap (a press and release in one spot, nothing held
+/// or dragged), if they were.
+pub(crate) fn tap_at(actions: &[TouchAction]) -> Option<Point> {
+    match actions {
+        [TouchAction::Press(a), TouchAction::Release(b)] if a == b => Some(*b),
+        _ => None,
+    }
+}
+
 fn distance(a: Point, b: Point) -> f32 {
     (a.x - b.x).hypot(a.y - b.y)
 }
@@ -276,5 +285,21 @@ mod tests {
         let mut touches = Touches::default();
         touches.began(1, at(0.0, 0.0), t0, false);
         assert!(touches.ended(1, at(0.0, 0.0), true).is_empty());
+    }
+
+    #[test]
+    fn only_a_press_and_release_in_one_spot_is_a_tap() {
+        let p = at(5.0, 5.0);
+        assert_eq!(
+            tap_at(&[TouchAction::Press(p), TouchAction::Release(p)]),
+            Some(p)
+        );
+        let held = [TouchAction::Release(p)];
+        assert_eq!(tap_at(&held), None, "a long press");
+        let dragged = [
+            TouchAction::Drag(at(9.0, 5.0)),
+            TouchAction::Release(at(9.0, 5.0)),
+        ];
+        assert_eq!(tap_at(&dragged), None);
     }
 }

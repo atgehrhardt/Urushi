@@ -131,4 +131,4 @@ window. On phones the panels fill the screen edge to edge.
 - winit doesn't report the pointer during a drag, so "dropped on a terminal" uses the last known pointer position.
 - A dialog's error banner is sized from an estimate of how many lines the message wraps onto (no text measurer in the view), so it can leave a spare line, and a message longer than six lines is cut short with an ellipsis. Panels show one line.
 - Adding a repo over SSH, and pairing a phone from this dialog, are placeholders.
-- The mobile soft keyboard relies on winit's IME support. A touch key bar provides Esc, Tab, Ctrl chords and arrows.
+- On iOS the on-screen keyboard covers the bottom of the screen, because winit doesn't report its frame ([Platforms](../platforms.md)). A touch key bar provides Esc, Tab, Ctrl chords and arrows.

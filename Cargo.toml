@@ -53,6 +53,8 @@ pollster = "0.4"
 arboard = { version = "3", default-features = false }
 rfd = { version = "0.17", default-features = false, features = ["xdg-portal", "wayland"] }  # never "gtk3" (LGPL)
 notify-rust = { version = "4.19", default-features = false, features = ["z"] }  # "z" = pure-Rust D-Bus on Linux; never "d" (libdbus)
+# Android shell only: opening the soft keyboard through InputMethodManager (ADR 0042).
+jni = { version = "0.22", default-features = false }
 
 # build-only
 prost-build = "0.14"

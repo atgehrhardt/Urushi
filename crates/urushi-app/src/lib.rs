@@ -34,6 +34,7 @@ mod runner;
 pub mod running;
 pub mod sidebar;
 pub mod snapshot;
+mod soft_keyboard;
 pub mod state;
 pub mod surface;
 pub mod task_agent;
@@ -49,7 +50,7 @@ use thiserror::Error;
 use urushi_ui::{TextSystem, Theme};
 use winit::event_loop::EventLoop;
 
-pub use config::{AppConfig, ConnectTarget, SafeAreaFn};
+pub use config::{AppConfig, ConnectTarget, SafeAreaFn, SoftKeyboardFn};
 
 /// Events delivered to the winit loop from other threads.
 #[derive(Debug)]
@@ -124,6 +125,9 @@ pub fn run_with(event_loop: EventLoop<UserEvent>, config: AppConfig) -> Result<(
         scroll: HashMap::new(),
         clipboard: platform::Clipboard::new(),
         safe_area: config.safe_area.clone(),
+        last_safe_area: None,
+        keyboard: soft_keyboard::SoftKeyboard::default(),
+        soft_keyboard: config.soft_keyboard.clone(),
         animated_at: None,
         pulse: pulse::Pulse::new(std::time::Instant::now()),
         occluded: false,

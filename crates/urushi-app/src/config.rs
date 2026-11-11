@@ -19,6 +19,10 @@ pub enum ConnectTarget {
 /// physical pixels, for platforms where winit can't report it (Android).
 pub type SafeAreaFn = Arc<dyn Fn() -> Option<[i32; 4]> + Send + Sync>;
 
+/// Shows (`true`) or hides (`false`) the on-screen keyboard, for platforms where winit's
+/// `set_ime_allowed` can't (Android's `NativeActivity`).
+pub type SoftKeyboardFn = Arc<dyn Fn(bool) + Send + Sync>;
+
 /// App startup options.
 #[derive(Clone)]
 pub struct AppConfig {
@@ -26,6 +30,8 @@ pub struct AppConfig {
     pub target: ConnectTarget,
     /// Platform-provided safe area, if winit's isn't accurate.
     pub safe_area: Option<SafeAreaFn>,
+    /// Platform-provided on-screen keyboard switch, if winit's doesn't work.
+    pub soft_keyboard: Option<SoftKeyboardFn>,
     /// Where this device keeps its LAN keyring (ADR 0041). `None`: the local home
     /// (`URUSHI_HOME`, then the app data dir). Mobile shells pass their app's data dir.
     pub data_dir: Option<PathBuf>,
@@ -37,6 +43,7 @@ impl AppConfig {
         Self {
             target,
             safe_area: None,
+            soft_keyboard: None,
             data_dir: None,
         }
     }
@@ -53,6 +60,7 @@ impl std::fmt::Debug for AppConfig {
         f.debug_struct("AppConfig")
             .field("target", &self.target)
             .field("safe_area", &self.safe_area.is_some())
+            .field("soft_keyboard", &self.soft_keyboard.is_some())
             .field("data_dir", &self.data_dir)
             .finish()
     }
