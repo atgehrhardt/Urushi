@@ -43,7 +43,8 @@
   - iOS: the app lays out inside winit's safe area.
   - Android: wgpu runs without debug labels, because some Vulkan drivers (including the emulator's) crash on them.
   - Android: the renderer tries Vulkan, then GL, with one backend per wgpu instance (`urushi_render::surface::backend_attempts`). With both in one instance, the emulator picked GL and its EGL surface failed on the already-connected window, which crashed the app at start.
-  - Android: logs go to logcat under the tag `urushi`.
+  - Android: logs go to logcat under the tag `urushi`. Panics are logged there too, with a backtrace (`urushi_app::log_panics`; Android drops stderr). iOS calls the same hook.
+  - Android: the system Back key ends `NativeActivity` before native code sees it (the app has no Java code to catch it), but the process may live on. Android then calls `android_main` again in the same process at the next launch, and winit can't build a second event loop there. So the shell ends the process once the event loop returns, and also when it can't build one. The next launch starts fresh and goes back to the remembered host.
 
 ## Installing the unsigned iOS build on a device
 `Urushi.ipa` (from `make ios`, or CI's `urushi-ios-unsigned` artifact) isn't signed, so an
@@ -112,6 +113,7 @@ the real daemon may be serving on it.
 ## Known gaps
 - **Remote hosts forget the view:** the selected thread and tabs are remembered only for the local daemon, so a phone opens on the first thread of its remembered host.
 - **Keyboard covers the screen on iOS:** winit doesn't report the keyboard's frame, so the keyboard hides the bottom of the layout, including a terminal's last lines and the key bar. The connect dialog's fields stay above it. Android re-lays out above the keyboard.
+- **Back leaves the Android app:** Back can't close the board or a dialog, because the key never reaches the app. Use the on-screen controls, such as the board's ×.
 - **No composing input on Android:** the keyboard types through key events (no `InputConnection`, ADR 0042), so autocorrect, swipe typing and composed (e.g. CJK) text don't apply.
 - **Edge-to-edge:** Android targets SDK 34 to avoid forced edge-to-edge until insets are handled everywhere.
 - **Signing:** releases are ad-hoc signed and not notarized ([CI and releases](features/ci-and-releases.md), ADR 0032), so macOS asks the user to allow the first launch. Windows and Linux have no release builds yet.

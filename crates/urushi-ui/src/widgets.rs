@@ -195,6 +195,9 @@ fn field_box<M>(
     node
 }
 
+/// More characters than any one line of text shows, at any width a box can have.
+const MAX_LINE_CHARS: usize = 1024;
+
 /// Text wrapped to its box, showing as many lines as fit; when there's more, the last
 /// line shown ends with an ellipsis. Line breaks in `text` start new lines. Give it a
 /// fixed or filling height: it doesn't grow to fit.
@@ -205,7 +208,6 @@ pub fn wrapped_text<M>(text: &str, font: Font, size: f32, color: Color) -> Node<
         .height(Length::Fill(1.0))
         .paint(move |rect, scene, ts| {
             let line = TextSystem::line_height(size);
-            let lines = ts.wrap(&text, font, size, rect.width);
             let fit = (rect.height / line).floor().max(0.0);
             #[allow(
                 clippy::cast_possible_truncation,
@@ -213,12 +215,20 @@ pub fn wrapped_text<M>(text: &str, font: Font, size: f32, color: Color) -> Node<
                 reason = "a small non-negative line count"
             )]
             let fit = fit as usize;
+            // Only the lines shown, plus one to know whether there is more.
+            let lines = ts.wrap_first(&text, font, size, rect.width, fit.saturating_add(1));
             scene.push_clip(rect);
             for (row, range) in lines.iter().take(fit).enumerate() {
                 let more = row + 1 == fit && lines.len() > fit;
                 let shown = if more {
-                    // The rest of the text on one line, cut short with an ellipsis.
-                    let rest = text[range.start..].replace('\n', " ");
+                    // The rest of the text on one line, cut short with an ellipsis. No
+                    // line shows more than a few hundred characters, so the rest of a
+                    // long text isn't measured.
+                    let rest: String = text[range.start..]
+                        .chars()
+                        .take(MAX_LINE_CHARS)
+                        .map(|c| if c == '\n' { ' ' } else { c })
+                        .collect();
                     ts.truncate(rest.trim_end(), font, size, rect.width)
                 } else {
                     text[range.clone()].trim_end().to_owned()

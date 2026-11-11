@@ -139,13 +139,31 @@ impl TextSystem {
     /// `\n`. Spaces at a soft break stay at the end of the line before, so the ranges of
     /// one paragraph touch.
     pub fn wrap(&mut self, text: &str, font: Font, size: f32, width: f32) -> Vec<Range<usize>> {
+        self.wrap_first(text, font, size, width, usize::MAX)
+    }
+
+    /// The first `max_lines` lines of [`Self::wrap`], without measuring the rest of the
+    /// text. Boxes that show a few lines of a long text (a card's notes) wrap only what
+    /// they show, so a long description at a narrow width stays cheap.
+    pub fn wrap_first(
+        &mut self,
+        text: &str,
+        font: Font,
+        size: f32,
+        width: f32,
+        max_lines: usize,
+    ) -> Vec<Range<usize>> {
         let width = width.max(1.0);
         let mut lines = Vec::new();
         let mut base = 0;
         for paragraph in text.split('\n') {
-            self.wrap_paragraph(paragraph, base, (font, size, width), &mut lines);
+            if lines.len() >= max_lines {
+                break;
+            }
+            self.wrap_paragraph(paragraph, base, (font, size, width), max_lines, &mut lines);
             base += paragraph.len() + 1;
         }
+        lines.truncate(max_lines);
         lines
     }
 
@@ -154,6 +172,7 @@ impl TextSystem {
         p: &str,
         base: usize,
         (font, size, width): (Font, f32, f32),
+        max_lines: usize,
         lines: &mut Vec<Range<usize>>,
     ) {
         // Each token is a word and the spaces after it.
@@ -173,6 +192,9 @@ impl TextSystem {
         let mut start = 0;
         let mut i = 0;
         while i < tokens.len() {
+            if lines.len() >= max_lines {
+                return;
+            }
             let token = tokens[i].clone();
             if self.measure(p[start..token.end].trim_end(), font, size) <= width {
                 i += 1;
@@ -279,6 +301,36 @@ mod tests {
         let i = t.measure("iiii", Font::MONO, 13.0);
         let w = t.measure("WWWW", Font::MONO, 13.0);
         assert!((i - w).abs() < 0.01, "monospace");
+    }
+
+    #[test]
+    fn wrapping_the_first_lines_measures_only_those() {
+        // A long description in a phone's narrow board column (UR-55).
+        let text = (0..2000)
+            .map(|n| format!("word{n}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut all = TextSystem::bundled_only();
+        let every = all.wrap(&text, Font::Ui, 13.0, 15.0);
+        let measured_all = all.widths.len();
+        let mut first = TextSystem::bundled_only();
+        let two = first.wrap_first(&text, Font::Ui, 13.0, 15.0, 3);
+        assert_eq!(two, every[..3]);
+        assert!(
+            first.widths.len() * 50 < measured_all,
+            "{} vs {measured_all}",
+            first.widths.len()
+        );
+        // Asking for more lines than there are gives them all.
+        assert_eq!(
+            first.wrap_first("a\nb", Font::Ui, 13.0, 500.0, 5),
+            first.wrap("a\nb", Font::Ui, 13.0, 500.0)
+        );
+        assert!(
+            first
+                .wrap_first("a\nb", Font::Ui, 13.0, 500.0, 0)
+                .is_empty()
+        );
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! Urushi on Android, loaded by `NativeActivity` as `liburushi.so`. Android apps can't
-//! run local shells in a useful way, so this is a remote client: it opens with the
-//! "connect to a host" dialog. Package with `scripts/build-android.sh`.
+//! run local shells in a useful way, so this is a remote client: it goes back to the
+//! host it used last, or opens with the "connect to a host" dialog. Package with
+//! `scripts/build-android.sh`.
 
 #[cfg(target_os = "android")]
 mod keyboard;
@@ -18,10 +19,11 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
     use winit::platform::android::EventLoopBuilderExtAndroid;
 
     log::init();
+    urushi_app::log_panics();
     tracing_log("starting");
 
     // winit doesn't report Android's system-bar insets; android-activity does.
-    // The app's private storage keeps the LAN keyring (ADR 0041).
+    // The app's private storage keeps the LAN keyring and recent hosts (ADR 0041, 0043).
     let data_dir = app.internal_data_path();
     let insets_app = app.clone();
     let soft_keyboard = keyboard::switch(app.clone());
@@ -44,6 +46,12 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
         }
         Err(e) => tracing_log(&e.to_string()),
     }
+    // The activity is gone (Back, or Android reclaimed it), but the process may live on,
+    // and Android would call `android_main` again in it on the next launch. winit can't
+    // build a second event loop in one process, so end it here: the next launch starts
+    // fresh and goes back to the remembered host (ADR 0043).
+    tracing_log("activity destroyed; exiting");
+    std::process::exit(0);
 }
 
 #[cfg(target_os = "android")]

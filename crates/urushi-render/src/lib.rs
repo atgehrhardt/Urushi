@@ -13,6 +13,7 @@ mod gpu;
 mod image;
 mod offscreen;
 mod renderer;
+mod scissor;
 mod surface;
 
 pub use gpu::Gpu;

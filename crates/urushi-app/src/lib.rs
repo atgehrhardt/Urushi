@@ -158,3 +158,16 @@ fn last_host(dir: &std::path::Path) -> Option<String> {
         }
     }
 }
+
+/// Sends panics to the log (`tracing`) with where they happened and a backtrace, before
+/// the default handler runs. Shells whose stderr goes nowhere (Android, an iOS device)
+/// call it after setting up logging, so a crash leaves a reason in logcat or the device
+/// log.
+pub fn log_panics() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        tracing::error!("panic: {info}\n{backtrace}");
+        default(info);
+    }));
+}

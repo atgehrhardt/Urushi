@@ -35,7 +35,7 @@ AppState ──view()──► Node<Msg> tree ──layout::build()──► Fra
 - One dark theme: frosted glass. `Theme::with_scheme(background, glows, accent)` recolors its backdrop and accent (the app's color schemes); the glass is tinted towards the background. Tokens cover the backdrop (`background`, `glows`), glass (`glass`/`glass_low` for panels, `glass_strong` for overlays, `glass_border`, `well` for inputs, `shadow`, `blur`, `radius_large`), interaction states (translucent `hover`, `selected`, `border`), text, status colours, labels and the terminal palette (its background is translucent; the terminal painter draws it once under all panes).
 
 ## Text (`text.rs`)
-- `TextSystem` wraps cosmic-text with the bundled fonts: Inter for UI, JetBrains Mono for terminals (OFL-1.1, `assets/fonts/`). System fonts are added as fallbacks. `TextSystem::wrap` breaks text into lines for a width (at `\n`, then between words, then inside a word too long for a line) from its own cached measurements, so fields and `wrapped_text` agree on where lines break.
+- `TextSystem` wraps cosmic-text with the bundled fonts: Inter for UI, JetBrains Mono for terminals (OFL-1.1, `assets/fonts/`). System fonts are added as fallbacks. `TextSystem::wrap` breaks text into lines for a width (at `\n`, then between words, then inside a word too long for a line) from its own cached measurements, so fields and `wrapped_text` agree on where lines break. `TextSystem::wrap_first` stops after a number of lines: `wrapped_text` wraps only the lines its box shows (plus one, to know whether to end in an ellipsis). A card's long Jira description at a phone's narrow column width would otherwise be measured, often character by character, on every frame.
 - Layout uses it to measure. The renderer uses the same instance to rasterize.
 
 ## Accessibility (`access.rs`)
@@ -46,7 +46,7 @@ AppState ──view()──► Node<Msg> tree ──layout::build()──► Fra
 ## Renderer (`urushi-render`)
 - **Two instanced pipelines** (`shaders.wgsl`): SDF rounded and bordered quads (with soft edges and gradients), and glyphs from a 2048² RGBA atlas packed in shelves (`atlas.rs`). Images go in the same atlas as colour entries, box-filtered to the exact pixel size they're drawn at, once per (image, size) (`image.rs`).
 - **Backdrops** (`blur.rs`, `blur.wgsl`): a frame with any is drawn into an offscreen texture. Each backdrop ends the scene pass, blurs the texture with dual Kawase (halving up to five times, then back to half size), and starts the next pass by drawing the blurred copy in its shape. The texture is then copied to the target. Frames without backdrops stay a single pass.
-- **Batching:** consecutive primitives of the same kind under the same clip become one draw (a backdrop is always its own). Clips become scissor rects.
+- **Batching:** consecutive primitives of the same kind under the same clip become one draw (a backdrop is always its own). Clips become scissor rects (`scissor.rs`), rounded outwards and clamped to the render target. A clip with no area draws nothing. wgpu panics on a scissor outside the target, and at fractional scales (Android's 2.625) rounding the edges of an empty clip lying off screen used to make one (UR-55).
 - **Text** is shaped at physical size and cached per (text, font, size).
 - **Targets:** `SurfaceRenderer` draws into a window. `Offscreen` draws into memory for pixel tests (`tests/pixels.rs` runs on the real GPU and skips where none exists).
 
