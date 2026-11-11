@@ -11,7 +11,8 @@ pub enum ConnectTarget {
     /// A remote daemon at `host[:port]`: a tailnet name, or a LAN host this device
     /// paired with (reached through the encrypted LAN channel).
     Remote(String),
-    /// Not chosen yet (mobile, first launch): show the connect dialog.
+    /// Not chosen yet (mobile): go back to the remote host connected to last, if this
+    /// device remembers one (ADR 0043), else show the connect dialog.
     Ask,
 }
 

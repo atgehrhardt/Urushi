@@ -11,6 +11,7 @@
 
 mod boards;
 mod connection;
+mod hosts;
 mod jira;
 mod jira_issue;
 mod lan;
@@ -26,6 +27,7 @@ mod thread_links;
 mod workspace;
 
 pub use connection::{Client, Events};
+pub use hosts::RecentHosts;
 pub use lan::{LanHost, LanKeyring, pair_lan};
 pub use launcher::{
     DAEMON_BIN_ENV, StopMethod, StoppedDaemon, ensure_local_daemon, local_daemon_endpoint,
@@ -79,6 +81,9 @@ pub enum ClientError {
     /// The LAN keyring couldn't be read or written.
     #[error("LAN keyring: {0}")]
     Keyring(String),
+    /// The list of recent hosts couldn't be read or written.
+    #[error("recent hosts: {0}")]
+    RecentHosts(String),
 }
 
 impl ClientError {

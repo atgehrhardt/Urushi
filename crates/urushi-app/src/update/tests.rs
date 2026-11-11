@@ -396,6 +396,7 @@ mod deletion;
 mod errors;
 mod fields;
 mod flows;
+mod hosts;
 mod jira;
 mod jira_deletion;
 mod labels;

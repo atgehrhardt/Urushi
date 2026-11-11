@@ -152,12 +152,15 @@ pub enum Msg {
     OpenSettings,
     /// Open the "connect to host" dialog.
     OpenConnect,
-    /// Connect to a LAN host this device paired with (its `host:port`).
+    /// Connect to a remote host offered in the connect dialog: one connected to
+    /// before, or a LAN host this device paired with (its `host:port`).
     ConnectTo(String),
     /// Pairing with a LAN host finished: its `host:port`, or why it failed.
     LanPaired(Result<String, String>),
     /// The LAN hosts this device paired with.
     LanHosts(Vec<PairedHost>),
+    /// The remote hosts this device connected to, most recent first (ADR 0043).
+    RecentHosts(Vec<String>),
     /// LAN access on the host (Settings).
     Lan(LanMsg),
 

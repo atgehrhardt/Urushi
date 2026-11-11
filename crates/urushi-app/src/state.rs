@@ -521,6 +521,12 @@ pub struct AppState {
     pub lan: Option<v1::LanStatus>,
     /// LAN hosts this device paired with, for the connect dialog.
     pub lan_hosts: Vec<crate::msg::PairedHost>,
+    /// Remote hosts this device connected to, most recent first, for the connect
+    /// dialog (ADR 0043).
+    pub recent_hosts: Vec<String>,
+    /// Whether the app went back to the host it used last, unasked, and what came of
+    /// it.
+    pub resume: Resume,
     /// Pane focused locally (tab id → pane id) before the daemon confirms it. Dropped
     /// once the daemon agrees, or when the pane is gone.
     pub focused_override: HashMap<String, String>,
@@ -604,6 +610,8 @@ impl AppState {
             tailnet: None,
             lan: None,
             lan_hosts: Vec::new(),
+            recent_hosts: Vec::new(),
+            resume: Resume::No,
             focused_override: HashMap::new(),
             compact: false,
             attention: crate::attention::AttentionTracker::default(),
@@ -631,6 +639,14 @@ impl AppState {
             window_height: 0.0,
             setup: crate::task_agent::SetupGate::default(),
         }
+    }
+
+    /// Initial state going back to `address`, the remote host used last time, without
+    /// asking. If it can't be reached, the connect dialog asks (ADR 0043).
+    pub fn resuming(address: String, cell: CellMetrics) -> Self {
+        let mut state = Self::new(ConnectTarget::Remote(address), cell);
+        state.resume = Resume::Trying;
+        state
     }
 
     /// What a new tab can run: always a terminal, then each installed agent.
@@ -768,11 +784,29 @@ impl AppState {
 impl Dialog {
     /// An empty connect dialog.
     pub(crate) fn connect() -> Self {
+        Self::connect_to("", None)
+    }
+
+    /// A connect dialog with `host` filled in, saying why connecting failed if it did.
+    pub(crate) fn connect_to(host: &str, error: Option<String>) -> Self {
         Self::Connect {
-            host: TextField::default(),
+            host: TextField::new(host),
             code: TextField::default(),
             busy: false,
-            error: None,
+            error,
         }
     }
+}
+
+/// Going back to the host used last time, at launch, without asking (ADR 0043).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Resume {
+    /// The host was chosen here (or is the local daemon).
+    #[default]
+    No,
+    /// Connecting to the remembered host. If that fails, the connect dialog opens.
+    Trying,
+    /// It failed and the connect dialog asked. If the retries get through after all,
+    /// that dialog closes.
+    Asked,
 }

@@ -95,14 +95,24 @@ pub fn run_with(event_loop: EventLoop<UserEvent>, config: AppConfig) -> Result<(
     tracing::debug!("fonts loaded");
     let cell = text.cell_metrics(theme.terminal_font_size);
     let keyring_dir = config.data_dir.clone().or_else(urushi_client::home_dir);
-    let backend = backend::Backend::start(&config.target, proxy.clone(), keyring_dir)?;
+    // With no host chosen (phones), go back to the one used last, if any (ADR 0043).
+    let remembered = (config.target == ConnectTarget::Ask)
+        .then(|| keyring_dir.as_deref().and_then(last_host))
+        .flatten();
+    let target = remembered
+        .clone()
+        .map_or(config.target, ConnectTarget::Remote);
+    let backend = backend::Backend::start(&target, proxy.clone(), keyring_dir)?;
     // Show the thread and tabs the window showed when it was last closed.
-    let ui_state_path = ui_state::UiState::path(&config.target);
+    let ui_state_path = ui_state::UiState::path(&target);
     let ui_state = ui_state_path
         .as_deref()
         .map(ui_state::UiState::load)
         .unwrap_or_default();
-    let mut state = state::AppState::new(config.target, cell);
+    let mut state = match remembered {
+        Some(host) => state::AppState::resuming(host, cell),
+        None => state::AppState::new(target, cell),
+    };
     ui_state.clone().apply(&mut state);
     let mut runner = runner::Runner {
         state,
@@ -136,4 +146,15 @@ pub fn run_with(event_loop: EventLoop<UserEvent>, config: AppConfig) -> Result<(
     };
     event_loop.run_app(&mut runner)?;
     Ok(())
+}
+
+/// The remote host this device connected to last, from its recent hosts in `dir`.
+fn last_host(dir: &std::path::Path) -> Option<String> {
+    match urushi_client::RecentHosts::open(dir) {
+        Ok(recent) => recent.last().map(str::to_owned),
+        Err(e) => {
+            tracing::warn!(error = %e, "cannot read the recent hosts");
+            None
+        }
+    }
 }

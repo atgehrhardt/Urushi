@@ -19,7 +19,8 @@
 ## Mobile clients
 - iOS and Android can't host agent shells, so they never start a local daemon.
 - **Connecting:**
-  - They open with **Connect to a host**. Enter the MagicDNS name or tailnet IP of a machine where `urushi tailnet on` (or Settings → Serve on my tailnet) is enabled. Or enter the LAN address of a machine with LAN access on, plus the pairing code it shows the first time (ADR 0041). Paired hosts are listed in the dialog afterwards. The keyring lives in the app's private storage.
+  - They open with **Connect to a host**. Enter the MagicDNS name or tailnet IP of a machine where `urushi tailnet on` (or Settings → Serve on my tailnet) is enabled. Or enter the LAN address of a machine with LAN access on, plus the pairing code it shows the first time (ADR 0041). Hosts connected to and paired with are listed in the dialog afterwards. The keyring and the recent hosts (`recent-hosts.json`) live in the app's private storage.
+  - At later launches the app goes back to the host it used last, without the dialog. If that host can't be reached, the dialog opens with the host filled in and the reason shown (ADR 0043).
   - On iOS, setting `URUSHI_HOST` skips the dialog (e.g. `SIMCTL_CHILD_URUSHI_HOST=host:port`).
 - **Layout and input:**
   - Windows narrower than 700 logical pixels use the one-column layout: the thread list, then a thread's terminals with a back button.
@@ -109,8 +110,7 @@ the real daemon may be serving on it.
 `cargo run -p urushi-app --example snapshot -- out.bmp <width> <height> <scale> [connect]` renders the UI offscreen. Use it to check layouts at phone and desktop sizes.
 
 ## Known gaps
-- **Host isn't remembered:** the mobile apps open the connect dialog on every launch.
-  There's no saved host yet. On iOS, `URUSHI_HOST` is the only way to skip it.
+- **Remote hosts forget the view:** the selected thread and tabs are remembered only for the local daemon, so a phone opens on the first thread of its remembered host.
 - **Keyboard covers the screen on iOS:** winit doesn't report the keyboard's frame, so the keyboard hides the bottom of the layout, including a terminal's last lines and the key bar. The connect dialog's fields stay above it. Android re-lays out above the keyboard.
 - **No composing input on Android:** the keyboard types through key events (no `InputConnection`, ADR 0042), so autocorrect, swipe typing and composed (e.g. CJK) text don't apply.
 - **Edge-to-edge:** Android targets SDK 34 to avoid forced edge-to-edge until insets are handled everywhere.
