@@ -226,3 +226,74 @@ async fn tampered_ciphertext_ends_the_stream() {
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     relay.abort();
 }
+
+/// The device's side of a host that hung up right after the prelude, as Linux and
+/// Windows show it: writes fail with a broken pipe, reads with a reset (macOS instead
+/// reads the end of the stream).
+struct HungUp {
+    prelude_left: usize,
+}
+
+impl tokio::io::AsyncWrite for HungUp {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        if self.prelude_left == 0 {
+            return std::task::Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()));
+        }
+        let n = buf.len().min(self.prelude_left);
+        self.prelude_left -= n;
+        std::task::Poll::Ready(Ok(n))
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+}
+
+impl tokio::io::AsyncRead for HungUp {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+        _: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Err(std::io::ErrorKind::ConnectionReset.into()))
+    }
+}
+
+fn hung_up() -> HungUp {
+    HungUp { prelude_left: 12 }
+}
+
+#[tokio::test]
+async fn a_host_that_hangs_up_refuses_pairing_however_the_hang_up_shows() {
+    let result = pair(
+        hung_up(),
+        &keys(),
+        PairingCode::generate().unwrap(),
+        "phone",
+    )
+    .await;
+    assert!(
+        matches!(result, Err(LanError::PairingRefused)),
+        "{result:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_host_that_hangs_up_refuses_the_connection_however_the_hang_up_shows() {
+    let result = connect(hung_up(), &keys(), &keys().public()).await;
+    assert!(matches!(result, Err(LanError::Refused)), "{result:?}");
+}

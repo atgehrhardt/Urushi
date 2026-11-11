@@ -120,12 +120,10 @@ where
         .remote_public_key(host.as_bytes())?
         .build_initiator()?;
     stream.write_all(&prologue).await?;
-    send(&mut stream, &mut noise, &[]).await?;
-    // A host that doesn't accept this key hangs up instead of answering.
-    let reply = receive_raw(&mut stream).await.map_err(|e| match e {
-        LanError::Closed => LanError::Refused,
-        e => e,
-    })?;
+    // A host that doesn't accept this key hangs up instead of answering, which the
+    // device may meet while still writing.
+    send(&mut stream, &mut noise, &[]).await.map_err(refused)?;
+    let reply = receive_raw(&mut stream).await.map_err(refused)?;
     let mut payload = vec![0u8; MAX_MESSAGE];
     noise
         .read_message(&reply, &mut payload)
@@ -179,12 +177,17 @@ where
         .psk(3, &psk)?
         .build_initiator()?;
     stream.write_all(&prologue).await?;
-    send(&mut stream, &mut noise, &[]).await?;
-    // A host that isn't pairing hangs up here.
+    // A host that isn't pairing hangs up after the prelude, which the device may meet
+    // while writing or while reading.
+    send(&mut stream, &mut noise, &[])
+        .await
+        .map_err(refused_pairing)?;
     receive(&mut stream, &mut noise)
         .await
         .map_err(refused_pairing)?;
-    send(&mut stream, &mut noise, truncate(device_name).as_bytes()).await?;
+    send(&mut stream, &mut noise, truncate(device_name).as_bytes())
+        .await
+        .map_err(refused_pairing)?;
     let key = PublicKey::from_slice(
         noise
             .get_remote_static()
@@ -255,6 +258,14 @@ fn truncate(name: &str) -> &str {
     &name[..end]
 }
 
+/// A host hanging up during a connect means it refused this device.
+fn refused(e: LanError) -> LanError {
+    match e {
+        LanError::Closed => LanError::Refused,
+        e => e,
+    }
+}
+
 fn refused_pairing(e: LanError) -> LanError {
     match e {
         LanError::Closed | LanError::Noise(_) => LanError::PairingRefused,
@@ -273,9 +284,12 @@ where
     let mut message = vec![0u8; MAX_MESSAGE];
     let len = noise.write_message(payload, &mut message)?;
     let header = u16::try_from(len).map_err(|_| LanError::BadMessage("message too long"))?;
-    stream.write_all(&header.to_be_bytes()).await?;
-    stream.write_all(&message[..len]).await?;
-    stream.flush().await?;
+    stream
+        .write_all(&header.to_be_bytes())
+        .await
+        .map_err(closed)?;
+    stream.write_all(&message[..len]).await.map_err(closed)?;
+    stream.flush().await.map_err(closed)?;
     Ok(())
 }
 
@@ -303,10 +317,14 @@ where
 
 fn closed(e: std::io::Error) -> LanError {
     use std::io::ErrorKind;
-    // A peer that hangs up with our bytes unread can surface as a reset.
+    // A peer that hangs up shows as the end of the stream, or, depending on the OS and
+    // on whether we were reading or writing, as a reset, an abort or a broken pipe.
     if matches!(
         e.kind(),
-        ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset | ErrorKind::BrokenPipe
+        ErrorKind::UnexpectedEof
+            | ErrorKind::ConnectionReset
+            | ErrorKind::ConnectionAborted
+            | ErrorKind::BrokenPipe
     ) {
         LanError::Closed
     } else {

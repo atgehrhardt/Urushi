@@ -76,6 +76,7 @@ where
             io::ErrorKind::InvalidData => LanError::BadMessage("could not decrypt"),
             io::ErrorKind::UnexpectedEof
             | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::ConnectionAborted
             | io::ErrorKind::BrokenPipe => LanError::Closed,
             _ => LanError::Io(e),
         })?;
