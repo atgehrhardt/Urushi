@@ -1,4 +1,4 @@
-.PHONY: icons app install dev ship ios-sim android build test fmt fmt-check clippy lint check-licenses check-targets check-docs buf-lint ci
+.PHONY: icons app install dev ship ios-sim ios android build test fmt fmt-check clippy lint check-licenses check-targets check-docs buf-lint ci
 
 CARGO ?= cargo
 BUF ?= buf
@@ -50,7 +50,11 @@ ship:
 	./scripts/dev.sh ship
 
 ios-sim:
-	./scripts/bundle-ios-sim.sh --run
+	./scripts/bundle-ios.sh --run
+
+# Unsigned device build: build/ios/Urushi.ipa (re-sign it to install; see docs/platforms.md).
+ios:
+	./scripts/bundle-ios.sh --device
 
 android:
 	./scripts/build-android.sh

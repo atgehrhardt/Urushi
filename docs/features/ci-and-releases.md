@@ -15,7 +15,7 @@ for Apple Silicon and the Android APK, and publishes both as one GitHub Release.
 | Job | Runs on | What |
 |---|---|---|
 | `test (<os>)` | macOS, Ubuntu, Windows | `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`, `cargo test --workspace --all-targets --no-fail-fast` (every failing test binary is reported, not just the first), doc tests |
-| `mobile-targets` | macOS | `make check-targets` (iOS and Android client crates) |
+| `ios` | macOS | `scripts/bundle-ios.sh` (simulator) and `scripts/bundle-ios.sh --device`. Uploads the unsigned `Urushi.ipa` (`urushi-ios-unsigned`) and the zipped simulator app (`urushi-ios-simulator`), kept 14 days. |
 | `android` | Ubuntu | `scripts/build-android.sh` with the runner's SDK, NDK and JDK. Uploads the debug-signed APK as the `urushi-android-debug` artifact (kept 14 days). |
 | `docs` | Ubuntu | `scripts/check-docs.sh` |
 | `licenses` | Ubuntu | `cargo deny check` |
@@ -93,7 +93,8 @@ Android's standard debug key, `~/.android/debug.keystore`.
 - Only Apple Silicon is released. Intel Macs would need an `x86_64-apple-darwin` build
   merged with `lipo`.
 - There are no Windows, Linux or iOS releases, and no store builds. iOS needs a paid Apple
-  Developer account to produce an installable build (ADR 0040).
+  Developer account to produce an installable build (ADR 0040). Until then, CI's unsigned
+  `.ipa` can be re-signed with an Apple ID ([platforms](../platforms.md)).
 - Only arm64 Android devices are supported (no `armeabi-v7a` or `x86_64` libraries in the
   APK).
 - The release job doesn't re-run the tests. Tag only commits where CI passed.

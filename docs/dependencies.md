@@ -61,7 +61,7 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | `cargo-deny` | MIT/Apache-2.0 | License, advisory and source audit |
 | `buf` | Apache-2.0 | Protobuf lint and breaking-change checks |
 | Android SDK build-tools (`aapt2`, `zipalign`, `apksigner`) and NDK (clang, `llvm-strip`) | Android SDK License (build tools; not shipped) | `scripts/build-android.sh` links, packages and signs the APK without Gradle. CI uses the copies preinstalled on GitHub's Ubuntu runners. |
-| Xcode (`xcrun simctl`, `codesign`) | Apple system tools | `scripts/bundle-ios-sim.sh` and `scripts/bundle-macos.sh` assemble and ad-hoc sign the bundles (no `.xcodeproj`). |
+| Xcode (`xcrun simctl`, `codesign`) | Apple system tools | `scripts/bundle-ios.sh` and `scripts/bundle-macos.sh` assemble the bundles without an `.xcodeproj` and ad-hoc sign the macOS and simulator ones. |
 | `swift` + AppKit, `iconutil` | Apple system tools | `scripts/render-icons.swift` draws the app icon SVG (AppKit reads SVG on macOS 13+) and builds the `.icns`. Chosen over `rsvg-convert` (librsvg is LGPL) and `resvg` (MPL-2.0). The outputs are committed, so builds don't run it. |
 
 ## Assets

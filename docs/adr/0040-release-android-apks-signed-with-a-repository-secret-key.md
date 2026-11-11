@@ -5,7 +5,7 @@
 
 ## Context
 ADR [0032](0032-tagged-macos-releases.md) releases only macOS. The mobile clients already
-build without an IDE (`scripts/build-android.sh`, `scripts/bundle-ios-sim.sh`), and the user
+build without an IDE (`scripts/build-android.sh`, `scripts/bundle-ios.sh`), and the user
 asked for the release workflow to ship them too, and for CI to build Android.
 
 Android only installs an update when it is signed with the same key as the installed app.
@@ -32,8 +32,9 @@ Developer account. The project doesn't have one.
   (created if missing). Builds from different worktrees then install over each other.
 - **CI builds the APK on every push and pull request** (the `android` job) and keeps it as
   a 14-day artifact.
-- **iOS isn't released.** CI keeps type-checking it (`make check-targets`), and
-  `make ios-sim` covers local testing.
+- **iOS isn't released.** CI builds it on every pull request: an unsigned device `.ipa`
+  that anyone can re-sign with their own Apple ID, and a simulator app. Both are kept as
+  workflow artifacts, not release downloads.
 
 ## Alternatives considered
 - **A fresh key for every release:** each upgrade would fail with
@@ -42,9 +43,10 @@ Developer account. The project doesn't have one.
   an APK that installs as an update over Urushi.
 - **Google Play App Signing / an AAB:** needs a Play developer account and Gradle-style
   bundle tooling, for a remote client distributed by direct download.
-- **An unsigned `.ipa` for sideloading:** users would have to re-sign it with their own
-  Apple ID every 7 days (free accounts). It wasn't worth publishing an artifact almost
-  nobody could use. Revisit when there's a developer account (TestFlight).
+- **Publishing the unsigned `.ipa` in releases:** users would have to re-sign it with
+  their own Apple ID every 7 days (free accounts). Release downloads should install as
+  they are, so the `.ipa` stays a CI artifact for testers. Revisit when there's a
+  developer account (TestFlight).
 
 ## Consequences
 - The release keystore must be created once and kept safe outside the repo. Losing it means

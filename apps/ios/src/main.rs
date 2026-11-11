@@ -1,6 +1,6 @@
 //! Urushi on iOS. iOS can't spawn local shells, so the app always connects to a remote
 //! daemon over Tailscale: it opens with the "connect to a host" dialog. Bundle with
-//! `scripts/bundle-ios-sim.sh`.
+//! `scripts/bundle-ios.sh`.
 
 fn main() {
     tracing_subscriber::fmt()

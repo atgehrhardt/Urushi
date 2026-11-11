@@ -185,7 +185,7 @@ impl Runner {
             return;
         };
         let size = window.inner_size();
-        match SurfaceRenderer::new(window, size.width, size.height, self.scale()) {
+        match SurfaceRenderer::new(&window, size.width, size.height, self.scale()) {
             Ok(renderer) => {
                 tracing::debug!("renderer ready");
                 self.renderer = Some(renderer);
