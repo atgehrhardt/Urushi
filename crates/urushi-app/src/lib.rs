@@ -38,6 +38,7 @@ pub mod state;
 pub mod surface;
 pub mod task_agent;
 pub mod terminal;
+mod touch;
 pub mod ui_state;
 mod update;
 mod view;
@@ -118,6 +119,7 @@ pub fn run_with(event_loop: EventLoop<UserEvent>, config: AppConfig) -> Result<(
         pressed_in_area: false,
         press: None,
         wheel_remainder: 0.0,
+        touches: touch::Touches::default(),
         scroll: HashMap::new(),
         clipboard: platform::Clipboard::new(),
         safe_area: config.safe_area.clone(),

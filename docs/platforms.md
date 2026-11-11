@@ -24,7 +24,12 @@
 - **Layout and input:**
   - Windows narrower than 700 logical pixels use the one-column layout: the thread list, then a thread's terminals with a back button.
   - A key bar adds Esc, Tab, ^C, ^D and arrows.
-  - Touch acts as the left mouse button.
+  - Touch (`touch.rs`, unit-tested):
+    - Dragging a finger scrolls whatever is under it. In a terminal it works like the wheel: scrollback, or the running app's own scrolling.
+    - A tap clicks.
+    - Holding still for 0.4 s, then moving, acts as the left button: select text, reorder threads.
+    - A touch that starts on a split divider drags it at once.
+    - Only one finger is followed. There's no fling momentum yet.
 - **Platform hooks:**
   - Android: the shell passes `android-activity`'s content rect as `AppConfig::safe_area`, because winit doesn't report system-bar insets there.
   - iOS: the app lays out inside winit's safe area.

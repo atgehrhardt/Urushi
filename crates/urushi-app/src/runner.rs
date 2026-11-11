@@ -67,6 +67,8 @@ pub(crate) struct Runner {
     pub(crate) pressed_in_area: bool,
     pub(crate) press: Option<Press>,
     pub(crate) wheel_remainder: f32,
+    /// The finger being followed, and what its gesture means (`touch.rs`).
+    pub(crate) touches: crate::touch::Touches,
     pub(crate) scroll: HashMap<Key, f32>,
     pub(crate) clipboard: Clipboard,
     pub(crate) safe_area: Option<crate::config::SafeAreaFn>,
@@ -467,6 +469,33 @@ impl Runner {
         }
     }
 
+    /// Carries out what a touch gesture means (see `touch.rs`).
+    fn touch(&mut self, action: crate::touch::TouchAction) {
+        use crate::touch::TouchAction;
+        tracing::trace!(?action, "touch");
+        match action {
+            TouchAction::Press(p) => {
+                self.pointer = Some(p);
+                self.mouse_button(ElementState::Pressed, MouseButton::Left);
+            }
+            TouchAction::Drag(p) => {
+                self.pointer = Some(p);
+                if self.pressed_in_area {
+                    self.dispatch(Msg::AreaDrag(p));
+                }
+                self.drag_to(p);
+            }
+            TouchAction::Release(p) => {
+                self.pointer = Some(p);
+                self.mouse_button(ElementState::Released, MouseButton::Left);
+            }
+            TouchAction::Scroll { at, dy } => {
+                self.pointer = Some(at);
+                self.scroll_at(at, dy / self.state.cell.height, dy);
+            }
+        }
+    }
+
     /// How many quick clicks in one spot this press makes (1, 2 or 3; a fourth starts
     /// over).
     fn count_click(&mut self, p: Point) -> u8 {
@@ -531,6 +560,12 @@ impl Runner {
                 (px / self.state.cell.height, px)
             }
         };
+        self.scroll_at(p, lines, pixels);
+    }
+
+    /// Scrolls what's under `p`: the terminal by `lines` (positive: back into history),
+    /// or a scrollable list by `pixels`.
+    fn scroll_at(&mut self, p: Point, lines: f32, pixels: f32) {
         if self.state.terminal_at(p) {
             self.wheel_remainder += lines;
             let whole = self.wheel_remainder.trunc();
@@ -646,28 +681,30 @@ impl ApplicationHandler<UserEvent> for Runner {
                 self.request_redraw();
             }
             WindowEvent::MouseInput { state, button, .. } => self.mouse_button(state, button),
-            // Touchscreens: a finger behaves like the left mouse button.
+            // Touchscreens: dragging scrolls, a tap clicks, and a long press acts as the
+            // left button (`touch.rs`).
             WindowEvent::Touch(touch) => {
+                use winit::event::TouchPhase;
                 #[allow(clippy::cast_possible_truncation, reason = "screen coordinates")]
                 let p = Point::new(
                     touch.location.x as f32 / self.scale(),
                     touch.location.y as f32 / self.scale(),
                 );
-                self.pointer = Some(p);
-                match touch.phase {
-                    winit::event::TouchPhase::Started => {
-                        self.mouse_button(ElementState::Pressed, MouseButton::Left);
+                let now = std::time::Instant::now();
+                let actions = match touch.phase {
+                    TouchPhase::Started => {
+                        let grab = self.state.divider_at(p).is_some();
+                        self.touches.began(touch.id, p, now, grab)
                     }
-                    winit::event::TouchPhase::Moved => {
-                        if self.pressed_in_area {
-                            self.dispatch(Msg::AreaDrag(p));
-                        }
-                        self.drag_to(p);
-                    }
-                    winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled => {
-                        self.mouse_button(ElementState::Released, MouseButton::Left);
-                        self.pointer = None;
-                    }
+                    TouchPhase::Moved => self.touches.moved(touch.id, p, now),
+                    TouchPhase::Ended => self.touches.ended(touch.id, p, false),
+                    TouchPhase::Cancelled => self.touches.ended(touch.id, p, true),
+                };
+                for action in actions {
+                    self.touch(action);
+                }
+                if matches!(touch.phase, TouchPhase::Ended | TouchPhase::Cancelled) {
+                    self.pointer = None;
                 }
                 self.request_redraw();
             }
