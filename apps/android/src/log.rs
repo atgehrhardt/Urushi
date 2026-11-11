@@ -57,13 +57,13 @@ impl Drop for Logcat {
     }
 }
 
-/// Installs the logcat subscriber.
+/// Installs the logcat subscriber, unless one is already installed in this process.
 pub(crate) fn init() {
-    tracing_subscriber::fmt()
+    let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::new(
             "info,urushi_app=debug,wgpu_core=warn,wgpu_hal=warn,naga=warn",
         ))
         .with_ansi(false)
         .with_writer(Logcat::default)
-        .init();
+        .try_init();
 }

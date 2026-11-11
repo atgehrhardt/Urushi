@@ -71,6 +71,7 @@ impl AppState {
             }
             Msg::Connected { welcome, workspace } => self.on_connected(welcome, workspace, &mut fx),
             Msg::Disconnected(reason) => {
+                self.resume_failed(&reason);
                 self.connection = Connection::Disconnected(reason);
                 self.reset_panes();
                 // A new connection watches nothing until told.
@@ -105,8 +106,11 @@ impl AppState {
                 ));
             }
             Msg::OpenSettings => self.open_settings(&mut fx),
-            Msg::OpenConnect => self.open(Dialog::connect(), Some(Field::Host)),
-            msg @ (Msg::ConnectTo(_) | Msg::LanPaired(_) | Msg::LanHosts(_)) => {
+            Msg::OpenConnect => self.open_connect(),
+            msg @ (Msg::ConnectTo(_)
+            | Msg::LanPaired(_)
+            | Msg::LanHosts(_)
+            | Msg::RecentHosts(_)) => {
                 self.lan_connect_msg(msg, &mut fx);
             }
             Msg::Lan(msg) => self.lan_msg(msg, &mut fx),
@@ -257,6 +261,7 @@ impl AppState {
         self.connection = Connection::Connected {
             host: welcome.host_name,
         };
+        self.resume_succeeded();
         self.reset_panes();
         self.on_workspace(workspace, fx);
         self.seed_attention();
@@ -346,6 +351,7 @@ impl AppState {
         } else if self.keyboard_surface().is_some()
             && let Some(pane) = self.focused_pane()
         {
+            self.claim_sizes(fx);
             fx.push(input(pane, to_terminal(text)));
         }
     }

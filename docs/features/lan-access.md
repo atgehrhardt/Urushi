@@ -18,7 +18,7 @@ With **Settings → Allow LAN access** (or `urushi lan on`) switched on, other d
    - The host asks for a code with `StartLanPairing` (desktop: **Pair a device…**; CLI: `urushi lan pair-code`). The code (`lan::pairing::Pairing`) works once, for 10 minutes, and is withdrawn after 5 wrong attempts.
    - The device runs `urushi_proto::lan::pair`. In the app, that is the connect dialog's **Pairing code** field, sent as `Effect::PairLan` to `Backend::pair_lan`; in the CLI, `urushi lan pair <host> <code>`.
    - The host's `accept_pair` checks the code and records the device with `LanState::register`. The device stores the host's key in its `LanKeyring` (`lan-keyring.json`, 0600, in its data dir).
-4. **Connecting.** `Client::connect_remote` uses `connect_lan` (Noise IK) for any host in the keyring, and plain tailnet TCP for anything else.
+4. **Connecting.** `Client::connect_remote` uses `connect_lan` (Noise IK) for any host in the keyring, and plain tailnet TCP for anything else. A paired host connected to also goes into the app's recent hosts (addresses only; ADR 0043, see [remote access](remote-access.md)), so a phone goes back to it at launch.
    - The daemon's `accept_connect` answers only paired keys.
    - `LanState::connected` registers the connection with a `watch` channel, which becomes `Peer.close`.
    - The protocol then runs unchanged inside `SecureStream`, as a non-local peer.

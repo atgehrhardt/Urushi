@@ -12,6 +12,7 @@ use urushi_ui::{Color, Font, Image, Primitive, Rect, Scene, Text, TextSystem};
 
 use crate::atlas::{ATLAS_SIZE, Atlas, AtlasFull};
 use crate::blur::{BackdropInstance, Blur, levels_for};
+use crate::scissor::scissor_of;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -357,7 +358,7 @@ impl SceneRenderer {
         let mut clips = vec![full];
         for primitive in &scene.primitives {
             let clip = *clips.last().unwrap_or(&full);
-            let scissor = scissor_of(clip);
+            let scissor = scissor_of(clip, target.size);
             match primitive {
                 Primitive::PushClip(rect) => {
                     let physical = Rect::new(
@@ -670,24 +671,6 @@ fn shape(text: &mut TextSystem, s: &str, font: Font, physical_size: f32) -> Shap
         }
     }
     Shaped { glyphs }
-}
-
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "clamped to non-negative pixel coordinates"
-)]
-fn scissor_of(r: Rect) -> [u32; 4] {
-    let x = r.x.max(0.0).floor();
-    let y = r.y.max(0.0).floor();
-    let right = r.right().max(0.0).ceil();
-    let bottom = r.bottom().max(0.0).ceil();
-    [
-        x as u32,
-        y as u32,
-        (right - x).max(0.0) as u32,
-        (bottom - y).max(0.0) as u32,
-    ]
 }
 
 fn instance_buffer(device: &wgpu::Device, label: &str, size: u64) -> wgpu::Buffer {

@@ -1,6 +1,6 @@
 # 0040. Release the Android APK from the same tag, signed with a release key kept in repository secrets; no iOS release yet
 
-- **Status:** Accepted
+- **Status:** Accepted; the "iOS isn't released" part is superseded by [0045](0045-release-the-unsigned-ios-ipa-for-sideloading.md) (releases include the unsigned `.ipa`). The Android decisions stand.
 - **Date:** 2026-11-10
 
 ## Context

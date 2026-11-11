@@ -34,7 +34,7 @@ cargo build --workspace
 ./target/debug/urushi tailnet on        # serve on your tailnet
 ```
 
-The other platforms are covered in [`docs/platforms.md`](docs/platforms.md): Linux, Windows, iOS (simulator) and Android (APK without Gradle).
+The other platforms are covered in [`docs/platforms.md`](docs/platforms.md): Linux, Windows, iOS (simulator, and an unsigned `.ipa` in each release to sideload) and Android (APK without Gradle).
 
 ## Development
 

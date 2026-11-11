@@ -5,8 +5,8 @@
 | macOS | daemon + app + CLI | `make app` → `build/Urushi.app` (`Urushi` and `urushid` in `Contents/MacOS`, the CLI in `Contents/Resources/bin/urushi`). Pushing a `vX.Y.Z` tag publishes it as a GitHub Release ([CI and releases](features/ci-and-releases.md)). | Yes: GUI, input, accessibility, dialogs, tailnet serving |
 | Linux | daemon + app + CLI | `cargo build --release -p urushi-desktop -p urushi-daemon -p urushi-cli` | Type-checks (`cargo check --target x86_64-unknown-linux-gnu`); CI runs the tests |
 | Windows | daemon + app + CLI | Same as Linux. The local daemon listens on a per-home named pipe. | Type-checks (`--target x86_64-pc-windows-msvc`); CI runs the unit tests and the in-process daemon tests that don't need a Unix shell (e.g. the Jira ones) |
-| iOS | remote client | `make ios-sim` (simulator .app, installs, launches and screenshots). `make ios` → `build/ios/Urushi.ipa`, an **unsigned** device build. Both come from `scripts/bundle-ios.sh`, and CI builds both on every pull request. Not released (needs a paid Apple Developer account, ADR 0040). | Yes, in the simulator (iOS 18.3, 2026-11-10): connected to a daemon, rendered the workspace and the first-run setup dialog. 2026-11-11: the on-screen keyboard opens for the connect dialog |
-| Android | remote client | `make android` → `build/android/urushi.apk` (NDK and SDK command-line tools, no Gradle; macOS or Linux). CI builds it on every pull request, and tagged releases publish it ([CI and releases](features/ci-and-releases.md)). | Yes, in the emulator (API 36, arm64, 2026-11-10), headless and with a window (host GPU): connected through the dialog, opened a thread, typed into a shell on the Mac, ^C from the key bar, split a pane. 2026-11-11: typed the host and shell commands on the on-screen keyboard |
+| iOS | remote client | `make ios-sim` (simulator .app, installs, launches and screenshots). `make ios` → `build/ios/Urushi.ipa`, an **unsigned** device build. Both come from `scripts/bundle-ios.sh`, and CI builds both on every pull request. Tagged releases publish the unsigned `.ipa` for users to sideload ([below](#installing-the-unsigned-ios-build-on-a-device), ADR 0045). | Yes, in the simulator (iOS 18.3, 2026-11-10): connected to a daemon, rendered the workspace and the first-run setup dialog. 2026-11-11: the on-screen keyboard opens for the connect dialog |
+| Android | remote client | `make android` → `build/android/urushi.apk` (NDK and SDK command-line tools, no Gradle; macOS or Linux). CI builds it on every pull request, and tagged releases publish it ([CI and releases](features/ci-and-releases.md)). | Yes, in the emulator (API 36, arm64, 2026-11-10), headless and with a window (host GPU): connected through the dialog, opened a thread, typed into a shell on the Mac, ^C from the key bar, split a pane. 2026-11-11: typed the host and shell commands on the on-screen keyboard. Later on 2026-11-11 (UR-53): went back to the remembered host after a restart, and asked again when it was down; opened local boards of 160+ cards with long notes, scrolled and edited them without a crash; reopened after Back; a tap took a pane's size back from the desktop app |
 
 ## Installing on macOS for daily use
 - `make install` builds the release bundle and swaps it into `/Applications/Urushi.app` (override with `INSTALL_DIR`). The swap uses renames, so a running app and daemon are never disturbed.
@@ -19,7 +19,8 @@
 ## Mobile clients
 - iOS and Android can't host agent shells, so they never start a local daemon.
 - **Connecting:**
-  - They open with **Connect to a host**. Enter the MagicDNS name or tailnet IP of a machine where `urushi tailnet on` (or Settings → Serve on my tailnet) is enabled. Or enter the LAN address of a machine with LAN access on, plus the pairing code it shows the first time (ADR 0041). Paired hosts are listed in the dialog afterwards. The keyring lives in the app's private storage.
+  - They open with **Connect to a host**. Enter the MagicDNS name or tailnet IP of a machine where `urushi tailnet on` (or Settings → Serve on my tailnet) is enabled. Or enter the LAN address of a machine with LAN access on, plus the pairing code it shows the first time (ADR 0041). Hosts connected to and paired with are listed in the dialog afterwards. The keyring and the recent hosts (`recent-hosts.json`) live in the app's private storage.
+  - At later launches the app goes back to the host it used last, without the dialog. If that host can't be reached, the dialog opens with the host filled in and the reason shown (ADR 0043).
   - On iOS, setting `URUSHI_HOST` skips the dialog (e.g. `SIMCTL_CHILD_URUSHI_HOST=host:port`).
 - **Layout and input:**
   - Windows narrower than 700 logical pixels use the one-column layout: the thread list, then a thread's terminals with a back button.
@@ -42,14 +43,24 @@
   - iOS: the app lays out inside winit's safe area.
   - Android: wgpu runs without debug labels, because some Vulkan drivers (including the emulator's) crash on them.
   - Android: the renderer tries Vulkan, then GL, with one backend per wgpu instance (`urushi_render::surface::backend_attempts`). With both in one instance, the emulator picked GL and its EGL surface failed on the already-connected window, which crashed the app at start.
-  - Android: logs go to logcat under the tag `urushi`.
+  - Android: logs go to logcat under the tag `urushi`. Panics are logged there too, with a backtrace (`urushi_app::log_panics`; Android drops stderr). iOS calls the same hook.
+  - Android: the system Back key ends `NativeActivity` before native code sees it (the app has no Java code to catch it), but the process may live on. Android then calls `android_main` again in the same process at the next launch, and winit can't build a second event loop there. So the shell ends the process once the event loop returns, and also when it can't build one. The next launch starts fresh and goes back to the remembered host.
 
 ## Installing the unsigned iOS build on a device
-`Urushi.ipa` (from `make ios`, or CI's `urushi-ios-unsigned` artifact) isn't signed, so an
-iPhone won't install it as is. Re-sign it with your own Apple ID, using a sideloading tool
-such as Sideloadly or AltStore, or with Xcode. With a free Apple ID, the signature expires
-after 7 days and the app has to be re-signed. A paid developer account removes that limit
-and enables TestFlight.
+Each release has `Urushi-X.Y.Z-ios-arm64-unsigned.ipa` (the same build as `make ios` and
+CI's `urushi-ios-unsigned` artifact). It isn't signed, because the project has no paid
+Apple Developer account (ADR 0045), so an iPhone won't install it as is. To sideload it:
+1. Re-sign and install it with your own Apple ID, using a sideloading tool such as
+   Sideloadly or AltStore (or Xcode with a developer account), with the phone connected
+   by cable.
+2. On the phone, trust the Apple ID under Settings → General → VPN & Device Management.
+3. Turn on Settings → Privacy & Security → Developer Mode (iOS 16 and later), and restart.
+
+With a free Apple ID, the signature expires after 7 days and the app has to be re-signed
+(AltStore can refresh it automatically), and at most 3 sideloaded apps can be installed
+at a time. Upgrade by sideloading the new `.ipa` with the same tool and Apple ID, so it
+replaces the old app and keeps its data (the remembered hosts). A paid developer account
+removes the 7-day limit and enables TestFlight. The release notes in `release.yml` carry the same steps.
 
 ## Testing the mobile apps on this machine
 The apps only talk to a daemon that serves "on the tailnet", which means the addresses
@@ -109,10 +120,10 @@ the real daemon may be serving on it.
 `cargo run -p urushi-app --example snapshot -- out.bmp <width> <height> <scale> [connect]` renders the UI offscreen. Use it to check layouts at phone and desktop sizes.
 
 ## Known gaps
-- **Host isn't remembered:** the mobile apps open the connect dialog on every launch.
-  There's no saved host yet. On iOS, `URUSHI_HOST` is the only way to skip it.
+- **Remote hosts forget the view:** the selected thread and tabs are remembered only for the local daemon, so a phone opens on the first thread of its remembered host.
 - **Keyboard covers the screen on iOS:** winit doesn't report the keyboard's frame, so the keyboard hides the bottom of the layout, including a terminal's last lines and the key bar. The connect dialog's fields stay above it. Android re-lays out above the keyboard.
+- **Back leaves the Android app:** Back can't close the board or a dialog, because the key never reaches the app. Use the on-screen controls, such as the board's ×.
 - **No composing input on Android:** the keyboard types through key events (no `InputConnection`, ADR 0042), so autocorrect, swipe typing and composed (e.g. CJK) text don't apply.
 - **Edge-to-edge:** Android targets SDK 34 to avoid forced edge-to-edge until insets are handled everywhere.
-- **Signing:** releases are ad-hoc signed and not notarized ([CI and releases](features/ci-and-releases.md), ADR 0032), so macOS asks the user to allow the first launch. Windows and Linux have no release builds yet.
+- **Signing:** releases are ad-hoc signed and not notarized ([CI and releases](features/ci-and-releases.md), ADR 0032), so macOS asks the user to allow the first launch. The iOS release is unsigned, so each user re-signs it (ADR 0045). Windows and Linux have no release builds yet.
 - **Icons:** there's no Windows `.ico` embedded in the `.exe` yet (the window icon is set at runtime), and the iOS icons are loose files rather than an asset catalog.

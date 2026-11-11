@@ -1,10 +1,11 @@
 name: Release
 
 # Pushing a tag vX.Y.Z (matching [workspace.package].version in Cargo.toml) builds
-# Urushi.app for Apple Silicon and the Android APK, and publishes both as one GitHub
-# Release. Running the workflow by hand, or a pull request that changes how releases are
-# built, builds the same files as workflow artifacts and publishes nothing (a dry run).
-# See docs/features/ci-and-releases.md and ADRs 0032 and 0040.
+# Urushi.app for Apple Silicon, the Android APK and the unsigned iOS .ipa (re-signed by
+# each user to sideload it), and publishes them as one GitHub Release. Running the
+# workflow by hand, or a pull request that changes how releases are built, builds the same
+# files as workflow artifacts and publishes nothing (a dry run).
+# See docs/features/ci-and-releases.md and ADRs 0032, 0040 and 0045.
 #
 # The APK is signed with the release key from these repository secrets:
 #   ANDROID_KEYSTORE_BASE64    the keystore file, base64-encoded
@@ -23,6 +24,7 @@ on:
       - .github/workflows/release.yml
       - scripts/bundle-macos.sh
       - scripts/build-android.sh
+      - scripts/bundle-ios.sh
       - apps/android/AndroidManifest.xml
 
 env:
@@ -141,10 +143,50 @@ jobs:
           name: ${{ env.APK }}
           path: dist/*
 
+  # Unsigned: there's no paid Apple Developer account, so users re-sign it with their own
+  # Apple ID to install it (ADR 0045; the release notes explain how).
+  ios:
+    name: iOS (arm64, unsigned)
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      IPA: Urushi-${{ needs.version.outputs.version }}-ios-arm64-unsigned.ipa
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build Urushi.ipa
+        run: ./scripts/bundle-ios.sh --device
+
+      - name: Check the .ipa
+        run: |
+          dir="$RUNNER_TEMP/ipa"
+          rm -rf "$dir" && mkdir -p "$dir"
+          unzip -q build/ios/Urushi.ipa -d "$dir"
+          app="$dir/Payload/Urushi.app"
+          test -x "$app/Urushi"
+          lipo -archs "$app/Urushi" | grep -qx arm64
+          test "$(plutil -extract CFBundleShortVersionString raw "$app/Info.plist")" = "$VERSION"
+          test "$(plutil -extract CFBundleIdentifier raw "$app/Info.plist")" = app.urushi.Urushi
+
+      - name: Rename and checksum
+        run: |
+          mkdir -p dist
+          cp build/ios/Urushi.ipa "dist/$IPA"
+          (cd dist && shasum -a 256 "$IPA" > "$IPA.sha256")
+          cat "dist/$IPA.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.IPA }}
+          path: dist/*
+
   publish:
     name: Publish the release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [version, macos, android]
+    needs: [version, macos, android, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -162,8 +204,8 @@ jobs:
         run: |
           ls -l dist
           cat > notes.md <<EOF
-          Urushi $VERSION for Apple Silicon Macs (macOS 12 or later) and Android phones
-          (Android 8 or later, arm64).
+          Urushi $VERSION for Apple Silicon Macs (macOS 12 or later), Android phones
+          (Android 8 or later, arm64), and iPhones and iPads (iOS 16 or later, sideloaded).
 
           **macOS:** unzip \`Urushi-$VERSION-macos-arm64.zip\`, then move \`Urushi.app\` to
           \`/Applications\`. The app is ad-hoc signed, not notarized, so macOS blocks the first
@@ -173,10 +215,29 @@ jobs:
 
           **CLI:** \`ln -s /Applications/Urushi.app/Contents/Resources/bin/urushi /usr/local/bin/urushi\`
 
+          **Mobile apps** are remote clients. Turn on Settings → Serve on my tailnet on your
+          Mac, run Tailscale on the phone, and connect to the Mac's MagicDNS name. Or turn on
+          Settings → Allow LAN access, and pair the phone with the code the Mac shows.
+
           **Android:** install \`Urushi-$VERSION-android-arm64.apk\` (allow installs from your
-          browser or file manager when asked). The app is a remote client: turn on
-          Settings → Serve on my tailnet on your Mac, run Tailscale on the phone, and connect
-          to the Mac's MagicDNS name.
+          browser or file manager when asked).
+
+          **iOS (sideloading):** \`Urushi-$VERSION-ios-arm64-unsigned.ipa\` is unsigned, because
+          there's no App Store or TestFlight build yet, so an iPhone won't install it as it is.
+          Sign and install it with your own Apple ID:
+
+          1. On a Mac or PC, open a sideloading tool such as [Sideloadly](https://sideloadly.io)
+             or [AltStore](https://altstore.io). Connect the iPhone by cable, choose the
+             \`.ipa\`, and sign in with your Apple ID. (With a paid developer account, Xcode
+             or any re-signing tool works too.)
+          2. On the iPhone, trust your Apple ID: Settings → General → VPN & Device Management.
+          3. Turn on Settings → Privacy & Security → Developer Mode and restart when asked
+             (iOS 16 and later).
+
+          With a free Apple ID, the signature expires after 7 days. Re-sign the app to keep
+          using it (AltStore can refresh it automatically), and you can have at most 3
+          sideloaded apps at a time. To upgrade, sideload the new \`.ipa\` with the same tool and
+          Apple ID, so it installs over the old one and keeps your remembered hosts.
 
           **Upgrading:** a running daemon keeps your sessions and the old version until it
           next starts (Settings → Restart daemon…, which ends all sessions).

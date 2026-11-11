@@ -11,7 +11,9 @@ use std::time::Duration;
 
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
-use urushi_client::{Client, LanKeyring, StopMethod, ensure_local_daemon, stop_local_daemon};
+use urushi_client::{
+    Client, LanKeyring, RecentHosts, StopMethod, ensure_local_daemon, stop_local_daemon,
+};
 use winit::event_loop::EventLoopProxy;
 
 use crate::UserEvent;
@@ -29,13 +31,15 @@ pub(crate) struct Backend {
     proxy: EventLoopProxy<UserEvent>,
     client: Arc<Mutex<Option<Client>>>,
     connection: Option<JoinHandle<()>>,
-    /// Where this device's LAN keyring lives (`None`: nowhere to keep one).
+    /// Where this device's LAN keyring and recent hosts live (`None`: nowhere to keep
+    /// them).
     keyring_dir: Option<PathBuf>,
 }
 
 impl Backend {
     /// Starts the runtime and connects to `target` (unless it is `Ask`). LAN hosts are
-    /// paired in a keyring in `keyring_dir`.
+    /// paired in a keyring in `keyring_dir`, and remote hosts connected to are
+    /// remembered there (ADR 0043).
     pub(crate) fn start(
         target: &ConnectTarget,
         proxy: EventLoopProxy<UserEvent>,
@@ -55,6 +59,7 @@ impl Backend {
             keyring_dir,
         };
         backend.send_lan_hosts();
+        backend.send_recent_hosts();
         backend.connect(target.clone());
         Ok(backend)
     }
@@ -111,6 +116,20 @@ impl Backend {
             match LanKeyring::open(&dir) {
                 Ok(keyring) => send(&proxy, Msg::LanHosts(paired_hosts(&keyring))),
                 Err(e) => tracing::warn!(error = %e, "cannot read the LAN keyring"),
+            }
+        });
+    }
+
+    /// Sends [`Msg::RecentHosts`] with the remote hosts connected to before.
+    fn send_recent_hosts(&self) {
+        let Some(dir) = self.keyring_dir.clone() else {
+            return;
+        };
+        let proxy = self.proxy.clone();
+        self.runtime.spawn(async move {
+            match RecentHosts::open(&dir) {
+                Ok(recent) => send(&proxy, Msg::RecentHosts(recent.hosts().to_vec())),
+                Err(e) => tracing::warn!(error = %e, "cannot read the recent hosts"),
             }
         });
     }
@@ -225,6 +244,22 @@ async fn connect(
     }
 }
 
+/// Records a successful connection to the remote host `address`, so the app goes back
+/// to it next launch, and sends the new list. Failing to write only loses that.
+fn remember_host(address: &str, dir: Option<&Path>, proxy: &EventLoopProxy<UserEvent>) {
+    let Some(dir) = dir else {
+        return;
+    };
+    let result = RecentHosts::open(dir).and_then(|mut recent| {
+        recent.remember(address)?;
+        Ok(recent)
+    });
+    match result {
+        Ok(recent) => send(proxy, Msg::RecentHosts(recent.hosts().to_vec())),
+        Err(e) => tracing::warn!(error = %e, "cannot remember the host"),
+    }
+}
+
 async fn connection_loop(
     target: ConnectTarget,
     keyring_dir: Option<PathBuf>,
@@ -236,6 +271,9 @@ async fn connection_loop(
             Ok((client, mut events)) => match client.list_workspace(true).await {
                 Ok(workspace) => {
                     *slot.lock().unwrap_or_else(PoisonError::into_inner) = Some(client.clone());
+                    if let ConnectTarget::Remote(address) = &target {
+                        remember_host(address, keyring_dir.as_deref(), &proxy);
+                    }
                     send(
                         &proxy,
                         Msg::Connected {

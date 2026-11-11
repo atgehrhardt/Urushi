@@ -128,6 +128,33 @@ impl AppState {
         }
     }
 
+    /// A person clicked, tapped or typed in this client's terminals: the panes on screen
+    /// take this client's size again, wherever another client (a phone, the desktop)
+    /// resized them meanwhile. The daemon keeps one size per pane, the last asked for
+    /// (ADR 0044), so only human input calls this; agents typing never do. Panes the
+    /// daemon already reports at this size are left alone.
+    pub(super) fn claim_sizes(&mut self, fx: &mut Vec<Effect>) {
+        if !matches!(self.connection, Connection::Connected { .. }) {
+            return;
+        }
+        for (pane, rect) in self.pane_rects() {
+            let Some(screen) = self.screens.get(&pane) else {
+                continue;
+            };
+            let (cols, rows) = terminal::grid_size(rect, self.cell);
+            if (screen.cols, screen.rows) == (cols, rows) {
+                continue;
+            }
+            self.sizes.insert(pane.clone(), (cols, rows));
+            let body = Body::SetPaneSize(v1::SetPaneSizeRequest {
+                pane_id: pane,
+                cols: cols.into(),
+                rows: rows.into(),
+            });
+            fx.push(request(body, Followup::None));
+        }
+    }
+
     /// Moves focus to the neighbouring pane towards `side`, in the active surface.
     pub(super) fn focus_towards(&mut self, side: urushi_core::Direction, fx: &mut Vec<Effect>) {
         let Some((id, group)) = self.surface_group(self.active_surface()) else {

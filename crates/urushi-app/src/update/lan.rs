@@ -1,6 +1,7 @@
 //! LAN access (ADR 0041), on both ends:
 //! - **Connecting:** the connect dialog pairs with a LAN host first when given a code,
-//!   and offers the hosts this device paired with.
+//!   and offers the hosts this device connected to or paired with. A phone goes back to
+//!   the host it used last, and asks only if that fails (ADR 0043).
 //! - **The host's Settings:** switch LAN access on, show a pairing code, revoke devices.
 //!   Only shown connected to the daemon on this machine (the daemon refuses these from
 //!   anywhere else anyway).
@@ -11,7 +12,7 @@ use urushi_client::v1::{self, request::Body, response::Outcome};
 use super::request;
 use crate::config::ConnectTarget;
 use crate::msg::{Effect, Followup, LanMsg, Msg, PairedHost};
-use crate::state::{AppState, Connection, Dialog};
+use crate::state::{AppState, Connection, Dialog, Field, Resume};
 
 /// The protocol minor version that brought LAN access.
 pub(crate) const LAN_SINCE_MINOR: u32 = 26;
@@ -24,6 +25,7 @@ impl AppState {
                 self.reconnect_to(address, fx);
             }
             Msg::LanHosts(hosts) => self.lan_hosts = hosts,
+            Msg::RecentHosts(hosts) => self.recent_hosts = hosts,
             Msg::LanPaired(Err(reason)) => {
                 if let Some(Dialog::Connect { busy, error, .. }) = &mut self.dialog {
                     *busy = false;
@@ -59,9 +61,47 @@ impl AppState {
         }
     }
 
+    /// Opens the connect dialog, starting from the remote host in use, if any.
+    pub(super) fn open_connect(&mut self) {
+        let dialog = match &self.target {
+            ConnectTarget::Remote(host) => Dialog::connect_to(host, None),
+            _ => Dialog::connect(),
+        };
+        self.open(dialog, Some(Field::Host));
+    }
+
+    /// Going back to the remembered host failed: the connect dialog asks, once, with
+    /// that host filled in and why it failed. Nothing has focus, so a phone's keyboard
+    /// doesn't cover the hosts to pick from. Retries go on underneath.
+    pub(super) fn resume_failed(&mut self, reason: &str) {
+        if self.resume != Resume::Trying {
+            return;
+        }
+        self.resume = Resume::Asked;
+        if self.dialog.is_none()
+            && let ConnectTarget::Remote(host) = &self.target
+        {
+            let dialog = Dialog::connect_to(host, Some(reason.to_owned()));
+            self.open(dialog, None);
+        }
+    }
+
+    /// Connected: if the dialog asked because the remembered host was unreachable, the
+    /// question is moot now (unless a pairing is under way in it).
+    pub(super) fn resume_succeeded(&mut self) {
+        if self.resume == Resume::Asked
+            && matches!(self.dialog, Some(Dialog::Connect { busy: false, .. }))
+        {
+            self.dialog = None;
+            self.focus = None;
+        }
+        self.resume = Resume::No;
+    }
+
     /// Drops everything shown and connects to the remote daemon at `address`.
     fn reconnect_to(&mut self, address: String, fx: &mut Vec<Effect>) {
         let target = ConnectTarget::Remote(address);
+        self.resume = Resume::No;
         self.target = target.clone();
         self.dialog = None;
         self.focus = None;
@@ -148,7 +188,38 @@ impl AppState {
     }
 }
 
-/// The hosts to offer in the connect dialog: paired ones, newest first.
-pub(crate) fn offered_hosts(hosts: &[PairedHost]) -> impl Iterator<Item = &PairedHost> {
-    hosts.iter().rev()
+/// A host the connect dialog offers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct OfferedHost {
+    /// What to connect to: `host[:port]`.
+    pub address: String,
+    /// The host's own name, for a paired LAN host.
+    pub name: Option<String>,
+}
+
+/// The hosts to offer in the connect dialog, each once: those connected to before,
+/// most recent first, then paired LAN hosts not connected to yet, newest first.
+pub(crate) fn offered_hosts(recent: &[String], paired: &[PairedHost]) -> Vec<OfferedHost> {
+    let name_of = |address: &str| {
+        paired
+            .iter()
+            .find(|p| p.address.eq_ignore_ascii_case(address))
+            .map(|p| p.host_name.clone())
+    };
+    let mut offered: Vec<OfferedHost> = recent
+        .iter()
+        .map(|address| OfferedHost {
+            address: address.clone(),
+            name: name_of(address),
+        })
+        .collect();
+    for p in paired.iter().rev() {
+        if !recent.iter().any(|r| r.eq_ignore_ascii_case(&p.address)) {
+            offered.push(OfferedHost {
+                address: p.address.clone(),
+                name: Some(p.host_name.clone()),
+            });
+        }
+    }
+    offered
 }

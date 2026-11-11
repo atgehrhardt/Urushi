@@ -175,7 +175,8 @@ fn device_row(theme: &Theme, device: &v1::LanDevice) -> Node<Msg> {
         ))
 }
 
-/// The connect dialog: a host, an optional pairing code, and the hosts paired before.
+/// The connect dialog: a host, an optional pairing code, and the hosts connected to or
+/// paired with before.
 /// `None` for any other dialog.
 pub(super) fn connect(state: &AppState, theme: &Theme, dialog: &Dialog) -> Option<Node<Msg>> {
     let Dialog::Connect {
@@ -223,9 +224,14 @@ pub(super) fn connect(state: &AppState, theme: &Theme, dialog: &Dialog) -> Optio
             theme.danger,
         ));
     }
-    if !state.lan_hosts.is_empty() {
-        body = body.child(label(theme, "Paired hosts"));
-        for paired in offered_hosts(&state.lan_hosts) {
+    let offered = offered_hosts(&state.recent_hosts, &state.lan_hosts);
+    if !offered.is_empty() {
+        body = body.child(label(theme, "Hosts"));
+        for host in offered {
+            let (title, detail) = match &host.name {
+                Some(name) => (name.clone(), host.address.clone()),
+                None => (host.address.clone(), "Tailscale".to_owned()),
+            };
             body = body.child(
                 Node::row()
                     .width(Length::Fill(1.0))
@@ -233,20 +239,15 @@ pub(super) fn connect(state: &AppState, theme: &Theme, dialog: &Dialog) -> Optio
                     .gap(10.0)
                     .radius(theme.radius)
                     .hover_background(theme.hover)
-                    .key(key(&["lan-host", &paired.address]))
-                    .role(Role::Button, format!("Connect to {}", paired.host_name))
-                    .on_click(Msg::ConnectTo(paired.address.clone()))
+                    .key(key(&["host", &host.address]))
+                    .role(Role::Button, format!("Connect to {title}"))
+                    .on_click(Msg::ConnectTo(host.address.clone()))
                     .child(
-                        Node::text(
-                            paired.host_name.clone(),
-                            Font::UiMedium,
-                            theme.font_size,
-                            theme.text,
-                        )
-                        .width(Length::Fill(1.0)),
+                        Node::text(title, Font::UiMedium, theme.font_size, theme.text)
+                            .width(Length::Fill(1.0)),
                     )
                     .child(Node::text(
-                        paired.address.clone(),
+                        detail,
                         Font::Ui,
                         theme.font_size_small,
                         theme.text_muted,
@@ -355,6 +356,21 @@ mod tests {
             clicks
                 .iter()
                 .any(|m| matches!(m, Msg::Lan(LanMsg::CancelPairing)))
+        );
+    }
+
+    #[test]
+    fn hosts_connected_to_before_connect_with_one_tap() {
+        let mut state = AppState::new(ConnectTarget::Ask, CELL);
+        state.update(Msg::RecentHosts(vec!["box.tail.ts.net".into()]));
+        let frame = render(&state);
+        let dump = frame.scene.dump();
+        assert!(dump.contains("box.tail.ts.net"), "{dump}");
+        assert!(dump.contains("Tailscale"), "{dump}");
+        assert!(
+            clicks(&frame)
+                .iter()
+                .any(|m| matches!(m, Msg::ConnectTo(a) if a == "box.tail.ts.net"))
         );
     }
 
