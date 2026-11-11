@@ -102,6 +102,7 @@ impl AppState {
         let Some((pane, rect)) = self.pane_at(p) else {
             return;
         };
+        self.claim_sizes(fx);
         self.focus_pane(&tab_id, &pane, fx);
         if self.reports_mouse(&pane) {
             self.selection = None;
@@ -207,6 +208,9 @@ impl AppState {
         let Some((pane, _)) = self.pane_at(p) else {
             return;
         };
+        if pressed {
+            self.claim_sizes(fx);
+        }
         if button == v1::MouseButton::Right {
             if pressed {
                 self.last_press = Some(p);

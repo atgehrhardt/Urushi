@@ -57,6 +57,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0040 – Release the Android APK from the same tag, signed with a release key kept in repository secrets; no iOS release yet](adr/0040-release-android-apks-signed-with-a-repository-secret-key.md)
 - [0041 – Allow LAN access only from paired devices, through Noise, on private addresses](adr/0041-lan-access-through-paired-noise-channels.md)
 - [0042 – Open Android's soft keyboard with JNI calls from the Rust shell](adr/0042-android-soft-keyboard-through-jni-from-the-shell.md)
+- [0044 – Let the client a person last clicked, tapped or typed in decide a shared pane's size](adr/0044-the-last-human-interaction-sizes-a-shared-pane.md)
 
 ## Features
 - [_template](features/_template.md)

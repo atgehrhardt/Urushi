@@ -71,6 +71,7 @@ window. On phones the panels fill the screen edge to edge.
   Jira connect and import dialogs also keep their own inline errors.
 - **Reopening:** the app shows the thread and tabs it showed when it was closed, for the local daemon (`ui_state.rs`, see [recoverable sessions](recoverable-sessions.md)).
 - **Attach on view:** panes of the visible tab (and of the quick terminal while its panel is out) are attached, sized from their rectangles, and kept up to date with acknowledged `ScreenUpdate`s. Hidden tabs are detached. Which surface takes typing and the mouse is decided in `surface.rs`.
+- **One size per pane, set by the client in use** (ADR 0044): when the same pane shows on two clients (desktop and phone), the daemon keeps the size it was last asked for. A click, tap, right click, key or typed or pasted text in this client's terminals sends `SetPaneSize` for every pane on screen whose reported size (`ScreenUpdate.cols/rows`) differs from this client's grid (`update/panes.rs::claim_sizes`). Hover, the wheel, focus changes and agent input never resize.
 - **Keyboard:**
   - Typing goes to the focused pane (of the quick terminal while its panel is down).
   - Shortcuts use Cmd on macOS, Ctrl+Shift elsewhere:
@@ -115,6 +116,7 @@ window. On phones the panels fill the screen edge to edge.
 - A collapsed sidebar always has a visible, clickable button to bring it back, whatever the main area shows (`view/mod.rs::a_collapsed_sidebar_can_always_be_shown_again`).
 
 ## Tests
+- `crates/urushi-app/src/update/tests/sizing.rs`: a pane resized by another client is claimed back by a click, tap, right click, key, text or paste, never by hover, the wheel or frames, and one click claims every pane of a split tab.
 - `crates/urushi-app/src/update/tests.rs`: connect, attach, resize, screen updates, typing vs shortcuts, the deletion flow, dialog editing, connect-required mode, selection and copy. `update/tests/fields.rs`: field shortcuts, mouse selection and the field menu; `urushi-ui/tests/fields.rs`: pointer → caret, scrolling, selection painting.
 - `crates/urushi-app/src/errors.rs`: which surface draws the error, and when it goes; `update/tests/errors.rs`: a refused new task keeps its editor open with the reason, and the error's lifetime; `view/error/tests.rs`: the banner is drawn once and reachable on every surface, a long error wraps in a dialog, and the task editor's buttons stay on screen.
 - `crates/urushi-app/src/update/tests/daemon.rs`: the restart confirmation and reconnecting.

@@ -37,6 +37,7 @@ impl AppState {
             && let Some(kind) = key.to_terminal()
         {
             self.selection = None;
+            self.claim_sizes(fx);
             fx.push(input(pane, kind));
         }
     }

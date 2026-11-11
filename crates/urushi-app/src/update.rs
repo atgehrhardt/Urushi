@@ -346,6 +346,7 @@ impl AppState {
         } else if self.keyboard_surface().is_some()
             && let Some(pane) = self.focused_pane()
         {
+            self.claim_sizes(fx);
             fx.push(input(pane, to_terminal(text)));
         }
     }
