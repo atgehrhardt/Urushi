@@ -1,13 +1,14 @@
 # Feature: CI and releases
 
-- **Status:** Shipped (CI on every push and pull request; macOS and Android releases from tags)
-- **Owners (crates):** none; `.github/workflows/`, `scripts/bundle-macos.sh`, `scripts/build-android.sh`, `Makefile`
-- **Related ADRs:** [0032](../adr/0032-tagged-macos-releases.md), [0040](../adr/0040-release-android-apks-signed-with-a-repository-secret-key.md), [0007](../adr/0007-platform-isolation.md)
+- **Status:** Shipped (CI on every push and pull request; macOS, Android and unsigned iOS releases from tags)
+- **Owners (crates):** none; `.github/workflows/`, `scripts/bundle-macos.sh`, `scripts/build-android.sh`, `scripts/bundle-ios.sh`, `Makefile`
+- **Related ADRs:** [0032](../adr/0032-tagged-macos-releases.md), [0040](../adr/0040-release-android-apks-signed-with-a-repository-secret-key.md), [0045](../adr/0045-release-the-unsigned-ios-ipa-for-sideloading.md), [0007](../adr/0007-platform-isolation.md)
 
 ## What it does
 Every push to `main` and every pull request runs the same checks as `make ci`, on macOS,
-Linux and Windows, and builds the Android APK. Pushing a tag `vX.Y.Z` builds `Urushi.app`
-for Apple Silicon and the Android APK, and publishes both as one GitHub Release.
+Linux and Windows, and builds the Android APK and the iOS app. Pushing a tag `vX.Y.Z` builds
+`Urushi.app` for Apple Silicon, the Android APK and the unsigned iOS `.ipa`, and publishes
+them as one GitHub Release. Release notes explain how to sideload the `.ipa`.
 
 ## How it works
 **CI** (`.github/workflows/ci.yml`):
@@ -25,7 +26,7 @@ The test jobs time out after 45 minutes, so a hung test fails the run. The toolc
 (`crates/urushi-daemon/tests/*.rs`) are Unix-only, because they drive `/bin/sh` and git
 fixtures. On Windows the unit tests and the `cmd.exe` PTY test run.
 
-**Releases** (`.github/workflows/release.yml`, ADRs 0032 and 0040):
+**Releases** (`.github/workflows/release.yml`, ADRs 0032, 0040 and 0045):
 1. Bump `[workspace.package].version` in `Cargo.toml` and commit it. Wait for CI to be green.
    The APK's `versionName` and `versionCode` follow automatically.
 2. Run `git tag vX.Y.Z && git push origin vX.Y.Z`.
@@ -36,11 +37,12 @@ fixtures. On Windows the unit tests and the `cmd.exe` PTY test run.
    | `version` | Ubuntu | Refuses a tag that doesn't match the version |
    | `macos` | macOS | `scripts/bundle-macos.sh` (release profile, ad-hoc `codesign`), checks the bundle, zips it |
    | `android` | Ubuntu | `scripts/build-android.sh` with the release key, then checks the APK's `versionName`, its arm64 library and its signature |
-   | `publish` | Ubuntu | Tags only, after both builds pass: uploads `Urushi-X.Y.Z-macos-arm64.zip`, `Urushi-X.Y.Z-android-arm64.apk` and their `.sha256` files to a new release, with install notes and generated change notes |
+   | `ios` | macOS | `scripts/bundle-ios.sh --device` (release, arm64, unsigned), then checks the executable's architecture, `CFBundleShortVersionString` and bundle identifier |
+   | `publish` | Ubuntu | Tags only, after all three builds pass: uploads `Urushi-X.Y.Z-macos-arm64.zip`, `Urushi-X.Y.Z-android-arm64.apk`, `Urushi-X.Y.Z-ios-arm64-unsigned.ipa` and their `.sha256` files to a new release, with install and sideloading notes and generated change notes |
 
 **Dry run:** Actions → Release → *Run workflow* builds the same files as workflow artifacts
 and publishes nothing. Pull requests that change `release.yml`, `scripts/bundle-macos.sh`,
-`scripts/build-android.sh` or `apps/android/AndroidManifest.xml` get the same dry run
+`scripts/build-android.sh`, `scripts/bundle-ios.sh` or `apps/android/AndroidManifest.xml` get the same dry run
 automatically.
 
 **The Android release key** (one-time setup). Android only installs an update signed with
@@ -60,13 +62,14 @@ get them, so their APKs are debug-signed. Locally, `scripts/build-android.sh` si
 Android's standard debug key, `~/.android/debug.keystore`.
 
 ## Invariants
-- A release's version, its tag, the app's `CFBundleShortVersionString` and the APK's
+- A release's version, its tag, the apps' `CFBundleShortVersionString` and the APK's
   `versionName` are equal. The `version` job refuses a mismatched tag, and
-  `build-android.sh` stamps the APK from `Cargo.toml`. The `android` job checks it.
-- A release contains every platform or none: `publish` needs both build jobs.
+  `build-android.sh` and `bundle-ios.sh` stamp their builds from `Cargo.toml`. The
+  `android` and `ios` jobs check it.
+- A release contains every platform or none: `publish` needs all three build jobs.
 - Release APKs are signed with the release key, never a debug key (the `android` job fails
   on a tag without it).
-- Releases are built by the same scripts as `make app`, `make install` and `make android`,
+- Releases are built by the same scripts as `make app`, `make install`, `make android` and `make ios`,
   so a released app is laid out exactly like a local one.
 - `#[cfg(target_os/unix/windows)]` stays inside `platform/` modules (ADR 0007). CI
   compiles all three desktop OSes, which catches Unix-only APIs used outside them (e.g.
@@ -92,9 +95,10 @@ Android's standard debug key, `~/.android/debug.keystore`.
   Apple Developer ID certificate and notary credentials as repository secrets.
 - Only Apple Silicon is released. Intel Macs would need an `x86_64-apple-darwin` build
   merged with `lipo`.
-- There are no Windows, Linux or iOS releases, and no store builds. iOS needs a paid Apple
-  Developer account to produce an installable build (ADR 0040). Until then, CI's unsigned
-  `.ipa` can be re-signed with an Apple ID ([platforms](../platforms.md)).
+- There are no Windows or Linux releases, and no store builds. The iOS `.ipa` is unsigned:
+  each user re-signs it with their own Apple ID, every 7 days with a free one
+  ([platforms](../platforms.md), ADR 0045). A signed build or TestFlight needs a paid Apple
+  Developer account.
 - Only arm64 Android devices are supported (no `armeabi-v7a` or `x86_64` libraries in the
   APK).
 - The release job doesn't re-run the tests. Tag only commits where CI passed.

@@ -54,11 +54,12 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0037 – Write quick filters to Jira through its board-settings endpoint, and keep them here when Jira refuses](adr/0037-quick-filters-written-to-jira-or-kept-here.md)
 - [0038 – Reorder threads by moving them in the one stored list, and let a drop join the target's group](adr/0038-reorder-threads-in-the-stored-list.md)
 - [0039 – Learn that an agent is running from its prompt and tool hooks, and end it on Stop, prompts, session end or an interrupt key](adr/0039-running-agents-from-their-hooks.md)
-- [0040 – Release the Android APK from the same tag, signed with a release key kept in repository secrets; no iOS release yet](adr/0040-release-android-apks-signed-with-a-repository-secret-key.md)
+- [0040 – Release the Android APK from the same tag, signed with a release key kept in repository secrets; no iOS release yet (iOS part superseded by 0045)](adr/0040-release-android-apks-signed-with-a-repository-secret-key.md)
 - [0041 – Allow LAN access only from paired devices, through Noise, on private addresses](adr/0041-lan-access-through-paired-noise-channels.md)
 - [0042 – Open Android's soft keyboard with JNI calls from the Rust shell](adr/0042-android-soft-keyboard-through-jni-from-the-shell.md)
 - [0043 – Remember the remote hosts a device connected to in a plain file, and go back to the last one at launch](adr/0043-mobile-clients-remember-recent-hosts.md)
 - [0044 – Let the client a person last clicked, tapped or typed in decide a shared pane's size](adr/0044-the-last-human-interaction-sizes-a-shared-pane.md)
+- [0045 – Release the unsigned iOS .ipa from the same tag, for users to sideload (supersedes 0040's iOS part)](adr/0045-release-the-unsigned-ios-ipa-for-sideloading.md)
 
 ## Features
 - [_template](features/_template.md)
