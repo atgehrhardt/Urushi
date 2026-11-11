@@ -5,8 +5,8 @@
 | macOS | daemon + app + CLI | `make app` → `build/Urushi.app` (`Urushi` and `urushid` in `Contents/MacOS`, the CLI in `Contents/Resources/bin/urushi`). Pushing a `vX.Y.Z` tag publishes it as a GitHub Release ([CI and releases](features/ci-and-releases.md)). | Yes: GUI, input, accessibility, dialogs, tailnet serving |
 | Linux | daemon + app + CLI | `cargo build --release -p urushi-desktop -p urushi-daemon -p urushi-cli` | Type-checks (`cargo check --target x86_64-unknown-linux-gnu`); CI runs the tests |
 | Windows | daemon + app + CLI | Same as Linux. The local daemon listens on a per-home named pipe. | Type-checks (`--target x86_64-pc-windows-msvc`); CI runs the unit tests and the in-process daemon tests that don't need a Unix shell (e.g. the Jira ones) |
-| iOS | remote client | `make ios-sim` (simulator .app, installs, launches and screenshots). Device builds use `aarch64-apple-ios` plus signing. | Yes, in the simulator: connected over the tailnet and rendered the workspace |
-| Android | remote client | `make android` → `build/android/urushi.apk` (NDK and SDK command-line tools, no Gradle) | Yes, in the emulator: connected over the tailnet, opened split terminals, typed into a shell on the Mac |
+| iOS | remote client | `make ios-sim` (simulator .app, installs, launches and screenshots). Device builds use `aarch64-apple-ios` plus signing. Not released (needs a paid Apple Developer account, ADR 0040). | Yes, in the simulator (iOS 18.3, 2026-11-10): connected to a daemon, rendered the workspace and the first-run setup dialog |
+| Android | remote client | `make android` → `build/android/urushi.apk` (NDK and SDK command-line tools, no Gradle; macOS or Linux). CI builds it on every pull request, and tagged releases publish it ([CI and releases](features/ci-and-releases.md)). | Yes, in the emulator (API 36, arm64, 2026-11-10): connected through the dialog, opened a thread, typed into a shell on the Mac, ^C from the key bar, split a pane |
 
 ## Installing on macOS for daily use
 - `make install` builds the release bundle and swaps it into `/Applications/Urushi.app` (override with `INSTALL_DIR`). The swap uses renames, so a running app and daemon are never disturbed.
@@ -31,6 +31,42 @@
   - Android: wgpu runs without debug labels, because some Vulkan drivers (including the emulator's) crash on them.
   - Android: logs go to logcat under the tag `urushi`.
 
+## Testing the mobile apps on this machine
+The apps only talk to a daemon that serves "on the tailnet", which means the addresses
+`tailscale status` reports. To test against a throwaway daemon without Tailscale, put a
+fake `tailscale` first on `PATH` that reports loopback. `CliTailscale` searches `PATH`
+before the standard install locations:
+
+```sh
+export PATH="$HOME/.cargo/bin:$PATH"   # rustup's cargo, not Homebrew's (it lacks the mobile targets)
+dir=$(mktemp -d); mkdir "$dir/bin"
+cat > "$dir/bin/tailscale" <<'EOF'
+#!/bin/sh
+case "$1" in
+  status) echo '{"BackendState":"Running","Self":{"HostName":"mac","DNSName":"mac.test.ts.net.","TailscaleIPs":["127.0.0.1"],"UserID":1,"Online":true,"OS":"macOS"},"User":{"1":{"LoginName":"tester@example.com"}}}' ;;
+  whois) echo '{"Node":{"Name":"emulator.","Tags":null},"UserProfile":{"LoginName":"tester@example.com"}}' ;;
+esac
+EOF
+chmod +x "$dir/bin/tailscale"
+export PATH="$dir/bin:$PATH" URUSHI_HOME="$dir/home"
+cargo build -p urushi-daemon -p urushi-cli && U=./target/debug/urushi
+$U settings set tailnet-port 7431 && $U settings set task-agent claude && $U tailnet on
+$U repo add <some git repo> && $U thread new <repo-id> "Mobile test"
+```
+
+- **iOS:** the simulator shares the Mac's network. Run `./scripts/bundle-ios-sim.sh`, then
+  `SIMCTL_CHILD_URUSHI_HOST=127.0.0.1:7431 xcrun simctl launch "iPhone 16 Pro" app.urushi.Urushi`.
+- **Android:** the emulator reaches the Mac's loopback at `10.0.2.2`. Run
+  `make android && adb install -r build/android/urushi.apk`, launch it, then type the host with
+  `adb shell input text 10.0.2.2:7431 && adb shell input keyevent 66`. Drive it with
+  `adb shell input tap X Y`, take screenshots with `adb exec-out screencap -p`, and read the
+  daemon's side with `$U screen <pane-id>`.
+- **Clean up:** `$U daemon stop --yes` with the same `URUSHI_HOME` still set. It stops only that
+  daemon. Never stop a daemon by name.
+
+Setting a task agent skips the first-run setup dialog. Never use the default port 7420:
+the real daemon may be serving on it.
+
 ## App icon
 - **Source:** `assets/icon/icon.svg` (the app tile), `mark-dark.svg` and `mark-light.svg` (the mark alone, for dark and light backgrounds). They are the "Leaf tag" design: code brackets around a lacquer-tree (*Toxicodendron vernicifluum*) sprig, on lacquer black `#15110F` with urushi red `#C8432F`.
 - **Rendered files are committed**, so builds need no tools. Re-render with `make icons` (`scripts/render-icons.swift`, macOS only) after changing the SVG:
@@ -47,6 +83,8 @@
 `cargo run -p urushi-app --example snapshot -- out.bmp <width> <height> <scale> [connect]` renders the UI offscreen. Use it to check layouts at phone and desktop sizes.
 
 ## Known gaps
+- **Host isn't remembered:** the mobile apps open the connect dialog on every launch.
+  There's no saved host yet. On iOS, `URUSHI_HOST` is the only way to skip it.
 - **Soft keyboard:** the Android soft keyboard doesn't open for `NativeActivity` (a winit limitation). Hardware keyboards and the key bar work. A small Java `showSoftInput` shim is the follow-up.
 - **Edge-to-edge:** Android targets SDK 34 to avoid forced edge-to-edge until insets are handled everywhere.
 - **Signing:** releases are ad-hoc signed and not notarized ([CI and releases](features/ci-and-releases.md), ADR 0032), so macOS asks the user to allow the first launch. Windows and Linux have no release builds yet.

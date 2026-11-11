@@ -36,6 +36,23 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: make check-targets
 
+  # Builds the real APK (the runner image ships the Android SDK, NDK and a JDK), so a broken
+  # Android build or packaging step fails the pull request rather than the next release.
+  # Signed with a throwaway debug key; download it from the run's artifacts to try it.
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: ./scripts/build-android.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: urushi-android-debug
+          path: build/android/urushi.apk
+          retention-days: 14
+
   docs:
     runs-on: ubuntu-latest
     steps:
