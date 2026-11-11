@@ -551,9 +551,17 @@ impl Runner {
                 self.pointer = Some(at);
                 self.scroll_at(at, dy / self.state.cell.height, dy);
             }
+            TouchAction::ScrollX { at, dx } => {
+                self.pointer = Some(at);
+                self.scroll_x_at(at, dx);
+            }
             TouchAction::Swipe { at, dx } => {
                 self.pointer = Some(at);
-                self.dispatch(Msg::Swipe(dx));
+                // A swipe over a sideways row scrolled it; only one elsewhere changes a
+                // phone's board column.
+                if self.horizontal_region(at).is_none() {
+                    self.dispatch(Msg::Swipe(dx));
+                }
             }
         }
     }
@@ -589,6 +597,7 @@ impl Runner {
         let Some(press) = &mut self.press else { return };
         if press.dragging {
             self.dispatch(Msg::DragMove(p));
+            self.edge_scroll(p);
             self.drag_over(p);
             return;
         }
@@ -611,18 +620,52 @@ impl Runner {
 
     fn wheel(&mut self, delta: MouseScrollDelta) {
         let Some(p) = self.pointer else { return };
-        let (lines, pixels) = match delta {
-            MouseScrollDelta::LineDelta(_, y) => (
-                y * LINES_PER_NOTCH,
-                y * LINES_PER_NOTCH * self.state.cell.height,
-            ),
+        // Both axes in logical pixels.
+        let (x, y) = match delta {
+            MouseScrollDelta::LineDelta(x, y) => {
+                let line = LINES_PER_NOTCH * self.state.cell.height;
+                (x * line, y * line)
+            }
             #[allow(clippy::cast_possible_truncation, reason = "pixel deltas are small")]
             MouseScrollDelta::PixelDelta(d) => {
-                let px = d.y as f32 / self.scale();
-                (px / self.state.cell.height, px)
+                (d.x as f32 / self.scale(), d.y as f32 / self.scale())
             }
         };
-        self.scroll_at(p, lines, pixels);
+        let (x, y) = crate::scrolling::wheel_axes(x, y, self.mods.shift);
+        if y != 0.0 {
+            self.scroll_at(p, y / self.state.cell.height, y);
+        }
+        if x != 0.0 {
+            self.scroll_x_at(p, x);
+        }
+    }
+
+    /// The innermost sideways row at `p` (the board's columns, tabs or filter chips).
+    fn horizontal_region(&self, p: Point) -> Option<urushi_ui::ScrollRegion> {
+        self.frame
+            .as_ref()
+            .and_then(|f| f.scroll_region_along(p, urushi_ui::Axis::Horizontal))
+            .copied()
+    }
+
+    /// Scrolls the sideways row under `p` by `pixels` (positive: towards its start).
+    fn scroll_x_at(&mut self, p: Point, pixels: f32) {
+        if let Some(region) = self.horizontal_region(p) {
+            self.scroll
+                .insert(region.key, crate::scrolling::scrolled(&region, pixels));
+            self.request_redraw();
+        }
+    }
+
+    /// While dragging near a sideways row's edge, scrolls it that way, so a card can be
+    /// carried to a column out of view.
+    fn edge_scroll(&mut self, p: Point) {
+        if let Some(region) = self.horizontal_region(p)
+            && let Some(offset) = crate::scrolling::edge_scrolled(&region, p)
+        {
+            self.scroll.insert(region.key, offset);
+            self.request_redraw();
+        }
     }
 
     /// Scrolls what's under `p`: the terminal by `lines` (positive: back into history),
@@ -640,11 +683,11 @@ impl Runner {
         } else if let Some(region) = self
             .frame
             .as_ref()
-            .and_then(|f| f.scroll_region(p))
+            .and_then(|f| f.scroll_region_along(p, urushi_ui::Axis::Vertical))
             .copied()
         {
-            let offset = (region.offset - pixels).clamp(0.0, region.max_offset());
-            self.scroll.insert(region.key, offset);
+            self.scroll
+                .insert(region.key, crate::scrolling::scrolled(&region, pixels));
             self.request_redraw();
         }
     }

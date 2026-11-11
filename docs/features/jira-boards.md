@@ -38,8 +38,8 @@ moves at once and goes back if Jira refuses.
   in one field widen it, fields narrow each other, and a card shows when it or one of
   its subtasks passes. Quick filters are JQL, so Jira evaluates them (asked again
   whenever the board changes while one is on); everything else is filtered here.
-  Columns count "shown/all". On a phone the bar is the search and **Filters ▾**, and
-  the sync state, Sync now and Remove are in the board's **⋯** (see [Task boards](task-boards.md)).
+  Columns count "shown/all". The chips scroll sideways when they don't fit. On a phone,
+  or a panel under 880 pt, the bar is the search and **Filters ▾**, and the sync state, Sync now and Remove are in the board's **⋯** (see [Task boards](task-boards.md)).
   Boards of Urushi's own get the search, type and label.
 - **Making quick filters** (ADR 0037, 1.23 daemons): **Save filter…** in the bar (or
   **Save as quick filter…** in **Filters ▾**) saves what is chosen. The dialog asks for a

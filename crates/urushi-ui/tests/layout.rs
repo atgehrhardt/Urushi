@@ -220,7 +220,7 @@ fn scroll_regions_clamp_and_offset_children() {
         .children(items);
     let frame = build(&ui, Rect::new(0.0, 0.0, 100.0, 50.0), &mut text, None);
     let region = frame.scroll_region(Point::new(10.0, 10.0)).unwrap();
-    assert_eq!(region.content_height, 200.0);
+    assert_eq!(region.content_len, 200.0);
     assert_eq!(region.offset, 150.0, "clamped to content - viewport");
     assert_eq!(quads(&frame.scene)[0].y, -150.0);
     assert!(frame.scene.dump().starts_with("clip 0,0 100x50"));
@@ -257,7 +257,7 @@ fn a_max_height_caps_a_fit_box_which_then_scrolls() {
     );
     let region = frame.scroll_regions[0];
     assert_eq!(region.rect.height, 50.0);
-    assert_eq!(region.content_height, 200.0);
+    assert_eq!(region.content_len, 200.0);
 }
 
 #[test]

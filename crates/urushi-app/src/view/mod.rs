@@ -36,6 +36,8 @@ use crate::state::AppState;
 
 /// Space around the glass panels, between them and the window's edge.
 pub(crate) const PANEL_MARGIN: f32 = 8.0;
+#[cfg(test)]
+pub(crate) use board::BOARD_COLUMN_MIN_WIDTH;
 /// The gap between the sidebar and the main panel. Dragging it resizes the sidebar.
 pub(crate) const EDGE: f32 = 8.0;
 
