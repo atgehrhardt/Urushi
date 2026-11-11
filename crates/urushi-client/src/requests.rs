@@ -441,7 +441,7 @@ impl Client {
     }
 
     /// LAN access: listening addresses, paired devices and, on the host, the pairing
-    /// code (ADR 0040).
+    /// code (ADR 0041).
     pub async fn lan_status(&self) -> Result<v1::LanStatus, ClientError> {
         let body = Body::LanStatus(v1::LanStatusRequest {});
         expect!(self.request(body).await?, LanStatus, "LanStatus")

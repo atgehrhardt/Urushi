@@ -351,7 +351,7 @@ pub struct PairedHost {
     pub host_name: String,
 }
 
-/// LAN access on the host, from the Settings dialog (ADR 0040).
+/// LAN access on the host, from the Settings dialog (ADR 0041).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LanMsg {
     /// Show a one-time pairing code.

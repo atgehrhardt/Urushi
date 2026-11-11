@@ -1,4 +1,4 @@
-//! Connecting to a daemon over the LAN (ADR 0040).
+//! Connecting to a daemon over the LAN (ADR 0041).
 //!
 //! A [`LanKeyring`] holds this device's key and the hosts it paired with, in a private
 //! file. [`pair_lan`] pairs with a host using the one-time code it shows, and

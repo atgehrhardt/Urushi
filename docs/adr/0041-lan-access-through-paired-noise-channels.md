@@ -1,4 +1,4 @@
-# 0040. Allow LAN access only from paired devices, through Noise, on private addresses
+# 0041. Allow LAN access only from paired devices, through Noise, on private addresses
 
 - **Status:** Accepted
 - **Date:** 2026-11-10

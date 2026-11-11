@@ -35,7 +35,7 @@ message SetTailnetServeRequest {
   bool serve = 1;
 }
 
-// LAN access (ADR 0040): encrypted connections from paired devices on this machine's
+// LAN access (ADR 0041): encrypted connections from paired devices on this machine's
 // private addresses. Since 1.26.
 message LanStatusRequest {}
 

@@ -9,7 +9,7 @@ Urushi is a **cross-platform graphical workspace for AI agents**. It runs on mac
 - The sidebar lists **Projects → Threads** (projects group threads from any repo) and **Repos**. Every thread is backed by its own **git worktree** of a repo.
 - A thread has **tabs**. Each tab is a tree of **split panes**, and each pane is a terminal.
 - Terminal sessions are **recoverable**. A headless in-house multiplexer inside the `urushid` daemon keeps processes and screen state alive across window close, app crash or client disconnect.
-- Mobile apps are remote-only clients. They reach a desktop or server daemon over **Tailscale**, or as paired devices over the **LAN** when the host allows it (off by default, ADR 0040).
+- Mobile apps are remote-only clients. They reach a desktop or server daemon over **Tailscale**, or as paired devices over the **LAN** when the host allows it (off by default, ADR 0041).
 
 All documentation is indexed in [`docs/README.md`](docs/README.md): architecture, decisions (ADRs), features, protocol and dependencies.
 

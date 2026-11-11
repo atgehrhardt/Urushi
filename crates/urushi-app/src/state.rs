@@ -143,7 +143,7 @@ pub enum Field {
     DefaultShell,
     /// Connect: host.
     Host,
-    /// Connect: the one-time code from a LAN host, to pair first (ADR 0040).
+    /// Connect: the one-time code from a LAN host, to pair first (ADR 0041).
     PairingCode,
     /// Task editor: title.
     TaskTitle,
@@ -213,7 +213,7 @@ pub enum SettingToggle {
     UpdateBaseFromRemote,
     /// Serve the daemon on the tailnet.
     ServeTailnet,
-    /// Let paired devices connect over the LAN (ADR 0040).
+    /// Let paired devices connect over the LAN (ADR 0041).
     LanAccess,
     /// Start an agent with its skip-permissions flag.
     SkipPermissions(urushi_core::Agent),

@@ -1,4 +1,4 @@
-//! LAN access (ADR 0040), on both ends:
+//! LAN access (ADR 0041), on both ends:
 //! - **Connecting:** the connect dialog pairs with a LAN host first when given a code,
 //!   and offers the hosts this device paired with.
 //! - **The host's Settings:** switch LAN access on, show a pairing code, revoke devices.

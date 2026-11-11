@@ -22,7 +22,7 @@ message Settings {
   // start from the newer commit (ADR 0028). Unset from an older daemon, which doesn't.
   // Since 1.16.
   bool update_base_from_remote = 8;
-  // LAN access (ADR 0040). Unset from an older daemon, which has none. Since 1.26.
+  // LAN access (ADR 0041). Unset from an older daemon, which has none. Since 1.26.
   LanSettings lan = 9;
 }
 
@@ -91,7 +91,7 @@ message AgentSettings {
   string task_message = 8;
 }
 
-// LAN access (ADR 0040). Since 1.26.
+// LAN access (ADR 0041). Since 1.26.
 message LanSettings {
   bool enabled = 1;
   // 0 means the default, 7421.

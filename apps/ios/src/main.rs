@@ -1,7 +1,6 @@
 //! Urushi on iOS. iOS can't spawn local shells, so the app always connects to a remote
 //! daemon, over Tailscale or as a paired LAN device: it opens with the "connect to a
-//! host" dialog. Bundle with
-//! `scripts/bundle-ios-sim.sh`.
+//! host" dialog. Bundle with `scripts/bundle-ios.sh`.
 
 fn main() {
     tracing_subscriber::fmt()
@@ -16,7 +15,7 @@ fn main() {
         _ => urushi_app::ConnectTarget::Ask,
     };
     let mut config = urushi_app::AppConfig::new(target);
-    // The app's sandboxed Application Support folder keeps the LAN keyring (ADR 0040).
+    // The app's sandboxed Application Support folder keeps the LAN keyring (ADR 0041).
     config.data_dir = std::env::var_os("HOME").map(|home| {
         std::path::PathBuf::from(home)
             .join("Library")

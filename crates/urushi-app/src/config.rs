@@ -26,7 +26,7 @@ pub struct AppConfig {
     pub target: ConnectTarget,
     /// Platform-provided safe area, if winit's isn't accurate.
     pub safe_area: Option<SafeAreaFn>,
-    /// Where this device keeps its LAN keyring (ADR 0040). `None`: the local home
+    /// Where this device keeps its LAN keyring (ADR 0041). `None`: the local home
     /// (`URUSHI_HOME`, then the app data dir). Mobile shells pass their app's data dir.
     pub data_dir: Option<PathBuf>,
 }

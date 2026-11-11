@@ -27,6 +27,8 @@ impl Gpu {
             ..Default::default()
         }))
         .map_err(|e| RenderError::NoAdapter(e.to_string()))?;
+        let info = adapter.get_info();
+        tracing::info!(backend = ?info.backend, name = %info.name, driver = %info.driver, "GPU adapter");
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("urushi"),
             required_limits:

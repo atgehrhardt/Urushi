@@ -1,4 +1,4 @@
-//! LAN access (ADR 0040): paired devices connecting over this machine's private
+//! LAN access (ADR 0041): paired devices connecting over this machine's private
 //! addresses, through an encrypted Noise channel (`urushi_proto::lan`).
 //!
 //! - [`addresses`]: which addresses may be listened on and accepted from.

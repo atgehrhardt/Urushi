@@ -1,4 +1,4 @@
-//! `urushi lan …`: LAN access (ADR 0040).
+//! `urushi lan …`: LAN access (ADR 0041).
 //!
 //! On the host: switch LAN access on or off, show a pairing code, list and revoke paired
 //! devices. On another machine: pair this CLI with a host (`lan pair`); `--host` then

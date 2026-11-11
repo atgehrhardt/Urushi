@@ -2,7 +2,7 @@
 
 - **Status:** Shipped (daemon, CLI, desktop and mobile apps)
 - **Owners (crates):** `urushi-proto` (`lan`), `urushi-daemon` (`lan/`, `server/lan.rs`), `urushi-client` (`lan.rs`), `urushi-cli` (`lan.rs`), `urushi-app` (`update/lan.rs`, `view/lan.rs`)
-- **Related ADRs:** [0040](../adr/0040-lan-access-through-paired-noise-channels.md), [0005](../adr/0005-tailscale-remote.md)
+- **Related ADRs:** [0041](../adr/0041-lan-access-through-paired-noise-channels.md), [0005](../adr/0005-tailscale-remote.md)
 
 ## What it does
 With **Settings → Allow LAN access** (or `urushi lan on`) switched on, other devices can reach the daemon on this machine's private LAN addresses. That covers the same network, or a VPN into it (WireGuard, a UniFi Dream Machine), without Tailscale. It is **off by default**. A device must first pair, using a one-time code the host shows. After that, it connects over an encrypted channel, and the host can revoke it at any time. Urushi never opens ports on a router or firewall.
@@ -44,5 +44,6 @@ With **Settings → Allow LAN access** (or `urushi lan on`) switched on, other d
 - Keys on mobile live in the app's private storage, not the iOS Keychain or Android Keystore.
 - No QR code yet: the 20-character code is typed by hand.
 - The app shows no LAN pill in the sidebar; LAN status is in Settings.
+- On iOS, the first LAN connection asks for Local Network permission (`NSLocalNetworkUsageDescription` in `scripts/bundle-ios.sh`). Without it, pairing and connecting fail.
 - The OS firewall may ask once whether `urushid` may accept incoming connections. That prompt is the OS's; Urushi never changes firewall rules.
 - A paired device can still change other settings, including tailnet serving, as tailnet peers can (ADR 0005). Only LAN access itself is host-only.

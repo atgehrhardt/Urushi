@@ -7,7 +7,7 @@
 //! - [`envelope`]: small constructors for building envelopes without boilerplate.
 //! - [`endpoint`]: where daemons listen (local socket or pipe, or tailnet TCP).
 //! - [`lan`] (feature `lan`): the encrypted, paired channel LAN connections use
-//!   (ADR 0040).
+//!   (ADR 0041).
 //!
 //! The evolution rules are in `docs/protocol.md` and the `change-protocol` skill.
 

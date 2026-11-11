@@ -1,4 +1,4 @@
-//! LAN access in the app (ADR 0040): pairing from the connect dialog, connecting to
+//! LAN access in the app (ADR 0041): pairing from the connect dialog, connecting to
 //! paired hosts, and the host's switch, pairing code and revoking in Settings.
 
 use urushi_client::v1::{self, request::Body, response::Outcome};

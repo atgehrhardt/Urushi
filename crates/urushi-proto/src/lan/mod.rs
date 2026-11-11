@@ -1,4 +1,4 @@
-//! Encrypted, paired connections over a LAN (ADR 0040).
+//! Encrypted, paired connections over a LAN (ADR 0041).
 //!
 //! A LAN, unlike a tailnet, tells the daemon nothing about who is connecting and
 //! doesn't encrypt anything. So a LAN connection starts with a short plaintext

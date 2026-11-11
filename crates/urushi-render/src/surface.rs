@@ -17,25 +17,52 @@ pub struct SurfaceRenderer {
 
 impl SurfaceRenderer {
     /// Creates a renderer for `window` with a surface of `width`×`height` physical pixels.
-    pub fn new(
-        window: impl Into<wgpu::SurfaceTarget<'static>>,
+    pub fn new<W>(window: &W, width: u32, height: u32, scale: f32) -> Result<Self, RenderError>
+    where
+        W: Into<wgpu::SurfaceTarget<'static>> + Clone,
+    {
+        let android = cfg!(target_os = "android");
+        let descriptor = || {
+            let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
+            if android {
+                // Some Android Vulkan drivers (including the emulator's) crash in
+                // vkSetDebugUtilsObjectNameEXT, so never hand them debug labels.
+                descriptor.flags = (descriptor.flags | wgpu::InstanceFlags::DISCARD_HAL_LABELS)
+                    - wgpu::InstanceFlags::DEBUG
+                    - wgpu::InstanceFlags::VALIDATION;
+            }
+            descriptor
+        };
+        let mut last_error = RenderError::NoAdapter("no graphics backend enabled".into());
+        for backends in backend_attempts(android, descriptor().backends) {
+            let mut attempt = descriptor();
+            attempt.backends = backends;
+            let instance = wgpu::Instance::new(attempt);
+            let surface = match instance.create_surface(window.clone()) {
+                Ok(surface) => surface,
+                Err(e) => {
+                    last_error = RenderError::Surface(e.to_string());
+                    continue;
+                }
+            };
+            match Gpu::new(instance, Some(&surface)) {
+                Ok(gpu) => return Self::configure(gpu, surface, width, height, scale),
+                Err(e) => {
+                    tracing::info!(?backends, error = %e, "no usable adapter; trying the next backend");
+                    last_error = e;
+                }
+            }
+        }
+        Err(last_error)
+    }
+
+    fn configure(
+        gpu: Gpu,
+        surface: wgpu::Surface<'static>,
         width: u32,
         height: u32,
         scale: f32,
     ) -> Result<Self, RenderError> {
-        let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
-        if cfg!(target_os = "android") {
-            // Some Android Vulkan drivers (including the emulator's) crash in
-            // vkSetDebugUtilsObjectNameEXT, so never hand them debug labels.
-            descriptor.flags = (descriptor.flags | wgpu::InstanceFlags::DISCARD_HAL_LABELS)
-                - wgpu::InstanceFlags::DEBUG
-                - wgpu::InstanceFlags::VALIDATION;
-        }
-        let instance = wgpu::Instance::new(descriptor);
-        let surface = instance
-            .create_surface(window)
-            .map_err(|e| RenderError::Surface(e.to_string()))?;
-        let gpu = Gpu::new(instance, Some(&surface))?;
         let caps = surface.get_capabilities(&gpu.adapter);
         // Blend in sRGB space (like most UI toolkits), so text weight matches design tools.
         let format = caps
@@ -114,5 +141,52 @@ impl SurfaceRenderer {
             .draw(&self.gpu.device, &self.gpu.queue, &target, scene, text);
         self.gpu.queue.present(frame);
         Ok(())
+    }
+}
+
+/// The backends to try, one instance per entry, in order.
+///
+/// On Android each attempt gets a single backend. With Vulkan and GL in one instance, the
+/// Android emulator (with a host GPU) picked its GL adapter, and the EGL surface (created
+/// at `configure`) failed because the window was already connected to another graphics
+/// API (`EGL_BAD_ALLOC`). wgpu then panicked in `Surface::configure`, closing the app at
+/// start. Vulkan goes first; GL is the fallback for devices without a usable Vulkan
+/// driver. Elsewhere one instance with every configured backend is fine.
+fn backend_attempts(android: bool, configured: wgpu::Backends) -> Vec<wgpu::Backends> {
+    if !android {
+        return vec![configured];
+    }
+    [wgpu::Backends::VULKAN, wgpu::Backends::GL]
+        .into_iter()
+        .filter(|b| configured.contains(*b))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::backend_attempts;
+
+    #[test]
+    fn android_tries_vulkan_then_gl_one_at_a_time() {
+        assert_eq!(
+            backend_attempts(true, wgpu::Backends::all()),
+            vec![wgpu::Backends::VULKAN, wgpu::Backends::GL]
+        );
+    }
+
+    #[test]
+    fn android_respects_a_backend_forced_from_the_environment() {
+        assert_eq!(
+            backend_attempts(true, wgpu::Backends::GL),
+            vec![wgpu::Backends::GL]
+        );
+    }
+
+    #[test]
+    fn other_platforms_use_one_instance_with_every_backend() {
+        assert_eq!(
+            backend_attempts(false, wgpu::Backends::all()),
+            vec![wgpu::Backends::all()]
+        );
     }
 }

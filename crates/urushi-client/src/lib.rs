@@ -7,7 +7,7 @@
 //! - [`WorkspaceMirror`]: the workspace as last reported, with domain-typed lookups.
 //! - [`ensure_local_daemon`]: connects to the local daemon, starting it if needed.
 //! - [`LanKeyring`], [`pair_lan`] and [`Client::connect_remote`]: paired, encrypted
-//!   connections over the LAN (ADR 0040).
+//!   connections over the LAN (ADR 0041).
 
 mod boards;
 mod connection;

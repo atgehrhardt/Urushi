@@ -157,7 +157,7 @@ pub struct Service {
     usage: Arc<UsageMonitor>,
     pub(crate) remote: Mutex<RemoteState>,
     pub(crate) lan_interfaces: Arc<dyn LanInterfaces>,
-    /// LAN access: key, paired devices, pairing, listeners (ADR 0040).
+    /// LAN access: key, paired devices, pairing, listeners (ADR 0041).
     pub(crate) lan: Mutex<LanState>,
     /// Restore points on disk (`<home>/restore`).
     restore: RestoreStore,

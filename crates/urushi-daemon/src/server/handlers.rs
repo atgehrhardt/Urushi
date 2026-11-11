@@ -65,7 +65,7 @@ fn size(cols: u32, rows: u32) -> TermSize {
 }
 
 /// Refuses `what` unless the client is on this machine, so a remote device can never
-/// widen remote access (ADR 0040).
+/// widen remote access (ADR 0041).
 fn host_only(connection: &Connection, what: &str) -> ServiceResult<()> {
     if connection.local {
         Ok(())

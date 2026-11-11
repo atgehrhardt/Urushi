@@ -1,4 +1,4 @@
-//! LAN access end to end (ADR 0040): pairing, encrypted connections, revoking, and
+//! LAN access end to end (ADR 0041): pairing, encrypted connections, revoking, and
 //! what only the host may do. The daemon "listens on the LAN" on loopback here.
 #![allow(
     clippy::unwrap_used,

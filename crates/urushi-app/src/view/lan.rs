@@ -1,4 +1,4 @@
-//! LAN access (ADR 0040) in the views: Settings' section on the host, and the connect
+//! LAN access (ADR 0041) in the views: Settings' section on the host, and the connect
 //! dialog's pairing code and paired hosts on a device.
 
 use urushi_client::v1;

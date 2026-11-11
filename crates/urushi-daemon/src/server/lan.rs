@@ -1,4 +1,4 @@
-//! Serving the daemon to paired devices on the LAN (ADR 0040).
+//! Serving the daemon to paired devices on the LAN (ADR 0041).
 //!
 //! With `lan.enabled` on, the daemon listens on each of this machine's private addresses
 //! (never on every interface, never on a public address) and re-checks them every 30 s.

@@ -19,7 +19,7 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
     tracing_log("starting");
 
     // winit doesn't report Android's system-bar insets; android-activity does.
-    // The app's private storage keeps the LAN keyring (ADR 0040).
+    // The app's private storage keeps the LAN keyring (ADR 0041).
     let data_dir = app.internal_data_path();
     let insets_app = app.clone();
     let safe_area: urushi_app::SafeAreaFn = std::sync::Arc::new(move || {

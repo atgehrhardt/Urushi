@@ -28,7 +28,7 @@ pub struct Settings {
     pub update_base_from_remote: bool,
     /// Remote access over Tailscale.
     pub tailnet: TailnetSettings,
-    /// Remote access from paired devices on the LAN (ADR 0040).
+    /// Remote access from paired devices on the LAN (ADR 0041).
     pub lan: LanSettings,
     /// How agent CLIs (Claude, Codex, Cursor) are started.
     pub agents: AgentSettings,
@@ -82,7 +82,7 @@ impl Default for TailnetSettings {
     }
 }
 
-/// Settings for accepting connections from paired devices on the LAN (ADR 0040).
+/// Settings for accepting connections from paired devices on the LAN (ADR 0041).
 ///
 /// Off by default. When on, the daemon listens only on this machine's private
 /// addresses, and only devices paired with a one-time code can connect, over an

@@ -10,7 +10,7 @@ publish.workspace = true
 default = []
 # Async frame reading/writing over tokio streams.
 io = ["dep:tokio"]
-# Encrypted, paired LAN connections over Noise (ADR 0040).
+# Encrypted, paired LAN connections over Noise (ADR 0041).
 lan = ["io", "dep:snow", "dep:getrandom"]
 
 [dependencies]
