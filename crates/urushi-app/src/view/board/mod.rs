@@ -1,18 +1,20 @@
 //! The task-board panel: frosted glass that slides out from under the sidebar over the
 //! terminals, blurring them. Board tabs across the top (`tabs.rs`), then the board's columns of task
-//! cards, all the same size. A phone shows one column at a time instead (`phone.rs`). Cards open the task editor on click and move between
+//! cards, all the same size. Columns share the width but never get narrower than
+//! [`BOARD_COLUMN_MIN_WIDTH`]: past that the board scrolls sideways (a foldable, a narrow
+//! window, many columns). A phone shows one column at a time instead (`phone.rs`). Cards open the task editor on click and move between
 //! columns by drag and drop: while a card is dragged, its place stays as a faint outline, a line shows where
 //! it would land, and a raised copy follows the pointer.
 
 use urushi_client::v1;
-use urushi_ui::widgets::{ButtonKind, button, icon_button};
+use urushi_ui::widgets::{ButtonKind, button};
 use urushi_ui::{Align, Font, Insets, Key, Length, Node, Theme, key};
 
 use urushi_core::board::MAX_COLUMNS;
 
 use crate::board::BOARDS_SINCE_MINOR;
 use crate::msg::Msg;
-use crate::organize::{MenuTarget, Prompt};
+use crate::organize::Prompt;
 use crate::state::AppState;
 
 /// Space between cards in a column.
@@ -32,6 +34,7 @@ mod card;
 mod column;
 mod dialogs;
 mod filter;
+mod header;
 pub(in crate::view) mod jira;
 mod phone;
 pub(in crate::view) mod quick_filter;
@@ -41,6 +44,16 @@ pub(in crate::view) use card::drag_ghost;
 use column::column;
 pub(in crate::view) use column::drop_line;
 pub(in crate::view) use dialogs::{delete_board, delete_column, delete_issue};
+pub(in crate::view) use header::narrow;
+
+/// The narrowest a column gets beside others, so its cards stay readable: the width of
+/// the card that follows the pointer while dragging, plus the column's padding.
+pub(crate) const BOARD_COLUMN_MIN_WIDTH: f32 = GHOST_WIDTH + 20.0;
+
+/// Key of a board's sideways scrolling row of columns.
+fn board_columns_scroll_key(board: &str) -> Key {
+    key(&["board-columns", board])
+}
 
 /// Width of the slot that adds a column.
 const ADD_COLUMN_WIDTH: f32 = 96.0;
@@ -106,7 +119,7 @@ pub(super) fn panel(
         .board
         .board(&state.workspace)
         .filter(|_| state.daemon_supports_board_extras())
-        .map(|b| filter::bar(state, theme, b));
+        .map(|b| filter::bar(state, theme, b, scroll));
     let column_tabs = state
         .board
         .board(&state.workspace)
@@ -125,7 +138,7 @@ pub(super) fn panel(
     .child(if state.compact {
         phone::header(state, theme)
     } else {
-        header(state, theme)
+        header::header(state, theme, scroll)
     })
     .children(filter_bar)
     .children(column_tabs)
@@ -136,71 +149,6 @@ pub(super) fn panel(
         theme,
         crate::errors::ErrorPlace::Board,
         None,
-    ))
-}
-
-/// Board tabs, "+", and the shown board's actions (on a desktop; see `phone::header`).
-fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
-    let shown = state.board.board(&state.workspace).map(|b| b.id.as_str());
-    let tabs = tabs::tabs(state, theme, shown);
-    let mut row = Node::row()
-        .width(Length::Fill(1.0))
-        .height(Length::Fixed(44.0))
-        .padding(Insets::symmetric(0.0, 12.0))
-        .gap(4.0);
-    // The panel covers the tab bar and its "Show sidebar" button, so it has its own.
-    if state.sidebar.collapsed() {
-        row = row.child(super::sidebar_toggle(state, theme));
-    }
-    row = row
-        .child(Node::text(
-            "Tasks",
-            Font::UiSemibold,
-            theme.font_size,
-            theme.text,
-        ))
-        .child(Node::new().width(Length::Fixed(8.0)))
-        .children(tabs);
-    if state.daemon_supports_jira() {
-        // A new board, or one imported from Jira.
-        row = row.child(
-            icon_button(theme, "+", "New board", Msg::OpenMenu(MenuTarget::NewBoard))
-                .key(key(&["board-new"])),
-        );
-    } else if state.daemon_minor >= BOARDS_SINCE_MINOR {
-        row = row.child(icon_button(
-            theme,
-            "+",
-            "New board",
-            Msg::OpenPrompt(Prompt::NewBoard),
-        ));
-    }
-    row = row.child(Node::spacer());
-    let board = state.board.board(&state.workspace);
-    match board {
-        Some(b) if b.jira.is_some() => row = row.children(jira::actions(state, theme, b)),
-        Some(b) => {
-            row = row
-                .child(button(
-                    theme,
-                    "Rename",
-                    ButtonKind::Ghost,
-                    Msg::OpenPrompt(Prompt::RenameBoard(b.id.clone())),
-                ))
-                .child(button(
-                    theme,
-                    "Delete",
-                    ButtonKind::Ghost,
-                    Msg::OpenDeleteBoard(b.id.clone()),
-                ));
-        }
-        None => {}
-    }
-    row.child(icon_button(
-        theme,
-        "×",
-        "Close tasks (Esc)",
-        Msg::ToggleBoard,
     ))
 }
 
@@ -232,18 +180,20 @@ fn columns(
     board: &v1::Board,
     scroll: &std::collections::HashMap<Key, f32>,
 ) -> Node<Msg> {
+    let key = board_columns_scroll_key(&board.id);
     Node::row()
         .width(Length::Fill(1.0))
         .height(Length::Fill(1.0))
         .padding(Insets::symmetric(14.0, 14.0))
         .gap(12.0)
         .align(Align::Stretch)
+        .scroll_x(key, scroll.get(&key).copied().unwrap_or(0.0))
         .children(board.columns.iter().map(|c| {
             let offset = scroll
                 .get(&column_scroll_key(&c.id))
                 .copied()
                 .unwrap_or(0.0);
-            column(state, theme, board, c, offset)
+            column(state, theme, board, c, offset).min_width(BOARD_COLUMN_MIN_WIDTH)
         }))
         .children(
             (state.daemon_supports_board_extras()

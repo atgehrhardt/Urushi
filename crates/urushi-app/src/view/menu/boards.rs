@@ -1,7 +1,7 @@
 //! A board tab's context menu: **Move left** and **Move right**, where the board can go
-//! that way and the daemon can reorder boards (protocol 1.17). On a phone the same menu
-//! opens from the board's "⋯" and starts with the board's actions, which its header has
-//! no room for: Rename and Delete, or a Jira board's sync state, Sync now and Remove.
+//! that way and the daemon can reorder boards (protocol 1.17). On a phone, or a board
+//! panel too narrow for them (`view::board::narrow`), the same menu opens from the
+//! board's "⋯" and starts with the board's actions, which its header has no room for: Rename and Delete, or a Jira board's sync state, Sync now and Remove.
 //! A phone's board picker lists the boards and the ways to add one.
 
 use urushi_client::v1;
@@ -25,7 +25,7 @@ pub(super) fn board_items(state: &AppState, theme: &Theme, id: &str) -> Vec<Node
     let Some(at) = boards.iter().position(|b| b.id == id) else {
         return Vec::new();
     };
-    let mut items = if state.compact {
+    let mut items = if crate::view::board::narrow(state) {
         actions(state, theme, &boards[at])
     } else {
         Vec::new()

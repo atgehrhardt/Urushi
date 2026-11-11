@@ -2,8 +2,9 @@
 //! on a Jira board the people issues are assigned to as avatars, "Only my issues",
 //! "Recently updated" and Jira's quick filters as chips, and on any board the quick
 //! filters it keeps as chips (right-click one to change or delete it), then
-//! **Filters ▾** (everything, by field), "Clear" and "Save filter…". On a phone: the
-//! search and **Filters ▾**.
+//! **Filters ▾** (everything, by field), "Clear" and "Save filter…". The chips scroll
+//! sideways when they don't fit. On a phone, or a panel too narrow for them
+//! (`narrow`): the search and **Filters ▾**.
 
 use urushi_client::v1;
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key};
@@ -23,8 +24,13 @@ const SEARCH_WIDTH: f32 = 220.0;
 /// Longest quick filter name shown whole.
 const CHIP_CHARS: usize = 22;
 
-/// The bar for `board`.
-pub(super) fn bar(state: &AppState, theme: &Theme, board: &v1::Board) -> Node<Msg> {
+/// The bar for `board`. `scroll` holds the offset of its sideways scrolling chips.
+pub(super) fn bar(
+    state: &AppState,
+    theme: &Theme,
+    board: &v1::Board,
+    scroll: &std::collections::HashMap<urushi_ui::Key, f32>,
+) -> Node<Msg> {
     let f = &state.board.filter;
     let search = super::super::dialogs::field(
         state,
@@ -33,35 +39,43 @@ pub(super) fn bar(state: &AppState, theme: &Theme, board: &v1::Board) -> Node<Ms
         Field::BoardSearch,
         "Search this board",
     );
+    let narrow = super::narrow(state);
     let mut row = Node::row()
         .width(Length::Fill(1.0))
         .height(Length::Fixed(40.0))
         .padding(Insets::symmetric(0.0, 14.0))
         .gap(6.0)
         .align(Align::Center)
-        .child(search.width(if state.compact {
+        .child(search.width(if narrow {
             Length::Fill(1.0)
         } else {
             Length::Fixed(SEARCH_WIDTH)
         }));
-    if let Some(jira) = board.jira.as_deref().filter(|_| !state.compact) {
-        row = row.children(avatars(state, theme, board));
+    // With room, the chips share what the search and the buttons leave, and scroll
+    // sideways when they need more.
+    let mut chips = Node::row()
+        .width(Length::Fill(1.0))
+        .height(Length::Fill(1.0))
+        .gap(6.0)
+        .align(Align::Center);
+    if let Some(jira) = board.jira.as_deref().filter(|_| !narrow) {
+        chips = chips.children(avatars(state, theme, board));
         if state.filter_context().me.is_some() {
-            row = row.child(chip(
+            chips = chips.child(chip(
                 theme,
                 "Only my issues",
                 f.mine,
                 Msg::Filter(FilterMsg::Mine),
             ));
         }
-        row = row.child(chip(
+        chips = chips.child(chip(
             theme,
             "Recently updated",
             f.recent,
             Msg::Filter(FilterMsg::Recent),
         ));
         for q in &jira.quick_filters {
-            row = row.child(quick_chip(
+            chips = chips.child(quick_chip(
                 state,
                 theme,
                 (board, &q.name, QuickRef::Jira(q.id)),
@@ -69,9 +83,9 @@ pub(super) fn bar(state: &AppState, theme: &Theme, board: &v1::Board) -> Node<Ms
             ));
         }
     }
-    if !state.compact {
+    if !narrow {
         for q in &board.quick_filters {
-            row = row.child(quick_chip(
+            chips = chips.child(quick_chip(
                 state,
                 theme,
                 (board, &q.name, QuickRef::Kept(q.id.clone())),
@@ -79,8 +93,10 @@ pub(super) fn bar(state: &AppState, theme: &Theme, board: &v1::Board) -> Node<Ms
             ));
         }
     }
-    if !state.compact {
-        row = row.child(Node::spacer());
+    if !narrow {
+        let chips_key = key(&["board-filter-chips"]);
+        let offset = scroll.get(&chips_key).copied().unwrap_or(0.0);
+        row = row.child(chips.scroll_x(chips_key, offset));
     }
     let count = f.count();
     let label = if count > 0 {
@@ -94,7 +110,7 @@ pub(super) fn bar(state: &AppState, theme: &Theme, board: &v1::Board) -> Node<Ms
             .on_click(Msg::OpenMenu(MenuTarget::Filter(board.id.clone())))
             .role(Role::Button, "Filters"),
     );
-    if f.active() && !state.compact {
+    if f.active() && !narrow {
         row = row.child(urushi_ui::widgets::button(
             theme,
             "Clear",
@@ -102,7 +118,7 @@ pub(super) fn bar(state: &AppState, theme: &Theme, board: &v1::Board) -> Node<Ms
             Msg::Filter(FilterMsg::Clear),
         ));
     }
-    if !state.compact && state.can_save_quick_filter(board) {
+    if !narrow && state.can_save_quick_filter(board) {
         row = row.child(
             urushi_ui::widgets::button(
                 theme,

@@ -32,6 +32,7 @@ mod pulse;
 pub mod quick_terminal;
 mod runner;
 pub mod running;
+mod scrolling;
 pub mod sidebar;
 pub mod snapshot;
 mod soft_keyboard;

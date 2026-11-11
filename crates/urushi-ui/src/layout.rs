@@ -9,7 +9,7 @@
 use crate::color::Color;
 use crate::field::{self, FieldRegion};
 use crate::geometry::{Point, Rect, Size};
-use crate::node::{Align, Content, CursorIcon, Flow, Key, Length, Node, Role, Style};
+use crate::node::{Align, Axis, Content, CursorIcon, Flow, Key, Length, Node, Role, Style};
 use crate::scene::{Quad, Scene};
 use crate::text::TextSystem;
 
@@ -44,8 +44,10 @@ pub struct ScrollRegion {
     pub key: Key,
     /// Visible area.
     pub rect: Rect,
-    /// Total height of the content.
-    pub content_height: f32,
+    /// Which way it scrolls.
+    pub axis: Axis,
+    /// Length of the content along that axis (its height, or sideways its width).
+    pub content_len: f32,
     /// Offset actually used (clamped).
     pub offset: f32,
 }
@@ -53,7 +55,11 @@ pub struct ScrollRegion {
 impl ScrollRegion {
     /// The largest valid offset.
     pub fn max_offset(&self) -> f32 {
-        (self.content_height - self.rect.height).max(0.0)
+        let shown = match self.axis {
+            Axis::Vertical => self.rect.height,
+            Axis::Horizontal => self.rect.width,
+        };
+        (self.content_len - shown).max(0.0)
     }
 }
 
@@ -163,6 +169,15 @@ impl<M: Clone> Frame<M> {
             .iter()
             .rev()
             .find(|r| r.rect.contains(p))
+    }
+
+    /// The innermost area at `p` that scrolls along `axis`: a wheel or finger moving
+    /// sideways scrolls the row a column sits in, not the column.
+    pub fn scroll_region_along(&self, p: Point, axis: Axis) -> Option<&ScrollRegion> {
+        self.scroll_regions
+            .iter()
+            .rev()
+            .find(|r| r.axis == axis && r.rect.contains(p))
     }
 }
 
@@ -454,10 +469,10 @@ impl<M: Clone> Ctx<'_, M> {
             }
             return;
         }
-        let flow = if node.scroll.is_some() {
-            Flow::Column
-        } else {
-            s.flow
+        let flow = match node.scroll.map(|sc| sc.axis) {
+            Some(Axis::Vertical) => Flow::Column,
+            Some(Axis::Horizontal) => Flow::Row,
+            None => s.flow,
         };
         let sizes: Vec<Size> = node
             .children
@@ -469,7 +484,9 @@ impl<M: Clone> Ctx<'_, M> {
         let inner_cross = cross_axis(flow, Size::new(inner.width, inner.height));
         let weights: f32 = node.children.iter().map(|c| fill_weight(flow, c)).sum();
         let used: f32 = sizes.iter().map(|sz| main_axis(flow, *sz)).sum::<f32>() + gaps;
-        let leftover = if node.scroll.is_some() {
+        // A scrolling column's content keeps its own height; a sideways row's `Fill`
+        // children share what is there (and scroll past it only for their minimums).
+        let leftover = if node.scroll.is_some_and(|sc| sc.axis == Axis::Vertical) {
             0.0
         } else {
             (inner_main - used).max(0.0)
@@ -482,7 +499,11 @@ impl<M: Clone> Ctx<'_, M> {
             .map(|(c, sz)| {
                 let w = fill_weight(flow, c);
                 if w > 0.0 && weights > 0.0 {
-                    leftover * w / weights
+                    let share = leftover * w / weights;
+                    match (flow, c.style.min_width) {
+                        (Flow::Row, Some(min)) => share.max(min),
+                        _ => share,
+                    }
                 } else {
                     main_axis(flow, *sz)
                 }
@@ -507,7 +528,8 @@ impl<M: Clone> Ctx<'_, M> {
             let region = ScrollRegion {
                 key: scroll.key,
                 rect: inner,
-                content_height: total,
+                axis: scroll.axis,
+                content_len: total,
                 offset: 0.0,
             };
             let clamped = scroll.offset.clamp(0.0, region.max_offset());

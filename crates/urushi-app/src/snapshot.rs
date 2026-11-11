@@ -379,6 +379,9 @@ fn scenario_frame(
     let mut state = AppState::new(ConnectTarget::Local(None), cell);
     state.compact = width < 700.0;
     state.window_height = height;
+    // As the runner does: the sidebar's width, and whether the board panel is narrow,
+    // follow the window's.
+    state.update(Msg::Sidebar(crate::msg::SidebarMsg::WindowWidth(width)));
     let repo = |id: &str, name: &str| v1::Project {
         id: id.into(),
         name: name.into(),
@@ -647,6 +650,8 @@ mod project_base;
 mod quick;
 mod quick_filters;
 
+#[cfg(test)]
+mod board_width;
 #[cfg(test)]
 mod phone_board;
 #[cfg(test)]

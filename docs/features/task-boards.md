@@ -1,8 +1,8 @@
 # Feature: Task boards
 
 - **Status:** Shipped (manual boards, columns, colors, tags, kinds, nested subtasks, attachments, threads started from tasks; Jira boards in [jira-boards](jira-boards.md))
-- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,order,prompt,quick}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_nav.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/` (tabs in `tabs.rs`, the phone layout in `phone.rs`), `view/tasks/`, `view/labels.rs`, `view/menu/{tasks,boards}.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
-- **Related ADRs:** [0046](../adr/0046-one-board-column-at-a-time-on-phones.md), [0037](../adr/0037-quick-filters-written-to-jira-or-kept-here.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
+- **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,order,prompt,quick}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_nav.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/` (tabs in `tabs.rs`, the header in `header.rs`, the phone layout in `phone.rs`), `scrolling.rs`, `view/tasks/`, `view/labels.rs`, `view/menu/{tasks,boards}.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
+- **Related ADRs:** [0047](../adr/0047-board-columns-keep-a-width-and-scroll-sideways.md), [0046](../adr/0046-one-board-column-at-a-time-on-phones.md), [0037](../adr/0037-quick-filters-written-to-jira-or-kept-here.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
 
 ## What it does
 A **Tasks** button sits under the sidebar's Projects | Repos tabs. It shows the number of
@@ -130,6 +130,13 @@ it back.
   at the bottom. While dragging, the card's place stays as a faint outline, an accent line
   shows where it would land (only where it would move), the column under the pointer is
   outlined, and a raised copy of the card follows the pointer.
+- **Width** (ADR 0047): columns share the panel's width but never get narrower than
+  `BOARD_COLUMN_MIN_WIDTH` (280 pt). With more columns than fit (an unfolded foldable, a
+  narrow window, a wide sidebar), the board scrolls sideways: trackpad, Shift+wheel or a
+  finger. A card dragged near the left or right edge scrolls the board that way. The
+  board tabs and the filter chips scroll sideways too.
+- **A narrow panel** (under 880 pt, `view::board::narrow`) has the board's actions behind
+  **⋯** (as on a phone) and only the search and **Filters ▾** in the filter bar.
 - **On phones** (ADR 0046) the panel covers the whole screen and shows one column at a
   time, at full width (`view/board/phone.rs`):
   - The header is the board picker (**Name ▾**: every board, then New board… and Import
@@ -396,6 +403,8 @@ restarts.
   `snapshot/phone_board.rs` (one column of full-width cards and a header that fits at
   393 pt), `update/tests/board_phone.rs` (tabs, swipes and when they're ignored, dropping
   on a tab, the board picker and **⋯**), `board.rs::a_phone_shows_the_chosen_column_and_steps_within_the_board`,
+  `snapshot/board_width.rs` (columns keep their width and scroll at 760 pt, share 1600 pt,
+  and a narrow panel's header), `scrolling.rs` (wheel axes, clamping, edge scrolling),
   `a_new_subtask_has_an_editor_of_its_own`,
   `the_task_editors_buttons_stay_on_screen_in_a_short_window` and
   `long_subtask_titles_are_cut_short_inside_the_editor`.
@@ -414,7 +423,6 @@ restarts.
 - A quick filter on a board of Urushi's own holds one search, kinds and tags. Quick
   filters that are on when saving aren't folded into the new one. Phones list them in
   **Filters ▾**, but can't edit or delete them yet (no right-click).
-- On a desktop, many columns get narrow: the board doesn't scroll sideways yet.
 - Subtasks can't be reordered by dragging (`NestTask` takes an index, but the editor
   doesn't offer it), and cards can't be dragged onto a task to nest them.
 - On a 1.6 or 1.7 daemon subtasks are a checklist: their titles don't open, and they
@@ -427,7 +435,6 @@ restarts.
 - A local task links one pull request; the card can't show its state (open or merged),
   since nothing reads the code host.
 - A dragged card doesn't scroll a column that is taller than the panel.
-- The board tabs don't scroll sideways: with many boards they run past the panel's edge,
-  and a dragged tab can't reach the ones out of view (use the menu or `urushi board
-  order`). Phones pick boards from **Name ▾** and move them from **⋯**.
+- There is no sideways scrollbar; the half-shown next column is the hint. Edge
+  scrolling while dragging moves only while the pointer moves.
 - The ⌘ shortcuts (e.g. close pane) still act on the terminals while the panel is out.

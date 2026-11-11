@@ -146,6 +146,9 @@ pub struct Style {
     /// The most a `Fit` height may grow to; past it the box keeps this height (make it
     /// scroll to reach the rest).
     pub max_height: Option<f32>,
+    /// The least a `Fill` width gets in a row: when the row's share is smaller, the box
+    /// keeps this width and the row runs past its end (make it scroll sideways).
+    pub min_width: Option<f32>,
 }
 
 /// A soft drop shadow under a box: the box's shape, moved down by `offset` and
@@ -181,6 +184,7 @@ impl Default for Style {
             shadow: None,
             backdrop_blur: 0.0,
             max_height: None,
+            min_width: None,
         }
     }
 }
@@ -246,13 +250,25 @@ impl std::fmt::Debug for Content {
     }
 }
 
-/// Scroll state for a scrollable column.
+/// Which way a scrolling box scrolls.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Axis {
+    /// Up and down: a column.
+    #[default]
+    Vertical,
+    /// Sideways: a row.
+    Horizontal,
+}
+
+/// Scroll state for a scrollable column or row.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Scroll {
     /// Identifies the scroll area in [`crate::Frame::scroll_regions`].
     pub key: Key,
-    /// Current offset from the top.
+    /// Current offset from the top (or, sideways, from the left).
     pub offset: f32,
+    /// Which way it scrolls.
+    pub axis: Axis,
 }
 
 /// A node in the view tree.
@@ -465,6 +481,13 @@ impl<M> Node<M> {
         self
     }
 
+    /// Keeps a `Fill` width in a row at least `width` wide (see [`Style::min_width`]).
+    #[must_use]
+    pub fn min_width(mut self, width: f32) -> Self {
+        self.style.min_width = Some(width);
+        self
+    }
+
     /// Stops clicks on this node from reaching what is under it (see [`Node::opaque`]).
     #[must_use]
     pub fn opaque(mut self) -> Self {
@@ -575,7 +598,25 @@ impl<M> Node<M> {
     /// Makes the box a vertically scrolling, clipped column.
     #[must_use]
     pub fn scroll(mut self, key: Key, offset: f32) -> Self {
-        self.scroll = Some(Scroll { key, offset });
+        self.scroll = Some(Scroll {
+            key,
+            offset,
+            axis: Axis::Vertical,
+        });
+        self.style.clip = true;
+        self
+    }
+
+    /// Makes the box a sideways scrolling, clipped row. Unlike a scrolling column, its
+    /// `Fill` children still share the width that is there; it scrolls when their
+    /// [`Node::min_width`]s need more.
+    #[must_use]
+    pub fn scroll_x(mut self, key: Key, offset: f32) -> Self {
+        self.scroll = Some(Scroll {
+            key,
+            offset,
+            axis: Axis::Horizontal,
+        });
         self.style.clip = true;
         self
     }
