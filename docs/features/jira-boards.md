@@ -22,7 +22,7 @@ moves at once and goes back if Jira refuses.
   now**, **Open in Jira** and **Remove**, which removes the board here and changes nothing in
   Jira. Cards show a marker in the
   issue type's color (story green, bug red and round, task blue, epic purple), the issue
-  key (not on phones), an epic chip, Jira labels as tags, subtask progress and the
+  key, an epic chip, Jira labels as tags, subtask progress and the
   assignee's initials, at the same size as any card.
 - **Epics are cards** (ADR 0027): an epic sits in the column that shows its status, like
   any issue. It can be dragged, opened in full and used to start a thread. Its stories
@@ -38,7 +38,8 @@ moves at once and goes back if Jira refuses.
   in one field widen it, fields narrow each other, and a card shows when it or one of
   its subtasks passes. Quick filters are JQL, so Jira evaluates them (asked again
   whenever the board changes while one is on); everything else is filtered here.
-  Columns count "shown/all". On a phone the bar is the search and **Filters ▾**.
+  Columns count "shown/all". On a phone the bar is the search and **Filters ▾**, and
+  the sync state, Sync now and Remove are in the board's **⋯** (see [Task boards](task-boards.md)).
   Boards of Urushi's own get the search, type and label.
 - **Making quick filters** (ADR 0037, 1.23 daemons): **Save filter…** in the bar (or
   **Save as quick filter…** in **Filters ▾**) saves what is chosen. The dialog asks for a

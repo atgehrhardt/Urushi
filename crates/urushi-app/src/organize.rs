@@ -37,8 +37,11 @@ pub enum MenuTarget {
     Task(String),
     /// A column of a board (by column id).
     Column(String),
-    /// A board's tab (by board id): move it left or right.
+    /// A board's tab (by board id): move it left or right. On a phone, the board's
+    /// "⋯", which also holds its actions (rename and delete, or sync and remove).
     Board(String),
+    /// A phone's board picker: every board, and new ones.
+    Boards,
     /// The board's filters (by board id).
     Filter(String),
     /// A quick filter's chip (board id, filter): change or delete it.

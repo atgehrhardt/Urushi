@@ -1,6 +1,6 @@
 //! The task-board panel: frosted glass that slides out from under the sidebar over the
 //! terminals, blurring them. Board tabs across the top (`tabs.rs`), then the board's columns of task
-//! cards, all the same size. Cards open the task editor on click and move between
+//! cards, all the same size. A phone shows one column at a time instead (`phone.rs`). Cards open the task editor on click and move between
 //! columns by drag and drop: while a card is dragged, its place stays as a faint outline, a line shows where
 //! it would land, and a raised copy follows the pointer.
 
@@ -33,6 +33,7 @@ mod column;
 mod dialogs;
 mod filter;
 pub(in crate::view) mod jira;
+mod phone;
 pub(in crate::view) mod quick_filter;
 mod tabs;
 
@@ -78,7 +79,11 @@ pub(super) fn panel(
             None,
         )
     } else if let Some(board) = state.board.board(&state.workspace) {
-        columns(state, theme, board, scroll)
+        if state.compact {
+            phone::body(state, theme, board, scroll)
+        } else {
+            columns(state, theme, board, scroll)
+        }
     } else {
         notice(
             theme,
@@ -102,6 +107,11 @@ pub(super) fn panel(
         .board(&state.workspace)
         .filter(|_| state.daemon_supports_board_extras())
         .map(|b| filter::bar(state, theme, b));
+    let column_tabs = state
+        .board
+        .board(&state.workspace)
+        .filter(|_| state.compact && state.daemon_minor >= BOARDS_SINCE_MINOR)
+        .map(|b| phone::column_tabs(state, theme, b));
     urushi_ui::widgets::overlay(
         theme,
         Node::column()
@@ -112,8 +122,13 @@ pub(super) fn panel(
     .key(key(&["board-panel"]))
     .on_click(Msg::BoardBackground)
     .slide_x(1.0 - state.board.eased())
-    .child(header(state, theme))
+    .child(if state.compact {
+        phone::header(state, theme)
+    } else {
+        header(state, theme)
+    })
     .children(filter_bar)
+    .children(column_tabs)
     .child(urushi_ui::widgets::divider(theme, false))
     .child(body)
     .children(super::error::for_place(
@@ -124,10 +139,9 @@ pub(super) fn panel(
     ))
 }
 
-/// Board tabs, "+", and the shown board's actions.
+/// Board tabs, "+", and the shown board's actions (on a desktop; see `phone::header`).
 fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
     let shown = state.board.board(&state.workspace).map(|b| b.id.as_str());
-    let compact = state.compact;
     let tabs = tabs::tabs(state, theme, shown);
     let mut row = Node::row()
         .width(Length::Fill(1.0))
@@ -135,21 +149,18 @@ fn header(state: &AppState, theme: &Theme) -> Node<Msg> {
         .padding(Insets::symmetric(0.0, 12.0))
         .gap(4.0);
     // The panel covers the tab bar and its "Show sidebar" button, so it has its own.
-    if !compact && state.sidebar.collapsed() {
+    if state.sidebar.collapsed() {
         row = row.child(super::sidebar_toggle(state, theme));
     }
-    // Phones need the room for the board tabs and actions.
-    if !compact {
-        row = row
-            .child(Node::text(
-                "Tasks",
-                Font::UiSemibold,
-                theme.font_size,
-                theme.text,
-            ))
-            .child(Node::new().width(Length::Fixed(8.0)));
-    }
-    row = row.children(tabs);
+    row = row
+        .child(Node::text(
+            "Tasks",
+            Font::UiSemibold,
+            theme.font_size,
+            theme.text,
+        ))
+        .child(Node::new().width(Length::Fixed(8.0)))
+        .children(tabs);
     if state.daemon_supports_jira() {
         // A new board, or one imported from Jira.
         row = row.child(

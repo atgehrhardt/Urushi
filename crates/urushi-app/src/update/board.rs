@@ -38,6 +38,8 @@ impl AppState {
                 }
             }
             Msg::SelectBoard(id) => {
+                // Phones choose boards from a menu.
+                self.menu = None;
                 let shown = self.board.board(&self.workspace).map(|b| b.id.as_str());
                 if shown != Some(id.as_str()) {
                     self.board.filter.clear();
@@ -45,8 +47,13 @@ impl AppState {
                         self.focus = None;
                     }
                 }
+                if shown != Some(id.as_str()) {
+                    self.board.column = None;
+                }
                 self.board.selected = Some(id);
             }
+            Msg::ShowColumn(column) => self.board.column = Some(column),
+            Msg::Swipe(dx) => self.swipe_column(dx),
             Msg::NewTask { board, column } => self.new_task(board, column, fx),
             Msg::PressTask(task) => self.board.pressed = Some(task),
             Msg::PressEnded => {
@@ -89,6 +96,7 @@ impl AppState {
             | Msg::PickExistingThread(_)) => self.task_msg(msg, fx),
             Msg::Board(action) => self.card_action(action, fx),
             Msg::OpenDeleteBoard(board) => {
+                self.menu = None;
                 if let Some(b) = self.workspace.board(&board) {
                     let tasks = b.columns.iter().map(|c| c.tasks.len()).sum();
                     let name = b.name.clone();
@@ -104,6 +112,27 @@ impl AppState {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// A sideways swipe on a phone's board: the next column for a swipe to the left,
+    /// the previous for one to the right. Only while the board is what the finger is on:
+    /// the panel is out, nothing covers it and no card is being dragged.
+    fn swipe_column(&mut self, dx: f32) {
+        if !self.compact
+            || !self.board.open
+            || self.dialog.is_some()
+            || self.menu.is_some()
+            || self.board.dragging.is_some()
+            || dx == 0.0
+        {
+            return;
+        }
+        let delta = if dx < 0.0 { 1 } else { -1 };
+        if let Some(board) = self.board.board(&self.workspace)
+            && let Some(column) = self.board.step_column(board, delta)
+        {
+            self.board.column = Some(column);
         }
     }
 

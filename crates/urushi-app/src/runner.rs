@@ -551,6 +551,10 @@ impl Runner {
                 self.pointer = Some(at);
                 self.scroll_at(at, dy / self.state.cell.height, dy);
             }
+            TouchAction::Swipe { at, dx } => {
+                self.pointer = Some(at);
+                self.dispatch(Msg::Swipe(dx));
+            }
         }
     }
 

@@ -169,6 +169,8 @@ impl AppState {
             | Msg::BoardReveal(_)
             | Msg::BoardBackground
             | Msg::SelectBoard(_)
+            | Msg::ShowColumn(_)
+            | Msg::Swipe(_)
             | Msg::NewTask { .. }
             | Msg::PressTask(_)
             | Msg::PressEnded

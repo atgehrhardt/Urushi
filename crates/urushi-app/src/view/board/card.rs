@@ -133,11 +133,9 @@ fn title_row(state: &AppState, theme: &Theme, task: &v1::Task, color: Color) -> 
         .gap(6.0)
         .align(urushi_ui::Align::Center)
         .children(jira::kind_marker(theme, task.kind, 8.0))
-        // Phones need the room for the title; the editor shows the key.
         .children(
             task.issue
                 .as_deref()
-                .filter(|_| !state.compact)
                 .map(|i| jira::key_label(theme, i, muted)),
         )
         .child(

@@ -38,6 +38,9 @@ pub struct BoardPanel {
     pub reveal: f32,
     /// The board shown; `None` (or a deleted one) shows the first.
     pub selected: Option<String>,
+    /// On phones, which shows one column at a time (ADR 0046): the column shown; `None`
+    /// (or a deleted one) shows the first.
+    pub column: Option<String>,
     /// A task pressed but not yet released or dragged: releasing opens it.
     pub pressed: Option<String>,
     /// The task being dragged, and where the pointer is.
@@ -206,6 +209,27 @@ impl BoardPanel {
             .or_else(|| workspace.boards().first())
     }
 
+    /// The column a phone shows of `board`: the chosen one, or the first.
+    pub fn shown_column<'a>(&self, board: &'a v1::Board) -> Option<&'a v1::BoardColumn> {
+        self.column
+            .as_deref()
+            .and_then(|id| board.columns.iter().find(|c| c.id == id))
+            .or_else(|| board.columns.first())
+    }
+
+    /// The column `delta` places from the one a phone shows (a swipe), kept within the
+    /// board: `None` when there is none that way.
+    pub fn step_column(&self, board: &v1::Board, delta: isize) -> Option<String> {
+        let shown = self.shown_column(board)?;
+        let at = board.columns.iter().position(|c| c.id == shown.id)?;
+        let to = at.checked_add_signed(delta)?;
+        board
+            .columns
+            .get(to)
+            .filter(|_| to != at)
+            .map(|c| c.id.clone())
+    }
+
     /// `reveal` with an ease-out curve, for drawing.
     pub fn eased(&self) -> f32 {
         ease_out(self.reveal)
@@ -349,6 +373,22 @@ mod tests {
         panel.reveal = 0.5;
         assert!(panel.visible());
         assert!(panel.eased() > 0.5);
+    }
+
+    #[test]
+    fn a_phone_shows_the_chosen_column_and_steps_within_the_board() {
+        let b = board();
+        let mut panel = BoardPanel::default();
+        assert_eq!(panel.shown_column(&b).map(|c| c.id.as_str()), Some("todo"));
+        assert_eq!(panel.step_column(&b, 1).as_deref(), Some("done"));
+        assert_eq!(panel.step_column(&b, -1), None, "nothing before the first");
+        panel.column = Some("done".into());
+        assert_eq!(panel.shown_column(&b).map(|c| c.id.as_str()), Some("done"));
+        assert_eq!(panel.step_column(&b, 1), None, "nothing after the last");
+        assert_eq!(panel.step_column(&b, -1).as_deref(), Some("todo"));
+        panel.column = Some("deleted".into());
+        assert_eq!(panel.shown_column(&b).map(|c| c.id.as_str()), Some("todo"));
+        assert_eq!(panel.shown_column(&v1::Board::default()), None);
     }
 }
 

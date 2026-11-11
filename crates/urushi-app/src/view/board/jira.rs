@@ -69,28 +69,26 @@ pub(crate) fn sync_label(jira: &v1::JiraBoardSource, now_ms: i64) -> String {
     format!("Synced {ago}{dropped}")
 }
 
-/// A Jira board's header actions: its sync state, Sync now, Open in Jira and Remove.
+/// A Jira board's header actions on a desktop: its sync state, Sync now, Open in Jira
+/// and Remove. (A phone has them in the board's "⋯" menu.)
 pub(super) fn actions(state: &AppState, theme: &Theme, board: &v1::Board) -> Vec<Node<Msg>> {
     let Some(jira) = board.jira.as_deref() else {
         return Vec::new();
     };
-    let mut out = Vec::new();
-    if !state.compact {
-        let failed = !jira.error.is_empty();
-        out.push(
-            Node::text(
-                shorten(&sync_label(jira, state.now_ms), ERROR_CHARS),
-                Font::Ui,
-                theme.font_size_small,
-                if failed {
-                    theme.danger
-                } else {
-                    theme.text_muted
-                },
-            )
-            .padding(Insets::symmetric(0.0, 6.0)),
-        );
-    }
+    let failed = !jira.error.is_empty();
+    let mut out = vec![
+        Node::text(
+            shorten(&sync_label(jira, state.now_ms), ERROR_CHARS),
+            Font::Ui,
+            theme.font_size_small,
+            if failed {
+                theme.danger
+            } else {
+                theme.text_muted
+            },
+        )
+        .padding(Insets::symmetric(0.0, 6.0)),
+    ];
     let signed_in = state.jira.as_ref().is_some_and(|a| a.connected);
     out.push(if signed_in {
         button(
@@ -107,14 +105,12 @@ pub(super) fn actions(state: &AppState, theme: &Theme, board: &v1::Board) -> Vec
             Msg::Jira(JiraMsg::OpenConnect),
         )
     });
-    if !state.compact {
-        out.push(button(
-            theme,
-            "Open in Jira",
-            ButtonKind::Ghost,
-            Msg::Jira(JiraMsg::Open(jira.url.clone())),
-        ));
-    }
+    out.push(button(
+        theme,
+        "Open in Jira",
+        ButtonKind::Ghost,
+        Msg::Jira(JiraMsg::Open(jira.url.clone())),
+    ));
     out.push(button(
         theme,
         "Remove",
