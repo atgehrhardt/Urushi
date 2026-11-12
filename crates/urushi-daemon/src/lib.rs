@@ -183,6 +183,7 @@ pub async fn run(
         tracing::warn!("saving restore points timed out");
     }
     service.shutdown();
+    service.close_store();
     if let LocalEndpoint::UnixSocket(path) = &endpoint {
         let _ = std::fs::remove_file(path);
     }

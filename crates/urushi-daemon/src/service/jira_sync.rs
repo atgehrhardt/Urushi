@@ -338,18 +338,16 @@ impl Service {
         &self,
         f: impl FnOnce(&mut State) -> ServiceResult<bool>,
     ) -> ServiceResult<bool> {
-        let changed = {
+        let revision = {
             let mut state = lock(&self.state);
-            let changed = f(&mut state)?;
-            if changed {
-                state.revision += 1;
+            if !f(&mut state)? {
+                return Ok(false);
             }
-            changed
+            state.revision += 1;
+            state.revision
         };
-        if changed {
-            self.persist()?;
-        }
-        Ok(changed)
+        self.commit(revision)?;
+        Ok(true)
     }
 
     /// The Jira boards due for a read now (and not being read), marked as being read.

@@ -8,8 +8,10 @@
 //! State sits behind a `std::sync::Mutex` that is only held for short, synchronous
 //! critical sections, never across `.await`. Slow work (git, spawning processes) runs
 //! between critical sections and is re-validated before it is committed. Every committed
-//! change bumps the revision, is persisted, and wakes subscribers through a `watch`
-//! channel.
+//! change bumps the revision and wakes subscribers through a `watch` channel at once.
+//! Then it waits until the [`saver::Saver`] has written that revision (or a newer one)
+//! to disk, so a reply always means the change is saved, while a burst of changes
+//! shares one write (ADR 0053).
 
 mod agents;
 mod attachments;
@@ -33,6 +35,7 @@ mod quick_filters;
 mod repos;
 mod restore;
 mod running;
+mod saver;
 mod settings;
 mod spawn;
 mod state;
@@ -66,6 +69,7 @@ pub use projects::{Assign, ThreadUpdate};
 pub use quick_filters::QuickFilterSaved;
 pub use repos::BranchList;
 pub use running::is_interrupt;
+pub use saver::SaveError;
 use spawn::PaneHome;
 pub(crate) use state::State;
 pub use threads::ThreadRequest;
@@ -104,6 +108,9 @@ pub enum ServiceError {
     /// Persisting state failed.
     #[error(transparent)]
     Store(#[from] StoreError),
+    /// A change couldn't be confirmed as saved.
+    #[error(transparent)]
+    Save(#[from] SaveError),
     /// The peer isn't allowed to do this.
     #[error("{0}")]
     Forbidden(String),
@@ -148,11 +155,11 @@ pub struct ServiceConfig {
 
 /// The workspace service. Always used as `Arc<Service>`.
 pub struct Service {
-    state: Mutex<State>,
+    /// Shared with the saver, which snapshots it when a save starts.
+    state: Arc<Mutex<State>>,
     sessions: Mutex<HashMap<PaneId, SessionHandle>>,
-    store: Arc<dyn Store>,
-    /// Highest revision written to the store (keeps saves ordered).
-    saved_revision: Mutex<u64>,
+    /// Writes the workspace document, coalescing bursts of changes (`saver.rs`).
+    saver: saver::Saver,
     git: Arc<dyn Git>,
     pty: Arc<dyn Pty>,
     pub(crate) tailscale: Arc<dyn TailscaleProvider>,
@@ -247,11 +254,20 @@ impl Service {
         let mut state = State::from_document(document);
         state.repair_interrupted();
         let revision = state.revision;
+        let state = Arc::new(Mutex::new(state));
+        let snapshot = {
+            let state = Arc::clone(&state);
+            Box::new(move || {
+                let state = lock(&state);
+                (state.to_document(), state.revision)
+            })
+        };
+        let saver = saver::Saver::spawn(config.store, snapshot)
+            .map_err(|e| ServiceError::Internal(format!("can't start the saver: {e}")))?;
         let service = Arc::new_cyclic(|me| Self {
-            state: Mutex::new(state),
+            state,
             sessions: Mutex::new(HashMap::new()),
-            store: config.store,
-            saved_revision: Mutex::new(0),
+            saver,
             git: config.git,
             pty: config.pty,
             tailscale: config.tailscale,
@@ -277,7 +293,8 @@ impl Service {
         });
         service.restore_sessions();
         service.sweep_attachments();
-        service.persist()?;
+        let revision = lock(&service.state).revision;
+        service.commit(revision)?;
         service.keep_restore_points();
         service.keep_jira_synced();
         service.keep_pull_requests_current();
@@ -341,13 +358,13 @@ impl Service {
         if self.is_stopping() {
             return Err(ServiceError::Unavailable("the daemon is stopping".into()));
         }
-        let result = {
+        let (result, revision) = {
             let mut state = lock(&self.state);
             let result = f(&mut state)?;
             state.revision += 1;
-            result
+            (result, state.revision)
         };
-        self.persist()?;
+        self.commit(revision)?;
         Ok(result)
     }
 
@@ -368,21 +385,26 @@ impl Service {
         f(&lock(&self.state))
     }
 
-    fn persist(&self) -> ServiceResult<()> {
-        let (document, revision) = {
-            let state = lock(&self.state);
-            (state.to_document(), state.revision)
-        };
-        off_the_runtime(|| {
-            let mut saved = lock(&self.saved_revision);
-            if revision > *saved || revision == 0 {
-                self.store.save(&document)?;
-                *saved = revision;
-            }
-            Ok::<_, ServiceError>(())
-        })?;
-        self.changes.send_replace(revision);
+    /// Announces `revision` to subscribers, then waits until it is on disk.
+    fn commit(&self, revision: u64) -> ServiceResult<()> {
+        // Concurrent changes may commit out of order; subscribers only ever move forward.
+        self.changes.send_modify(|r| *r = (*r).max(revision));
+        self.saver.request(revision);
+        let started = std::time::Instant::now();
+        off_the_runtime(|| self.saver.wait(revision))?;
+        let waited = started.elapsed();
+        if waited >= std::time::Duration::from_millis(10) {
+            tracing::debug!(revision, wait_ms = waited.as_millis(), "change saved");
+        }
         Ok(())
+    }
+
+    /// Saves what is still pending and stops saving. Called once the daemon has shut
+    /// down; changes after this are refused.
+    pub fn close_store(&self) {
+        if !off_the_runtime(|| self.saver.close(std::time::Duration::from_secs(5))) {
+            tracing::warn!("saving the workspace at shutdown timed out");
+        }
     }
 
     /// Freezes the workspace, then kills every session. Called on shutdown. The kills

@@ -11,7 +11,7 @@ use urushi_proto::v1::{self, ErrorCode, request::Body, response::Outcome};
 
 use super::connection::Connection;
 use super::{lan, remote};
-use crate::service::{DeletionPlan, ServiceError, ServiceResult, ThreadRequest, lock};
+use crate::service::{DeletionPlan, SaveError, ServiceError, ServiceResult, ThreadRequest, lock};
 
 /// An error outcome for a malformed request.
 pub(crate) fn invalid(message: &str) -> Outcome {
@@ -29,10 +29,13 @@ fn error_outcome(error: &ServiceError) -> Outcome {
         ServiceError::Conflict(_) => ErrorCode::Conflict,
         ServiceError::Forbidden(_) => ErrorCode::PermissionDenied,
         ServiceError::Git(_) => ErrorCode::GitFailed,
-        ServiceError::Unavailable(_) => ErrorCode::Unavailable,
-        ServiceError::Mux(_) | ServiceError::Store(_) | ServiceError::Internal(_) => {
-            ErrorCode::Internal
+        ServiceError::Unavailable(_) | ServiceError::Save(SaveError::Closed) => {
+            ErrorCode::Unavailable
         }
+        ServiceError::Mux(_)
+        | ServiceError::Store(_)
+        | ServiceError::Save(SaveError::Failed(_))
+        | ServiceError::Internal(_) => ErrorCode::Internal,
     };
     Outcome::Error(v1::Error {
         code: code.into(),
