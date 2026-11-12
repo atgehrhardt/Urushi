@@ -4,7 +4,7 @@
 //! Requests run concurrently (each in its own task, answered by id). Notifications
 //! (keystrokes, acks, scrolling) are handled in order, inline, because their order matters.
 //!
-//! A connection works in both directions or not at all (ADR 0048): when the writer
+//! A connection works in both directions or not at all (ADR 0052): when the writer
 //! can't write, the whole connection closes, so the client sees it end and reconnects
 //! rather than waiting on answers that will never come.
 

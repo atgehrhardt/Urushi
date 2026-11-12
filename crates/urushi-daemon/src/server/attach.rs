@@ -5,7 +5,7 @@
 //! changed since the last frame it sent. A slow client gets fewer, larger updates instead
 //! of a growing queue. Updates are also limited to about 120 per second.
 //!
-//! An ack that never comes (a client dropped it under load, ADR 0048) holds the stream up
+//! An ack that never comes (a client dropped it under load, ADR 0052) holds the stream up
 //! for at most [`ACK_TIMEOUT`]: then the update counts as acknowledged. The next frame is
 //! still a correct diff, from the last frame *sent*, so nothing on screen is lost.
 

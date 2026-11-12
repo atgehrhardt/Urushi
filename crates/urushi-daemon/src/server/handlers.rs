@@ -352,7 +352,7 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         body @ (Body::AddAttachment(_) | Body::GetAttachment(_) | Body::DeleteAttachment(_)) => {
             super::boards::route_attachments(service, body).await?
         }
-        // Liveness only (ADR 0048): answering at all is the point.
+        // Liveness only (ADR 0052): answering at all is the point.
         Body::Ping(_) => ok(),
         Body::ShutdownDaemon(_) => {
             if !connection.local {

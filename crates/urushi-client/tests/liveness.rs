@@ -1,4 +1,4 @@
-//! A connection either works both ways or ends (ADR 0048): a daemon that goes silent,
+//! A connection either works both ways or ends (ADR 0052): a daemon that goes silent,
 //! a client that is dropped, and an older daemon that doesn't know `Ping`.
 #![allow(
     clippy::unwrap_used,
@@ -80,7 +80,7 @@ async fn an_older_daemon_answering_pings_with_errors_stays_connected() {
         let mut pings = 0;
         while let Ok(Some(frame)) = read_envelope(&mut daemon.reader).await {
             if let Some(Kind::Request(v1::Request { id, body })) = frame.kind {
-                // What a daemon before 1.27 does with a body it doesn't know.
+                // What a daemon before 1.30 does with a body it doesn't know.
                 assert!(matches!(body, Some(v1::request::Body::Ping(_))));
                 pings += 1;
                 let error = envelope::error(id, v1::ErrorCode::InvalidArgument, "empty request");

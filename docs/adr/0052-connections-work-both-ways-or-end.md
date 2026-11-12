@@ -1,4 +1,4 @@
-# 0048. Make a connection work both ways or end: a client heartbeat, writers that hang up, ack timeouts, listeners that never stop the daemon
+# 0052. Make a connection work both ways or end: a client heartbeat, writers that hang up, ack timeouts, listeners that never stop the daemon
 
 - **Status:** Accepted
 - **Date:** 2026-11-12
@@ -19,7 +19,7 @@ A connection either works in both directions or it ends, and nothing about one c
 1. **Listeners never stop the daemon.** Every accept loop (local socket, named pipe, tailnet, LAN) logs a failed accept, waits 100 ms and carries on (`server::accept::accept_forever`). Only failing to bind is fatal.
 2. **The daemon raises its open-file limit at startup** to the hard limit, capped at 10 240 (macOS refuses more), through `rustix`'s safe `setrlimit`. It logs the limit before and after.
 3. **A daemon writer that can't write ends its connection.** `serve` waits on the writer task, so a failed write closes the socket and the client sees the connection end. A frame too large to send is not a write failure. It is logged and dropped; if it was a response, the request gets an `INTERNAL` error instead, so its caller isn't left waiting.
-4. **The client checks that the daemon is alive.** A new `Ping` request (protocol 1.27) is answered at once with `Ok`. The client sends one after every 5 s without a frame from the daemon. After **30 s** with no frame at all, it ends the connection: requests in flight fail with `Disconnected`, and the events stream ends, which is the app's cue to reconnect. A daemon older than 1.27 answers `Ping` with an error, which proves it is alive just as well.
+4. **The client checks that the daemon is alive.** A new `Ping` request (protocol 1.30) is answered at once with `Ok`. The client sends one after every 5 s without a frame from the daemon. After **30 s** with no frame at all, it ends the connection: requests in flight fail with `Disconnected`, and the events stream ends, which is the app's cue to reconnect. A daemon older than 1.30 answers `Ping` with an error, which proves it is alive just as well.
 5. **The client ends the connection whenever any of its parts stops**: its writer fails, its reader ends, the liveness check fails, or every `Client` handle is dropped. Ending closes the socket, so reconnecting never leaves the old one open. Connecting and the handshake time out after 10 s, and the daemon gives a new connection 10 s to say `Hello`.
 6. **A screen update's ack is waited for at most 2 s.** After that it counts as acknowledged. The next update is still a correct diff, because the pump diffs from the last frame it *sent*. A merely slow client still gets at most one update every 2 s, so flow control holds.
 

@@ -47,7 +47,7 @@ window. On phones the panels fill the screen edge to edge.
   - The thread-deletion warning, settings (remote branch deletion, tailnet serving, per-agent skip-permissions, branch prefix, shell), and connect to a remote host.
 
 ## How it works
-- The app connects to the local daemon (starting it if needed, and waiting up to 30 s for it to listen) or a remote one. The connection runs on a background tokio runtime (`backend.rs`), which reconnects every 2 s once the connection ends. A connection ends when the daemon closes it, when writing to it fails, or when nothing has come from the daemon for 30 s despite pings (ADR 0048), so a hung or half-closed connection never leaves the app waiting.
+- The app connects to the local daemon (starting it if needed, and waiting up to 30 s for it to listen) or a remote one. The connection runs on a background tokio runtime (`backend.rs`), which reconnects every 2 s once the connection ends. A connection ends when the daemon closes it, when writing to it fails, or when nothing has come from the daemon for 30 s despite pings (ADR 0052), so a hung or half-closed connection never leaves the app waiting.
 - **Workspace mirror:** the workspace is mirrored from `WorkspaceChanged` events.
 - **Look** (`appearance.rs`): `Settings.appearance` (core `Appearance{scheme, logo}`,
   presets in `Scheme::colors`) becomes the theme with `theme_for` (`Theme::dark()` with

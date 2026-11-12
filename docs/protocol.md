@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.27 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.30 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -37,9 +37,9 @@ Envelope {
 }
 ```
 
-## Liveness (ADR 0048)
+## Liveness (ADR 0052)
 A connection works in both directions or it ends.
-- **The client** sends `Ping` (an empty request, answered with `Ok`) after every 5 s without a frame from the daemon (`PING_INTERVAL`). If 30 s pass with no frame at all (`LIVENESS_TIMEOUT`), it closes the connection: requests in flight fail with `Disconnected`, and the event stream ends. Any answer counts, including the error a daemon before 1.27 gives an unknown request. Connecting plus the handshake are limited to 10 s (`CONNECT_TIMEOUT`).
+- **The client** sends `Ping` (an empty request, answered with `Ok`) after every 5 s without a frame from the daemon (`PING_INTERVAL`). If 30 s pass with no frame at all (`LIVENESS_TIMEOUT`), it closes the connection: requests in flight fail with `Disconnected`, and the event stream ends. Any answer counts, including the error a daemon before 1.30 gives an unknown request. Connecting plus the handshake are limited to 10 s (`CONNECT_TIMEOUT`).
 - **The daemon** closes a connection whose writes fail, so the client sees it end. A new connection has 10 s to send `Hello`.
 - **A screen update** waits at most 2 s for its `AckScreen` (`ACK_TIMEOUT`); after that, it counts as acknowledged.
 
@@ -52,7 +52,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
-| 27 | `Ping` → `Ok`, for liveness (ADR 0048, see Liveness). Older daemons answer it with an error, which clients also count as alive. No other wire change; the daemon also no longer waits forever for a lost `AckScreen` (2 s). |
+| 30 | `Ping` → `Ok`, for liveness (ADR 0052, see Liveness). Older daemons answer it with an error, which clients also count as alive. No other wire change; the daemon also no longer waits forever for a lost `AckScreen` (2 s). |
 | 26 | LAN access (ADR 0041). `Settings.lan` (`LanSettings{enabled, port}`; unset from older daemons = off, port 0 = 7421). `SettingsPatch.{lan_enabled, lan_port}`. `LanStatus` → `LanStatus{enabled, serving, addresses, port, error, devices[LanDevice{id, name, fingerprint, paired_at_ms, last_seen_ms, connected}], pairing (LanPairing{code, expires_in_secs}), fingerprint}`. `StartLanPairing`, `CancelLanPairing` and `RevokeLanDevice{device_id}` → `LanStatus`. Changing LAN access (the `lan_*` patch fields, pairing, revoking) from anything but the host's local socket is `PERMISSION_DENIED`. Only local clients see the pairing code. Pairing with LAN access off is `INVALID_ARGUMENT`; an unknown device is `NOT_FOUND`. `write_envelope` now flushes each frame, which the encrypted stream needs. Clients check `Welcome.protocol_minor ≥ 26`. |
 | 25 | Running agents (ADR 0039): `Tab.running` and `QuickTerminal.running` (`PaneRunning{pane_id, since_ms}`) list panes whose agent is working, as its hooks say. Like attention, running panes aren't stored: changes arrive as `WorkspaceChanged` with the same `revision`. Esc or Ctrl+C sent as `Input` to a pane ends its running. Older daemons send none, so nothing shows as running. |
 | 24 | `MoveThread{thread_id, index}` reorders threads (ADR 0038): the index is into `Workspace.threads`, counted without the moved thread and clamped to the end; an unknown thread is `NOT_FOUND`. A thread's project, pin and status don't change. `Workspace.threads` is in display order: the sidebar shows each group (project, pin, status) in it. Clients check `Welcome.protocol_minor ≥ 24` before sending it. |

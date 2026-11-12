@@ -1,6 +1,6 @@
 //! A connection to a daemon: handshake, request/response matching, and the event stream.
 //!
-//! A connection either works both ways or ends (ADR 0048). It ends when the daemon
+//! A connection either works both ways or ends (ADR 0052). It ends when the daemon
 //! closes it, when a write fails, when every [`Client`] clone is dropped, or when nothing
 //! at all has arrived from the daemon for [`LIVENESS_TIMEOUT`] although the client kept
 //! asking ([`Ping`](request::Body::Ping) every [`PING_INTERVAL`] of quiet). Ending closes the
