@@ -227,13 +227,17 @@ async fn a_projects_first_thread_makes_its_base_the_parent_branch() {
         })
         .await
         .unwrap();
+    // Adopting happens after the reply, so the new thread shows at once.
+    let main = wait_until("the parent-branch thread", || {
+        base_thread(&client, &project)
+    })
+    .await;
+    assert!(main.attached_checkout);
     let adopted = folder(&client, &project).await.settings.unwrap();
     assert_eq!(
         (adopted.base_repo_id.as_str(), adopted.base_branch.as_str()),
         (repo_id.as_str(), "main")
     );
-    let main = base_thread(&client, &project).await.expect("on by default");
-    assert!(main.attached_checkout);
 
     // A project whose thread is switched off adopts the branch but opens nothing.
     let quiet = client.create_project("Quiet").await.unwrap().id;
@@ -251,10 +255,11 @@ async fn a_projects_first_thread_makes_its_base_the_parent_branch() {
         })
         .await
         .unwrap();
-    assert_eq!(
-        folder(&client, &quiet).await.settings.unwrap().base_branch,
-        "main"
-    );
+    wait_until("the adopted parent branch", || async {
+        let settings = folder(&client, &quiet).await.settings?;
+        (settings.base_branch == "main").then_some(())
+    })
+    .await;
     assert!(base_thread(&client, &quiet).await.is_none());
 
     // Deleting the project ungroups its parent-branch thread; nothing on disk changes.
@@ -262,5 +267,57 @@ async fn a_projects_first_thread_makes_its_base_the_parent_branch() {
     let w = client.list_workspace(false).await.unwrap();
     let orphan = w.threads.iter().find(|t| t.id == main.id).unwrap();
     assert!(orphan.folder_id.is_empty() && orphan.project_base);
+    daemon.stop().await;
+}
+
+/// Two threads created at once in a new project: exactly one adopts the parent branch,
+/// even though both are recorded before either looks.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_first_threads_adopt_the_parent_branch_once() {
+    let home = temp_home();
+    let f = repo(home.path());
+    let daemon = Daemon::start(&home.path().join("home")).await;
+    let (client, _events) = daemon.connect().await;
+    let repo_id = client
+        .add_repo(f.repo.to_str().unwrap(), "")
+        .await
+        .unwrap()
+        .id;
+    let project = client.create_project("Search").await.unwrap().id;
+    let create = |title: &str| {
+        client.create_thread_with(v1::CreateThreadRequest {
+            project_id: repo_id.clone(),
+            title: title.into(),
+            folder_id: project.clone(),
+            skip_initial_tab: true,
+            ..Default::default()
+        })
+    };
+    let (a, b) = tokio::join!(create("One"), create("Two"));
+    a.unwrap();
+    b.unwrap();
+    let main = wait_until("the parent-branch thread", || {
+        base_thread(&client, &project)
+    })
+    .await;
+    assert!(main.attached_checkout);
+    assert_eq!(
+        folder(&client, &project)
+            .await
+            .settings
+            .unwrap()
+            .base_branch,
+        "main"
+    );
+    // Give a second adoption time to show up, if there were one.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let ws = client.list_workspace(false).await.unwrap();
+    let bases = ws
+        .threads
+        .iter()
+        .filter(|t| t.folder_id == project && t.project_base)
+        .count();
+    assert_eq!(bases, 1);
+    drop(client);
     daemon.stop().await;
 }

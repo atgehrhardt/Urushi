@@ -160,7 +160,12 @@ impl Service {
         if let Some((pane, agent)) = started {
             self.start_task_agent(thread.id, pane, agent).await;
         }
-        self.adopt_project_base(&thread).await;
+        // A project's first thread may open its parent-branch thread: a second worktree
+        // the new thread's reply needn't wait for.
+        if thread.project.is_some() {
+            let (service, created) = (Arc::clone(self), thread.clone());
+            tokio::spawn(async move { service.adopt_project_base(&created).await });
+        }
         Ok(thread)
     }
 

@@ -245,3 +245,23 @@ pub async fn next_screen_update(
     .await
     .expect("screen update arrived in time")
 }
+
+/// Polls `check` until it returns `Some`, for work the daemon finishes after it replied
+/// (e.g. adopting a project's parent branch). Panics after [`TIMEOUT`].
+pub async fn wait_until<T, F, Fut>(what: &str, mut check: F) -> T
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Option<T>>,
+{
+    let deadline = tokio::time::Instant::now() + TIMEOUT;
+    loop {
+        if let Some(value) = check().await {
+            return value;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what}"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
