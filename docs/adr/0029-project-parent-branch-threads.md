@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-10
+- **Amended by:** [0054](0054-prefetch-a-new-threads-base-and-share-fetches.md) (adoption runs after the first thread's reply)
 
 ## Context
 New threads started from the main checkout's current branch, usually `main`, unless

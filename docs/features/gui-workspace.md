@@ -2,7 +2,7 @@
 
 - **Status:** Shipped. Verified on macOS (rendering, input, accessibility, dialogs), in the iOS simulator and on the Android emulator (remote over Tailscale). See [platforms](../platforms.md).
 - **Owners (crates):** `urushi-app`, `urushi-ui`, `urushi-render`, `apps/desktop`
-- **Related ADRs:** [0006](../adr/0006-all-rust-gpu-gui.md), [0002](../adr/0002-daemon-source-of-truth.md), [0019](../adr/0019-in-app-frosted-glass.md)
+- **Related ADRs:** [0006](../adr/0006-all-rust-gpu-gui.md), [0002](../adr/0002-daemon-source-of-truth.md), [0019](../adr/0019-in-app-frosted-glass.md), [0055](../adr/0055-show-the-users-own-actions-before-the-daemon-confirms.md)
 
 ## What it does
 A graphical workspace in dark frosted glass. Behind everything, a near-black window has
@@ -104,7 +104,21 @@ window. On phones the panels fill the screen edge to edge.
   - Mouse: click to place the caret, drag or Shift-click to select, double-click selects a word, triple-click everything. Right-click opens Cut / Copy / Paste / Select all.
   - Tab and Shift+Tab move between fields. Long text scrolls to keep the caret in view.
   - Multiline fields (task notes) wrap their text. Enter starts a new line there, Up/Down/Home/End work on lines, and Cmd+Enter (macOS) / Ctrl+Enter (elsewhere) submits the dialog, as it does from any field.
-- **Deleting a thread:** the app first requests a `DeletionPlan`. The warning lists everything that will be destroyed. Only the red Delete button sends `DeleteThread{token}`; Enter never does.
+- **Shown before the daemon answers** (ADR 0055). The app shows what the user asked for at once, as a preview it drops when the daemon answers. It never applies a rule of its own.
+  - **New Thread** (`creations.rs`, `update/creating.rs`):
+    - Submitting closes the dialog. A "creating" row shows in the sidebar, and a "Creating …" screen in the main area.
+    - The reply opens the thread if its placeholder is still shown. It never closes another dialog.
+    - A failure reopens the dialog as submitted, with the reason.
+    - While the dialog is open, the app sends `PrepareThreadBase` to 1.31 daemons, so the base is fetched while the user types.
+  - **Divider drag** (`divider.rs`):
+    - The daemon's layout shows with `PaneGroup::move_divider` applied, and one `MoveDivider` is in flight at a time.
+    - The preview stays until the daemon's workspace shows the drop.
+  - **Split and new tab** (`starting.rs`):
+    - A split shows at once, the core's `PaneGroup::split` applied with an empty "Starting shell…" pane. That pane is never attached or clicked, and another split waits for it.
+    - A new tab shows as a "… Starting" chip, or replaces the launcher for a thread's first tab.
+  - **Dialogs saved on reply** (`update/saving.rs`): the main button says "Saving…", a second submit does nothing, and the reply closes only a dialog of the kind that was saved.
+  - Request round trips are logged at debug level, and ones of a second or more at info (`backend.rs`; `URUSHI_LOG=urushi_app=debug`).
+- **Deleting a thread:** the warning opens at once, saying it is checking what deleting removes, while the app requests a `DeletionPlan`. Then it lists everything that will be destroyed. If the plan fails, the warning closes with the reason. Only the red Delete button sends `DeleteThread{token}`, and only once the plan is there; Enter never does.
   - Confirming closes the warning and hides the thread at once. The daemon deletes in the background while the user keeps working. Logic: `update/deletion.rs`.
   - The app keeps the daemon's workspace as reported and shows it without threads being deleted (`deletions.rs`). Those are threads the daemon reports as `Deleting` (from any client) and threads this app asked to delete that the daemon still lists. If the selected thread goes, the first remaining one is shown. Otherwise selection and focus stay where they are.
   - The answer to `DeleteThread` never closes a dialog or moves focus. A refusal (e.g. the thread changed since the warning) shows the thread again, and the error says why. A deletion that fails partway brings the thread back as "deletion failed".
@@ -122,6 +136,7 @@ window. On phones the panels fill the screen edge to edge.
 - `crates/urushi-app/src/errors.rs`: which surface draws the error, and when it goes; `update/tests/errors.rs`: a refused new task keeps its editor open with the reason, and the error's lifetime; `view/error/tests.rs`: the banner is drawn once and reachable on every surface, a long error wraps in a dialog, and the task editor's buttons stay on screen.
 - `crates/urushi-app/src/update/tests/daemon.rs`: the restart confirmation and reconnecting.
 - `crates/urushi-app/src/sidebar.rs` and `update/tests/sidebar.rs`: hiding, the shortcut, resizing within limits, snapping shut, phones ignoring both; `view/mod.rs` tests: the edge, its cursor, and a reachable show button while hidden (with a thread, the launcher, the task panel out, and an empty workspace).
+- `crates/urushi-app/src/update/tests/creating.rs`, `divider.rs`, `starting.rs`, `saving.rs` (and the unit tests in `creations.rs`, `divider.rs`, `starting.rs`): every preview, and how it ends on success, refusal and late answers.
 - `crates/urushi-app/src/update/tests/flows.rs`: launcher, branch name following the title, adding repos, dropped files, agent settings. `update/tests/organize.rs`: menus, prompts, drag and drop, selectors. `update/tests/panes.rs`: the pane menu and focus after a pane closes.
 - `cargo run -p urushi-app --example snapshot -- out.bmp 1280 820 1 <scenario>` renders one of `snapshot::SCENARIOS` (`launcher`, `picker`, `add-repo`, `new-thread`, `new-thread-base`, `new-thread-project`, `settings`, `settings-appearance`, `settings-custom`, `logo-hidden`, `menu`, `menu-status`, `drag`, `drag-thread`, `drag-project`, `repos`, `board`, `board-drag`, `board-tab-drag`, `task`, `task-error` and `board-error` (an error in the task editor and on the board), `task-menu`, `column-menu`, `task-nested`, `nest`, `status`, `pane-menu`, `sidebar-collapsed`, `quick-terminal`, `setup`, `setup-mode`, `project-base-thread`, `project-settings`, the threads bar (`thread-extras`, `thread-notes`, `project-color-menu`), and the Jira screens) offscreen for visual checks; `snapshot.rs` tests render each at desktop and phone sizes.
 - `crates/urushi-app/src/appearance.rs`: themes from schemes, logo styles, drafts; `snapshot/tests.rs`: the look shown at once, reverted on Close, sent only when changed. Core `appearance.rs`, proto `convert/appearance.rs`, daemon `service/settings.rs`, CLI `look.rs`.

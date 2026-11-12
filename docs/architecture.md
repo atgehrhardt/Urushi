@@ -94,13 +94,14 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
 ## Staying up under load (ADR 0052)
 - **Nothing about one connection stops the daemon.** Accept loops log failures and retry (`server::accept`), and the daemon raises its open-file limit at startup (`platform::raise_open_file_limit`), so hundreds of panes fit.
 - **A connection works both ways or ends.** The daemon hangs up when it can't write. The client pings a quiet connection and closes it after 30 s of silence, so the app reconnects instead of waiting forever.
-- **Runtime workers never block.** PTY reads and writes, killing and reaping processes (`kill_and_reap`), `git`, `curl`, `tailscale` and `ps` run on their own threads, each external program with a time limit (`exec`). Saving `workspace.json` runs in `block_in_place` (`service::off_the_runtime`).
+- **Runtime workers never block.** PTY reads and writes, killing and reaping processes (`kill_and_reap`), `git`, `curl`, `tailscale` and `ps` run on their own threads, each external program with a time limit (`exec`).
+- **Saving `workspace.json`** happens on one saver thread (`service/saver.rs`, ADR 0053). It snapshots the newest state when a save starts, so a burst of changes is one write. Clients hear of a change at once. A request still replies only once its change is saved, waiting in `block_in_place` (`service::off_the_runtime`).
 - **Busy panes are batched.** A pane's actor feeds all queued output to the emulator before it publishes a version (`session/output.rs`). Each client gets at most one `WorkspaceChanged` per 50 ms.
 
 ## Thread lifecycle
 
 - **Create** (all-or-nothing):
-  1. Resolve the base. With `update_base_from_remote` (default on), fetch the base's branch from its remote and start from the remote's commit if the local branch is only behind it. The user's checkout is never touched, and a failed fetch falls back to the local commit (ADR 0028, `service/fresh_base.rs`). Then snapshot the existing branches.
+  1. Resolve the base. With `update_base_from_remote` (default on), fetch the base's branch from its remote and start from the remote's commit if the local branch is only behind it. The user's checkout is never touched, and a failed fetch falls back to the local commit (ADR 0028, `service/fresh_base.rs`). Fetches are shared and reused for 60 s, and clients start one while the New Thread dialog is open (`PrepareThreadBase`, ADR 0054, `service/base_fetch.rs`). Then snapshot the existing branches.
   2. `git worktree add -b <branch> <data>/worktrees/<repo>/<thread> <base>`
   3. Persist the thread.
   4. Spawn the first tab, unless the client asked for none (the GUI then shows the agent launcher). A thread started from a task with `start_task_agent` runs the user's task agent there, with its prompt in `URUSHI_TASK_PROMPT` (ADR 0014): a reference to the task and `<CLI's absolute path> board show` to read it (ADR 0033), or a copy of it without a CLI (ADR 0024), or the user's own message filled in for the task; that agent and prompt are resolved before step 2. When the user drafts task messages, the prompt is left off the command line and `service/task_draft.rs` pastes it into the agent, unsent, once the agent is ready (ADR 0030).
