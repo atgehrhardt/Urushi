@@ -290,18 +290,31 @@ fn quick_filters_ask_jira_and_ask_again_when_the_board_changes() {
     let fx = s.update(Msg::Filter(FilterMsg::Quick(4)));
     assert!(matches!(
         &fx[..],
-        [Effect::Request { body: Body::QueryJiraFilter(v1::QueryJiraFilterRequest { board_id, quick_filter_ids, .. }), followup: Followup::QuickFilter(b) }]
+        [Effect::Request { body: Body::QueryJiraFilter(v1::QueryJiraFilterRequest { board_id, quick_filter_ids, .. }), followup: Followup::QuickFilter(b, 1) }]
             if board_id == "jb" && quick_filter_ids == &[4] && b == "jb"
     ));
+    // A change that leaves the board alone (an agent's attention) asks nothing.
+    let unchanged = |s: &AppState| {
+        let mut workspace = super::workspace();
+        workspace.boards = s.workspace.raw().boards.clone();
+        workspace
+    };
+    let same = unchanged(&s);
+    assert!(bodies(&s.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(same)))).is_empty());
+    assert!(!s.board.quick_stale);
     // The board changes before Jira answers: asked again once the answer comes.
-    let mut workspace = super::workspace();
-    workspace.boards = vec![jira_board(), super::board::board()];
+    let mut workspace = unchanged(&s);
+    for b in &mut workspace.boards {
+        if b.id == "jb" {
+            b.columns[0].tasks[0].title = "Checkout, again".into();
+        }
+    }
     assert!(
         bodies(&s.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(workspace)))).is_empty()
     );
     let fx = answer(
         &mut s,
-        Followup::QuickFilter("jb".into()),
+        Followup::QuickFilter("jb".into(), 1),
         Outcome::JiraIssueIds(v1::JiraIssueIds {
             ids: vec!["nope".into()],
         }),
@@ -320,6 +333,49 @@ fn quick_filters_ask_jira_and_ask_again_when_the_board_changes() {
             .filter
             .shows(&board.columns[0].tasks[0], s.filter_context())
     );
+}
+
+#[test]
+fn turning_quick_filters_on_and_off_never_flashes_the_whole_board() {
+    let mut s = with_jira();
+    s.daemon_minor = 13;
+    s.update(Msg::SelectBoard("jb".into()));
+    let card = jira_board().columns[0].tasks[0].clone();
+    s.update(Msg::Filter(FilterMsg::Quick(4)));
+    answer(
+        &mut s,
+        Followup::QuickFilter("jb".into(), 1),
+        Outcome::JiraIssueIds(v1::JiraIssueIds {
+            ids: vec!["nope".into()],
+        }),
+    );
+    assert!(!s.board.filter.shows(&card, s.filter_context()));
+    // Another one on: until Jira answers, the board stays as it was, not unfiltered.
+    s.update(Msg::Filter(FilterMsg::Quick(5)));
+    assert!(s.board.quick_asking);
+    assert!(!s.board.filter.shows(&card, s.filter_context()));
+    // The answer to the first query, arriving late, is dropped.
+    let issue = card
+        .issue
+        .as_ref()
+        .map(|i| i.id.clone())
+        .unwrap_or_default();
+    answer(
+        &mut s,
+        Followup::QuickFilter("jb".into(), 1),
+        Outcome::JiraIssueIds(v1::JiraIssueIds {
+            ids: vec![issue.clone()],
+        }),
+    );
+    assert!(!s.board.filter.shows(&card, s.filter_context()));
+    assert!(s.board.quick_asking, "still waiting for the newer answer");
+    answer(
+        &mut s,
+        Followup::QuickFilter("jb".into(), 2),
+        Outcome::JiraIssueIds(v1::JiraIssueIds { ids: vec![issue] }),
+    );
+    assert!(s.board.filter.shows(&card, s.filter_context()));
+    assert!(!s.board.quick_asking);
 }
 
 #[test]

@@ -37,7 +37,10 @@ moves at once and goes back if Jira refuses.
   reporter) listing the values the board's issues have; several can be chosen. Values
   in one field widen it, fields narrow each other, and a card shows when it or one of
   its subtasks passes. Quick filters are JQL, so Jira evaluates them (asked again
-  whenever the board changes while one is on); everything else is filtered here.
+  whenever the board changes while one is on, and only then); everything else is filtered here.
+  While Jira is asked, the board stays as Jira last filtered it and changes once, when
+  the answer comes; an answer to an older question is dropped. The avatars are the
+  first eight people by name, plus anyone else chosen in the menu.
   Columns count "shown/all". The chips scroll sideways when they don't fit. On a phone,
   or a panel under 880 pt, the bar is the search and **Filters ▾**, and the sync state, Sync now and Remove are in the board's **⋯** (see [Task boards](task-boards.md)).
   Boards of Urushi's own get the search, type and label.
@@ -216,7 +219,7 @@ moves at once and goes back if Jira refuses.
 - **App:** `filter.rs` (`BoardFilter`, `Dim`, `board_values`, `board_dims`; the filter is
   the window's own), `update/filter.rs` (`FilterMsg`, the search as `Field::BoardSearch`
   outside any dialog, quick-filter queries with `BoardPanel.{quick_asking,
-  quick_stale}`), `view/board/filter.rs` (the bar), `view/menu/filter.rs` (the menu, a
+  quick_stale, quick_query}`; `Followup::QuickFilter(board, query)`), `view/board/filter.rs` (the bar), `view/menu/filter.rs` (the menu, a
   `MenuPage::Filter(Dim)` page per field, scrolling past ten values). Quick filters:
   `filter/jql.rs` (`selection_jql`: each dimension one `x in (…)` clause, values quoted
   with `urushi_core::board::jql`), `filter/quick.rs` (`QuickRef`), `filter/editor.rs`
@@ -308,7 +311,7 @@ moves at once and goes back if Jira refuses.
 - UI: `textfield/secret.rs`. App: `filter/tests.rs` (each dimension, how they combine,
   subtasks keeping their card), `issue.rs` (durations, drafts), `update/tests/jira.rs` (a new issue created only on
   Save, field drafts sent with Save, changes made at once, required create fields,
-  filters, quick-filter queries, the search's keyboard, a new epic, an epic under its own
+  filters, quick-filter queries (asked again only when the board changes, no flash of the whole board, older answers dropped), the search's keyboard, a new epic, an epic under its own
   filter), `update/tests/jira_deletion.rs` (asking first, Keep and Escape, the card
   menu's dialog, older daemons), `view/tasks/jira.rs` (Epic offered only from 1.15 daemons); `snapshot/tests.rs` (`jira-board`, `jira-task`, `jira-subtask` (the top
   bar), `jira-filters`, `jira-filter-menu`, `jira-issue`, `jira-issue-picker`, `jira-new-epic`, `jira-connect`, `jira-import`, `jira-delete-issue`, `jira-delete-subtask` scenarios, card sizes, the

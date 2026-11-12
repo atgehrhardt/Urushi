@@ -140,9 +140,11 @@ impl AppState {
                 self.issue_failed(followup);
                 false
             }
-            (Followup::QuickFilter(_), _) => {
-                self.board.quick_asking = false;
-                self.board.filter.quick_matches = None;
+            (Followup::QuickFilter(_, query), _) => {
+                if *query == self.board.quick_query {
+                    self.board.quick_asking = false;
+                    self.board.filter.quick_matches = None;
+                }
                 false
             }
             (Followup::JiraConnected, Some(Dialog::ConnectJira { busy, error, .. })) => {
@@ -185,8 +187,8 @@ impl AppState {
                     *error = None;
                 }
             }
-            (Followup::QuickFilter(board), Outcome::JiraIssueIds(ids)) => {
-                self.quick_filter_answered(&board, Some(ids.ids), fx);
+            (Followup::QuickFilter(board, query), Outcome::JiraIssueIds(ids)) => {
+                self.quick_filter_answered((&board, query), Some(ids.ids), fx);
             }
             (Followup::QuickFilterSaved(board), Outcome::QuickFilterSaved(saved)) => {
                 self.quick_filter_saved(&board, saved, fx);

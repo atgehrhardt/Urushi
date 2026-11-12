@@ -34,7 +34,12 @@ pub(super) const SCENARIOS: &[&str] = &[
 
 const SITE: &str = "https://acme.atlassian.net";
 
-fn issue(key: &str, (kind, status): (v1::TaskKind, &str), assignee: &str, epic: &str) -> v1::Task {
+pub(super) fn issue(
+    key: &str,
+    (kind, status): (v1::TaskKind, &str),
+    assignee: &str,
+    epic: &str,
+) -> v1::Task {
     let type_name = match kind {
         v1::TaskKind::Story => "Story",
         v1::TaskKind::Bug => "Bug",
@@ -77,7 +82,7 @@ fn link_thread(task: &mut v1::Task) {
 }
 
 /// "ACME board": three columns of stories, bugs and tasks in two epics.
-fn board() -> v1::Board {
+pub(super) fn board() -> v1::Board {
     let column = |id: &str, name: &str, tasks: Vec<v1::Task>| v1::BoardColumn {
         id: id.into(),
         name: name.into(),

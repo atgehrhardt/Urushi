@@ -433,8 +433,9 @@ pub enum Followup {
     JiraConnected,
     /// Show the site's boards in the import dialog.
     JiraBoards,
-    /// The issues of this board its quick filters let through.
-    QuickFilter(String),
+    /// The issues of this board its quick filters let through, as asked by the query
+    /// with this number (`BoardPanel::quick_query`).
+    QuickFilter(String, u64),
     /// A quick filter was saved on this board: turn it on, or say why it failed.
     QuickFilterSaved(String),
     /// A quick filter was changed: close the dialog, or say why it failed.

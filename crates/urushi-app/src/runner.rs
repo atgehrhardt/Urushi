@@ -345,8 +345,11 @@ impl Runner {
             self.theme = crate::appearance::theme_for(look);
             self.look = look;
         }
+        let started = std::time::Instant::now();
         let root = view::view(&self.state, &self.theme, &self.scroll);
+        let viewed = started.elapsed();
         let frame = build(&root, bounds, &mut self.text, self.pointer);
+        let laid_out = started.elapsed();
         for region in &frame.scroll_regions {
             self.scroll.insert(region.key, region.offset);
         }
@@ -355,6 +358,14 @@ impl Runner {
         {
             tracing::warn!(error = %e, "frame failed");
         }
+        // How long each step of the frame took, to find what makes a screen slow.
+        tracing::debug!(
+            view_us = viewed.as_micros(),
+            layout_us = (laid_out - viewed).as_micros(),
+            render_us = (started.elapsed() - laid_out).as_micros(),
+            primitives = frame.scene.primitives.len(),
+            "frame"
+        );
         if let Some(access) = &mut self.access {
             let nodes = frame.access.clone();
             access.update_if_active(|| {
@@ -390,6 +401,18 @@ impl Runner {
             && self.state.quick.area != Some(quick)
         {
             self.dispatch(Msg::Quick(QuickMsg::Area(quick)));
+        }
+    }
+
+    /// Draws again if the pointer moving from `before` to `now` changes what shows as
+    /// hovered (ADR 0048). Anything else a move changes is a message, which draws.
+    fn redraw_if_hover_changes(&self, before: Option<Point>, now: Option<Point>) {
+        if self
+            .frame
+            .as_ref()
+            .is_none_or(|f| f.hover_changes(before, now))
+        {
+            self.request_redraw();
         }
     }
 
@@ -779,7 +802,7 @@ impl ApplicationHandler<UserEvent> for Runner {
                     position.x as f32 / self.scale(),
                     position.y as f32 / self.scale(),
                 );
-                self.pointer = Some(p);
+                let before = self.pointer.replace(p);
                 if self.pressed_in_area {
                     self.dispatch(Msg::AreaDrag(p));
                 } else if self.press.is_none() && self.state.terminal_at(p) {
@@ -787,11 +810,12 @@ impl ApplicationHandler<UserEvent> for Runner {
                 }
                 self.drag_to(p);
                 self.update_cursor(p);
-                self.request_redraw();
+                // Moving over a large board draws nothing new unless hover changes.
+                self.redraw_if_hover_changes(before, Some(p));
             }
             WindowEvent::CursorLeft { .. } => {
-                self.pointer = None;
-                self.request_redraw();
+                let before = self.pointer.take();
+                self.redraw_if_hover_changes(before, None);
             }
             WindowEvent::MouseInput { state, button, .. } => self.mouse_button(state, button),
             // Touchscreens: dragging scrolls, a tap clicks, and a long press acts as the

@@ -53,10 +53,15 @@ pub struct BoardPanel {
     pub tab_over: Option<String>,
     /// What the shown board is filtered by.
     pub filter: crate::filter::BoardFilter,
+    /// What the filter decided for the board on screen, until either changes.
+    pub filtered: crate::filter::cache::FilterCache,
     /// A quick-filter query is on its way to the daemon.
     pub quick_asking: bool,
     /// The board changed while it was: ask again when it answers.
     pub quick_stale: bool,
+    /// The number of the last quick-filter query sent: answers to older ones are
+    /// dropped, so a slow answer never undoes a newer one.
+    pub quick_query: u64,
     /// The Jira board the daemon was told this window shows (`WatchBoard`).
     pub watching: Option<String>,
     /// Image attachments' thumbnails, fetched from the daemon as they come into view.

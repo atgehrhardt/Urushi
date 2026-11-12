@@ -62,6 +62,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0045 – Release the unsigned iOS .ipa from the same tag, for users to sideload (supersedes 0040's iOS part)](adr/0045-release-the-unsigned-ios-ipa-for-sideloading.md)
 - [0046 – Show one board column at a time on phones, switched by tabs and swipes](adr/0046-one-board-column-at-a-time-on-phones.md)
 - [0047 – Give board columns a minimum width and scroll the board sideways, rather than shrink them](adr/0047-board-columns-keep-a-width-and-scroll-sideways.md)
+- [0048 – Lay out and paint only what a scrolling list shows, keep text caches in two generations, and redraw on pointer moves only when hover changes](adr/0048-draw-what-shows-and-redraw-only-on-change.md)
 
 ## Features
 - [_template](features/_template.md)

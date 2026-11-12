@@ -430,8 +430,13 @@ impl AppState {
     fn on_event(&mut self, event: v1::event::Body, fx: &mut Vec<Effect>) {
         match event {
             v1::event::Body::WorkspaceChanged(workspace) => {
+                // Most changes (an agent's attention, a thread's status) leave the board
+                // alone: Jira is asked about its quick filters only when it changed.
+                let before = self.board.board(&self.workspace).cloned();
                 self.on_workspace(workspace, fx);
-                self.refresh_quick_filter(fx);
+                if self.board.board(&self.workspace) != before.as_ref() {
+                    self.refresh_quick_filter(fx);
+                }
             }
             v1::event::Body::ScreenUpdate(update) => {
                 if let Some(screen) = self.screens.get_mut(&update.pane_id) {

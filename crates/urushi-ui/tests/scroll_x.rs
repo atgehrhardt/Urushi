@@ -64,7 +64,8 @@ fn fill_children_keep_their_minimum_and_the_row_scrolls_sideways() {
     assert_eq!(region.offset, 180.0, "clamped to content - viewport");
     let q = quads(&frame.scene);
     assert!(q.iter().all(|r| r.width == 100.0), "{q:?}");
-    assert_eq!(q[0].x, -180.0);
+    // The first column, scrolled out of sight, isn't painted; the second is cut.
+    assert_eq!(q[0].x, -70.0);
     assert!(frame.scene.dump().starts_with("clip 0,0 250x50"));
     assert!(
         frame

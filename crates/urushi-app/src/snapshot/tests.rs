@@ -3,9 +3,24 @@
 use super::*;
 
 fn dump(name: &str, width: f32) -> String {
+    dump_sized(name, width, 820.0)
+}
+
+/// [`dump`] at desktop size with every list scrolled to its end.
+fn scrolled_to_end(name: &str) -> String {
     let theme = Theme::dark();
     let mut text = TextSystem::bundled_only();
-    scenario(name, &theme, &mut text, width, 820.0)
+    super::scenario_scrolled_to_end(name, &theme, &mut text, 1280.0, 820.0)
+        .unwrap()
+        .dump()
+}
+
+/// [`dump`] in a window `height` tall: scrolled lists show only what is in sight, so
+/// checks of text far down a long dialog use a tall window.
+fn dump_sized(name: &str, width: f32, height: f32) -> String {
+    let theme = Theme::dark();
+    let mut text = TextSystem::bundled_only();
+    scenario(name, &theme, &mut text, width, height)
         .unwrap()
         .dump()
 }
@@ -21,7 +36,7 @@ fn every_scenario_renders_at_desktop_and_phone_sizes() {
 
 #[test]
 fn settings_say_how_tasks_get_their_message() {
-    let settings = dump("settings", 1280.0);
+    let settings = scrolled_to_end("settings");
     for text in [
         "\"Send the task's message when the agent starts\"",
         "\"Use my own task message\"",
@@ -32,7 +47,7 @@ fn settings_say_how_tasks_get_their_message() {
         !settings.contains("Filled in per task"),
         "no message box while it is off: {settings}"
     );
-    let custom = dump("settings-task-message", 1280.0);
+    let custom = scrolled_to_end("settings-task-message");
     for text in [
         "Off: the message is typed into Claude for you to edit and send.",
         "Pick up {key}",

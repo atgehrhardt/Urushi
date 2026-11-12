@@ -222,8 +222,61 @@ fn scroll_regions_clamp_and_offset_children() {
     let region = frame.scroll_region(Point::new(10.0, 10.0)).unwrap();
     assert_eq!(region.content_len, 200.0);
     assert_eq!(region.offset, 150.0, "clamped to content - viewport");
-    assert_eq!(quads(&frame.scene)[0].y, -150.0);
+    // Rows scrolled out of sight aren't painted: the first is the one cut by the top.
+    assert_eq!(quads(&frame.scene)[0].y, -10.0);
     assert!(frame.scene.dump().starts_with("clip 0,0 100x50"));
+}
+
+#[test]
+fn a_long_scrolled_list_paints_and_hits_only_the_rows_that_show() {
+    let mut text = TextSystem::bundled_only();
+    let k = key(&["long"]);
+    let rows = (0..1000).map(|n| {
+        Node::new()
+            .height(Length::Fixed(20.0))
+            .background(Color::hex(0x0000ff))
+            .key(key(&["row", &n.to_string()]))
+            .on_click(Msg::A)
+    });
+    let ui: Node<Msg> = Node::column()
+        .child(
+            Node::column()
+                .width(Length::Fixed(100.0))
+                .height(Length::Fixed(100.0))
+                .scroll(k, 5000.0)
+                .children(rows),
+        )
+        .child(
+            Node::new()
+                .height(Length::Fixed(10.0))
+                .role(urushi_ui::Role::Button, "after"),
+        );
+    let frame = build(&ui, Rect::new(0.0, 0.0, 100.0, 200.0), &mut text, None);
+    // Rows 250..=254 show (5000..5100), and nothing else of the 1000.
+    assert_eq!(quads(&frame.scene).len(), 5);
+    let shown: Vec<_> = frame.hits.iter().filter_map(|h| h.key).collect();
+    assert_eq!(shown.len(), 5);
+    assert_eq!(shown[0], key(&["row", "250"]));
+    assert_eq!(frame.scroll_regions[0].content_len, 20_000.0);
+    assert!(frame.click(Point::new(10.0, 10.0)).is_some());
+    // The node after the list keeps its id whatever the list shows.
+    let mut id = |offset: f32| {
+        let ui: Node<Msg> = Node::column()
+            .child(
+                Node::column()
+                    .height(Length::Fixed(100.0))
+                    .scroll(k, offset)
+                    .children((0..1000).map(|_| Node::new().height(Length::Fixed(20.0)))),
+            )
+            .child(
+                Node::new()
+                    .height(Length::Fixed(10.0))
+                    .role(urushi_ui::Role::Button, "after"),
+            );
+        let frame = build(&ui, Rect::new(0.0, 0.0, 100.0, 200.0), &mut text, None);
+        frame.access.last().unwrap().id
+    };
+    assert_eq!(id(0.0), id(7000.0));
 }
 
 #[test]
@@ -495,4 +548,38 @@ fn glass_paints_shadow_then_frost_then_fill() {
         .background(Color::hex(0xffffff));
     let frame = build(&plain, Rect::new(0.0, 0.0, 400.0, 300.0), &mut text, None);
     assert_eq!(frame.scene.dump(), "quad 0,0 400x300 #ffffff r0\n");
+}
+
+#[test]
+fn only_moves_that_change_hover_need_a_new_frame() {
+    let mut text = TextSystem::bundled_only();
+    let ui: Node<Msg> = Node::row()
+        .child(
+            Node::new()
+                .width(Length::Fixed(50.0))
+                .height(Length::Fixed(20.0))
+                .on_click(Msg::A),
+        )
+        .child(
+            Node::new()
+                .width(Length::Fixed(50.0))
+                .height(Length::Fixed(20.0)),
+        );
+    let frame = build(&ui, Rect::new(0.0, 0.0, 200.0, 100.0), &mut text, None);
+    // The row centers its children: the button is at 40..60 down.
+    let at = |x: f32| Some(Point::new(x, 50.0));
+    assert!(!frame.hover_changes(at(5.0), at(40.0)), "within the button");
+    assert!(
+        !frame.hover_changes(at(60.0), at(150.0)),
+        "over nothing clickable"
+    );
+    assert!(
+        frame.hover_changes(at(40.0), at(60.0)),
+        "leaving the button"
+    );
+    assert!(
+        frame.hover_changes(None, at(5.0)),
+        "entering the window over it"
+    );
+    assert!(!frame.hover_changes(at(150.0), None));
 }

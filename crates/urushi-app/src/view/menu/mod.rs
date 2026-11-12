@@ -19,6 +19,8 @@ mod quick_filter;
 mod tasks;
 
 const MENU_WIDTH: f32 = 230.0;
+/// Space a menu keeps from the window's top and bottom edges, at least.
+const MENU_MARGIN: f32 = 16.0;
 
 /// The context menu and its click-away backdrop, if a menu is open.
 pub(super) fn overlay(
@@ -51,17 +53,28 @@ pub(super) fn overlay(
         .on_secondary_click(Msg::CloseMenu);
     let mut backdrop = backdrop;
     backdrop.cursor = urushi_ui::CursorIcon::Default;
+    // A long menu (a board's filters, many quick filters) stops at the window's edge
+    // and scrolls, rather than running off it (UR-66).
+    let list_key = key(&[
+        "context-menu-items",
+        &format!("{:?} {:?}", menu.target, menu.page),
+    ]);
+    let mut list = Node::column().width(Length::Fill(1.0)).gap(1.0);
+    if state.window_height > 0.0 {
+        list = list
+            .max_height((state.window_height - 2.0 * MENU_MARGIN).max(MENU_MARGIN))
+            .scroll(list_key, scroll.get(&list_key).copied().unwrap_or(0.0));
+    }
     let card = urushi_ui::widgets::overlay(
         theme,
         Node::column()
             .width(Length::Fixed(MENU_WIDTH))
-            .padding(Insets::all(4.0))
-            .gap(1.0),
+            .padding(Insets::all(4.0)),
         theme.radius + 3.0,
     )
     .key(key(&["context-menu"]))
     .role(Role::Dialog, "Menu")
-    .children(items)
+    .child(list.children(items))
     .at(menu.at);
     vec![backdrop, card]
 }
