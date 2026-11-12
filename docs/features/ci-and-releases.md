@@ -116,7 +116,9 @@ Android's standard debug key, `~/.android/debug.keystore`.
 - Daemon integration tests don't depend on timing: the test helpers report a daemon that
   failed to start with its actual error (`tests/common/mod.rs`). Transient states are
   observed by holding the fake service in place (`FakeJira::hold_transitions`), not by
-  racing it.
+  racing it. Output in a pane is matched anywhere on a line, because a command typed before
+  the shell's first prompt prints its output behind that prompt (`args_printed` in
+  `tests/task_agents.rs`).
 
 ## Tests
 - The workflows themselves are exercised by running them: CI on every pull request, and
