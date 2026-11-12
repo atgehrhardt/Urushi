@@ -3,12 +3,13 @@
 //! pane, or as the board's filters) and the label that follows the pointer while dragging
 //! a thread, a project or a board tab.
 
-use urushi_client::v1;
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Point, Role, Theme, key};
 
-use crate::msg::Msg;
+use crate::msg::{Msg, ThreadMsg};
 use crate::organize::{ContextMenu, Dragged, MenuPage, MenuTarget, Prompt};
 use crate::state::{AppState, FieldCommand};
+
+use super::labels::{color, color_name, palette};
 
 mod boards;
 mod filter;
@@ -17,6 +18,7 @@ mod order;
 mod pane;
 mod quick_filter;
 mod tasks;
+mod thread;
 
 const MENU_WIDTH: f32 = 230.0;
 /// Space a menu keeps from the window's top and bottom edges, at least.
@@ -32,8 +34,8 @@ pub(super) fn overlay(
         return Vec::new();
     };
     let items = match &menu.target {
-        MenuTarget::Thread(id) => thread_items(state, theme, menu, id),
-        MenuTarget::Project(id) => project_items(state, theme, id),
+        MenuTarget::Thread(id) => thread::thread_items(state, theme, menu, id),
+        MenuTarget::Project(id) => project_items(state, theme, menu, id),
         MenuTarget::Field(_) => field_items(state, theme),
         MenuTarget::Task(id) => tasks::task_items(state, theme, menu, id),
         MenuTarget::Column(id) => tasks::column_items(state, theme, menu, id),
@@ -209,167 +211,18 @@ fn check(on: bool) -> &'static str {
     if on { "✓" } else { "" }
 }
 
-fn thread_items(state: &AppState, theme: &Theme, menu: &ContextMenu, id: &str) -> Vec<Node<Msg>> {
-    let Some(thread) = state.workspace.thread(id) else {
-        return Vec::new();
-    };
-    let id = id.to_owned();
-    if thread.project_base {
-        return base_thread_items(theme, id);
+fn project_items(state: &AppState, theme: &Theme, menu: &ContextMenu, id: &str) -> Vec<Node<Msg>> {
+    let extras = state.daemon_supports_thread_extras();
+    let color_now = state.workspace.project(id).map_or(0, |p| p.color);
+    if menu.page == MenuPage::Color && extras {
+        let project = id.to_owned();
+        return color_page(theme, color_now, |color| {
+            Msg::Thread(ThreadMsg::SetProjectColor {
+                project: project.clone(),
+                color,
+            })
+        });
     }
-    match menu.page {
-        MenuPage::Main | MenuPage::Color | MenuPage::Filter(_) => vec![
-            item(
-                theme,
-                "Rename…",
-                "",
-                theme.text,
-                Msg::OpenPrompt(Prompt::RenameThread(id.clone())),
-            ),
-            item(
-                theme,
-                if thread.pinned { "Unpin" } else { "Pin" },
-                "",
-                theme.text,
-                Msg::TogglePin(id.clone()),
-            ),
-            item(
-                theme,
-                "Status",
-                &format!("{}  ›", thread.status),
-                theme.text,
-                Msg::MenuPage(MenuPage::Status),
-            ),
-            item(
-                theme,
-                "Move to project",
-                &format!(
-                    "{}  ›",
-                    state
-                        .workspace
-                        .project(&thread.folder_id)
-                        .map_or("", |p| p.name.as_str())
-                ),
-                theme.text,
-                Msg::MenuPage(MenuPage::Move),
-            ),
-        ]
-        .into_iter()
-        .chain(order::thread_moves(state, theme, &id))
-        .chain([
-            separator(theme),
-            item(
-                theme,
-                "Delete thread…",
-                "",
-                theme.danger,
-                Msg::RequestDeleteThread(id),
-            ),
-        ])
-        .collect(),
-        MenuPage::Status => status_page(state, theme, thread, id),
-        MenuPage::Move => move_page(state, theme, thread, id),
-    }
-}
-
-fn status_page(state: &AppState, theme: &Theme, thread: &v1::Thread, id: String) -> Vec<Node<Msg>> {
-    let mut items = vec![back(theme, "Status")];
-    items.extend(state.workspace.statuses().into_iter().map(|status| {
-        let current = thread.status == status;
-        item(
-            theme,
-            &status,
-            check(current),
-            theme.text,
-            Msg::SetStatus {
-                thread: id.clone(),
-                status: Some(status.clone()),
-            },
-        )
-    }));
-    items.push(item(
-        theme,
-        "New status…",
-        "",
-        theme.text,
-        Msg::OpenPrompt(Prompt::NewStatus(id.clone())),
-    ));
-    if !thread.status.is_empty() {
-        items.push(item(
-            theme,
-            "Clear status",
-            "",
-            theme.text_muted,
-            Msg::SetStatus {
-                thread: id,
-                status: None,
-            },
-        ));
-    }
-    items
-}
-
-fn move_page(state: &AppState, theme: &Theme, thread: &v1::Thread, id: String) -> Vec<Node<Msg>> {
-    let current = state
-        .workspace
-        .project(&thread.folder_id)
-        .map(|p| p.id.clone());
-    let mut items = vec![back(theme, "Move to project")];
-    items.extend(state.workspace.projects().iter().map(|p| {
-        item(
-            theme,
-            &p.name,
-            check(current.as_deref() == Some(&p.id)),
-            theme.text,
-            Msg::MoveThread {
-                thread: id.clone(),
-                project: Some(p.id.clone()),
-            },
-        )
-    }));
-    items.push(item(
-        theme,
-        "No project",
-        check(current.is_none()),
-        theme.text,
-        Msg::MoveThread {
-            thread: id.clone(),
-            project: None,
-        },
-    ));
-    items.push(item(
-        theme,
-        "New project…",
-        "",
-        theme.text,
-        Msg::OpenPrompt(Prompt::NewProject(Some(id))),
-    ));
-    items
-}
-
-/// A project's parent-branch thread is always at the project's top and stays there:
-/// it can be renamed or closed (which switches it off in the project's settings).
-fn base_thread_items(theme: &Theme, id: String) -> Vec<Node<Msg>> {
-    vec![
-        item(
-            theme,
-            "Rename…",
-            "",
-            theme.text,
-            Msg::OpenPrompt(Prompt::RenameThread(id.clone())),
-        ),
-        separator(theme),
-        item(
-            theme,
-            "Close parent-branch thread…",
-            "",
-            theme.danger,
-            Msg::RequestDeleteThread(id),
-        ),
-    ]
-}
-
-fn project_items(state: &AppState, theme: &Theme, id: &str) -> Vec<Node<Msg>> {
     let mut items = vec![
         item(
             theme,
@@ -398,6 +251,15 @@ fn project_items(state: &AppState, theme: &Theme, id: &str) -> Vec<Node<Msg>> {
             Msg::OpenProjectSettings(id.to_owned()),
         ));
     }
+    if extras {
+        items.push(item(
+            theme,
+            "Color",
+            &format!("{}  ›", color_name(color_now)),
+            theme.text,
+            Msg::MenuPage(MenuPage::Color),
+        ));
+    }
     items.extend(order::project_moves(state, theme, id));
     items.push(separator(theme));
     items.push(item(
@@ -407,5 +269,29 @@ fn project_items(state: &AppState, theme: &Theme, id: &str) -> Vec<Node<Msg>> {
         theme.danger,
         Msg::DeleteProject(id.to_owned()),
     ));
+    items
+}
+
+/// "None", then each palette color with its swatch; `pick` makes the message for a wire
+/// color (0: none). Shared by tasks, columns and projects.
+fn color_page(theme: &Theme, current: i32, pick: impl Fn(i32) -> Msg) -> Vec<Node<Msg>> {
+    let mut items = vec![back(theme, "Color")];
+    items.push(tasks::dot_item(
+        theme,
+        ("None", None),
+        current == 0,
+        key(&["menu-color", "none"]),
+        pick(0),
+    ));
+    items.extend(palette().map(|(_, wire)| {
+        let name = color_name(wire);
+        tasks::dot_item(
+            theme,
+            (&name, color(theme, wire)),
+            current == wire,
+            key(&["menu-color", &name]),
+            pick(wire),
+        )
+    }));
     items
 }

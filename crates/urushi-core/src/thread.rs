@@ -20,6 +20,10 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod notes;
+
+pub use notes::{MAX_THREAD_NOTES, NotesTooLong, thread_notes};
+
 use crate::{
     BranchName, BranchPrefix, NamingError, ProjectId, RepoId, Slug, Status, TabId, ThreadId,
     Timestamp,
@@ -140,6 +144,21 @@ pub struct Thread {
     /// are ordinary.
     #[serde(default, skip_serializing_if = "ThreadKind::is_branch")]
     pub kind: ThreadKind,
+    /// Marked unread by the user, so it stands out in the sidebar until it is opened
+    /// again (ADR 0048).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub unread: bool,
+    /// The user's own notes on the thread, plain text (see [`thread_notes`]). Empty: none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if takes a reference"
+)]
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl Thread {
@@ -178,6 +197,8 @@ impl Thread {
             state: ThreadState::Creating,
             tabs: Vec::new(),
             kind,
+            unread: false,
+            notes: String::new(),
         }
     }
 
@@ -286,7 +307,7 @@ mod tests {
         let loaded: Thread = serde_json::from_value(json).unwrap();
         assert_eq!(loaded.repo, RepoId::from_u128(1));
         assert_eq!(loaded.project, None);
-        assert!(!loaded.pinned);
+        assert!(!loaded.pinned && !loaded.unread && loaded.notes.is_empty());
 
         let mut filed = thread();
         filed.project = Some(ProjectId::from_u128(7));
@@ -294,6 +315,22 @@ mod tests {
         let json = serde_json::to_string(&filed).unwrap();
         assert!(json.contains("\"folder\""), "{json}");
         assert_eq!(serde_json::from_str::<Thread>(&json).unwrap(), filed);
+    }
+
+    #[test]
+    fn unread_and_notes_are_stored_only_when_set() {
+        let plain = serde_json::to_string(&thread()).unwrap();
+        assert!(
+            !plain.contains("unread") && !plain.contains("notes"),
+            "{plain}"
+        );
+
+        let mut marked = thread();
+        marked.unread = true;
+        marked.notes = "Ask about the retry policy".into();
+        let json = serde_json::to_string(&marked).unwrap();
+        assert!(json.contains("\"unread\":true"), "{json}");
+        assert_eq!(serde_json::from_str::<Thread>(&json).unwrap(), marked);
     }
 
     #[test]

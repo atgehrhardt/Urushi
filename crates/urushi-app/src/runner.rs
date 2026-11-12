@@ -147,6 +147,18 @@ impl Runner {
                         self.backend.stop_daemon(home.clone());
                     }
                 }
+                Effect::Relaunch(bundle) => match platform::relaunch(&bundle) {
+                    Ok(()) => {
+                        tracing::info!(%bundle, "relaunching after an update");
+                        self.remember_ui();
+                        let _ = self.proxy.send_event(UserEvent::Quit);
+                    }
+                    Err(e) => {
+                        self.state.error = Some(format!(
+                            "Urushi is updated, but couldn't reopen itself ({e}); quit and open it again"
+                        ));
+                    }
+                },
             }
         }
         self.remember_ui();
@@ -869,9 +881,10 @@ impl ApplicationHandler<UserEvent> for Runner {
         }
     }
 
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::App(msg) => self.dispatch(*msg),
+            UserEvent::Quit => event_loop.exit(),
             UserEvent::Access(event) => match event.window_event {
                 accesskit_winit::WindowEvent::InitialTreeRequested => self.request_redraw(),
                 accesskit_winit::WindowEvent::ActionRequested(request)

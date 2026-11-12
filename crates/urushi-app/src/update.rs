@@ -65,6 +65,8 @@ impl AppState {
             | Msg::PickRepo(_)
             | Msg::PickBase(_)
             | Msg::PickProject(_)) => self.organize(msg, &mut fx),
+            // Unread marks, notes and project colors: `update/thread_extras.rs`.
+            Msg::Thread(msg) => self.thread_msg(msg, &mut fx),
             // Project settings: `update/project_settings.rs`.
             msg @ (Msg::OpenProjectSettings(_) | Msg::ProjectSettings(_)) => {
                 self.project_settings_msg(msg, &mut fx);
@@ -114,6 +116,7 @@ impl AppState {
                 self.lan_connect_msg(msg, &mut fx);
             }
             Msg::Lan(msg) => self.lan_msg(msg, &mut fx),
+            Msg::AppUpdate(msg) => self.update_msg(msg, &mut fx),
             Msg::NewTab => self.open_launcher(&mut fx),
             Msg::Launch(choice) => self.launch(choice, &mut fx),
             Msg::CloseTab(tab_id) => fx.push(request(
@@ -286,6 +289,7 @@ impl AppState {
     }
 
     fn select_thread(&mut self, id: String, fx: &mut Vec<Effect>) {
+        self.mark_read(&id, fx);
         self.selected_thread = Some(id);
         self.sidebar_open = false;
         self.selection = None;
@@ -375,7 +379,7 @@ impl AppState {
 
     fn close_dialog(&mut self) {
         // The connect dialog is the only way forward when no daemon is chosen yet, and a
-        // restart under way can't be cancelled.
+        // restart or an update under way can't be cancelled.
         if self.target == ConnectTarget::Ask && matches!(self.dialog, Some(Dialog::Connect { .. }))
             || matches!(
                 self.dialog,
@@ -384,6 +388,7 @@ impl AppState {
                     ..
                 })
             )
+            || self.updating()
         {
             return;
         }
@@ -455,26 +460,35 @@ impl AppState {
         }
     }
 
+    /// A request finished. Some answers have handlers of their own, which deal with
+    /// failures too; the rest go through [`AppState::answered`].
     fn on_response(
         &mut self,
         followup: Followup,
         result: Result<Outcome, String>,
         fx: &mut Vec<Effect>,
     ) {
-        if followup == Followup::QuickTerminal {
-            return self.quick_terminal_answered(result.err(), fx);
-        }
-        let followup = match followup {
-            Followup::ThreadDeleted(thread) => {
-                self.thread_deleted(&thread, result.err(), fx);
-                return;
+        match followup {
+            Followup::QuickTerminal => self.quick_terminal_answered(result.err(), fx),
+            Followup::UpdateChecked | Followup::UpdateInstalled => {
+                self.update_answered(&followup, result, fx);
             }
+            Followup::ThreadDeleted(thread) => self.thread_deleted(&thread, result.err(), fx),
             Followup::ProjectBaseClosed(thread, pending) => {
                 self.project_base_closed(&thread, *pending, result.err(), fx);
-                return;
             }
-            other => other,
-        };
+            other => self.answered(other, result, fx),
+        }
+    }
+
+    /// Any other answer: a failure is shown (or, where it only means "nothing to
+    /// show", dropped), an outcome applied.
+    fn answered(
+        &mut self,
+        followup: Followup,
+        result: Result<Outcome, String>,
+        fx: &mut Vec<Effect>,
+    ) {
         let outcome = match result {
             Ok(outcome) => outcome,
             // An older daemon, or no agents: the picker just offers a terminal.
@@ -622,6 +636,7 @@ impl AppState {
                 fx.push(request(body, Followup::ThreadCreated));
             }
             Some(Dialog::Prompt { .. }) => self.submit_prompt(fx),
+            Some(Dialog::ThreadNotes { .. }) => self.submit_thread_notes(fx),
             Some(Dialog::ProjectSettings(_)) => self.submit_project_settings(fx),
             Some(Dialog::Setup { .. }) => self.setup_enter(fx),
             Some(Dialog::NestTask { task, query }) => {
@@ -767,6 +782,8 @@ mod subtask_drafts;
 mod task_nav;
 mod task_threads;
 mod tasks;
+mod thread_extras;
+mod updates;
 mod usage;
 
 #[cfg(test)]

@@ -158,3 +158,46 @@ fn files_go_as_a_form_part_and_downloads_follow_redirects() {
     assert!(!dir.exists());
     assert!(!format!("{request:?}").contains("bytes\""));
 }
+
+#[test]
+fn downloads_go_to_a_file_follow_redirects_and_fail_on_http_errors() {
+    let config = download_config(
+        "https://github.com/o/r/releases/download/v1.2.3/U.zip",
+        std::path::Path::new("/tmp/a \"b\"/U.zip"),
+    );
+    let lines: Vec<_> = config.lines().collect();
+    assert!(lines.contains(&"url = \"https://github.com/o/r/releases/download/v1.2.3/U.zip\""));
+    assert!(lines.contains(&"output = \"/tmp/a \\\"b\\\"/U.zip\""));
+    assert!(lines.contains(&"location"), "release files are redirected");
+    assert!(
+        lines.contains(&"fail"),
+        "an error page isn't saved as the file"
+    );
+    assert!(lines.contains(&"max-time = 600"));
+    assert!(config.ends_with('\n'));
+}
+
+/// The default download, used by fakes, writes a successful body and refuses others.
+#[test]
+fn the_default_download_writes_the_body_of_a_success() {
+    struct Fixed(u16);
+    impl HttpClient for Fixed {
+        fn send(&self, request: &Request) -> Result<Response, HttpError> {
+            assert!(request.follow);
+            Ok(Response {
+                status: self.0,
+                retry_after: None,
+                body: b"zip bytes".to_vec(),
+            })
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("file");
+    Fixed(200).download("https://x/f", &dest).unwrap();
+    assert_eq!(std::fs::read(&dest).unwrap(), b"zip bytes");
+    let error = Fixed(404)
+        .download("https://x/g", &dir.path().join("g"))
+        .unwrap_err();
+    assert!(error.0.contains("404"), "{error}");
+    assert!(!dir.path().join("g").exists());
+}

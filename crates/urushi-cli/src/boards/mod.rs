@@ -16,7 +16,8 @@ mod show;
 mod sub;
 
 use attachments::AttachmentCmd;
-use columns::{ColCmd, color_arg};
+use columns::ColCmd;
+pub(crate) use columns::color_arg;
 use print::print_boards;
 use sub::{SubCmd, sub};
 

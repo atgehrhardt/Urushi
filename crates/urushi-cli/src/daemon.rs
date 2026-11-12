@@ -36,7 +36,9 @@ pub(crate) async fn run(home: Option<&Path>, host: Option<&str>, cmd: DaemonCmd)
         if terminals > 0 {
             out("They will close, and whatever runs in them (agents, servers) stops.")?;
             if restart {
-                out("Threads, tabs and layouts come back with fresh shells.")?;
+                out(
+                    "Panes come back as they were: output, directories, programs, and agents' conversations.",
+                )?;
             }
         }
         let verb = if restart { "Restart" } else { "Stop" };

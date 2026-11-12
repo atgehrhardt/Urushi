@@ -43,6 +43,7 @@ pub mod terminal;
 mod touch;
 pub mod ui_state;
 mod update;
+pub mod updates;
 mod view;
 
 use std::collections::HashMap;
@@ -61,6 +62,8 @@ pub enum UserEvent {
     App(Box<msg::Msg>),
     /// An accessibility request.
     Access(accesskit_winit::Event),
+    /// Quit the app (it relaunches itself after an update).
+    Quit,
 }
 
 impl From<accesskit_winit::Event> for UserEvent {

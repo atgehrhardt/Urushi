@@ -310,6 +310,7 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             ok()
         }
         Body::UpdateThread(r) => super::organize::update_thread(connection, r)?,
+        Body::SetFolderColor(r) => super::organize::set_folder_color(service, &r)?,
         Body::UpdateFolderSettings(r) => {
             super::organize::update_folder_settings(service, r).await?
         }
@@ -388,6 +389,27 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             let index = usize::try_from(r.index).unwrap_or(usize::MAX);
             service.move_thread(parse(&r.thread_id, "thread_id")?, index)?;
             ok()
+        }
+        Body::CheckForUpdates(_) => {
+            let check = service.check_for_updates().await?;
+            Outcome::UpdateCheck(v1::UpdateCheck {
+                current_version: check.current.to_string(),
+                latest_version: check.latest.version.to_string(),
+                available: check.available(),
+                release_url: check.latest.page_url,
+            })
+        }
+        Body::InstallUpdate(r) => {
+            host_only(connection, "the app can only be updated")?;
+            let version = r
+                .version
+                .parse()
+                .map_err(|e: urushi_core::InvalidVersion| ServiceError::Invalid(e.to_string()))?;
+            let bundle = service.install_update(version).await?;
+            Outcome::UpdateInstalled(v1::UpdateInstalled {
+                version: version.to_string(),
+                bundle_path: bundle.to_string_lossy().into_owned(),
+            })
         }
         Body::LanStatus(_) => Outcome::LanStatus(lan::status(service, connection.local)),
         Body::StartLanPairing(_) => {

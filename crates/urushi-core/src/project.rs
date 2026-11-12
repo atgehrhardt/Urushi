@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BranchName, ProjectId, RepoId, Timestamp};
+use crate::{BranchName, LabelColor, ProjectId, RepoId, Timestamp};
 
 /// A user-made group of threads.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +27,10 @@ pub struct Project {
     /// defaults.
     #[serde(default)]
     pub settings: ProjectSettings,
+    /// The color its sidebar section is shown in, from the board palette (ADR 0048).
+    /// `None`: no color.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<LabelColor>,
 }
 
 /// The branch a project's work starts from, and the repo it lives in.
@@ -125,8 +129,21 @@ mod tests {
                 name: format!("p{i}"),
                 created_at: Timestamp::unknown(),
                 settings: ProjectSettings::default(),
+                color: None,
             })
             .collect()
+    }
+
+    #[test]
+    fn a_color_is_stored_only_when_set() {
+        let mut p = projects(1).remove(0);
+        let plain = serde_json::to_string(&p).unwrap();
+        assert!(!plain.contains("color"), "{plain}");
+        assert_eq!(serde_json::from_str::<Project>(&plain).unwrap(), p);
+        p.color = Some(LabelColor::Teal);
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("\"color\":\"teal\""), "{json}");
+        assert_eq!(serde_json::from_str::<Project>(&json).unwrap(), p);
     }
 
     fn order(projects: &[Project]) -> Vec<&str> {

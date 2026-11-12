@@ -30,7 +30,7 @@ if pgrep -qf "urushid --home $HOME/Library/Application Support/Urushi"; then
   STATUS="$(env -u URUSHI_HOME "$CLI" status 2>/dev/null || true)"
   echo "  ${STATUS%%$'\n'*}"
   echo "it switches to the new urushid the next time it starts. To switch now (closes your"
-  echo "running terminals; threads and tabs come back with fresh shells), use Settings ->"
+  echo "running terminals; panes come back from their restore points), use Settings ->"
   echo "Restart daemon in the app, or run:"
   echo "  \"$CLI\" daemon restart"
 fi

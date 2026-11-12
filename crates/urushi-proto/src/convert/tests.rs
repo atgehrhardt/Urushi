@@ -111,6 +111,9 @@ fn thread_round_trip_all_states() {
     thread.project = Some(ProjectId::from_u128(4));
     thread.pinned = true;
     thread.status = Some(Status::new("In review").unwrap());
+    // Unread and notes (1.27).
+    thread.unread = true;
+    thread.notes = "Waiting on review\nthen merge".into();
     assert_eq!(
         thread_from_proto(&thread_to_proto(&thread)).unwrap(),
         thread
@@ -132,11 +135,24 @@ fn folders_are_projects_and_statuses_are_validated() {
         name: "Billing launch".into(),
         created_at: Timestamp::from_unix_millis(7),
         settings: ProjectSettings::default(),
+        color: None,
     };
     assert_eq!(
         project_from_proto(&project_to_proto(&project)).unwrap(),
         project
     );
+    let colored = Project {
+        color: Some(urushi_core::LabelColor::Purple),
+        ..project.clone()
+    };
+    assert_eq!(
+        project_from_proto(&project_to_proto(&colored)).unwrap(),
+        colored
+    );
+    // A color this side doesn't know is no color.
+    let mut unknown = project_to_proto(&project);
+    unknown.color = 99;
+    assert_eq!(project_from_proto(&unknown).unwrap().color, None);
     let mut with_base = project.clone();
     with_base.settings = ProjectSettings {
         base: Some(ProjectBase {
@@ -247,6 +263,30 @@ fn settings_round_trip() {
     assert_eq!(
         settings_from_proto(&old).unwrap().lan,
         urushi_core::LanSettings::default()
+    );
+}
+
+#[test]
+fn update_settings_round_trip_and_default_on() {
+    let mut s = Settings::default();
+    s.updates.check_automatically = false;
+    s.updates.skipped_version = Some(urushi_core::Version::new(0, 1, 7));
+    assert_eq!(settings_from_proto(&settings_to_proto(&s)).unwrap(), s);
+    // An older daemon sends none: checks are on, nothing is skipped.
+    let mut old = settings_to_proto(&Settings::default());
+    old.updates = None;
+    assert_eq!(
+        settings_from_proto(&old).unwrap().updates,
+        urushi_core::UpdateSettings::default()
+    );
+    // Unset `check_automatically` means on; a garbled skipped version is forgotten.
+    let partial = v1::UpdateSettings {
+        check_automatically: None,
+        skipped_version: "soon".into(),
+    };
+    assert_eq!(
+        update_settings_from_proto(Some(&partial)),
+        urushi_core::UpdateSettings::default()
     );
 }
 

@@ -6,14 +6,14 @@
 mod desktop;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub(crate) use desktop::{
-    Clipboard, HAS_FILE_PICKER, HAS_FOLDER_PICKER, HAS_SECONDARY_CLICK, device_name, notify,
-    open_path, open_url, pick_files, pick_folder, window_icon,
+    Clipboard, HAS_APP_UPDATES, HAS_FILE_PICKER, HAS_FOLDER_PICKER, HAS_SECONDARY_CLICK,
+    device_name, notify, open_path, open_url, pick_files, pick_folder, relaunch, window_icon,
 };
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 mod mobile;
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 pub(crate) use mobile::{
-    Clipboard, HAS_FILE_PICKER, HAS_FOLDER_PICKER, HAS_SECONDARY_CLICK, device_name, notify,
-    open_path, open_url, pick_files, pick_folder, window_icon,
+    Clipboard, HAS_APP_UPDATES, HAS_FILE_PICKER, HAS_FOLDER_PICKER, HAS_SECONDARY_CLICK,
+    device_name, notify, open_path, open_url, pick_files, pick_folder, relaunch, window_icon,
 };

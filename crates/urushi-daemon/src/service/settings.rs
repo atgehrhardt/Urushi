@@ -112,12 +112,56 @@ fn apply_patch(settings: &mut Settings, patch: &v1::SettingsPatch) -> ServiceRes
     if let Some(appearance) = &patch.appearance {
         settings.appearance = convert::appearance_from_proto(Some(appearance));
     }
+    if let Some(check) = patch.check_updates_automatically {
+        settings.updates.check_automatically = check;
+    }
+    if let Some(version) = &patch.skipped_update_version {
+        settings.updates.skipped_version =
+            if version.trim().is_empty() {
+                None
+            } else {
+                Some(version.parse().map_err(|e: urushi_core::InvalidVersion| {
+                    ServiceError::Invalid(e.to_string())
+                })?)
+            };
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_checks_are_switched_and_a_release_skipped_and_forgotten() {
+        let mut s = Settings::default();
+        let patch = v1::SettingsPatch {
+            check_updates_automatically: Some(false),
+            skipped_update_version: Some("v0.1.7".into()),
+            ..Default::default()
+        };
+        apply_patch(&mut s, &patch).unwrap();
+        assert!(!s.updates.check_automatically);
+        assert_eq!(
+            s.updates.skipped_version,
+            Some(urushi_core::Version::new(0, 1, 7))
+        );
+        let forget = v1::SettingsPatch {
+            skipped_update_version: Some(String::new()),
+            ..Default::default()
+        };
+        apply_patch(&mut s, &forget).unwrap();
+        assert_eq!(s.updates.skipped_version, None);
+        assert!(!s.updates.check_automatically, "unset fields stay");
+        let bad = v1::SettingsPatch {
+            skipped_update_version: Some("later".into()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            apply_patch(&mut s, &bad),
+            Err(ServiceError::Invalid(_))
+        ));
+    }
 
     #[test]
     fn the_task_agent_is_chosen_and_cleared() {

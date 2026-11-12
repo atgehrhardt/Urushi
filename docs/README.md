@@ -62,6 +62,8 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0045 – Release the unsigned iOS .ipa from the same tag, for users to sideload (supersedes 0040's iOS part)](adr/0045-release-the-unsigned-ios-ipa-for-sideloading.md)
 - [0046 – Show one board column at a time on phones, switched by tabs and swipes](adr/0046-one-board-column-at-a-time-on-phones.md)
 - [0047 – Give board columns a minimum width and scroll the board sideways, rather than shrink them](adr/0047-board-columns-keep-a-width-and-scroll-sideways.md)
+- [0048 – Keep a thread's unread mark and notes, and a project's color, in the daemon](adr/0048-thread-unread-notes-and-project-colors-in-the-daemon.md)
+- [0049 – Update the macOS app from GitHub Releases in the daemon, by swapping the bundle and restarting](adr/0049-update-the-macos-app-from-github-releases-in-the-daemon.md)
 - [0050 – Lay out and paint only what a scrolling list shows, keep text caches in two generations, and redraw on pointer moves only when hover changes](adr/0050-draw-what-shows-and-redraw-only-on-change.md)
 - [0051 – Keep several Jira sign-ins, keyed by site and email, and tie each imported board to one](adr/0051-several-jira-sign-ins-keyed-by-site-and-email.md)
 
@@ -74,7 +76,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [LAN access (paired devices, no Tailscale)](features/lan-access.md)
 - [The workspace GUI](features/gui-workspace.md)
 - [Agent launcher](features/agent-launcher.md)
-- [Organizing threads (projects, pins, statuses)](features/thread-organization.md)
+- [Organizing threads (projects, pins, statuses, unread, notes, colors)](features/thread-organization.md)
 - [A project's parent branch and its parent-branch thread](features/project-parent-branch.md)
 - [Task boards](features/task-boards.md)
 - [Jira boards](features/jira-boards.md)
@@ -83,3 +85,4 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [Agent attention and activity (finished / running / needs input)](features/agent-attention.md)
 - [Quick terminal](features/quick-terminal.md)
 - [CI and releases](features/ci-and-releases.md)
+- [App updates from GitHub Releases](features/updates.md)

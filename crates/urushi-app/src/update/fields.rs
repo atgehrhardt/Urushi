@@ -3,7 +3,7 @@
 //! the caret, drag or Shift-click to select, double-click for a word, triple-click for
 //! everything, right-click for a Cut/Copy/Paste menu).
 //!
-//! In a multiline field (task notes) Enter starts a new line, and Cmd+Enter (Apple) /
+//! In a multiline field (task or thread notes) Enter starts a new line, and Cmd+Enter (Apple) /
 //! Ctrl+Enter (elsewhere) submits the dialog, as it does from any field.
 //!
 //! The shortcut modifier is Cmd on Apple platforms and Ctrl elsewhere; a dialog has no
@@ -27,6 +27,7 @@ macro_rules! focused_field {
             | (Some(Dialog::Task { title, .. }), Field::TaskTitle) => Some(title),
             (Some(Dialog::NewThread { branch, .. }), Field::ThreadBranch) => Some(branch),
             (Some(Dialog::Prompt { field, .. }), Field::Prompt) => Some(field),
+            (Some(Dialog::ThreadNotes { notes, .. }), Field::ThreadNotes) => Some(notes),
             (Some(Dialog::Settings { prefix, .. }), Field::BranchPrefix) => Some(prefix),
             (Some(Dialog::Settings { shell, .. }), Field::DefaultShell) => Some(shell),
             (Some(Dialog::Settings { message, .. }), Field::TaskMessage) => Some(message),
@@ -112,6 +113,7 @@ impl AppState {
             }
             Some(Dialog::Connect { .. }) => vec![Field::Host, Field::PairingCode],
             Some(Dialog::Prompt { .. }) => vec![Field::Prompt],
+            Some(Dialog::ThreadNotes { .. }) => vec![Field::ThreadNotes],
             Some(Dialog::NestTask { .. }) => vec![Field::NestQuery],
             Some(Dialog::ConnectJira { .. }) => {
                 vec![Field::JiraSite, Field::JiraEmail, Field::JiraToken]

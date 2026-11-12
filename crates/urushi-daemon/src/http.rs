@@ -17,6 +17,9 @@ use crate::exec;
 /// How long a request may take, connecting included.
 const TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long a download into a file may take (an app release is tens of megabytes).
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
 /// An HTTP method.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Method {
@@ -123,6 +126,25 @@ pub struct HttpError(pub String);
 pub trait HttpClient: Send + Sync {
     /// Sends `request` and returns the answer, whatever its status. Blocking.
     fn send(&self, request: &Request) -> Result<Response, HttpError>;
+
+    /// Downloads `url` into the file `dest`, following redirects, with no credentials.
+    /// Fails unless the answer is a success. Blocking.
+    ///
+    /// The default sends a GET and writes its body, which suits fakes; [`CurlHttp`]
+    /// streams large files straight to disk instead, with a longer time limit.
+    fn download(&self, url: &str, dest: &std::path::Path) -> Result<(), HttpError> {
+        let mut request = Request::new(Method::Get, url.to_owned(), Vec::new());
+        request.follow = true;
+        let response = self.send(&request)?;
+        if !(200..300).contains(&response.status) {
+            return Err(HttpError(format!(
+                "the server answered {} for {url}",
+                response.status
+            )));
+        }
+        std::fs::write(dest, &response.body)
+            .map_err(|e| HttpError(format!("couldn't save {}: {e}", dest.display())))
+    }
 }
 
 /// [`HttpClient`] over the system's `curl`.
@@ -163,6 +185,17 @@ impl HttpClient for CurlHttp {
         drop(upload);
         parse_output(&out?)
     }
+
+    fn download(&self, url: &str, dest: &std::path::Path) -> Result<(), HttpError> {
+        exec::run(
+            &self.program,
+            &["--config", "-"],
+            Some(download_config(url, dest).as_bytes()),
+            DOWNLOAD_TIMEOUT + Duration::from_secs(5),
+        )
+        .map(drop)
+        .map_err(|e| HttpError(friendly(&e)))
+    }
 }
 
 /// An upload's contents in a file readable only by the user, removed when dropped.
@@ -199,7 +232,7 @@ impl Drop for UploadFile {
 /// errors still exit 0).
 fn friendly(error: &str) -> String {
     if error.starts_with("cannot run") {
-        "curl isn't installed; it's needed to reach Jira".into()
+        "curl isn't installed; Urushi needs it to reach the internet".into()
     } else if error.contains("exit status: 6") {
         "the site's address couldn't be found".into()
     } else if error.contains("exit status: 7") {
@@ -208,6 +241,10 @@ fn friendly(error: &str) -> String {
         "the secure connection to the site failed".into()
     } else if error.contains("exit status: 28") || error.contains("timed out") {
         "the request timed out".into()
+    } else if error.contains("exit status: 22") {
+        "the server refused the download".into()
+    } else if error.contains("exit status: 23") {
+        "the download couldn't be saved".into()
     } else {
         format!("couldn't connect ({error})")
     }
@@ -257,6 +294,24 @@ pub(crate) fn curl_config(request: &Request, upload: Option<&std::path::Path>) -
     let mut config = lines.join("\n");
     config.push('\n');
     config
+}
+
+/// The curl config for downloading `url` into `dest`: redirects followed (release files
+/// are served from another host), and an HTTP error fails the download (exit 22)
+/// rather than saving the error page.
+pub(crate) fn download_config(url: &str, dest: &std::path::Path) -> String {
+    [
+        "silent".to_owned(),
+        "show-error".to_owned(),
+        "globoff".to_owned(),
+        "fail".to_owned(),
+        "location".to_owned(),
+        format!("max-time = {}", DOWNLOAD_TIMEOUT.as_secs()),
+        format!("url = {}", quote(url)),
+        format!("output = {}", quote(&dest.to_string_lossy())),
+        String::new(),
+    ]
+    .join("\n")
 }
 
 /// A curl config string: quoted, with backslashes, quotes and line breaks escaped. curl

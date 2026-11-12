@@ -7,8 +7,7 @@ use urushi_client::{Client, WorkspaceMirror, v1};
 
 use crate::render::{print_plan, print_quick, print_settings, print_tailnet, print_tree, short};
 use crate::{
-    AgentArg, Command, PaneCmd, ProjectCmd, QuickCmd, RepoCmd, SettingsCmd, Side, TabCmd,
-    TailnetCmd, ThreadCmd,
+    AgentArg, Command, PaneCmd, QuickCmd, RepoCmd, SettingsCmd, Side, TabCmd, TailnetCmd, ThreadCmd,
 };
 
 /// Resolves an abbreviated id against the current workspace.
@@ -50,10 +49,10 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
             print_tailnet(&client.tailnet_status().await?)
         }
         // Handled before connecting (see `main`).
-        Command::Daemon(_) => Ok(()),
+        Command::Daemon(_) | Command::Update(_) => Ok(()),
         Command::Ls => print_tree(&WorkspaceMirror::new(client.list_workspace(false).await?)),
         Command::Repo(cmd) => repo(client, cmd).await,
-        Command::Project(cmd) => project(client, cmd).await,
+        Command::Project(cmd) => crate::organize::project(client, cmd).await,
         Command::Thread(cmd) => thread(client, cmd).await,
         Command::Tab(cmd) => tab(client, cmd).await,
         Command::Pane(cmd) => pane(client, cmd).await,
@@ -150,41 +149,8 @@ async fn repo(client: &Client, cmd: RepoCmd) -> Result<()> {
     }
 }
 
-async fn project(client: &Client, cmd: ProjectCmd) -> Result<()> {
-    match cmd {
-        ProjectCmd::New { name } => {
-            let p = client.create_project(&name).await?;
-            out(&format!("project {} {}", short(&p.id), p.name))
-        }
-        ProjectCmd::Rename { project, name } => Ok(client
-            .rename_project(&resolve(client, &project).await?, &name)
-            .await?),
-        ProjectCmd::Rm { project } => Ok(client
-            .delete_project(&resolve(client, &project).await?)
-            .await?),
-        ProjectCmd::Move { project, index } => Ok(client
-            .move_project(&resolve(client, &project).await?, index)
-            .await?),
-        ProjectCmd::Settings {
-            project,
-            repo,
-            branch,
-            clear,
-            base_thread,
-        } => {
-            let change = crate::project_settings::Change {
-                repo,
-                branch,
-                clear,
-                base_thread: base_thread.map(|b| matches!(b, crate::OnOff::On)),
-            };
-            crate::project_settings::run(client, &project, change).await
-        }
-    }
-}
-
 /// `UpdateThread` for one thread.
-async fn update_thread(
+pub(crate) async fn update_thread(
     client: &Client,
     thread: &str,
     change: impl FnOnce(&mut v1::UpdateThreadRequest),
@@ -280,6 +246,15 @@ async fn thread(client: &Client, cmd: ThreadCmd) -> Result<()> {
         }
         ThreadCmd::Unpin { thread } => {
             update_thread(client, &thread, |r| r.pinned = Some(false)).await
+        }
+        ThreadCmd::Unread { thread } => {
+            update_thread(client, &thread, |r| r.unread = Some(true)).await
+        }
+        ThreadCmd::Read { thread } => {
+            update_thread(client, &thread, |r| r.unread = Some(false)).await
+        }
+        ThreadCmd::Notes { thread, set, clear } => {
+            crate::organize::notes(client, &thread, set, clear).await
         }
         ThreadCmd::Status { thread, status } => {
             update_thread(client, &thread, |r| r.status = Some(status)).await
@@ -395,6 +370,8 @@ fn patch(key: &str, value: &str) -> Result<v1::SettingsPatch> {
         "task-send" => p.task_draft = Some(!flag(value)?),
         "task-message-custom" => p.task_message_custom = Some(flag(value)?),
         "task-message" => p.task_message = Some(value.into()),
+        "check-updates" => p.check_updates_automatically = Some(flag(value)?),
+        "skipped-update" => p.skipped_update_version = Some(value.into()),
         other => bail!("unknown setting {other:?}"),
     }
     Ok(p)
