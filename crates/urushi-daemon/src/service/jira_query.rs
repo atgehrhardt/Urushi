@@ -42,7 +42,7 @@ impl Service {
             })
             .collect::<ServiceResult<Vec<_>>>()?;
         extra.extend(kept);
-        let account = self.jira_account()?;
+        let account = self.jira_account(board)?;
         let cached = self.jira.cached_config(board);
         let api = self.jira.api.clone();
         blocking(move || {

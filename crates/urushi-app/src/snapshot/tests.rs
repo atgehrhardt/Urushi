@@ -416,6 +416,33 @@ fn jira_boards_show_their_issues_and_leave_jiras_part_to_jira() {
 }
 
 #[test]
+fn several_jira_sign_ins_show_in_settings_and_the_import_dialog() {
+    let settings = scrolled_to_end("jira-accounts");
+    for text in [
+        "Signed in to acme.atlassian.net as Ada Lovelace (ada@acme.com)",
+        "Signed in to globex.atlassian.net as Ada Lovelace (ada@globex.com)",
+        "\"Add Jira account…\"",
+    ] {
+        assert!(settings.contains(text), "{text} missing: {settings}");
+    }
+    assert_eq!(settings.matches("\"Disconnect\"").count(), 2);
+    let import = dump("jira-import-accounts", 1280.0);
+    for text in [
+        "\"acme.atlassian.net\"",
+        "\"globex.atlassian.net\"",
+        "\"+ Account\"",
+    ] {
+        assert!(import.contains(text), "{text} missing: {import}");
+    }
+    // One sign-in: no chips, just where the boards come from.
+    let one = dump("jira-import", 1280.0);
+    assert!(
+        one.contains("From acme.atlassian.net as ada@acme.com"),
+        "{one}"
+    );
+}
+
+#[test]
 fn ordinary_tasks_offer_a_type() {
     let task = dump("task", 1280.0);
     for text in ["\"Type\"", "\"Story\"", "\"Bug\"", "\"Epic\""] {

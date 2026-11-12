@@ -142,7 +142,7 @@ impl Service {
         let done = patch.done.filter(|d| t.nested && *d != t.task.done);
 
         if !edit.is_empty() || done.is_some() {
-            let account = self.jira_account()?;
+            let account = self.jira_account(t.board)?;
             let guard = self.jira.lock(t.board);
             let _one_at_a_time = guard.lock().await;
             let api = self.jira.api.clone();
@@ -223,7 +223,7 @@ impl Service {
             Some(next) => Some(Rank::Before(next.clone())),
             None => others.last().map(|last| Rank::After(last.clone())),
         };
-        let account = self.jira_account()?;
+        let account = self.jira_account(t.board)?;
         let guard = self.jira.lock(t.board);
         let _one_at_a_time = guard.lock().await;
         // The card moves at once (ADR 0023); if Jira refuses, it goes back.
@@ -272,7 +272,7 @@ impl Service {
     /// takes it off the board. An issue Jira no longer has is taken off too. If Jira
     /// refuses (most often: the account may not delete issues), nothing changes here.
     pub(super) async fn jira_delete_task(&self, t: JiraTask) -> ServiceResult<()> {
-        let account = self.jira_account()?;
+        let account = self.jira_account(t.board)?;
         // Under the board's lock, a sync can't merge the issue back as it goes.
         let guard = self.jira.lock(t.board);
         let _one_at_a_time = guard.lock().await;

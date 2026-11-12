@@ -1,5 +1,7 @@
-//! Typed wrappers for Jira requests (protocol 1.12): the daemon's sign-in, and finding,
-//! importing and syncing Jira boards.
+//! Typed wrappers for Jira requests (protocol 1.12): the daemon's sign-ins (several
+//! since 1.27, ADR 0049), and finding, importing and syncing Jira boards. An `account`
+//! is a sign-in's `JiraAccount.key`; empty means the first, as daemons before 1.27
+//! have only one.
 
 use urushi_proto::v1::{self, request::Body, response::Outcome};
 
@@ -25,7 +27,7 @@ impl Client {
         }
     }
 
-    /// Who the daemon is signed in to Jira as.
+    /// Who the daemon is signed in to Jira as: its first sign-in.
     pub async fn jira_account(&self) -> Result<v1::JiraAccount, ClientError> {
         match self
             .request(Body::GetJiraAccount(v1::GetJiraAccountRequest {}))
@@ -36,22 +38,37 @@ impl Client {
         }
     }
 
-    /// Forgets the daemon's Jira sign-in.
-    pub async fn disconnect_jira(&self) -> Result<(), ClientError> {
+    /// Every Jira sign-in the daemon has (1.27).
+    pub async fn jira_accounts(&self) -> Result<Vec<v1::JiraAccount>, ClientError> {
+        match self
+            .request(Body::ListJiraAccounts(v1::ListJiraAccountsRequest {}))
+            .await?
+        {
+            Outcome::JiraAccounts(list) => Ok(list.accounts),
+            _ => Err(unexpected("ListJiraAccounts")),
+        }
+    }
+
+    /// Forgets one of the daemon's Jira sign-ins.
+    pub async fn disconnect_jira(&self, account: &str) -> Result<(), ClientError> {
         self.ok(
-            Body::DisconnectJira(v1::DisconnectJiraRequest {}),
+            Body::DisconnectJira(v1::DisconnectJiraRequest {
+                account: account.into(),
+            }),
             "DisconnectJira",
         )
         .await
     }
 
-    /// The site's boards whose name contains `query`.
+    /// The boards of `account`'s site whose name contains `query`.
     pub async fn list_jira_boards(
         &self,
+        account: &str,
         query: &str,
     ) -> Result<Vec<v1::JiraBoardInfo>, ClientError> {
         let body = Body::ListJiraBoards(v1::ListJiraBoardsRequest {
             query: query.into(),
+            account: account.into(),
         });
         match self.request(body).await? {
             Outcome::JiraBoards(list) => Ok(list.boards),
@@ -59,9 +76,17 @@ impl Client {
         }
     }
 
-    /// Makes a board that follows a Jira board (or answers the one that already does).
-    pub async fn import_jira_board(&self, jira_board_id: u64) -> Result<v1::Board, ClientError> {
-        let body = Body::ImportJiraBoard(v1::ImportJiraBoardRequest { jira_board_id });
+    /// Makes a board that follows a Jira board of `account`'s site, synced with that
+    /// sign-in (or answers the one that already does).
+    pub async fn import_jira_board(
+        &self,
+        account: &str,
+        jira_board_id: u64,
+    ) -> Result<v1::Board, ClientError> {
+        let body = Body::ImportJiraBoard(v1::ImportJiraBoardRequest {
+            jira_board_id,
+            account: account.into(),
+        });
         match self.request(body).await? {
             Outcome::Board(board) => Ok(board),
             _ => Err(unexpected("ImportJiraBoard")),

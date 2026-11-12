@@ -29,7 +29,7 @@ async fn signed_in(home: &std::path::Path) -> (Daemon, Client, Arc<FakeJira>, v1
     let daemon = Daemon::start_options(options).await;
     let (client, _events) = daemon.connect().await;
     client.connect_jira("acme", "a@b.c", TOKEN).await.unwrap();
-    let imported = client.import_jira_board(7).await.unwrap();
+    let imported = client.import_jira_board("", 7).await.unwrap();
     client.sync_board(&imported.id).await.unwrap();
     let w = client.list_workspace(false).await.unwrap();
     let board = w.boards.into_iter().find(|b| b.jira.is_some()).unwrap();
@@ -258,7 +258,10 @@ async fn links_watching_and_work_are_kept_in_jira() {
         jira.calls()
             .contains(&"log_work ACME-1 5400 2026-11-09T10:20:30.123+0000".to_owned())
     );
-    let people = client.search_jira_users(&id, "gra", true).await.unwrap();
+    let people = client
+        .search_jira_users((&id, ""), "gra", true)
+        .await
+        .unwrap();
     assert_eq!(people[0].account_id, "acc-grace");
     daemon.stop().await;
 }

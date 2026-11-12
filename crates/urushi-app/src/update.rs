@@ -281,7 +281,7 @@ impl AppState {
         ));
         self.lan = None;
         self.request_lan_status(fx);
-        self.jira = None;
+        self.jira_accounts.clear();
         self.request_jira_account(fx);
     }
 

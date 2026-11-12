@@ -59,6 +59,7 @@ pub fn source_to_proto(source: Option<&BoardSource>) -> Option<v1::JiraBoardSour
     let BoardSource::Jira(j) = source?;
     Some(v1::JiraBoardSource {
         site: j.site.clone(),
+        account: j.account.clone(),
         board_id: j.board_id,
         name: j.name.clone(),
         project_key: j.project_key.clone(),
@@ -85,6 +86,7 @@ pub fn source_from_proto(source: Option<&v1::JiraBoardSource>) -> Option<BoardSo
     let j = source?;
     Some(BoardSource::Jira(JiraBoard {
         site: j.site.clone(),
+        account: j.account.clone(),
         board_id: j.board_id,
         name: j.name.clone(),
         project_key: j.project_key.clone(),

@@ -121,12 +121,16 @@ impl Service {
         }
         // Edits need the fields' kinds: from when the issue was opened, or read now.
         let kinds = if matches!(change, IssueChange::Edit(_)) {
-            let known = lock(&self.jira.kinds).get(&at.key).cloned();
+            let known = lock(&self.jira.kinds)
+                .get(&(at.board, at.key.clone()))
+                .cloned();
             if let Some(kinds) = known {
                 kinds
             } else {
                 self.read_issue_details(&at).await?;
-                let read = lock(&self.jira.kinds).get(&at.key).cloned();
+                let read = lock(&self.jira.kinds)
+                    .get(&(at.board, at.key.clone()))
+                    .cloned();
                 read.unwrap_or_default()
             }
         } else {
@@ -150,7 +154,7 @@ impl Service {
         change: IssueChange,
         edit: Option<Vec<(String, Value)>>,
     ) -> ServiceResult<()> {
-        let account = self.jira_account()?;
+        let account = self.jira_account(at.board)?;
         let guard = self.jira.lock(at.board);
         let _one_at_a_time = guard.lock().await;
         let api = self.jira.api.clone();

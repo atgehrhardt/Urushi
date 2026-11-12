@@ -312,6 +312,7 @@ mod tests {
             crate::BoardId::from_u128(5),
             JiraBoard {
                 site: "https://acme.atlassian.net".into(),
+                account: String::new(),
                 board_id: 34,
                 name: "UR".into(),
                 project_key: "UR".into(),

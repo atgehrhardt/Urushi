@@ -213,6 +213,9 @@ message SearchJiraUsersRequest {
   string task_id = 1;
   string query = 2;
   bool assignable = 3;
+  // The board whose Jira sign-in searches, for a new issue (no task_id yet); without
+  // either, the first sign-in. Since 1.27.
+  string board_id = 4;
 }
 
 message JiraUsers {

@@ -84,28 +84,9 @@ pub(super) fn view(
                 .is_some_and(|b| b.jira.is_some());
             super::board::delete_board(state, theme, name, *tasks, jira)
         }
-        Dialog::ConnectJira {
-            site,
-            email,
-            token,
-            busy,
-            error,
-        } => super::jira::connect(
-            state,
-            theme,
-            (site, email, token),
-            (*busy, error.as_deref()),
-        ),
-        Dialog::ImportJira {
-            query,
-            boards,
-            error,
-        } => super::jira::import(
-            state,
-            (theme, scroll),
-            query,
-            (boards.as_deref(), error.as_deref()),
-        ),
+        jira @ (Dialog::ConnectJira { .. } | Dialog::ImportJira { .. }) => {
+            super::jira::dialog(state, (theme, scroll), jira)?
+        }
         Dialog::NestTask { task, query } => {
             super::tasks::nest_picker(state, (theme, scroll), task, query)
         }

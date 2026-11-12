@@ -90,7 +90,7 @@ fn actions(state: &AppState, theme: &Theme, board: &v1::Board) -> Vec<Node<Msg>>
             )
             .width(Length::Fill(1.0)),
         );
-    let sync = if state.jira.as_ref().is_some_and(|a| a.connected) {
+    let sync = if state.jira_account_of(board).is_some() {
         item(
             theme,
             "Sync now",
@@ -104,7 +104,7 @@ fn actions(state: &AppState, theme: &Theme, board: &v1::Board) -> Vec<Node<Msg>>
             "Connect…",
             "",
             theme.text,
-            Msg::Jira(JiraMsg::OpenConnect),
+            Msg::Jira(JiraMsg::Reconnect(board.id.clone())),
         )
     };
     vec![

@@ -235,15 +235,12 @@ fn attachment_data(id: String, data: AttachmentData) -> v1::AttachmentData {
 
 /// Handles the requests about one Jira issue.
 pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcome> {
-    let me = service
-        .jira_sign_in()
-        .map(|s| (s.account_id, s.site))
-        .unwrap_or_default();
     Ok(match body {
         Body::GetJiraIssue(r) => {
-            let d = service
-                .jira_issue_details(parse(&r.task_id, "task_id")?)
-                .await?;
+            let task = parse(&r.task_id, "task_id")?;
+            let d = service.jira_issue_details(task).await?;
+            // Who "mine" is, and the site links go to: the issue's board's sign-in.
+            let me = service.jira_me_for_task(task);
             Outcome::JiraIssueDetails(details(r.task_id, d, &me.0, &me.1))
         }
         Body::GetJiraCreateFields(r) => {
@@ -260,9 +257,9 @@ pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcom
             let Some(c) = r.change else {
                 return Ok(invalid("no change"));
             };
-            let d = service
-                .change_jira_issue(parse(&r.task_id, "task_id")?, change(c))
-                .await?;
+            let task = parse(&r.task_id, "task_id")?;
+            let d = service.change_jira_issue(task, change(c)).await?;
+            let me = service.jira_me_for_task(task);
             Outcome::JiraIssueDetails(details(r.task_id, d, &me.0, &me.1))
         }
         Body::GetJiraAttachment(r) => {
@@ -277,19 +274,24 @@ pub(super) async fn route(service: &Service, body: Body) -> ServiceResult<Outcom
             } else {
                 Some(parse(&r.task_id, "task_id")?)
             };
+            let board = if r.board_id.is_empty() {
+                None
+            } else {
+                Some(parse(&r.board_id, "board_id")?)
+            };
             let users = service
-                .search_jira_users(task, &r.query, r.assignable)
+                .search_jira_users((task, board), &r.query, r.assignable)
                 .await?;
             Outcome::JiraUsers(v1::JiraUsers {
                 users: users.iter().map(user).collect(),
             })
         }
         Body::SearchJiraIssues(r) => {
-            let issues = service
-                .search_jira_issues(parse(&r.board_id, "board_id")?, &r.query)
-                .await?;
+            let board = parse(&r.board_id, "board_id")?;
+            let issues = service.search_jira_issues(board, &r.query).await?;
+            let site = service.jira_site(board)?;
             Outcome::JiraIssueRefs(v1::JiraIssueRefs {
-                issues: issues.iter().map(|i| issue_ref(i, &me.1)).collect(),
+                issues: issues.iter().map(|i| issue_ref(i, &site)).collect(),
             })
         }
         _ => invalid("not a Jira issue request"),

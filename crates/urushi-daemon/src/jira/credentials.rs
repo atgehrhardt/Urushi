@@ -1,10 +1,12 @@
-//! The daemon's Jira sign-in: a site, an Atlassian account's email and an API token
-//! (ADR 0021).
+//! The daemon's Jira sign-ins: each a site, an Atlassian account's email and an API
+//! token (ADR 0021), several at once (ADR 0049), each named by its [`Account::key`].
 //!
-//! It is kept in `<home>/jira-credentials.json`, readable only by the user (0600, in the
-//! 0700 home), and replaced atomically. It is never part of the workspace or the
-//! settings, never logged ([`Account`]'s `Debug` hides the token) and never sent to a
-//! client: they only learn the site, the email and the display name.
+//! They are kept in `<home>/jira-credentials.json`, readable only by the user (0600, in
+//! the 0700 home), and replaced atomically. The file holds `{"accounts": [...]}`; one
+//! written before ADR 0049 holds a single account, and is read as a list of one. They
+//! are never part of the workspace or the settings, never logged ([`Account`]'s `Debug`
+//! hides the token) and never sent to a client: they only learn the site, the email
+//! and the display name.
 
 use std::fmt;
 use std::path::PathBuf;
@@ -26,6 +28,25 @@ pub struct Account {
     /// Its Atlassian account id, as last read.
     #[serde(default)]
     pub account_id: String,
+}
+
+impl Account {
+    /// What names this sign-in: its site's host and its email in lower case, e.g.
+    /// `acme.atlassian.net/ada@acme.com`. Known before signing in, so signing in again
+    /// with the same site and email replaces the sign-in rather than adding one.
+    pub fn key(&self) -> String {
+        key_of(&self.site, &self.email)
+    }
+}
+
+/// The key of the sign-in for `site` (an address, as [`site_address`] gives) and
+/// `email`.
+pub fn key_of(site: &str, email: &str) -> String {
+    format!(
+        "{}/{}",
+        site.trim_start_matches("https://"),
+        email.trim().to_lowercase()
+    )
 }
 
 impl fmt::Debug for Account {
@@ -77,31 +98,53 @@ impl CredentialStore {
         }
     }
 
-    /// The saved sign-in, if there is a readable one.
-    pub fn load(&self) -> Option<Account> {
-        let bytes = std::fs::read(&self.path).ok()?;
+    /// The saved sign-ins, in the order they were made (none if there is no readable
+    /// file).
+    pub fn load(&self) -> Vec<Account> {
+        let Ok(bytes) = std::fs::read(&self.path) else {
+            return Vec::new();
+        };
         match serde_json::from_slice(&bytes) {
-            Ok(account) => Some(account),
+            Ok(Stored::Many { accounts }) => accounts,
+            Ok(Stored::One(account)) => vec![account],
             Err(e) => {
-                tracing::warn!(error = %e, "ignoring an unreadable Jira sign-in");
-                None
+                tracing::warn!(error = %e, "ignoring unreadable Jira sign-ins");
+                Vec::new()
             }
         }
     }
 
-    /// Saves the sign-in, readable only by this user.
-    pub fn save(&self, account: &Account) -> std::io::Result<()> {
-        let json = serde_json::to_vec_pretty(account).map_err(std::io::Error::other)?;
+    /// Saves the sign-ins, readable only by this user; none forgets them all.
+    pub fn save(&self, accounts: &[Account]) -> std::io::Result<()> {
+        if accounts.is_empty() {
+            return self.delete();
+        }
+        let stored = StoredRef { accounts };
+        let json = serde_json::to_vec_pretty(&stored).map_err(std::io::Error::other)?;
         crate::platform::write_private(&self.path, &json)
     }
 
-    /// Forgets the sign-in.
-    pub fn delete(&self) -> std::io::Result<()> {
+    /// Forgets every sign-in.
+    fn delete(&self) -> std::io::Result<()> {
         match std::fs::remove_file(&self.path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
         }
     }
+}
+
+/// The file as written: a list of sign-ins, or one sign-in from before ADR 0049.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Stored {
+    Many { accounts: Vec<Account> },
+    One(Account),
+}
+
+/// What [`CredentialStore::save`] writes.
+#[derive(Serialize)]
+struct StoredRef<'a> {
+    accounts: &'a [Account],
 }
 
 #[cfg(test)]
@@ -127,21 +170,30 @@ mod tests {
         assert!(site_address("bad host").is_err());
     }
 
-    #[test]
-    fn the_sign_in_is_saved_privately_loaded_and_forgotten() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = CredentialStore::in_home(dir.path());
-        assert_eq!(store.load(), None);
-        let account = Account {
-            site: "https://acme.atlassian.net".into(),
-            email: "a@b.c".into(),
-            token: "s3cret".into(),
+    fn account(site: &str, email: &str, token: &str) -> Account {
+        Account {
+            site: site.into(),
+            email: email.into(),
+            token: token.into(),
             display_name: "Ada".into(),
             account_id: "acc-ada".into(),
-        };
-        store.save(&account).unwrap();
-        assert_eq!(store.load(), Some(account.clone()));
-        assert!(!format!("{account:?}").contains("s3cret"));
+        }
+    }
+
+    #[test]
+    fn sign_ins_are_saved_privately_loaded_and_forgotten() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = CredentialStore::in_home(dir.path());
+        assert!(store.load().is_empty());
+        let accounts = vec![
+            account("https://acme.atlassian.net", "a@b.c", "s3cret"),
+            account("https://globex.atlassian.net", "a@b.c", "0ther"),
+        ];
+        store.save(&accounts).unwrap();
+        assert_eq!(store.load(), accounts);
+        for a in &accounts {
+            assert!(!format!("{a:?}").contains(&a.token));
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -151,8 +203,34 @@ mod tests {
                 .mode();
             assert_eq!(mode & 0o777, 0o600);
         }
-        store.delete().unwrap();
-        store.delete().unwrap();
-        assert_eq!(store.load(), None);
+        store.save(&[]).unwrap();
+        store.save(&[]).unwrap();
+        assert!(store.load().is_empty());
+        assert!(!dir.path().join("jira-credentials.json").exists());
+    }
+
+    #[test]
+    fn a_sign_in_saved_before_there_could_be_several_is_read_as_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = CredentialStore::in_home(dir.path());
+        let old = account("https://acme.atlassian.net", "a@b.c", "s3cret");
+        std::fs::write(
+            dir.path().join("jira-credentials.json"),
+            serde_json::to_vec(&old).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(store.load(), vec![old]);
+        std::fs::write(dir.path().join("jira-credentials.json"), b"{not json").unwrap();
+        assert!(store.load().is_empty());
+    }
+
+    #[test]
+    fn a_sign_in_is_named_by_its_host_and_email() {
+        let a = account("https://acme.atlassian.net", " Ada@Acme.COM ", "t");
+        assert_eq!(a.key(), "acme.atlassian.net/ada@acme.com");
+        assert_eq!(
+            key_of("https://acme.atlassian.net", "ada@acme.com"),
+            a.key()
+        );
     }
 }

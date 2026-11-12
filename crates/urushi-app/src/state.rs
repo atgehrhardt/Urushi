@@ -390,6 +390,9 @@ pub enum Dialog {
     },
     /// Choose a Jira board to import.
     ImportJira {
+        /// The sign-in whose site's boards are listed (`JiraAccount.key`; empty: the
+        /// daemon's first).
+        account: String,
         /// Narrows the list by name (sent to Jira with Enter).
         query: TextField,
         /// The boards found; `None` while loading.
@@ -513,8 +516,9 @@ pub struct AppState {
     pub drag: Option<Drag>,
     /// Settings, once loaded.
     pub settings: Option<v1::Settings>,
-    /// Who the daemon is signed in to Jira as, once asked (protocol 1.12).
-    pub jira: Option<v1::JiraAccount>,
+    /// The daemon's Jira sign-ins, once asked (protocol 1.12; several since 1.27, ADR
+    /// 0049). Only connected ones.
+    pub jira_accounts: Vec<v1::JiraAccount>,
     /// Tailnet status, once loaded.
     pub tailnet: Option<v1::TailnetStatus>,
     /// LAN access status, once loaded (only from the daemon on this machine).
@@ -606,7 +610,7 @@ impl AppState {
             selection: None,
             drag: None,
             settings: None,
-            jira: None,
+            jira_accounts: Vec::new(),
             tailnet: None,
             lan: None,
             lan_hosts: Vec::new(),
@@ -687,6 +691,11 @@ impl AppState {
     /// Whether the daemon follows Jira boards and keeps task kinds (protocol 1.12).
     pub fn daemon_supports_jira(&self) -> bool {
         self.daemon_minor >= crate::board::JIRA_SINCE_MINOR
+    }
+
+    /// Whether the daemon keeps several Jira sign-ins (protocol 1.27, ADR 0049).
+    pub fn daemon_supports_jira_accounts(&self) -> bool {
+        self.daemon_minor >= crate::board::JIRA_ACCOUNTS_SINCE_MINOR
     }
 
     /// Whether the daemon creates epics on Jira boards, as cards (protocol 1.15).

@@ -33,7 +33,7 @@ async fn signed_in(home: &std::path::Path, jira: Arc<FakeJira>) -> (Daemon, Clie
     let daemon = Daemon::start_options(options).await;
     let (client, _events) = daemon.connect().await;
     client.connect_jira("acme", "a@b.c", TOKEN).await.unwrap();
-    let imported = client.import_jira_board(7).await.unwrap();
+    let imported = client.import_jira_board("", 7).await.unwrap();
     client.sync_board(&imported.id).await.unwrap();
     let b = jira_board(&client).await;
     (daemon, client, b)

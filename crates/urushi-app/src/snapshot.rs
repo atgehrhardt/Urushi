@@ -98,6 +98,8 @@ pub const SCENARIOS: &[&str] = &[
     "jira-delete-subtask",
     "jira-large-board",
     "jira-large-filter-menu",
+    "jira-accounts",
+    "jira-import-accounts",
     "project-base-thread",
     "project-settings",
 ];

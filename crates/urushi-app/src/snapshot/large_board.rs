@@ -5,7 +5,7 @@
 
 use urushi_client::v1;
 
-use super::jira::{board, issue};
+use super::jira::{account, board, issue};
 use crate::msg::Msg;
 use crate::organize::MenuTarget;
 use crate::state::AppState;
@@ -60,6 +60,7 @@ pub(super) fn show(state: &mut AppState, name: &str) {
     workspace.boards.insert(0, large_board());
     state.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(workspace)));
     state.now_ms = 1_000_000;
+    state.jira_accounts = vec![account()];
     state.update(Msg::ToggleBoard);
     state.update(Msg::BoardReveal(1.0));
     state.update(Msg::SelectBoard("jb".into()));

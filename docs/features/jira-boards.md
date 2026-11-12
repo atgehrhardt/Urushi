@@ -1,6 +1,6 @@
 # Feature: Jira boards
 
-- **Status:** Shipped (Jira Cloud, API-token sign-in, polling sync, write-through edits, issues in full, epics as cards, deleting issues, quick filters made here)
+- **Status:** Shipped (Jira Cloud, API-token sign-ins to several sites or accounts, polling sync, write-through edits, issues in full, epics as cards, deleting issues, quick filters made here)
 - **Owners (crates):** `urushi-core` (`board/{jira,sync,kind,quick,jql}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `time.rs`, `jira/{api,cloud,cloud/details,cloud/quick_filters,parse,parse/details,details,adf,credentials}.rs`, `service/{jira,jira_write,jira_query,jira_details,jira_edit,quick_filters}.rs`, `server/{jira,jira_issue,quick_filters}.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `jira_issue.proto`, `convert/boards/jira/`), `urushi-client` (`jira.rs`, `jira_issue.rs`, `quick_filters.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`filter.rs`, `filter/{quick,jql,editor}.rs`, `issue.rs`, `update/{jira,filter,issue,quick_filter}.rs`, `msg/{jira,filter,issue}.rs`, `view/jira.rs`, `view/board/{jira,filter,quick_filter}.rs`, `view/tasks/{jira,header}.rs`, `view/tasks/issue/`, `view/menu/{jira,filter,quick_filter}.rs`, `snapshot/{jira,jira_issue,quick_filters}.rs`, `update/issue_deletion.rs`, `view/board/dialogs.rs::delete_issue`), `urushi-cli` (`urushi jira`, `urushi board sync`, `urushi board quick`, the Jira question in `board rm-task` / `sub rm`)
 - **Related ADRs:** [0037](../adr/0037-quick-filters-written-to-jira-or-kept-here.md), [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0027](../adr/0027-epics-are-cards-on-jira-boards.md), [0034](../adr/0034-delete-jira-issues-after-confirming.md), [0036](../adr/0036-pull-requests-from-jira-dev-info-and-local-links.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
@@ -13,11 +13,19 @@ moves at once and goes back if Jira refuses.
 - **Sign in:** the board panel's **+** offers **New board…** and **Import from Jira…**.
   The first time, **Connect Jira** asks for the site (`acme`, `acme.atlassian.net`), the
   Atlassian email and an API token (a hidden field; **Open** goes to the token page). Jira
-  checks them before the daemon keeps them. Settings shows who the daemon is signed in as,
-  with **Disconnect**, or **Connect Jira…**.
+  checks them before the daemon keeps them. Settings lists every sign-in ("Signed in to
+  acme.atlassian.net as Ada (ada@acme.com)"), each with **Disconnect**, then **Add Jira
+  account…** (or, with none, **Connect Jira…**).
+- **Several sign-ins** (UR-61, ADR 0049, 1.27 daemons): any number of sites, and of
+  accounts on one site. A sign-in is named by its site and email; signing in again with
+  both replaces its token. Each imported board is synced and written with the sign-in it
+  was imported with, and "Only my issues" and **Assign to me** mean that account. Signing
+  out of one stops only its boards, which say "Not signed in to Jira at acme.atlassian.net"
+  and offer **Connect…** with the site and email filled in.
 - **Import:** a list of the site's boards (kanban or scrum, and their project), searched
-  with Enter; imported ones are marked. Choosing one adds a tab with a small **J** badge
-  (red when syncing fails).
+  with Enter; imported ones are marked. With several sign-ins, a chip per site picks whose
+  boards are listed, and **+ Account** signs in to another. Choosing one adds a tab with
+  a small **J** badge (red when syncing fails).
 - **On the board:** the header shows "Synced 2 min ago" (or why syncing failed), **Sync
   now**, **Open in Jira** and **Remove**, which removes the board here and changes nothing in
   Jira. Cards show a marker in the
@@ -188,8 +196,20 @@ moves at once and goes back if Jira refuses.
   Attachments go up as a multipart form through a private temporary file
   (`http::Upload`) and come down following Jira's redirect, from the site only.
   `jira/adf/` converts ADF ⇄ Markdown both ways.
-- **Sign-in** (`jira/credentials.rs`): `site_address` normalizes the site (https only);
-  `CredentialStore` keeps it in `<home>/jira-credentials.json` (0600).
+- **Sign-ins** (`jira/credentials.rs`, ADR 0049): `site_address` normalizes the site
+  (https only); `Account::key` is `<host>/<email>`; `CredentialStore` keeps them as
+  `{"accounts": [...]}` in `<home>/jira-credentials.json` (0600), reading a single
+  account written before as a list of one. `JiraLink.accounts` holds them;
+  `jira::account_for` gives a board's (by `JiraBoard.account`, else the first for its
+  site), and `Service::jira_account(board)` is what every Jira call uses.
+  `note_not_signed_in` marks only boards no sign-in reads, and `due_boards` skips them.
+  Field kinds (`JiraLink.kinds`) and pull-request reads (`DevReads.last`) are keyed by
+  board, as sites can share keys and ids.
+- **Wire (1.27):** `JiraAccount.key`, `ListJiraAccounts` → `JiraAccountList`,
+  `DisconnectJira.account`, `ListJiraBoards.account`, `ImportJiraBoard.account` (empty:
+  the first sign-in), `JiraBoardSource.account`, `SearchJiraUsers.board_id`. The app
+  checks `daemon_supports_jira_accounts()` (`JIRA_ACCOUNTS_SINCE_MINOR = 27`) and treats an
+  older daemon's one sign-in as a list of one.
 - **Wire (1.21):** no new fields: `DeleteTask`/`DeleteSubtask` on a Jira board delete the
   issue in Jira (`PERMISSION_DENIED` if Jira refuses for permission); older daemons answer
   `FAILED_PRECONDITION`. The app checks `daemon_supports_jira_deletion()`
@@ -227,18 +247,22 @@ moves at once and goes back if Jira refuses.
   answers, `Dialog::DeleteQuickFilter`), `view/board/quick_filter.rs`, and a chip's
   `MenuTarget::QuickFilter` (`view/menu/quick_filter.rs`). Kept JQL filters on
   (`BoardFilter.saved`) join the `QueryJiraFilter` request.
-  `AppState.jira` (asked with `GetJiraAccount` on connect and when Settings
-  opens), `Dialog::{ConnectJira, ImportJira}` (their sign-in and listing errors show
+  `AppState.jira_accounts` (asked with `ListJiraAccounts`, or `GetJiraAccount` before
+  1.27, on connect and when Settings opens; `jira_account_of(board)`,
+  `shown_jira_account()`), `JiraMsg::{OpenConnect, Reconnect(board), Disconnect(key),
+  ImportFrom(key)}`, `Dialog::{ConnectJira, ImportJira{account, …}}` (their sign-in and listing errors show
   in their own error line, `update/jira.rs::jira_failed`; any other error shows in the
   dialog too, as everywhere, see [the workspace GUI](gui-workspace.md)),
   `TaskLabels.kind`, `Effect::OpenUrl` (`platform::open_url`, https only). Gated on
   `daemon_supports_jira()` (`JIRA_SINCE_MINOR = 12`).
-- **CLI:** `urushi jira connect --site --email` (token from `URUSHI_JIRA_TOKEN` or stdin),
-  `jira status|disconnect|boards [query]|import <id>`, `jira quick <board> [ids…]`
+- **CLI:** `urushi jira connect --site --email` (token from `URUSHI_JIRA_TOKEN` or stdin;
+  adds a sign-in), `jira status` (every sign-in, with its key), `jira disconnect|boards
+  [query]|import <id>` with `--account <key, email or site>` (needed only with several), `jira quick <board> [ids…]`
   (the quick filters, or the issues they let through), `board quick
   ls|add|edit|rm` (`add <board> <name> --jql …`; prints whether it went to Jira or was
   kept here), `urushi board sync <board>`,
-  `board add|edit --kind`; `board ls` shows keys, kinds, epics, assignees and sync state.
+  `board add|edit --kind`; `board ls` shows keys, kinds, epics, assignees, sync state and
+  the sign-in a Jira board syncs with.
 
 - **Pull requests** (ADR 0036): `JiraApi::pull_requests(account, issue_id)`
   (`jira/cloud/dev.rs`) asks `/rest/dev-status/latest/issue/summary` and, only when it
@@ -254,10 +278,15 @@ moves at once and goes back if Jira refuses.
   `pull_requests` over, since searches never return them.
 
 ## Invariants
-- The API token never leaves the daemon: not in settings, the workspace, its document, logs
-  or `Debug` output; its file is 0600
+- The API tokens never leave the daemon: not in settings, the workspace, its document,
+  logs or `Debug` output; their file is 0600
   (`tests/jira_boards.rs::the_sign_in_survives_restarts_and_never_leaves_the_daemon`,
+  `tests/jira_accounts.rs::sign_ins_survive_restarts_and_their_tokens_never_leave_the_daemon`,
   `jira/credentials.rs` tests, `http/tests.rs::debug_output_leaves_out_credentials`).
+- A board is read and written only with its own sign-in, and signing out of one sign-in
+  leaves the others' boards syncing (`tests/jira_accounts.rs`). A sign-in file and boards
+  from before several sign-ins keep working
+  (`a_sign_in_and_boards_from_before_several_sign_ins_keep_working`).
 - Requests reach curl only through stdin (`http/tests.rs::requests_reach_curl_only_through_its_stdin`).
 - Merging never duplicates an issue, keeps a task's id and link while its issue stays,
   makes every epic a card (never a subtask) named in `Board.epics`, stays within the
@@ -301,13 +330,22 @@ moves at once and goes back if Jira refuses.
   curl), `jira/cloud/tests.rs` (requests, status mapping, paging, opening an issue,
   comments, files, links, watching, work), `jira/parse/tests.rs`,
   `jira/parse/details/tests.rs` (field kinds and values), `jira/details.rs` (writing
-  values), `jira/adf/` (Markdown round trips), `jira/credentials.rs`,
+  values), `jira/adf/` (Markdown round trips), `jira/credentials.rs` (the list, the old
+  single-account file, keys),
   `service/jira.rs` (backoff), `service/jira_edit.rs`, and end to end against an
   in-memory Jira (`tests/fake_jira/`): `tests/jira_boards.rs` (sign-in, import, remote
   changes, transitions, refused moves, edits, subtasks, epics, refusals, restart,
   sign-out, quick filters), `tests/jira_issues.rs` (any field, comments, files, links,
-  watching, work, searches, required create fields) and `tests/jira_deletion.rs`
-  (a card with its sub-tasks, a subtask, a refusal, an issue already gone).
+  watching, work, searches, required create fields), `tests/jira_deletion.rs`
+  (a card with its sub-tasks, a subtask, a refusal, an issue already gone) and
+  `tests/jira_accounts.rs` (two sites: each board synced and written with its own
+  sign-in, signing out of one, restarts, files and boards from before; the fake takes a
+  token per site, `FakeJira::add_site`, and logs each call's site). CLI:
+  `jira.rs::a_sign_in_is_chosen_by_key_email_or_site`. App: `update/tests/jira.rs`
+  (`a_new_daemon_lists_every_sign_in`,
+  `several_sign_ins_import_from_the_one_chosen_and_each_board_has_its_own_me`,
+  `an_older_daemon_has_one_sign_in_that_a_new_one_replaces`) and the `jira-accounts` and
+  `jira-import-accounts` snapshots.
 - UI: `textfield/secret.rs`. App: `filter/tests.rs` (each dimension, how they combine,
   subtasks keeping their card), `issue.rs` (durations, drafts), `update/tests/jira.rs` (a new issue created only on
   Save, field drafts sent with Save, changes made at once, required create fields,
@@ -339,7 +377,10 @@ moves at once and goes back if Jira refuses.
   epics out can't show a new epic ("Jira made KEY, but this board doesn't show it").
 - An epic's editor doesn't list its stories (the Epic filter shows them). A story is put
   in an epic through its **Parent** field, once created.
-- The sign-in is a file, not the OS keychain (ADR 0021). Claude's usage request still makes
+- A Jira board is imported once per site, whichever sign-in asks; a board can't move to
+  another sign-in (remove and import it again). A daemon from before 1.27 can't read a
+  file of several sign-ins and acts as signed out (ADR 0049).
+- The sign-ins are a file, not the OS keychain (ADR 0021). Claude's usage request still makes
   its own curl call instead of going through `HttpClient`.
 - Opening Jira pages isn't wired to the mobile apps yet.
 - Delete is offered whether or not the account may delete issues; Jira's refusal is the

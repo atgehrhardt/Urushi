@@ -1,5 +1,6 @@
 //! Jira's dialogs (protocol 1.12): signing the daemon in to a Jira Cloud site, choosing
-//! a board to import, and the Jira rows of Settings.
+//! a board to import (from which sign-in's site, when there are several: ADR 0049), and
+//! the Jira rows of Settings, one per sign-in.
 
 use std::collections::HashMap;
 
@@ -29,8 +30,43 @@ fn error_line(theme: &Theme, error: Option<&str>) -> Option<Node<Msg>> {
     error.map(|e| Node::text(e, Font::Ui, theme.font_size_small, theme.danger))
 }
 
+/// The Jira dialogs: signing in and importing a board (`None` for any other).
+pub(super) fn dialog(
+    state: &AppState,
+    (theme, scroll): (&Theme, &HashMap<Key, f32>),
+    dialog: &crate::state::Dialog,
+) -> Option<Node<Msg>> {
+    use crate::state::Dialog;
+    Some(match dialog {
+        Dialog::ConnectJira {
+            site,
+            email,
+            token,
+            busy,
+            error,
+        } => connect(
+            state,
+            theme,
+            (site, email, token),
+            (*busy, error.as_deref()),
+        ),
+        Dialog::ImportJira {
+            account,
+            query,
+            boards,
+            error,
+        } => import(
+            state,
+            (theme, scroll),
+            (account, query),
+            (boards.as_deref(), error.as_deref()),
+        ),
+        _ => return None,
+    })
+}
+
 /// Signing in: the site, the account's email and an API token (hidden as it's typed).
-pub(super) fn connect(
+fn connect(
     state: &AppState,
     theme: &Theme,
     (site, email, token): (&TextField, &TextField, &TextField),
@@ -104,21 +140,24 @@ pub(super) fn connect(
     )
 }
 
-/// Choosing a board to import: a search (sent with Enter) and the boards found.
-pub(super) fn import(
+/// Choosing a board to import: with several sign-ins, which one's site (and adding
+/// another); a search (sent with Enter) and the boards found.
+fn import(
     state: &AppState,
     (theme, scroll): (&Theme, &HashMap<Key, f32>),
-    query: &TextField,
+    (account, query): (&str, &TextField),
     (boards, error): (Option<&[v1::JiraBoardInfo]>, Option<&str>),
 ) -> Node<Msg> {
-    let site = state
-        .jira
-        .as_ref()
-        .map(|a| a.site.trim_start_matches("https://").to_owned())
-        .unwrap_or_default();
+    let chosen = state
+        .jira_accounts
+        .iter()
+        .find(|a| a.key == account)
+        .or_else(|| state.jira_accounts.first());
+    let site = chosen.map(|a| host(&a.site)).unwrap_or_default();
     let mut body = Node::column()
         .width(Length::Fill(1.0))
         .gap(8.0)
+        .children(account_picker(state, theme, chosen))
         .child(field(
             state,
             theme,
@@ -157,6 +196,78 @@ pub(super) fn import(
         body,
         vec![cancel(theme)],
         Some(Msg::CloseDialog),
+    )
+}
+
+/// A site's host, as people write it: `acme.atlassian.net`.
+fn host(site: &str) -> &str {
+    site.trim_start_matches("https://")
+}
+
+/// With more than one sign-in (1.27 daemons), a chip per sign-in's site choosing whose
+/// boards are listed, and "+ Account" to sign in to another.
+fn account_picker(
+    state: &AppState,
+    theme: &Theme,
+    chosen: Option<&v1::JiraAccount>,
+) -> Option<Node<Msg>> {
+    if !state.daemon_supports_jira_accounts() {
+        return None;
+    }
+    let mut row = Node::row()
+        .width(Length::Fill(1.0))
+        .gap(6.0)
+        .align(urushi_ui::Align::Center);
+    if state.jira_accounts.len() > 1 {
+        for a in &state.jira_accounts {
+            let on = chosen.is_some_and(|c| c.key == a.key);
+            row = row.child(
+                Node::row()
+                    .padding(Insets::symmetric(4.0, 10.0))
+                    .radius(theme.radius)
+                    .border(1.0, if on { theme.accent } else { theme.border })
+                    .background(if on {
+                        theme.accent.with_alpha(0.18)
+                    } else {
+                        urushi_ui::Color::TRANSPARENT
+                    })
+                    .hover_background(if on {
+                        theme.accent.with_alpha(0.28)
+                    } else {
+                        theme.hover
+                    })
+                    .key(key(&["jira-import-account", &a.key]))
+                    .on_click(Msg::Jira(JiraMsg::ImportFrom(a.key.clone())))
+                    .role(
+                        Role::Switch,
+                        format!("Boards of {} as {}", host(&a.site), a.email),
+                    )
+                    .child(Node::text(
+                        shorten(host(&a.site), 28),
+                        Font::UiMedium,
+                        theme.font_size_small,
+                        if on { theme.text } else { theme.text_muted },
+                    )),
+            );
+        }
+    } else {
+        row = row.child(hint(
+            theme,
+            &chosen.map_or_else(String::new, |a| {
+                format!("From {} as {}", host(&a.site), a.email)
+            }),
+        ));
+    }
+    Some(
+        row.child(Node::spacer()).child(
+            button(
+                theme,
+                "+ Account",
+                ButtonKind::Ghost,
+                Msg::Jira(JiraMsg::OpenConnect),
+            )
+            .key(key(&["jira-add-account"])),
+        ),
     )
 }
 
@@ -209,32 +320,34 @@ fn board_row(theme: &Theme, b: &v1::JiraBoardInfo) -> Node<Msg> {
     row
 }
 
-/// Settings' Jira rows: who the daemon is signed in as, or a way to sign in.
+/// Settings' Jira rows: each sign-in (site, name, email) with **Disconnect**, then a way
+/// to add one (or, signed in nowhere, to connect).
 pub(super) fn settings_rows(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
     if !state.daemon_supports_jira() {
         return Vec::new();
     }
-    let account = state.jira.clone().unwrap_or_default();
-    let (status, action) = if account.connected {
-        (
-            format!(
-                "Signed in to {} as {}",
-                account.site.trim_start_matches("https://"),
-                if account.display_name.is_empty() {
-                    &account.email
-                } else {
-                    &account.display_name
-                }
-            ),
+    let mut rows = vec![label(theme, "Jira")];
+    for a in &state.jira_accounts {
+        let name = if a.display_name.is_empty() {
+            a.email.clone()
+        } else {
+            format!("{} ({})", a.display_name, a.email)
+        };
+        rows.push(row(
+            theme,
+            format!("Signed in to {} as {name}", host(&a.site)),
             button(
                 theme,
                 "Disconnect",
                 ButtonKind::Ghost,
-                Msg::Jira(JiraMsg::Disconnect),
-            ),
-        )
-    } else {
-        (
+                Msg::Jira(JiraMsg::Disconnect(a.key.clone())),
+            )
+            .key(key(&["jira-disconnect", &a.key])),
+        ));
+    }
+    if state.jira_accounts.is_empty() {
+        rows.push(row(
+            theme,
             "Not connected. Import Jira boards and keep them in sync.".to_owned(),
             button(
                 theme,
@@ -242,18 +355,31 @@ pub(super) fn settings_rows(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
                 ButtonKind::Secondary,
                 Msg::Jira(JiraMsg::OpenConnect),
             ),
+        ));
+    } else if state.daemon_supports_jira_accounts() {
+        rows.push(row(
+            theme,
+            "Import boards from another Jira site or account.".to_owned(),
+            button(
+                theme,
+                "Add Jira account…",
+                ButtonKind::Secondary,
+                Msg::Jira(JiraMsg::OpenConnect),
+            ),
+        ));
+    }
+    rows
+}
+
+/// A Settings row: what it says, and its button.
+fn row(theme: &Theme, status: String, action: Node<Msg>) -> Node<Msg> {
+    Node::row()
+        .width(Length::Fill(1.0))
+        .gap(8.0)
+        .align(urushi_ui::Align::Center)
+        .child(
+            Node::text(status, Font::Ui, theme.font_size_small, theme.text)
+                .width(Length::Fill(1.0)),
         )
-    };
-    vec![
-        label(theme, "Jira"),
-        Node::row()
-            .width(Length::Fill(1.0))
-            .gap(8.0)
-            .align(urushi_ui::Align::Center)
-            .child(
-                Node::text(status, Font::Ui, theme.font_size_small, theme.text)
-                    .width(Length::Fill(1.0)),
-            )
-            .child(action),
-    ]
+        .child(action)
 }

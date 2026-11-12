@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.26 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.27 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -44,6 +44,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 27 | Several Jira sign-ins (UR-61, ADR 0049). `ConnectJira` adds a sign-in beside the others (the same site and email replaces that one) instead of replacing the only one. `JiraAccount.key` names a sign-in (`<site host>/<email>`, e.g. `acme.atlassian.net/ada@acme.com`). `ListJiraAccounts` → `JiraAccountList{accounts}`, every sign-in in the order made. `DisconnectJira.account`, `ListJiraBoards.account` and `ImportJiraBoard.account` pick one by key; empty means the first, as before, and an unknown key is `NOT_FOUND`. `GetJiraAccount` answers the first. `JiraBoardSource.account` is the key of the sign-in that syncs a board; empty for a board imported earlier, which uses the sign-in for its site. `SearchJiraUsers.board_id` picks the sign-in for a new issue (no task yet). A board with no sign-in says `Not signed in to Jira at <host>` in `error`. Clients check `Welcome.protocol_minor ≥ 27` before sending `ListJiraAccounts` or offering more than one sign-in. |
 | 26 | LAN access (ADR 0041). `Settings.lan` (`LanSettings{enabled, port}`; unset from older daemons = off, port 0 = 7421). `SettingsPatch.{lan_enabled, lan_port}`. `LanStatus` → `LanStatus{enabled, serving, addresses, port, error, devices[LanDevice{id, name, fingerprint, paired_at_ms, last_seen_ms, connected}], pairing (LanPairing{code, expires_in_secs}), fingerprint}`. `StartLanPairing`, `CancelLanPairing` and `RevokeLanDevice{device_id}` → `LanStatus`. Changing LAN access (the `lan_*` patch fields, pairing, revoking) from anything but the host's local socket is `PERMISSION_DENIED`. Only local clients see the pairing code. Pairing with LAN access off is `INVALID_ARGUMENT`; an unknown device is `NOT_FOUND`. `write_envelope` now flushes each frame, which the encrypted stream needs. Clients check `Welcome.protocol_minor ≥ 26`. |
 | 25 | Running agents (ADR 0039): `Tab.running` and `QuickTerminal.running` (`PaneRunning{pane_id, since_ms}`) list panes whose agent is working, as its hooks say. Like attention, running panes aren't stored: changes arrive as `WorkspaceChanged` with the same `revision`. Esc or Ctrl+C sent as `Input` to a pane ends its running. Older daemons send none, so nothing shows as running. |
 | 24 | `MoveThread{thread_id, index}` reorders threads (ADR 0038): the index is into `Workspace.threads`, counted without the moved thread and clamped to the end; an unknown thread is `NOT_FOUND`. A thread's project, pin and status don't change. `Workspace.threads` is in display order: the sidebar shows each group (project, pin, status) in it. Clients check `Welcome.protocol_minor ≥ 24` before sending it. |

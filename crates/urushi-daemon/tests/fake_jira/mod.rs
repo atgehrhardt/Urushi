@@ -1,6 +1,8 @@
 //! An in-memory Jira for the end-to-end tests: one kanban board (id 7) with a small
 //! workflow (To Do ⇄ In Progress ⇄ Done), a quick filter, and a log of the calls it
-//! got.
+//! got. It answers on any site with [`TOKEN`]; [`FakeJira::add_site`] gives a site a
+//! token of its own, and [`FakeJira::site_calls`] logs each call with the site it was
+//! made to, for tests of several sign-ins (ADR 0049).
 #![allow(
     dead_code,
     unreachable_pub,
@@ -112,6 +114,15 @@ pub struct FakeJira {
     /// What development info answers for an issue, by its number (none: no pull
     /// requests).
     pub pull_requests: Mutex<HashMap<u32, JiraResult<Vec<PullRequest>>>>,
+    /// Sites with a token of their own (by address); others take [`TOKEN`].
+    site_tokens: Mutex<HashMap<String, String>>,
+    /// Every logged call as `"<site> <call>"`, in order.
+    site_calls: Mutex<Vec<String>>,
+}
+
+thread_local! {
+    /// The site of the last call checked on this thread, for [`FakeJira::site_calls`].
+    static CALLER_SITE: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
 }
 
 /// JQL Jira can't read (`issue_ids` refuses it).
@@ -165,7 +176,23 @@ impl FakeJira {
             quick_filter_refusal: Mutex::new(None),
             deletes_forbidden: Mutex::new(false),
             pull_requests: Mutex::default(),
+            site_tokens: Mutex::default(),
+            site_calls: Mutex::default(),
         })
+    }
+
+    /// Makes `site` (an address, `https://…`) take `token` instead of [`TOKEN`].
+    pub fn add_site(&self, site: &str, token: &str) {
+        self.site_tokens
+            .lock()
+            .unwrap()
+            .insert(site.into(), token.into());
+    }
+
+    /// Every logged call as `"<site> <call>"`, the site being where the call was made
+    /// (a call checks its sign-in, then logs, on one thread).
+    pub fn site_calls(&self) -> Vec<String> {
+        self.site_calls.lock().unwrap().clone()
     }
 
     /// Makes Jira slow to answer which transitions an issue has, until
@@ -188,7 +215,7 @@ impl FakeJira {
     }
 
     fn quick_filter_write(&self, account: &Account, call: String) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         self.log(call);
         match self.quick_filter_refusal.lock().unwrap().clone() {
             Some(e) => Err(e),
@@ -197,6 +224,11 @@ impl FakeJira {
     }
 
     fn log(&self, call: String) {
+        let site = CALLER_SITE.with(|site| site.borrow().clone());
+        self.site_calls
+            .lock()
+            .unwrap()
+            .push(format!("{site} {call}"));
         self.calls.lock().unwrap().push(call);
     }
 
@@ -226,8 +258,16 @@ impl FakeJira {
             .clone()
     }
 
-    fn check(account: &Account) -> JiraResult<()> {
-        if account.token == TOKEN {
+    fn check(&self, account: &Account) -> JiraResult<()> {
+        let wanted = self
+            .site_tokens
+            .lock()
+            .unwrap()
+            .get(&account.site)
+            .cloned()
+            .unwrap_or_else(|| TOKEN.into());
+        if account.token == wanted {
+            CALLER_SITE.with(|site| site.borrow_mut().clone_from(&account.site));
             Ok(())
         } else {
             Err(JiraError::Unauthorized)
@@ -283,20 +323,26 @@ impl FakeJira {
 
 impl JiraApi for FakeJira {
     fn myself(&self, account: &Account) -> JiraResult<Me> {
-        Self::check(account)?;
+        self.check(account)?;
+        // Ada has an account id of her own on each site with a token of its own.
+        let own = self.site_tokens.lock().unwrap().contains_key(&account.site);
         Ok(Me {
             display_name: "Ada Lovelace".into(),
-            account_id: "acc-ada".into(),
+            account_id: if own {
+                format!("acc-ada@{}", account.site.trim_start_matches("https://"))
+            } else {
+                "acc-ada".into()
+            },
         })
     }
 
     fn boards(&self, account: &Account, _query: &str) -> JiraResult<Vec<BoardInfo>> {
-        Self::check(account)?;
+        self.check(account)?;
         Ok(vec![self.board(account, 7)?.info])
     }
 
     fn board(&self, account: &Account, id: u64) -> JiraResult<BoardConfig> {
-        Self::check(account)?;
+        self.check(account)?;
         if id != 7 {
             return Err(JiraError::NotFound(format!("board {id}")));
         }
@@ -327,7 +373,7 @@ impl JiraApi for FakeJira {
     }
 
     fn issues(&self, account: &Account, query: &IssueQuery) -> JiraResult<Fetched> {
-        Self::check(account)?;
+        self.check(account)?;
         // A sync reads in full only the issues whose time changed: `id in (…)`.
         let only: Option<Vec<String>> = query.extra_jql.iter().find_map(|q| {
             let ids = q.strip_prefix("id in (")?.strip_suffix(')')?;
@@ -365,7 +411,7 @@ impl JiraApi for FakeJira {
         account: &Account,
         query: &IssueQuery,
     ) -> JiraResult<Vec<(String, Timestamp)>> {
-        Self::check(account)?;
+        self.check(account)?;
         self.log("changed".into());
         let remote = self.issues.lock().unwrap().clone();
         Ok(remote
@@ -381,7 +427,7 @@ impl JiraApi for FakeJira {
     }
 
     fn issue_ids(&self, account: &Account, query: &IssueQuery) -> JiraResult<Vec<String>> {
-        Self::check(account)?;
+        self.check(account)?;
         self.log(format!("issue_ids {:?}", query.extra_jql));
         if query.extra_jql.iter().any(|q| q == BAD_JQL) {
             return Err(JiraError::Rejected("Error in the JQL Query".into()));
@@ -401,7 +447,7 @@ impl JiraApi for FakeJira {
     }
 
     fn quick_filters(&self, account: &Account, board: u64) -> JiraResult<Vec<JiraQuickFilter>> {
-        Self::check(account)?;
+        self.check(account)?;
         assert_eq!(board, 7);
         Ok(self.quick_filters.lock().unwrap().clone())
     }
@@ -456,12 +502,12 @@ impl JiraApi for FakeJira {
         key: &str,
         _fields: &IssueFields,
     ) -> JiraResult<SyncedIssue> {
-        Self::check(account)?;
+        self.check(account)?;
         Ok(self.synced(&self.remote(key)))
     }
 
     fn transitions(&self, account: &Account, key: &str) -> JiraResult<Vec<Transition>> {
-        Self::check(account)?;
+        self.check(account)?;
         let (held, released) = &self.transitions_held;
         drop(
             released
@@ -480,7 +526,7 @@ impl JiraApi for FakeJira {
     }
 
     fn transition(&self, account: &Account, key: &str, transition: &str) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         self.log(format!("transition {key} {transition}"));
         let to = transition.trim_start_matches('t');
         let to = [TODO, DOING, DONE].into_iter().find(|s| *s == to).unwrap();
@@ -493,7 +539,7 @@ impl JiraApi for FakeJira {
     }
 
     fn edit(&self, account: &Account, key: &str, edit: &IssueEdit) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         self.log(format!("edit {key}"));
         self.with(Self::id_of(key), |r| {
             if let Some(s) = &edit.summary {
@@ -512,7 +558,7 @@ impl JiraApi for FakeJira {
     }
 
     fn create(&self, account: &Account, issue: &NewIssue) -> JiraResult<String> {
-        Self::check(account)?;
+        self.check(account)?;
         let mut issues = self.issues.lock().unwrap();
         let id = issues.iter().map(|i| i.id).max().unwrap() + 1;
         issues.push(Remote {
@@ -537,13 +583,13 @@ impl JiraApi for FakeJira {
     }
 
     fn rank(&self, account: &Account, key: &str, rank: &Rank) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         self.log(format!("rank {key} {rank:?}"));
         Ok(())
     }
 
     fn delete_issue(&self, account: &Account, key: &str) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         if *self.deletes_forbidden.lock().unwrap() {
             return Err(JiraError::Forbidden(
                 "You do not have permission to delete issues in this project.".into(),
@@ -560,7 +606,7 @@ impl JiraApi for FakeJira {
     }
 
     fn details(&self, account: &Account, key: &str, _board: u64) -> JiraResult<IssueDetails> {
-        Self::check(account)?;
+        self.check(account)?;
         self.log(format!("details {key}"));
         let r = self.remote(key);
         let fields = fields_of(&r);
@@ -651,7 +697,7 @@ impl JiraApi for FakeJira {
         _project: &str,
         _kind: TaskKind,
     ) -> JiraResult<Vec<Field>> {
-        Self::check(account)?;
+        self.check(account)?;
         Ok(vec![Field {
             id: TEAM.into(),
             name: "Team".into(),
@@ -669,7 +715,7 @@ impl JiraApi for FakeJira {
     }
 
     fn users(&self, account: &Account, query: &str, _key: Option<&str>) -> JiraResult<Vec<Person>> {
-        Self::check(account)?;
+        self.check(account)?;
         Ok(PEOPLE
             .into_iter()
             .filter(|(_, name)| name.to_lowercase().contains(&query.to_lowercase()))
@@ -687,7 +733,7 @@ impl JiraApi for FakeJira {
         query: &str,
         limit: usize,
     ) -> JiraResult<Vec<IssueRef>> {
-        Self::check(account)?;
+        self.check(account)?;
         let issues = self.issues.lock().unwrap().clone();
         Ok(issues
             .iter()
@@ -706,7 +752,7 @@ impl JiraApi for FakeJira {
     }
 
     fn add_comment(&self, account: &Account, key: &str, body: &str) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         self.log(format!("add_comment {key}"));
         let id = format!("c{}", self.calls().len());
         self.with(Self::id_of(key), |r| {
@@ -718,7 +764,7 @@ impl JiraApi for FakeJira {
     }
 
     fn update_comment(&self, account: &Account, key: &str, id: &str, body: &str) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         let mut found = false;
         self.with(Self::id_of(key), |r| {
             for c in r.extra.comments.iter_mut().filter(|c| c.0 == id) {
@@ -734,13 +780,13 @@ impl JiraApi for FakeJira {
     }
 
     fn delete_comment(&self, account: &Account, key: &str, id: &str) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         self.with(Self::id_of(key), |r| r.extra.comments.retain(|c| c.0 != id));
         Ok(())
     }
 
     fn attach(&self, account: &Account, key: &str, name: &str, data: &[u8]) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         let id = format!("a{}", self.calls().len());
         self.log(format!("attach {key} {name}"));
         self.with(Self::id_of(key), |r| {
@@ -750,7 +796,7 @@ impl JiraApi for FakeJira {
     }
 
     fn delete_attachment(&self, account: &Account, id: &str) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         let mut issues = self.issues.lock().unwrap();
         for r in issues.iter_mut() {
             r.extra.attachments.retain(|a| a.0 != id);
@@ -759,7 +805,7 @@ impl JiraApi for FakeJira {
     }
 
     fn download(&self, account: &Account, url: &str) -> JiraResult<Vec<u8>> {
-        Self::check(account)?;
+        self.check(account)?;
         let id = url.rsplit('/').next().unwrap_or_default();
         let issues = self.issues.lock().unwrap();
         issues
@@ -771,7 +817,7 @@ impl JiraApi for FakeJira {
     }
 
     fn link(&self, account: &Account, kind: &str, outward: &str, inward: &str) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         let (out_id, in_id) = (Self::id_of(outward), Self::id_of(inward));
         let id = format!("l{}", self.calls().len());
         self.log(format!("link {outward} {kind} {inward}"));
@@ -785,7 +831,7 @@ impl JiraApi for FakeJira {
     }
 
     fn unlink(&self, account: &Account, id: &str) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         let mut issues = self.issues.lock().unwrap();
         for r in issues.iter_mut() {
             r.extra.links.retain(|l| l.0 != id);
@@ -794,7 +840,7 @@ impl JiraApi for FakeJira {
     }
 
     fn watch(&self, account: &Account, key: &str, watch: bool) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         self.with(Self::id_of(key), |r| r.extra.watching = watch);
         Ok(())
     }
@@ -807,7 +853,7 @@ impl JiraApi for FakeJira {
         started: &str,
         comment: &str,
     ) -> JiraResult<()> {
-        Self::check(account)?;
+        self.check(account)?;
         self.log(format!("log_work {key} {seconds} {started}"));
         let id = format!("w{}", self.calls().len());
         self.with(Self::id_of(key), |r| {
@@ -817,7 +863,7 @@ impl JiraApi for FakeJira {
     }
 
     fn pull_requests(&self, account: &Account, issue_id: &str) -> JiraResult<Vec<PullRequest>> {
-        Self::check(account)?;
+        self.check(account)?;
         let n: u32 = issue_id.trim_start_matches("100").parse().unwrap();
         self.log(format!("pull_requests {}", key(n)));
         self.pull_requests

@@ -155,7 +155,7 @@ impl Service {
                 "this Jira board has no project to create issues in".into(),
             ));
         }
-        let account = self.jira_account()?;
+        let account = self.jira_account(board)?;
         let guard = self.jira.lock(board);
         let _one_at_a_time = guard.lock().await;
         let api = self.jira.api.clone();
@@ -202,7 +202,7 @@ impl Service {
             return Err(ServiceError::Invalid(EPIC_SUBTASKS.into()));
         }
         let text = IssueText::sub(new)?;
-        let account = self.jira_account()?;
+        let account = self.jira_account(t.board)?;
         let guard = self.jira.lock(t.board);
         let _one_at_a_time = guard.lock().await;
         let api = self.jira.api.clone();

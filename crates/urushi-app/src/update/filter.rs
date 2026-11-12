@@ -16,9 +16,9 @@ impl AppState {
         self.dialog.is_none() && self.focus == Some(Field::BoardSearch) && self.board.visible()
     }
 
-    /// Who "me" is and the time, for the filter.
+    /// Who "me" is (on the board's own sign-in) and the time, for the filter.
     pub(crate) fn filter_context(&self) -> Context<'_> {
-        let me = self.jira.as_ref().filter(|a| a.connected).map(|a| {
+        let me = self.shown_jira_account().map(|a| {
             if a.account_id.is_empty() {
                 a.display_name.as_str()
             } else {
