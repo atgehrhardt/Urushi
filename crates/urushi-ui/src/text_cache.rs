@@ -5,7 +5,7 @@
 //! newer takes its place, and a hit in the older one moves the entry back into the
 //! newer. So a screen that uses more text than one generation holds keeps what it used
 //! last time, instead of losing everything at once and shaping it all again (UR-66,
-//! ADR 0048). Lookups borrow the text, so a hit allocates nothing.
+//! ADR 0050). Lookups borrow the text, so a hit allocates nothing.
 
 use std::collections::HashMap;
 

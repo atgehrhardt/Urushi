@@ -135,7 +135,7 @@ impl<M: Clone> Frame<M> {
     }
 
     /// Whether the pointer moving from `from` to `to` changes what this frame draws as
-    /// hovered: if not, there is nothing to draw again (ADR 0048).
+    /// hovered: if not, there is nothing to draw again (ADR 0050).
     pub fn hover_changes(&self, from: Option<Point>, to: Option<Point>) -> bool {
         let inside = |p: Option<Point>, r: &Rect| p.is_some_and(|p| r.contains(p));
         self.hits
@@ -576,7 +576,7 @@ impl<M: Clone> Ctx<'_, M> {
 
 impl<M: Clone> Ctx<'_, M> {
     /// Places one child at `rect`. In a scrolling box, one outside the clip is skipped,
-    /// so a long list costs what it shows (UR-66, ADR 0048); its ids are still counted,
+    /// so a long list costs what it shows (UR-66, ADR 0050); its ids are still counted,
     /// so those of the nodes after it don't change as it scrolls.
     fn place_child(&mut self, child: &Node<M>, rect: Rect, index: &mut u64, scrolling: bool) {
         let in_sight = self.clips.last().is_none_or(|clip| overlaps(rect, *clip));

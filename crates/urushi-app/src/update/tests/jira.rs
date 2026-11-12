@@ -26,7 +26,7 @@ fn signed_in() -> v1::JiraAccount {
     }
 }
 
-/// Signed in on a second site (1.27).
+/// Signed in on a second site (1.29).
 fn globex() -> v1::JiraAccount {
     v1::JiraAccount {
         connected: true,

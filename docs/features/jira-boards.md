@@ -16,7 +16,7 @@ moves at once and goes back if Jira refuses.
   checks them before the daemon keeps them. Settings lists every sign-in ("Signed in to
   acme.atlassian.net as Ada (ada@acme.com)"), each with **Disconnect**, then **Add Jira
   account…** (or, with none, **Connect Jira…**).
-- **Several sign-ins** (UR-61, ADR 0049, 1.27 daemons): any number of sites, and of
+- **Several sign-ins** (UR-61, ADR 0051, 1.29 daemons): any number of sites, and of
   accounts on one site. A sign-in is named by its site and email; signing in again with
   both replaces its token. Each imported board is synced and written with the sign-in it
   was imported with, and "Only my issues" and **Assign to me** mean that account. Signing
@@ -196,7 +196,7 @@ moves at once and goes back if Jira refuses.
   Attachments go up as a multipart form through a private temporary file
   (`http::Upload`) and come down following Jira's redirect, from the site only.
   `jira/adf/` converts ADF ⇄ Markdown both ways.
-- **Sign-ins** (`jira/credentials.rs`, ADR 0049): `site_address` normalizes the site
+- **Sign-ins** (`jira/credentials.rs`, ADR 0051): `site_address` normalizes the site
   (https only); `Account::key` is `<host>/<email>`; `CredentialStore` keeps them as
   `{"accounts": [...]}` in `<home>/jira-credentials.json` (0600), reading a single
   account written before as a list of one. `JiraLink.accounts` holds them;
@@ -205,7 +205,7 @@ moves at once and goes back if Jira refuses.
   `note_not_signed_in` marks only boards no sign-in reads, and `due_boards` skips them.
   Field kinds (`JiraLink.kinds`) and pull-request reads (`DevReads.last`) are keyed by
   board, as sites can share keys and ids.
-- **Wire (1.27):** `JiraAccount.key`, `ListJiraAccounts` → `JiraAccountList`,
+- **Wire (1.29):** `JiraAccount.key`, `ListJiraAccounts` → `JiraAccountList`,
   `DisconnectJira.account`, `ListJiraBoards.account`, `ImportJiraBoard.account` (empty:
   the first sign-in), `JiraBoardSource.account`, `SearchJiraUsers.board_id`. The app
   checks `daemon_supports_jira_accounts()` (`JIRA_ACCOUNTS_SINCE_MINOR = 27`) and treats an
@@ -248,7 +248,7 @@ moves at once and goes back if Jira refuses.
   `MenuTarget::QuickFilter` (`view/menu/quick_filter.rs`). Kept JQL filters on
   (`BoardFilter.saved`) join the `QueryJiraFilter` request.
   `AppState.jira_accounts` (asked with `ListJiraAccounts`, or `GetJiraAccount` before
-  1.27, on connect and when Settings opens; `jira_account_of(board)`,
+  1.29, on connect and when Settings opens; `jira_account_of(board)`,
   `shown_jira_account()`), `JiraMsg::{OpenConnect, Reconnect(board), Disconnect(key),
   ImportFrom(key)}`, `Dialog::{ConnectJira, ImportJira{account, …}}` (their sign-in and listing errors show
   in their own error line, `update/jira.rs::jira_failed`; any other error shows in the
@@ -378,8 +378,8 @@ moves at once and goes back if Jira refuses.
 - An epic's editor doesn't list its stories (the Epic filter shows them). A story is put
   in an epic through its **Parent** field, once created.
 - A Jira board is imported once per site, whichever sign-in asks; a board can't move to
-  another sign-in (remove and import it again). A daemon from before 1.27 can't read a
-  file of several sign-ins and acts as signed out (ADR 0049).
+  another sign-in (remove and import it again). A daemon from before 1.29 can't read a
+  file of several sign-ins and acts as signed out (ADR 0051).
 - The sign-ins are a file, not the OS keychain (ADR 0021). Claude's usage request still makes
   its own curl call instead of going through `HttpClient`.
 - Opening Jira pages isn't wired to the mobile apps yet.

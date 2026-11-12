@@ -1,9 +1,9 @@
 //! The daemon's Jira sign-ins: each a site, an Atlassian account's email and an API
-//! token (ADR 0021), several at once (ADR 0049), each named by its [`Account::key`].
+//! token (ADR 0021), several at once (ADR 0051), each named by its [`Account::key`].
 //!
 //! They are kept in `<home>/jira-credentials.json`, readable only by the user (0600, in
 //! the 0700 home), and replaced atomically. The file holds `{"accounts": [...]}`; one
-//! written before ADR 0049 holds a single account, and is read as a list of one. They
+//! written before ADR 0051 holds a single account, and is read as a list of one. They
 //! are never part of the workspace or the settings, never logged ([`Account`]'s `Debug`
 //! hides the token) and never sent to a client: they only learn the site, the email
 //! and the display name.
@@ -133,7 +133,7 @@ impl CredentialStore {
     }
 }
 
-/// The file as written: a list of sign-ins, or one sign-in from before ADR 0049.
+/// The file as written: a list of sign-ins, or one sign-in from before ADR 0051.
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum Stored {

@@ -1,5 +1,5 @@
 // Jira Cloud: the daemon's sign-ins, and importing Jira boards to follow (ADR 0020).
-// Since 1.27 it keeps several sign-ins (ADR 0049), each named by JiraAccount.key;
+// Since 1.29 it keeps several sign-ins (ADR 0051), each named by JiraAccount.key;
 // requests that take an `account` use the first sign-in when it is empty, as before.
 // The API token is sent once, in ConnectJira, and never sent back. Since protocol 1.12.
 syntax = "proto3";
@@ -7,7 +7,7 @@ syntax = "proto3";
 package urushi.v1;
 
 // Signs the daemon in to a Jira Cloud site with an Atlassian account's email and API
-// token, checking them with Jira first. Before 1.27 it replaced any earlier sign-in;
+// token, checking them with Jira first. Before 1.29 it replaced any earlier sign-in;
 // since, it adds one, or replaces the one with the same site and email. Answered with
 // the JiraAccount; PERMISSION_DENIED if Jira refuses them, UNAVAILABLE if it can't be
 // reached.
@@ -24,11 +24,11 @@ message GetJiraAccountRequest {}
 // Forgets a sign-in. The boards it synced stay, but stop syncing until it is back.
 // Answered with Empty; an unknown account is NOT_FOUND.
 message DisconnectJiraRequest {
-  // The sign-in (JiraAccount.key); empty: the first. Since 1.27.
+  // The sign-in (JiraAccount.key); empty: the first. Since 1.29.
   string account = 1;
 }
 
-// Answered with JiraAccountList: every sign-in, in the order they were made. Since 1.27.
+// Answered with JiraAccountList: every sign-in, in the order they were made. Since 1.29.
 message ListJiraAccountsRequest {}
 
 message JiraAccountList {
@@ -47,7 +47,7 @@ message JiraAccount {
   // 1.13 until it is read again. Since 1.13.
   string account_id = 5;
   // What names the sign-in: its site's host and its email, e.g.
-  // "acme.atlassian.net/ada@acme.com". Since 1.27.
+  // "acme.atlassian.net/ada@acme.com". Since 1.29.
   string key = 6;
 }
 
@@ -55,7 +55,7 @@ message JiraAccount {
 // most 50. Answered with JiraBoardList.
 message ListJiraBoardsRequest {
   string query = 1;
-  // The sign-in whose site is listed (JiraAccount.key); empty: the first. Since 1.27.
+  // The sign-in whose site is listed (JiraAccount.key); empty: the first. Since 1.29.
   string account = 2;
 }
 
@@ -79,7 +79,7 @@ message JiraBoardInfo {
 message ImportJiraBoardRequest {
   uint64 jira_board_id = 1;
   // The sign-in to import it with, and sync it with afterwards (JiraAccount.key);
-  // empty: the first. Since 1.27.
+  // empty: the first. Since 1.29.
   string account = 2;
 }
 

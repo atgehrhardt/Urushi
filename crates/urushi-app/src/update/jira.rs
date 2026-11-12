@@ -2,7 +2,7 @@
 //! board now and opening Jira's pages. The daemon does the rest (ADR 0020); the API
 //! token typed here goes to it in `ConnectJira` and is dropped from the app at once.
 //!
-//! A 1.27 daemon keeps several sign-ins (ADR 0049): the app lists them all, imports
+//! A 1.29 daemon keeps several sign-ins (ADR 0051): the app lists them all, imports
 //! with the one chosen, and treats each board by the sign-in that syncs it (its own
 //! "me", whether it can sync). An older daemon's one sign-in is a list of one.
 
@@ -88,7 +88,7 @@ impl AppState {
         }
     }
 
-    /// Asks for the daemon's Jira sign-ins (when it can say): all of them from a 1.27
+    /// Asks for the daemon's Jira sign-ins (when it can say): all of them from a 1.29
     /// daemon, else its one.
     pub(super) fn request_jira_account(&self, fx: &mut Vec<Effect>) {
         if self.daemon_supports_jira_accounts() {

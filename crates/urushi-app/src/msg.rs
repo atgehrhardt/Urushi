@@ -429,7 +429,7 @@ pub enum Followup {
     },
     /// Remember who the daemon is signed in to Jira as.
     JiraAccount,
-    /// Keep the daemon's Jira sign-ins (1.27).
+    /// Keep the daemon's Jira sign-ins (1.29).
     JiraAccounts,
     /// Signed in from the connect dialog: go on to importing a board.
     JiraConnected,

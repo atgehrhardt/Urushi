@@ -1,4 +1,4 @@
-//! Jira boards in the service (ADR 0020): the sign-ins (several, ADR 0049) and
+//! Jira boards in the service (ADR 0020): the sign-ins (several, ADR 0051) and
 //! importing boards. Keeping them in sync is `jira_sync.rs`.
 //!
 //! Each board is read and written with its own sign-in: the one its
@@ -188,7 +188,7 @@ impl Service {
         self.jira.accounts().iter().map(JiraSignIn::from).collect()
     }
 
-    /// The first sign-in: what `GetJiraAccount` answers, for clients before 1.27.
+    /// The first sign-in: what `GetJiraAccount` answers, for clients before 1.29.
     pub fn jira_sign_in(&self) -> Option<JiraSignIn> {
         self.jira.account_named("").as_ref().map(JiraSignIn::from)
     }

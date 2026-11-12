@@ -405,7 +405,7 @@ impl Runner {
     }
 
     /// Draws again if the pointer moving from `before` to `now` changes what shows as
-    /// hovered (ADR 0048). Anything else a move changes is a message, which draws.
+    /// hovered (ADR 0050). Anything else a move changes is a message, which draws.
     fn redraw_if_hover_changes(&self, before: Option<Point>, now: Option<Point>) {
         if self
             .frame

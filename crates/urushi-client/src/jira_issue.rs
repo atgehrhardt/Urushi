@@ -60,7 +60,7 @@ impl Client {
     }
 
     /// People matching `query` (who may be assigned the task's issue, if `assignable`),
-    /// searched with the sign-in of the task's board, else of `board_id`'s (1.27).
+    /// searched with the sign-in of the task's board, else of `board_id`'s (1.29).
     pub async fn search_jira_users(
         &self,
         (task_id, board_id): (&str, &str),

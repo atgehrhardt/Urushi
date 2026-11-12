@@ -1,5 +1,5 @@
 //! Jira's dialogs (protocol 1.12): signing the daemon in to a Jira Cloud site, choosing
-//! a board to import (from which sign-in's site, when there are several: ADR 0049), and
+//! a board to import (from which sign-in's site, when there are several: ADR 0051), and
 //! the Jira rows of Settings, one per sign-in.
 
 use std::collections::HashMap;
@@ -204,7 +204,7 @@ fn host(site: &str) -> &str {
     site.trim_start_matches("https://")
 }
 
-/// With more than one sign-in (1.27 daemons), a chip per sign-in's site choosing whose
+/// With more than one sign-in (1.29 daemons), a chip per sign-in's site choosing whose
 /// boards are listed, and "+ Account" to sign in to another.
 fn account_picker(
     state: &AppState,

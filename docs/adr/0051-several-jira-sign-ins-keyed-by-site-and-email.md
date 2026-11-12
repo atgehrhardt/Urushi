@@ -1,4 +1,4 @@
-# 0049. Keep several Jira sign-ins, keyed by site and email, and tie each imported board to one
+# 0051. Keep several Jira sign-ins, keyed by site and email, and tie each imported board to one
 
 - **Status:** Accepted
 - **Date:** 2026-11-12
@@ -31,7 +31,7 @@ had a single sign-in built in.
   `Not signed in to Jira at <host>`. Boards with no sign-in aren't due for syncing.
 - **Per-issue caches are keyed by board** (field kinds, when pull requests were last
   read), as two sites can share an issue key or id.
-- **Wire (1.27), additive:** `ListJiraAccounts` → `JiraAccountList`, and an `account` on
+- **Wire (1.29), additive:** `ListJiraAccounts` → `JiraAccountList`, and an `account` on
   `DisconnectJira`, `ListJiraBoards` and `ImportJiraBoard`. Empty means the first
   sign-in, which is exactly what an older client meant. `GetJiraAccount` answers the
   first. Clients treat an older daemon's one sign-in as a list of one.
@@ -53,7 +53,7 @@ had a single sign-in built in.
   decision with per-platform work. ADR 0021's file stays, now holding a list.
 
 ## Consequences
-- A daemon from before 1.27 can't read a file holding a list, and would act as signed out
+- A daemon from before 1.29 can't read a file holding a list, and would act as signed out
   if the user went back to it. Downgrades are rare, and signing in again fixes it.
 - Every Jira code path now resolves a board's sign-in first. A new Jira feature must do
   the same (`Service::jira_account(board)`), never "the" sign-in.

@@ -1,4 +1,4 @@
-//! Several Jira sign-ins (UR-61, ADR 0049), end to end against an in-memory Jira with
+//! Several Jira sign-ins (UR-61, ADR 0051), end to end against an in-memory Jira with
 //! two sites: each board is read and written with its own sign-in, signing out of one
 //! leaves the other's boards syncing, and a sign-in and boards from before there could
 //! be several keep working.
@@ -81,7 +81,7 @@ async fn each_board_is_synced_and_written_with_its_own_sign_in() {
         ["acme.atlassian.net/a@b.c", "globex.atlassian.net/a@b.c"]
     );
     assert!(accounts.iter().all(|a| a.connected));
-    // Clients before 1.27 see the first.
+    // Clients before 1.29 see the first.
     assert_eq!(client.jira_account().await.unwrap().key, keys[0]);
 
     let (a, g) = (board(&client, &a.id).await, board(&client, &g.id).await);

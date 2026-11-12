@@ -516,8 +516,8 @@ pub struct AppState {
     pub drag: Option<Drag>,
     /// Settings, once loaded.
     pub settings: Option<v1::Settings>,
-    /// The daemon's Jira sign-ins, once asked (protocol 1.12; several since 1.27, ADR
-    /// 0049). Only connected ones.
+    /// The daemon's Jira sign-ins, once asked (protocol 1.12; several since 1.29, ADR
+    /// 0051). Only connected ones.
     pub jira_accounts: Vec<v1::JiraAccount>,
     /// Tailnet status, once loaded.
     pub tailnet: Option<v1::TailnetStatus>,
@@ -693,7 +693,7 @@ impl AppState {
         self.daemon_minor >= crate::board::JIRA_SINCE_MINOR
     }
 
-    /// Whether the daemon keeps several Jira sign-ins (protocol 1.27, ADR 0049).
+    /// Whether the daemon keeps several Jira sign-ins (protocol 1.29, ADR 0051).
     pub fn daemon_supports_jira_accounts(&self) -> bool {
         self.daemon_minor >= crate::board::JIRA_ACCOUNTS_SINCE_MINOR
     }

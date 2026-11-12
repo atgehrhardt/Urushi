@@ -2,7 +2,7 @@
 
 - **Status:** Shipped (manual boards, columns, colors, tags, kinds, nested subtasks, attachments, threads started from tasks; Jira boards in [jira-boards](jira-boards.md))
 - **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,order,prompt,quick}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_nav.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/` (tabs in `tabs.rs`, the header in `header.rs`, the phone layout in `phone.rs`), `scrolling.rs`, `view/tasks/`, `view/labels.rs`, `view/menu/{tasks,boards}.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
-- **Related ADRs:** [0048](../adr/0048-draw-what-shows-and-redraw-only-on-change.md), [0047](../adr/0047-board-columns-keep-a-width-and-scroll-sideways.md), [0046](../adr/0046-one-board-column-at-a-time-on-phones.md), [0037](../adr/0037-quick-filters-written-to-jira-or-kept-here.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
+- **Related ADRs:** [0050](../adr/0050-draw-what-shows-and-redraw-only-on-change.md), [0047](../adr/0047-board-columns-keep-a-width-and-scroll-sideways.md), [0046](../adr/0046-one-board-column-at-a-time-on-phones.md), [0037](../adr/0037-quick-filters-written-to-jira-or-kept-here.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
 
 ## What it does
 A **Tasks** button sits under the sidebar's Projects | Repos tabs. It shows the number of
@@ -44,7 +44,7 @@ it back.
 - **Large boards** (UR-66): a column builds only the cards in sight (all cards are the
   same height; spacers stand in for the rest), the filter's results are kept until the
   board or the filter changes (`filter/cache.rs`), and moving the pointer redraws only
-  when it enters or leaves something clickable (ADR 0048). A 500-issue board takes about
+  when it enters or leaves something clickable (ADR 0050). A 500-issue board takes about
   2 ms of view and layout per frame, down from about 18 ms.
 - **Quick filters** (1.23 daemons, ADR 0037): **Save filter…** in the bar (or **Save as
   quick filter…** in **Filters ▾**) saves the search, types and tags chosen under a name.

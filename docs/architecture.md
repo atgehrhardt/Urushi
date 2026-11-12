@@ -132,5 +132,5 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
 ## Dependencies on external programs
 
 - `git` and `tailscale` are run as separate processes, never linked. So are `ps` (which agent runs in a pane), `curl` (Claude's usage endpoint, ADR 0011; Jira Cloud's REST APIs, ADR 0021) and, on macOS, `security` (Claude's keychain sign-in); see ADR 0011.
-- The Jira sign-ins (each a site, email and API token; several, ADR 0049) are kept by the daemon in `<home>/jira-credentials.json` (0600) and never sent to clients (ADR 0021). Each Jira board is read and written with the sign-in it names.
+- The Jira sign-ins (each a site, email and API token; several, ADR 0051) are kept by the daemon in `<home>/jira-credentials.json` (0600) and never sent to clients (ADR 0021). Each Jira board is read and written with the sign-in it names.
 - Their absence is reported in the UI with a clear explanation.

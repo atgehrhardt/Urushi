@@ -1,5 +1,5 @@
-//! Wire → service for Jira (protocol 1.12): the sign-ins (several since 1.27, ADR
-//! 0049), listing and importing boards,
+//! Wire → service for Jira (protocol 1.12): the sign-ins (several since 1.29, ADR
+//! 0051), listing and importing boards,
 //! syncing one now, and (1.13) evaluating its quick filters (since 1.23 the board's own
 //! too). The API token comes in with `ConnectJira` and never goes out.
 

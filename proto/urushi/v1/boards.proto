@@ -73,7 +73,7 @@ message JiraBoardSource {
   // them. Since 1.13.
   repeated JiraQuickFilter quick_filters = 10;
   // The key of the Jira sign-in that syncs it (JiraAccount.key); empty for a board
-  // imported before 1.27, which uses the sign-in for its site. Since 1.27.
+  // imported before 1.29, which uses the sign-in for its site. Since 1.29.
   string account = 11;
 }
 

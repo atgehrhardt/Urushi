@@ -14,8 +14,8 @@ pub const SUBTASKS_SINCE_MINOR: u32 = 6;
 pub const BOARD_EXTRAS_SINCE_MINOR: u32 = 8;
 /// First protocol minor version with Jira boards and task kinds.
 pub const JIRA_SINCE_MINOR: u32 = 12;
-/// Daemons from this protocol minor keep several Jira sign-ins (ADR 0049).
-pub const JIRA_ACCOUNTS_SINCE_MINOR: u32 = 27;
+/// Daemons from this protocol minor keep several Jira sign-ins (ADR 0051).
+pub const JIRA_ACCOUNTS_SINCE_MINOR: u32 = 29;
 /// First protocol minor version where a Jira board's epics are cards that can be
 /// created like any issue (ADR 0027).
 pub const EPIC_CARDS_SINCE_MINOR: u32 = 15;

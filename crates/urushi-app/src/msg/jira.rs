@@ -1,5 +1,5 @@
 //! Messages for Jira (protocol 1.12): signing the daemon in (to several sites since
-//! 1.27, ADR 0049), importing a board to follow, syncing it now, and opening Jira's
+//! 1.29, ADR 0051), importing a board to follow, syncing it now, and opening Jira's
 //! pages.
 
 /// Something done about Jira.

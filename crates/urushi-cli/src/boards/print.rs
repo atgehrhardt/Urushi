@@ -59,7 +59,7 @@ fn source(board: &v1::Board) -> String {
     } else {
         String::new()
     };
-    // Which sign-in syncs it (1.27), when the daemon says.
+    // Which sign-in syncs it (1.29), when the daemon says.
     let account = if j.account.is_empty() {
         String::new()
     } else {

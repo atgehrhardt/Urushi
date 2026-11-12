@@ -137,8 +137,8 @@ message Request {
     StartLanPairingRequest start_lan_pairing = 78;
     CancelLanPairingRequest cancel_lan_pairing = 79;
     RevokeLanDeviceRequest revoke_lan_device = 80;
-    // Since 1.27.
-    ListJiraAccountsRequest list_jira_accounts = 81;
+    // Since 1.29.
+    ListJiraAccountsRequest list_jira_accounts = 84;
   }
 }
 
@@ -185,8 +185,8 @@ message Response {
     QuickFilterSaved quick_filter_saved = 32;
     // Since 1.26.
     LanStatus lan_status = 33;
-    // Since 1.27.
-    JiraAccountList jira_accounts = 34;
+    // Since 1.29.
+    JiraAccountList jira_accounts = 36;
   }
 }
 

@@ -1,6 +1,6 @@
 //! Typed wrappers for Jira requests (protocol 1.12): the daemon's sign-ins (several
-//! since 1.27, ADR 0049), and finding, importing and syncing Jira boards. An `account`
-//! is a sign-in's `JiraAccount.key`; empty means the first, as daemons before 1.27
+//! since 1.29, ADR 0051), and finding, importing and syncing Jira boards. An `account`
+//! is a sign-in's `JiraAccount.key`; empty means the first, as daemons before 1.29
 //! have only one.
 
 use urushi_proto::v1::{self, request::Body, response::Outcome};
@@ -38,7 +38,7 @@ impl Client {
         }
     }
 
-    /// Every Jira sign-in the daemon has (1.27).
+    /// Every Jira sign-in the daemon has (1.29).
     pub async fn jira_accounts(&self) -> Result<Vec<v1::JiraAccount>, ClientError> {
         match self
             .request(Body::ListJiraAccounts(v1::ListJiraAccountsRequest {}))

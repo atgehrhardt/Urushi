@@ -380,7 +380,7 @@ fn scenario_frame(
 }
 
 /// [`scenario`] with every scrolling list scrolled to its end: lists show only what
-/// is in sight (ADR 0048), so this is how checks see the end of a long dialog.
+/// is in sight (ADR 0050), so this is how checks see the end of a long dialog.
 #[cfg(test)]
 fn scenario_scrolled_to_end(
     name: &str,

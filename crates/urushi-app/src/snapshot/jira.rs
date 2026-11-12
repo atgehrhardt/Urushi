@@ -6,7 +6,7 @@
 //! (`jira-issue-picker`), a new epic in the editor (`jira-new-epic`), signing in
 //! (`jira-connect`), choosing a board to import (`jira-import`), and the questions
 //! before an issue is deleted in Jira: from its card's menu (`jira-delete-issue`) and
-//! for a subtask in the editor (`jira-delete-subtask`). With two sign-ins (ADR 0049):
+//! for a subtask in the editor (`jira-delete-subtask`). With two sign-ins (ADR 0051):
 //! Settings' Jira rows (`jira-accounts`) and the import dialog's site chips
 //! (`jira-import-accounts`). `thread-links` shows the sidebar
 //! with the marks of threads' Jira issues and pull requests (ADR 0036).

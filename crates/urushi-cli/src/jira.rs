@@ -1,5 +1,5 @@
 //! `urushi jira …`: signing the daemon in to Jira Cloud sites (several since protocol
-//! 1.27, ADR 0049), and finding and importing boards to follow (protocol 1.12). The API
+//! 1.29, ADR 0051), and finding and importing boards to follow (protocol 1.12). The API
 //! token is read from `URUSHI_JIRA_TOKEN` or stdin, never from an argument, so it stays
 //! out of shell history and process lists. `--account` picks a sign-in by its key, its
 //! email or its site; it can be left out while there is only one.
@@ -149,7 +149,7 @@ pub(crate) async fn run(client: &Client, cmd: JiraCmd) -> Result<()> {
     }
 }
 
-/// The daemon's sign-ins: every one from a 1.27 daemon, else the one it has.
+/// The daemon's sign-ins: every one from a 1.29 daemon, else the one it has.
 async fn signed_in(client: &Client) -> Result<Vec<urushi_client::v1::JiraAccount>> {
     if client.welcome().protocol_minor >= JIRA_ACCOUNTS_SINCE_MINOR {
         return Ok(client.jira_accounts().await?);
@@ -163,7 +163,7 @@ async fn signed_in(client: &Client) -> Result<Vec<urushi_client::v1::JiraAccount
 }
 
 /// Daemons from this protocol minor keep several sign-ins.
-const JIRA_ACCOUNTS_SINCE_MINOR: u32 = 27;
+const JIRA_ACCOUNTS_SINCE_MINOR: u32 = 29;
 
 /// The key of the sign-in `wanted` names (its key, email or site), or the only one;
 /// empty (the daemon's first) when nothing is asked of an older daemon.

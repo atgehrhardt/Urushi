@@ -2,7 +2,7 @@
 //! workflow (To Do ⇄ In Progress ⇄ Done), a quick filter, and a log of the calls it
 //! got. It answers on any site with [`TOKEN`]; [`FakeJira::add_site`] gives a site a
 //! token of its own, and [`FakeJira::site_calls`] logs each call with the site it was
-//! made to, for tests of several sign-ins (ADR 0049).
+//! made to, for tests of several sign-ins (ADR 0051).
 #![allow(
     dead_code,
     unreachable_pub,

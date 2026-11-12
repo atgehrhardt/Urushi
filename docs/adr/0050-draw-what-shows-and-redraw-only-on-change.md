@@ -1,4 +1,4 @@
-# 0048. Lay out and paint only what a scrolling list shows, keep text caches in two generations, and redraw on pointer moves only when hover changes
+# 0050. Lay out and paint only what a scrolling list shows, keep text caches in two generations, and redraw on pointer moves only when hover changes
 
 - **Status:** Accepted
 - **Date:** 2026-11-12

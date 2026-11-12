@@ -1,6 +1,6 @@
 # 0021. Make HTTPS requests through `curl --config -`, and keep the Jira sign-in in a private file
 
-- **Status:** Accepted; its credentials file holds several sign-ins since [0049](0049-several-jira-sign-ins-keyed-by-site-and-email.md)
+- **Status:** Accepted; its credentials file holds several sign-ins since [0051](0051-several-jira-sign-ins-keyed-by-site-and-email.md)
 - **Date:** 2026-11-09
 
 ## Context

@@ -31,7 +31,7 @@ pub struct JiraBoard {
     /// The site's address, e.g. `https://acme.atlassian.net` (no trailing slash).
     pub site: String,
     /// The key of the Jira sign-in that reads and writes it (`acme.atlassian.net/ada@acme.com`,
-    /// ADR 0049). Empty on a board imported before several sign-ins were kept: such a
+    /// ADR 0051). Empty on a board imported before several sign-ins were kept: such a
     /// board uses the sign-in for its site.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub account: String,
