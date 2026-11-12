@@ -92,9 +92,9 @@ async fn concurrent_divider_moves_all_succeed_and_are_saved() {
         .iter()
         .find(|t| t.id().to_string() == tab.id)
         .unwrap();
-    assert_eq!(
-        Some(&urushi_proto::convert::layout_to_proto(saved.layout())),
-        shown.layout.as_ref()
+    assert_same_layout(
+        &urushi_proto::convert::layout_to_proto(saved.layout()),
+        shown.layout.as_ref().unwrap(),
     );
     drop(client);
     daemon.stop().await;
@@ -104,7 +104,28 @@ async fn concurrent_divider_moves_all_succeed_and_are_saved() {
     let (client, _events) = daemon.connect().await;
     let restored = client.list_workspace(false).await.unwrap();
     let restored = restored.tabs.iter().find(|t| t.id == tab.id).unwrap();
-    assert_eq!(restored.layout, shown.layout);
+    assert_same_layout(
+        restored.layout.as_ref().unwrap(),
+        shown.layout.as_ref().unwrap(),
+    );
     drop(client);
     daemon.stop().await;
+}
+
+/// The same panes in the same splits, with ratios equal up to rounding: a ratio read
+/// back from JSON can differ from the one in memory in its last bit.
+fn assert_same_layout(a: &v1::LayoutNode, b: &v1::LayoutNode) {
+    use v1::layout_node::Kind;
+    match (&a.kind, &b.kind) {
+        (Some(Kind::PaneId(x)), Some(Kind::PaneId(y))) => assert_eq!(x, y),
+        (Some(Kind::Split(x)), Some(Kind::Split(y))) => {
+            assert_eq!(x.axis, y.axis);
+            assert_eq!(x.children.len(), y.children.len());
+            for (cx, cy) in x.children.iter().zip(&y.children) {
+                assert!((cx.ratio - cy.ratio).abs() < 1e-9, "{a:?} vs {b:?}");
+                assert_same_layout(cx.node.as_ref().unwrap(), cy.node.as_ref().unwrap());
+            }
+        }
+        _ => panic!("{a:?} vs {b:?}"),
+    }
 }
