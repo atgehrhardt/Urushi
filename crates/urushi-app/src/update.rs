@@ -28,6 +28,9 @@ impl AppState {
             self.pulse = brightness.clamp(0.0, 1.0);
             return Vec::new();
         }
+        if self.ignores_while_saving(&msg) {
+            return Vec::new();
+        }
         let before = crate::errors::BeforeUpdate::of(self);
         let mut fx = Vec::new();
         match msg {
@@ -251,6 +254,7 @@ impl AppState {
         self.want_thumbnails(&mut fx);
         self.watch_shown_board(&mut fx);
         self.attend(&mut fx);
+        self.note_saving(&fx);
         // An error shown in a dialog goes with it (`errors.rs`).
         crate::errors::forget_dialog_error(self, &before);
         fx
@@ -403,6 +407,8 @@ impl AppState {
         }
         self.dialog = None;
         self.focus = None;
+        // A save still unanswered can't close the next dialog of the same kind.
+        self.submitting = None;
     }
 
     fn on_workspace(&mut self, workspace: v1::Workspace, fx: &mut Vec<Effect>) {
@@ -440,6 +446,11 @@ impl AppState {
                 // alone: Jira is asked about its quick filters only when it changed.
                 let before = self.board.board(&self.workspace).cloned();
                 self.on_workspace(workspace, fx);
+                let dragged = self.divider.group().map(str::to_owned);
+                if let Some(id) = dragged {
+                    let group = self.workspace.group(&id);
+                    self.divider.workspace(group.as_ref());
+                }
                 if self.board.board(&self.workspace) != before.as_ref() {
                     self.refresh_quick_filter(fx);
                 }
@@ -482,6 +493,30 @@ impl AppState {
         }
     }
 
+    /// A refusal of something shown ahead of the daemon's answer (ADR 0055): undoes or
+    /// ends what was shown. Returns whether it handled the refusal.
+    fn request_refused(
+        &mut self,
+        followup: &Followup,
+        message: &str,
+        fx: &mut Vec<Effect>,
+    ) -> bool {
+        match followup {
+            Followup::Ignore => {}
+            Followup::CloseDialog => {
+                self.not_saved();
+                self.error = Some(message.to_owned());
+            }
+            Followup::DividerMoved => {
+                self.divider_answered(fx);
+                self.error = Some(message.to_owned());
+            }
+            Followup::ThreadCreated(key) => self.thread_not_created(*key, message.to_owned()),
+            _ => return false,
+        }
+        true
+    }
+
     /// Any other answer: a failure is shown (or, where it only means "nothing to
     /// show", dropped), an outcome applied.
     fn answered(
@@ -492,13 +527,7 @@ impl AppState {
     ) {
         let outcome = match result {
             Ok(outcome) => outcome,
-            Err(_) if followup == Followup::Ignore => return,
-            Err(message) if matches!(followup, Followup::ThreadCreated(_)) => {
-                if let Followup::ThreadCreated(key) = followup {
-                    self.thread_not_created(key, message);
-                }
-                return;
-            }
+            Err(message) if self.request_refused(&followup, &message, fx) => return,
             // An older daemon, or no agents: the picker just offers a terminal.
             Err(_) if followup == Followup::Agents => return,
             // Without branches the selector just offers the repo's default.
@@ -561,6 +590,7 @@ impl AppState {
                 self.selected_tab.insert(tab.thread_id, tab.id);
                 self.sync_panes(fx);
             }
+            (Followup::DividerMoved, _) => self.divider_answered(fx),
             (Followup::PaneCreated, Outcome::PaneCreated(created)) => {
                 self.focused_override
                     .insert(created.tab_id, created.pane_id);
@@ -583,10 +613,7 @@ impl AppState {
                 self.dialog = None;
                 self.focus = None;
             }
-            (Followup::CloseDialog, _) => {
-                self.dialog = None;
-                self.focus = None;
-            }
+            (Followup::CloseDialog, _) => self.saved(),
             _ => {}
         }
     }
@@ -773,6 +800,7 @@ mod pointer;
 mod project_settings;
 mod quick;
 mod quick_filter;
+mod saving;
 mod setup;
 mod sidebar;
 mod sidebar_drag;

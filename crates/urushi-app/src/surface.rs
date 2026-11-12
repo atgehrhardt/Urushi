@@ -25,12 +25,14 @@ impl AppState {
         match surface {
             Surface::Main => {
                 let id = self.current_tab()?.id.clone();
-                let group = self.workspace.group(&id)?;
+                let group = self.divider.apply(&id, self.workspace.group(&id)?);
                 Some((id, group))
             }
             Surface::Quick => {
                 let quick = self.workspace.quick_terminal()?;
-                Some((quick.id().to_string(), quick.group().clone()))
+                let id = quick.id().to_string();
+                let group = self.divider.apply(&id, quick.group().clone());
+                Some((id, group))
             }
         }
     }

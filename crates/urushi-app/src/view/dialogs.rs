@@ -102,7 +102,7 @@ fn prompt_dialog(
         body,
         vec![
             cancel(theme),
-            button(theme, action, ButtonKind::Primary, Msg::Submit),
+            super::modal::submit_button(state, theme, action),
         ],
         Some(Msg::CloseDialog),
     )
@@ -491,7 +491,7 @@ fn settings_dialog(
         body,
         vec![
             button(theme, "Close", ButtonKind::Secondary, Msg::CloseDialog),
-            button(theme, "Save", ButtonKind::Primary, Msg::Submit),
+            super::modal::submit_button(state, theme, "Save"),
         ],
         Some(Msg::CloseDialog),
     )

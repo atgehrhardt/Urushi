@@ -67,3 +67,19 @@ fn with_error(state: &AppState, theme: &Theme, width: f32, body: Node<Msg>) -> N
 fn inner(width: f32) -> f32 {
     width - 2.0 * CARD_PADDING
 }
+
+/// A dialog's main button, which submits it. While the daemon saves what it asked for,
+/// it says so (and submitting again does nothing, `update/saving.rs`).
+pub(super) fn submit_button(state: &AppState, theme: &Theme, label: &str) -> Node<Msg> {
+    let label = if state.dialog_saving() {
+        "Saving\u{2026}"
+    } else {
+        label
+    };
+    urushi_ui::widgets::button(
+        theme,
+        label,
+        urushi_ui::widgets::ButtonKind::Primary,
+        Msg::Submit,
+    )
+}

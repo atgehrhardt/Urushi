@@ -19,6 +19,7 @@ mod brand_icons;
 pub mod config;
 pub mod creations;
 pub mod deletions;
+pub mod divider;
 pub mod drafts;
 pub mod errors;
 mod files;

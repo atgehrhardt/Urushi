@@ -523,12 +523,16 @@ pub struct AppState {
     pub dialog: Option<Dialog>,
     /// The focused dialog field.
     pub focus: Option<Field>,
+    /// The dialog as it was submitted, while the daemon saves it (`update/saving.rs`).
+    pub submitting: Option<Box<Dialog>>,
     /// The error to show, on whatever surface is on top (`errors.rs`).
     pub error: Option<String>,
     /// Text selection: pane and range.
     pub selection: Option<(String, Selection)>,
     /// The drag in progress.
     pub drag: Option<Drag>,
+    /// A divider dragged on screen ahead of the daemon (`divider.rs`).
+    pub divider: crate::divider::DividerDrag,
     /// Settings, once loaded.
     pub settings: Option<v1::Settings>,
     /// The daemon's Jira sign-ins, once asked (protocol 1.12; several since 1.29, ADR
@@ -625,9 +629,11 @@ impl AppState {
             area: None,
             cell,
             dialog,
+            submitting: None,
             error: None,
             selection: None,
             drag: None,
+            divider: crate::divider::DividerDrag::default(),
             settings: None,
             jira_accounts: Vec::new(),
             tailnet: None,

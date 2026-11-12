@@ -409,6 +409,8 @@ pub enum Followup {
     TaskTabCreated,
     /// Focus the new pane.
     PaneCreated,
+    /// The daemon answered a divider move: send the newest position, if one waits.
+    DividerMoved,
     /// The daemon opened (or returned) its quick terminal.
     QuickTerminal,
     /// Show settings.
