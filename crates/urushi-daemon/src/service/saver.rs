@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use thiserror::Error;
 
-use super::lock;
+use super::{Service, ServiceResult, lock, off_the_runtime};
 use crate::store::{Document, Store, StoreError};
 
 /// Why a change couldn't be confirmed as saved.
@@ -205,6 +205,30 @@ impl Shared {
                 }
             }
             self.done.notify_all();
+        }
+    }
+}
+
+impl Service {
+    /// Announces `revision` to subscribers, then waits until it is on disk.
+    pub(super) fn commit(&self, revision: u64) -> ServiceResult<()> {
+        // Concurrent changes may commit out of order; subscribers only ever move forward.
+        self.changes.send_modify(|r| *r = (*r).max(revision));
+        self.saver.request(revision);
+        let started = std::time::Instant::now();
+        off_the_runtime(|| self.saver.wait(revision))?;
+        let waited = started.elapsed();
+        if waited >= std::time::Duration::from_millis(10) {
+            tracing::debug!(revision, wait_ms = waited.as_millis(), "change saved");
+        }
+        Ok(())
+    }
+
+    /// Saves what is still pending and stops saving. Called once the daemon has shut
+    /// down; changes after this are refused.
+    pub fn close_store(&self) {
+        if !off_the_runtime(|| self.saver.close(std::time::Duration::from_secs(5))) {
+            tracing::warn!("saving the workspace at shutdown timed out");
         }
     }
 }

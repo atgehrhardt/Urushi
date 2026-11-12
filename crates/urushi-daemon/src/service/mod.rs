@@ -16,6 +16,7 @@
 mod agents;
 mod attachments;
 mod attention;
+mod base_fetch;
 mod boards;
 mod columns;
 mod deletion;
@@ -43,7 +44,9 @@ mod tabs;
 mod task_agent;
 mod task_draft;
 mod task_tabs;
+mod thread_base;
 mod threads;
+mod timing;
 mod updates;
 
 use std::collections::HashMap;
@@ -161,6 +164,8 @@ pub struct Service {
     /// Writes the workspace document, coalescing bursts of changes (`saver.rs`).
     saver: saver::Saver,
     git: Arc<dyn Git>,
+    /// Fetches of new threads' bases, shared and briefly reused (ADR 0054).
+    base_fetches: Arc<base_fetch::BaseFetches>,
     pty: Arc<dyn Pty>,
     pub(crate) tailscale: Arc<dyn TailscaleProvider>,
     agents: Arc<AgentLocator>,
@@ -269,6 +274,7 @@ impl Service {
             sessions: Mutex::new(HashMap::new()),
             saver,
             git: config.git,
+            base_fetches: Arc::new(base_fetch::BaseFetches::new(base_fetch::FRESH_FOR)),
             pty: config.pty,
             tailscale: config.tailscale,
             agents: config.agents,
@@ -383,28 +389,6 @@ impl Service {
     /// Reads the state.
     pub(crate) fn read<R>(&self, f: impl FnOnce(&State) -> ServiceResult<R>) -> ServiceResult<R> {
         f(&lock(&self.state))
-    }
-
-    /// Announces `revision` to subscribers, then waits until it is on disk.
-    fn commit(&self, revision: u64) -> ServiceResult<()> {
-        // Concurrent changes may commit out of order; subscribers only ever move forward.
-        self.changes.send_modify(|r| *r = (*r).max(revision));
-        self.saver.request(revision);
-        let started = std::time::Instant::now();
-        off_the_runtime(|| self.saver.wait(revision))?;
-        let waited = started.elapsed();
-        if waited >= std::time::Duration::from_millis(10) {
-            tracing::debug!(revision, wait_ms = waited.as_millis(), "change saved");
-        }
-        Ok(())
-    }
-
-    /// Saves what is still pending and stops saving. Called once the daemon has shut
-    /// down; changes after this are refused.
-    pub fn close_store(&self) {
-        if !off_the_runtime(|| self.saver.close(std::time::Duration::from_secs(5))) {
-            tracing::warn!("saving the workspace at shutdown timed out");
-        }
     }
 
     /// Freezes the workspace, then kills every session. Called on shutdown. The kills

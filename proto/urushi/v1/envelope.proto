@@ -147,6 +147,8 @@ message Request {
     ListJiraAccountsRequest list_jira_accounts = 84;
     // Since 1.30.
     PingRequest ping = 85;
+    // Since 1.31.
+    PrepareThreadBaseRequest prepare_thread_base = 86;
   }
 }
 

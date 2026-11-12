@@ -11,7 +11,7 @@ use urushi_proto::v1::{self, ErrorCode, request::Body, response::Outcome};
 
 use super::connection::Connection;
 use super::{lan, remote};
-use crate::service::{DeletionPlan, SaveError, ServiceError, ServiceResult, ThreadRequest, lock};
+use crate::service::{DeletionPlan, SaveError, ServiceError, ServiceResult, lock};
 
 /// An error outcome for a malformed request.
 pub(crate) fn invalid(message: &str) -> Outcome {
@@ -139,24 +139,8 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
                 remote_branches: list.remote,
             })
         }
-        Body::CreateThread(r) => {
-            let request = ThreadRequest {
-                title: r.title,
-                base_ref: Some(r.base_ref).filter(|b| !b.trim().is_empty()),
-                branch: Some(r.branch).filter(|b| !b.trim().is_empty()),
-                initial_tab: !r.skip_initial_tab,
-                project: optional_id(&r.folder_id, "folder_id")?,
-                task: match optional_id(&r.task_id, "task_id")? {
-                    Some(task) => Some((task, optional_id(&r.subtask_id, "subtask_id")?)),
-                    None => None,
-                },
-                start_task_agent: r.start_task_agent,
-            };
-            let thread = service
-                .create_thread(parse(&r.project_id, "project_id")?, request)
-                .await?;
-            Outcome::Thread(convert::thread_to_proto(&thread))
-        }
+        Body::CreateThread(r) => super::threads::create_thread(service, r).await?,
+        Body::PrepareThreadBase(r) => super::threads::prepare_thread_base(service, r)?,
         Body::RenameThread(r) => {
             service.rename_thread(parse::<ThreadId>(&r.thread_id, "thread_id")?, &r.title)?;
             ok()

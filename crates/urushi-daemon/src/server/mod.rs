@@ -13,6 +13,7 @@ mod organize;
 mod quick_filters;
 pub(crate) mod remote;
 pub(crate) mod screen;
+mod threads;
 mod usage;
 
 use std::sync::OnceLock;
