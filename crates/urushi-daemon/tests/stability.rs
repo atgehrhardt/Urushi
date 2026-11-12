@@ -1,4 +1,6 @@
 //! Stability under load (UR-69): a lost screen ack. (Many panes: `many_panes.rs`.)
+//! Unix only, like `e2e.rs`: panes run `/bin/sh`.
+#![cfg(unix)]
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
