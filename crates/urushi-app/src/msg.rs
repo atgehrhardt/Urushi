@@ -55,6 +55,8 @@ pub enum Msg {
     // ---- sidebar ---------------------------------------------------------------------
     /// Show a thread.
     SelectThread(String),
+    /// Show a thread still being created (its key in `creations.rs`).
+    SelectPending(u64),
     /// Open a web page (a thread's Jira issue or pull request) in the system browser.
     OpenUrl(String),
     /// The window became narrow (`true`) or wide.
@@ -385,8 +387,12 @@ pub enum Followup {
     None,
     /// The daemon attached a pane (outcome: first screen).
     Attached(String),
-    /// Select the new thread.
-    ThreadCreated,
+    /// The daemon answered the create with this key (`creations.rs`): show the new
+    /// thread, or bring the dialog back.
+    ThreadCreated(u64),
+    /// Nothing at all, not even errors: a hint the daemon may not know (e.g.
+    /// `PrepareThreadBase`).
+    Ignore,
     /// Show the deletion warning; when closing a parent-branch thread to change its
     /// project's settings, save them once it is closed.
     DeletionPlan(Option<Box<crate::project_settings::PendingSettings>>),

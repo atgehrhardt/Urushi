@@ -26,6 +26,8 @@ pub(super) fn view(state: &AppState, theme: &Theme) -> Node<Msg> {
         if cfg!(any(target_os = "ios", target_os = "android")) {
             column = column.child(super::terminal_area::key_bar(theme));
         }
+    } else if let Some(pending) = state.shown_pending() {
+        column = column.child(creating(theme, &pending.title));
     } else if let Some(thread) = state.empty_thread() {
         // A new thread, or one whose last tab was closed: keep the tab bar (and its "+")
         // and offer what to run.
@@ -52,6 +54,31 @@ pub(super) fn view(state: &AppState, theme: &Theme) -> Node<Msg> {
         crate::errors::ErrorPlace::Main,
         None,
     ))
+}
+
+/// A thread the daemon is still creating (ADR 0055): the base is updated from its
+/// remote and the worktree made, which can take a few seconds.
+fn creating(theme: &Theme, title: &str) -> Node<Msg> {
+    Node::column()
+        .width(Length::Fill(1.0))
+        .height(Length::Fill(1.0))
+        .justify(Align::Center)
+        .align(Align::Center)
+        .gap(10.0)
+        .key(key(&["creating-thread"]))
+        .role(Role::Label, format!("Creating thread {title}"))
+        .child(Node::text(
+            format!("Creating \u{201c}{title}\u{201d}\u{2026}"),
+            Font::UiSemibold,
+            theme.font_size + 4.0,
+            theme.text,
+        ))
+        .child(Node::text(
+            "Updating its base from the remote and making its worktree. It opens here when ready.",
+            Font::Ui,
+            theme.font_size,
+            theme.text_muted,
+        ))
 }
 
 fn empty_state(state: &AppState, theme: &Theme) -> Node<Msg> {

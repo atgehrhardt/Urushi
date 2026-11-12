@@ -5,7 +5,7 @@ use urushi_client::v1::{self, request::Body, response::Outcome};
 use urushi_core::{RepoId, ThreadId};
 
 use super::board::board;
-use super::{attached, bodies, named};
+use super::{attached, bodies, named, sent};
 use crate::keys::Named;
 use crate::msg::{BoardMsg, Effect, Followup, Msg};
 use crate::organize::MenuTarget;
@@ -149,14 +149,14 @@ fn starting_a_thread_from_a_task_links_it_and_goes_there_next_time() {
     let fx = s.update(Msg::Submit);
     assert!(
         matches!(
-            bodies(&fx)[..],
+            sent(&fx)[..],
             [Body::CreateThread(v1::CreateThreadRequest { task_id, subtask_id, title, .. })]
                 if task_id == "a" && subtask_id == "s1" && title == "First"
         ),
         "{fx:?}"
     );
     s.update(Msg::Response {
-        followup: Followup::ThreadCreated,
+        followup: Followup::ThreadCreated(1),
         result: Ok(Outcome::Thread(v1::Thread {
             id: "new".into(),
             ..Default::default()
@@ -215,7 +215,7 @@ fn a_thread_started_from_a_task_can_be_filed_under_another_project_or_none() {
         task: "a".into(),
         subtask: None,
     };
-    let folder = |s: &mut AppState| match bodies(&s.update(Msg::Submit))[..] {
+    let folder = |s: &mut AppState| match sent(&s.update(Msg::Submit))[..] {
         [Body::CreateThread(r)] => r.folder_id.clone(),
         ref other => panic!("{other:?}"),
     };

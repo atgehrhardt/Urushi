@@ -75,12 +75,14 @@ impl AppState {
                     *b = base;
                     *open = None;
                 }
+                self.prepare_base(fx);
             }
             Msg::PickProject(pick) => {
                 if let Some(Dialog::NewThread { project, open, .. }) = &mut self.dialog {
                     *project = pick;
                     *open = None;
                 }
+                self.prepare_base(fx);
             }
             _ => {}
         }
@@ -244,6 +246,7 @@ impl AppState {
         });
         self.focus = Some(Field::ThreadTitle);
         Self::request_branches(repo, fx);
+        self.prepare_base(fx);
     }
 
     fn pick_repo(&mut self, id: String, fx: &mut Vec<Effect>) {
@@ -257,6 +260,7 @@ impl AppState {
             repo.clone_from(&id);
             *open = None;
             Self::request_branches(id, fx);
+            self.prepare_base(fx);
         }
     }
 

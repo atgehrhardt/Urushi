@@ -64,6 +64,15 @@ pub(super) fn connected() -> AppState {
     s
 }
 
+/// The requests in `fx` other than detaching panes, which switching what the main area
+/// shows sends.
+pub(super) fn sent(fx: &[Effect]) -> Vec<&Body> {
+    bodies(fx)
+        .into_iter()
+        .filter(|b| !matches!(b, Body::DetachPane(_)))
+        .collect()
+}
+
 pub(super) fn bodies(fx: &[Effect]) -> Vec<&Body> {
     fx.iter()
         .filter_map(|e| {
@@ -333,7 +342,7 @@ fn new_thread_dialog_edits_fields_and_submits() {
     s.update(Msg::PickBase(Some("main".into())));
     let fx = s.update(Msg::Key(named(Named::Enter)));
     assert!(
-        matches!(bodies(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { title, base_ref, branch, skip_initial_tab: true, .. })] if title == "Fi" && base_ref == "main" && branch == "urushi/fi"),
+        matches!(sent(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { title, base_ref, branch, skip_initial_tab: true, .. })] if title == "Fi" && base_ref == "main" && branch == "urushi/fi"),
         "{fx:?}"
     );
     let created = v1::Thread {
@@ -341,7 +350,7 @@ fn new_thread_dialog_edits_fields_and_submits() {
         ..Default::default()
     };
     s.update(Msg::Response {
-        followup: Followup::ThreadCreated,
+        followup: Followup::ThreadCreated(1),
         result: Ok(Outcome::Thread(created)),
     });
     assert_eq!(s.selected_thread, Some(id(77)));
@@ -393,6 +402,7 @@ mod attention;
 mod board;
 mod board_order;
 mod board_phone;
+mod creating;
 mod daemon;
 mod deletion;
 mod errors;

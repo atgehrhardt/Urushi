@@ -124,6 +124,65 @@ pub(super) fn thread_card(
     drop_target(state, theme, &thread.id, with_stripe(theme, stripe, card))
 }
 
+/// A thread the daemon is still creating (ADR 0055): its title and a "creating" badge.
+/// Click to show it; it can't be dragged or deleted yet.
+pub(super) fn pending_card(
+    state: &AppState,
+    theme: &Theme,
+    pending: &crate::creations::PendingThread,
+) -> Node<Msg> {
+    let selected = state.shows_pending(pending.key);
+    let repo = state
+        .workspace
+        .repo(&pending.repo)
+        .map_or("", |r| r.name.as_str());
+    Node::row()
+        .width(Length::Fill(1.0))
+        .padding(Insets {
+            top: 6.0,
+            right: 4.0,
+            bottom: 6.0,
+            left: 12.0,
+        })
+        .radius(theme.radius)
+        .background(if selected {
+            theme.selected
+        } else {
+            Color::TRANSPARENT
+        })
+        .hover_background(if selected {
+            theme.selected
+        } else {
+            theme.hover
+        })
+        .key(key(&["pending-thread", &pending.key.to_string()]))
+        .on_click(Msg::SelectPending(pending.key))
+        .role(Role::Item, format!("{}, creating", pending.title))
+        .child(
+            Node::column()
+                .width(Length::Fill(1.0))
+                .gap(1.0)
+                .child(Node::text(
+                    &pending.title,
+                    Font::UiMedium,
+                    theme.font_size,
+                    theme.text,
+                ))
+                .child(Node::text(
+                    repo,
+                    Font::Ui,
+                    theme.font_size_small,
+                    theme.text_muted,
+                ))
+                .child(Node::text(
+                    "creating",
+                    Font::UiMedium,
+                    theme.font_size_small,
+                    theme.warning,
+                )),
+        )
+}
+
 /// `card` with a stripe of its project's color down its left edge, if it has one.
 fn with_stripe(theme: &Theme, stripe: Option<Color>, card: Node<Msg>) -> Node<Msg> {
     let Some(color) = stripe else {

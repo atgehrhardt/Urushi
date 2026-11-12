@@ -82,6 +82,7 @@ impl AppState {
             Msg::Daemon(event) => self.on_event(event, &mut fx),
             Msg::Response { followup, result } => self.on_response(followup, result, &mut fx),
             Msg::SelectThread(id) => self.select_thread(id, &mut fx),
+            Msg::SelectPending(key) => self.show_pending(key, &mut fx),
             Msg::OpenUrl(url) => fx.push(Effect::OpenUrl(url)),
             Msg::SetCompact(compact) => self.compact = compact,
             Msg::WindowHeight(height) => self.window_height = height,
@@ -491,6 +492,13 @@ impl AppState {
     ) {
         let outcome = match result {
             Ok(outcome) => outcome,
+            Err(_) if followup == Followup::Ignore => return,
+            Err(message) if matches!(followup, Followup::ThreadCreated(_)) => {
+                if let Followup::ThreadCreated(key) = followup {
+                    self.thread_not_created(key, message);
+                }
+                return;
+            }
             // An older daemon, or no agents: the picker just offers a terminal.
             Err(_) if followup == Followup::Agents => return,
             // Without branches the selector just offers the repo's default.
@@ -532,7 +540,9 @@ impl AppState {
                     )));
                 }
             }
-            (Followup::ThreadCreated, Outcome::Thread(thread)) => self.thread_created(thread, fx),
+            (Followup::ThreadCreated(key), Outcome::Thread(thread)) => {
+                self.thread_created(key, thread, fx);
+            }
             (Followup::Agents, Outcome::Agents(agents)) => {
                 self.set_agents(&agents);
                 self.maybe_open_setup();
@@ -581,19 +591,6 @@ impl AppState {
         }
     }
 
-    /// The new thread exists: show it.
-    fn thread_created(&mut self, thread: v1::Thread, fx: &mut Vec<Effect>) {
-        // Started from a task: the board makes way for the new thread.
-        if matches!(self.dialog, Some(Dialog::NewThread { task: Some(_), .. })) {
-            self.board.open = false;
-        }
-        self.selected_thread = Some(thread.id);
-        self.close_dialog();
-        self.sync_panes(fx);
-        // The new thread shows the launcher; make sure it lists what's installed.
-        self.request_agents(fx);
-    }
-
     fn submit(&mut self, fx: &mut Vec<Effect>) {
         match &self.dialog {
             Some(Dialog::AddProject { path }) if !path.text().trim().is_empty() => {
@@ -618,7 +615,7 @@ impl AppState {
                 // From a task, with a task agent chosen: the daemon starts it with the
                 // task as its prompt. Otherwise the thread opens on the launcher.
                 let start_task_agent = task.is_some() && self.task_agent().is_some();
-                let body = Body::CreateThread(v1::CreateThreadRequest {
+                let body = v1::CreateThreadRequest {
                     project_id: repo.clone(),
                     title: title.text().trim().to_owned(),
                     base_ref: base.clone().unwrap_or_default(),
@@ -632,8 +629,8 @@ impl AppState {
                         .and_then(|l| l.subtask.clone())
                         .unwrap_or_default(),
                     start_task_agent,
-                });
-                fx.push(request(body, Followup::ThreadCreated));
+                };
+                self.submit_new_thread(body, fx);
             }
             Some(Dialog::Prompt { .. }) => self.submit_prompt(fx),
             Some(Dialog::ThreadNotes { .. }) => self.submit_thread_notes(fx),
@@ -758,6 +755,7 @@ mod attachments;
 mod attention;
 mod board;
 mod cards;
+mod creating;
 mod daemon;
 mod deletion;
 mod fields;

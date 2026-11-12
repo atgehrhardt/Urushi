@@ -31,7 +31,8 @@ pub(super) fn list(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
         .collect();
     let ungrouped: Vec<&v1::Thread> = state.workspace.threads_in(None).collect();
     let dragging_thread = matches!(state.dragging, Some((Dragged::Thread(_), _)));
-    if !ungrouped.is_empty() || dragging_thread {
+    let creating = state.creations.in_project(None).next().is_some();
+    if !ungrouped.is_empty() || dragging_thread || creating {
         let title = if state.workspace.projects().is_empty() {
             "Threads"
         } else {
@@ -201,12 +202,19 @@ fn block(state: &AppState, theme: &Theme, b: Block<'_>) -> Node<Msg> {
             .on_drop(drop);
     }
     let (line_above, line_below) = drop_line_at(state, b.project);
+    let creating: Vec<Node<Msg>> = state
+        .creations
+        .in_project(b.project)
+        .map(|p| super::thread_card::pending_card(state, theme, p))
+        .collect();
     let content = if collapsed {
         Vec::new()
-    } else if b.threads.is_empty() {
+    } else if b.threads.is_empty() && creating.is_empty() {
         vec![hint(theme, "Drag threads here, or use + for a new one.")]
     } else {
-        group(state, theme, (b.project, b.color), &b.threads)
+        let mut rows = group(state, theme, (b.project, b.color), &b.threads);
+        rows.extend(creating);
+        rows
     };
     column
         .children(line_above.then(|| drop_line(theme)))

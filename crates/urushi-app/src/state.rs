@@ -503,6 +503,10 @@ pub struct AppState {
     pub deletions: crate::deletions::Deletions,
     /// The thread shown in the main area.
     pub selected_thread: Option<String>,
+    /// Threads this app asked the daemon to create, shown until it answers (ADR 0055).
+    pub creations: crate::creations::Creations,
+    /// The pending create shown in the main area, while no thread is selected.
+    pub selected_pending: Option<u64>,
     /// The tab shown per thread.
     pub selected_tab: HashMap<String, String>,
     /// Screens of attached panes.
@@ -612,6 +616,8 @@ impl AppState {
             workspace: WorkspaceMirror::default(),
             deletions: crate::deletions::Deletions::default(),
             selected_thread: None,
+            creations: crate::creations::Creations::default(),
+            selected_pending: None,
             selected_tab: HashMap::new(),
             screens: HashMap::new(),
             attaching: HashSet::new(),

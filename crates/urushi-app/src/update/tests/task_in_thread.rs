@@ -4,8 +4,8 @@ use urushi_client::v1::{self, request::Body, response::Outcome};
 use urushi_core::{RepoId, ThreadId};
 
 use super::board::board;
-use super::bodies;
 use super::setup::{on, settings};
+use super::{bodies, sent};
 use crate::msg::{Followup, Msg};
 use crate::state::{AppState, Dialog, Field, TaskLink, ThreadTarget};
 
@@ -114,7 +114,7 @@ fn switching_back_creates_a_new_thread_and_nothing_is_sent_unpicked() {
     assert_eq!(target(&s), ThreadTarget::New);
     assert_eq!(s.focus, Some(Field::ThreadTitle));
     let fx = s.update(Msg::Submit);
-    assert!(matches!(bodies(&fx)[..], [Body::CreateThread(_)]), "{fx:?}");
+    assert!(matches!(sent(&fx)[..], [Body::CreateThread(_)]), "{fx:?}");
 
     let mut s = dialog_for_task(10, v1::Agent::Claude);
     if let Some(Dialog::NewThread { target, .. }) = &mut s.dialog {
