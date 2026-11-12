@@ -27,6 +27,30 @@ fn fake_agent(dir: &Path, name: &str) {
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
+/// How many arguments the fake agent printed. Counts `ARG[` anywhere on a line, not just
+/// at its start: the agent's command is typed into the shell (ADR 0009), and when it
+/// arrives before the shell's first prompt, the prompt lands in front of the first
+/// argument (`$ ARG[--permission-mode]`).
+fn args_printed(screen: &[String]) -> usize {
+    screen.iter().map(|l| l.matches("ARG[").count()).sum()
+}
+
+#[test]
+fn arguments_behind_the_shell_prompt_are_counted() {
+    let screen: Vec<String> = [
+        "'agents bin/claude' --permission-mode plan \"$URUSHI_TASK_PROMPT\"",
+        "$ ARG[--permission-mode]",
+        "ARG[plan]",
+        "ARG[Work on this task.",
+        "- [ ] docs]",
+        "AGENT-DONE",
+        "$",
+    ]
+    .map(String::from)
+    .to_vec();
+    assert_eq!(args_printed(&screen), 3);
+}
+
 /// A board with a task that has notes and two subtasks, one checked off.
 async fn task(client: &Client) -> (v1::Task, v1::Subtask) {
     let board = client.create_board("Work").await.unwrap();
@@ -121,7 +145,7 @@ async fn a_task_starts_the_task_agent_in_its_mode_with_the_task_as_prompt() {
         assert!(text.contains(expected), "{expected:?} missing from {text}");
     }
     assert_eq!(
-        screen.iter().filter(|l| l.starts_with("ARG[")).count(),
+        args_printed(&screen),
         3,
         "the whole prompt is one argument: {text}"
     );
@@ -258,7 +282,7 @@ async fn a_task_starts_in_an_existing_thread_in_a_new_tab() {
         assert!(text.contains(expected), "{expected:?} missing from {text}");
     }
     assert_eq!(
-        screen.iter().filter(|l| l.starts_with("ARG[")).count(),
+        args_printed(&screen),
         3,
         "the whole prompt is one argument: {text}"
     );
