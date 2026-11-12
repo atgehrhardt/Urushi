@@ -9,6 +9,8 @@ pub(crate) struct Stopwatch {
     what: &'static str,
     start: Instant,
     last: Instant,
+    /// A step to log when dropped, for operations with many ways out.
+    at_drop: Option<&'static str>,
 }
 
 impl Stopwatch {
@@ -19,7 +21,14 @@ impl Stopwatch {
             what,
             start: now,
             last: now,
+            at_drop: None,
         }
+    }
+
+    /// Also logs `step` when dropped, however the operation ends.
+    pub(crate) fn on_drop(mut self, step: &'static str) -> Self {
+        self.at_drop = Some(step);
+        self
     }
 
     /// Logs the time since the previous step (or the start) as `step`.
@@ -39,6 +48,14 @@ impl Stopwatch {
             "timing"
         );
         self.last = now;
+    }
+}
+
+impl Drop for Stopwatch {
+    fn drop(&mut self) {
+        if let Some(step) = self.at_drop.take() {
+            self.lap(step);
+        }
     }
 }
 

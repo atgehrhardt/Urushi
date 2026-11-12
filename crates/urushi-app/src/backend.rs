@@ -174,7 +174,15 @@ impl Backend {
         match effect {
             Effect::Request { body, followup } => {
                 self.runtime.spawn(async move {
+                    let started = std::time::Instant::now();
                     let result = client.request(body).await.map_err(|e| e.to_string());
+                    // How long the daemon took, to find what makes the GUI wait (UR-68).
+                    let ms = started.elapsed().as_millis();
+                    if ms >= SLOW_REQUEST_MS {
+                        tracing::info!(?followup, ms, ok = result.is_ok(), "slow request");
+                    } else {
+                        tracing::debug!(?followup, ms, ok = result.is_ok(), "request");
+                    }
                     send(&proxy, Msg::Response { followup, result });
                 });
             }
@@ -190,6 +198,9 @@ impl Backend {
         }
     }
 }
+
+/// A request that takes this long (ms) is logged at info level.
+const SLOW_REQUEST_MS: u128 = 1000;
 
 fn send(proxy: &EventLoopProxy<UserEvent>, msg: Msg) {
     // Fails only when the event loop has exited, at which point nothing matters.

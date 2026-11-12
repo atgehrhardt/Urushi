@@ -147,6 +147,7 @@ impl Service {
             let (service, created) = (Arc::clone(self), thread.clone());
             tokio::spawn(async move { service.adopt_project_base(&created).await });
         }
+        watch.lap("total");
         Ok(thread)
     }
 

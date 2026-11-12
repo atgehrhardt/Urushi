@@ -109,6 +109,7 @@ impl Service {
         if self.is_stopping() {
             return;
         }
+        let _watch = super::timing::Stopwatch::start("adopt project base").on_drop("total");
         let adopt = self.read(|s| {
             let p = s.project(project)?;
             // "First" is the oldest of the project's own threads (ids are time-ordered),
