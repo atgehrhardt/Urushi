@@ -83,8 +83,8 @@ pub async fn ensure_local_daemon(
 
 /// Stops the local daemon and waits until it has exited. `Ok(None)` if none was running.
 ///
-/// Every terminal it runs closes. The next daemon restores threads, tabs and layouts with
-/// fresh shells.
+/// Every terminal it runs closes. The next daemon brings the panes back from their
+/// restore points (ADR 0013).
 pub async fn stop_local_daemon(
     home: Option<&Path>,
     method: StopMethod,

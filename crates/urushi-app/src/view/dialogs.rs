@@ -40,6 +40,7 @@ pub(super) fn view(
             threads,
             restarting,
         } => super::daemon::confirm(state, theme, *terminals, *threads, *restarting),
+        Dialog::InstallUpdate(dialog) => super::updates::confirm(state, theme, dialog),
         Dialog::Task {
             board,
             column,
@@ -427,6 +428,7 @@ fn settings_dialog(
     let status = tailnet_status(&tailnet);
     let mut body = Node::column().width(Length::Fill(1.0)).gap(10.0);
     body = body.children(super::daemon::settings_section(state, theme));
+    body = body.children(super::updates::settings_rows(state, theme));
     if state.daemon_minor >= crate::issue::ISSUES_SINCE_MINOR {
         body = body.children(super::appearance::section(state, theme, look));
     }

@@ -69,3 +69,14 @@ pub(crate) fn device_name() -> String {
         os => format!("Urushi on {os}"),
     }
 }
+
+/// Mobile apps are installed from their own packages, never updated in place.
+pub(crate) const HAS_APP_UPDATES: bool = false;
+
+/// Never called on mobile.
+pub(crate) fn relaunch(_bundle: &str) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "mobile apps can't relaunch themselves",
+    ))
+}

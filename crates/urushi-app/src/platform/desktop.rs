@@ -80,6 +80,32 @@ pub(crate) fn open_path(path: &std::path::Path) -> std::io::Result<()> {
     command.arg(path).spawn().map(drop)
 }
 
+/// Whether the app can be updated in place (ADR 0049): only macOS has a released app
+/// bundle the daemon can replace.
+pub(crate) const HAS_APP_UPDATES: bool = cfg!(target_os = "macos");
+
+/// Opens the app bundle at `bundle` once this process has exited, so the new version
+/// starts as the old one quits (ADR 0049). A detached shell waits for this process,
+/// then runs `open`. The caller quits right after.
+pub(crate) fn relaunch(bundle: &str) -> std::io::Result<()> {
+    if !HAS_APP_UPDATES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "relaunching is only possible on macOS",
+        ));
+    }
+    let script = "while kill -0 \"$0\" 2>/dev/null; do sleep 0.2; done; exec open \"$1\"";
+    std::process::Command::new("/bin/sh")
+        .args(["-c", script])
+        .arg(std::process::id().to_string())
+        .arg(bundle)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(drop)
+}
+
 /// Opens a web page in the system's browser. Only `https` addresses: anything else
 /// (or an address the opener could read as an option) is refused.
 pub(crate) fn open_url(url: &str) -> std::io::Result<()> {

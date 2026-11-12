@@ -70,6 +70,8 @@ impl State {
                 .quick_terminal
                 .as_ref()
                 .map(convert::quick_terminal_to_proto),
+            // Not stored: the service adds it (`Service::workspace`).
+            update: None,
         }
     }
 

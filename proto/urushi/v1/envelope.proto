@@ -11,6 +11,7 @@ import "urushi/v1/quick_filters.proto";
 import "urushi/v1/remote.proto";
 import "urushi/v1/settings.proto";
 import "urushi/v1/terminal.proto";
+import "urushi/v1/updates.proto";
 import "urushi/v1/usage.proto";
 import "urushi/v1/workspace.proto";
 
@@ -139,6 +140,9 @@ message Request {
     RevokeLanDeviceRequest revoke_lan_device = 80;
     // Since 1.27.
     SetFolderColorRequest set_folder_color = 81;
+    // Since 1.28.
+    CheckForUpdatesRequest check_for_updates = 82;
+    InstallUpdateRequest install_update = 83;
   }
 }
 
@@ -185,6 +189,9 @@ message Response {
     QuickFilterSaved quick_filter_saved = 32;
     // Since 1.26.
     LanStatus lan_status = 33;
+    // Since 1.28.
+    UpdateCheck update_check = 34;
+    UpdateInstalled update_installed = 35;
   }
 }
 

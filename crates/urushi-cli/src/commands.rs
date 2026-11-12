@@ -49,7 +49,7 @@ pub(crate) async fn run(client: &Client, command: Command) -> Result<()> {
             print_tailnet(&client.tailnet_status().await?)
         }
         // Handled before connecting (see `main`).
-        Command::Daemon(_) => Ok(()),
+        Command::Daemon(_) | Command::Update(_) => Ok(()),
         Command::Ls => print_tree(&WorkspaceMirror::new(client.list_workspace(false).await?)),
         Command::Repo(cmd) => repo(client, cmd).await,
         Command::Project(cmd) => crate::organize::project(client, cmd).await,
@@ -370,6 +370,8 @@ fn patch(key: &str, value: &str) -> Result<v1::SettingsPatch> {
         "task-send" => p.task_draft = Some(!flag(value)?),
         "task-message-custom" => p.task_message_custom = Some(flag(value)?),
         "task-message" => p.task_message = Some(value.into()),
+        "check-updates" => p.check_updates_automatically = Some(flag(value)?),
+        "skipped-update" => p.skipped_update_version = Some(value.into()),
         other => bail!("unknown setting {other:?}"),
     }
     Ok(p)

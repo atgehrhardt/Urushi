@@ -13,6 +13,7 @@ mod look;
 mod organize;
 mod project_settings;
 mod render;
+mod update;
 
 use std::path::{Path, PathBuf};
 
@@ -93,6 +94,9 @@ enum Command {
     /// Restart or stop the local daemon, e.g. to switch to a newly installed version.
     #[command(subcommand)]
     Daemon(DaemonCmd),
+    /// Look for a new release of the macOS app, or install it.
+    #[command(subcommand)]
+    Update(update::UpdateCmd),
     /// Show or change settings.
     #[command(subcommand)]
     Settings(SettingsCmd),
@@ -107,7 +111,8 @@ enum Command {
 #[derive(Subcommand)]
 enum DaemonCmd {
     /// Stop the daemon and start this installation's daemon. Every running terminal
-    /// closes; threads, tabs and layouts come back with fresh shells.
+    /// closes; panes come back from their restore points (output, directory, programs,
+    /// agents' conversations).
     Restart {
         /// Don't ask for confirmation.
         #[arg(long)]
@@ -327,7 +332,9 @@ enum SettingsCmd {
     /// task-message-custom, task-message (your own; {key}, {title}, {url} and {show} are
     /// filled in per task), colors (a
     /// preset: urushi, ocean, forest, dusk, ember, mono; or five #rrggbb colors:
-    /// background, three glows, accent), logo (original, accent, mono or hidden).
+    /// background, three glows, accent), logo (original, accent, mono or hidden),
+    /// check-updates (look for a new release automatically), skipped-update (a version
+    /// not to be told about; empty forgets it).
     Set {
         /// Setting name.
         key: String,
@@ -370,6 +377,10 @@ async fn main() -> Result<()> {
     // Restarting must not start (or keep) a daemon first.
     if let Command::Daemon(cmd) = cli.command {
         return daemon::run(cli.home.as_deref(), cli.host.as_deref(), cmd).await;
+    }
+    // Installing restarts the daemon, so it manages its own connections.
+    if let Command::Update(cmd) = cli.command {
+        return update::run(cli.home.as_deref(), cli.host.as_deref(), cmd).await;
     }
     // Pairing and the keyring need no daemon (and must not start one).
     if let Command::Lan(cmd) = cli.command {

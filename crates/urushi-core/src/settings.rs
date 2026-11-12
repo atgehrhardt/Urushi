@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AgentSettings, Appearance, BranchPrefix};
+use crate::{AgentSettings, Appearance, BranchPrefix, Version};
 
 /// Global settings.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,6 +34,8 @@ pub struct Settings {
     pub agents: AgentSettings,
     /// How the app looks: its colors and logo.
     pub appearance: Appearance,
+    /// Updating the macOS app from GitHub Releases (ADR 0049).
+    pub updates: UpdateSettings,
 }
 
 impl Default for Settings {
@@ -48,7 +50,36 @@ impl Default for Settings {
             lan: LanSettings::default(),
             agents: AgentSettings::default(),
             appearance: Appearance::default(),
+            updates: UpdateSettings::default(),
         }
+    }
+}
+
+/// Settings for updating the macOS app from GitHub Releases (ADR 0049).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpdateSettings {
+    /// Look for a new release when the daemon starts and every few hours. Default:
+    /// `true`. Checking by hand works either way.
+    pub check_automatically: bool,
+    /// A release the user chose not to be told about again ("Later"). A newer release
+    /// is offered as usual.
+    pub skipped_version: Option<Version>,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            check_automatically: true,
+            skipped_version: None,
+        }
+    }
+}
+
+impl UpdateSettings {
+    /// Whether `latest` should be offered: it isn't the release the user skipped.
+    pub fn offers(&self, latest: Version) -> bool {
+        self.skipped_version != Some(latest)
     }
 }
 
@@ -165,6 +196,22 @@ mod tests {
         assert!(!s.lan.enabled, "LAN access is off by default");
         assert_eq!(s.lan.port, LanSettings::DEFAULT_PORT);
         assert!(s.update_base_from_remote);
+        assert!(
+            s.updates.check_automatically,
+            "update checks are on by default"
+        );
+        assert_eq!(s.updates.skipped_version, None);
+    }
+
+    #[test]
+    fn a_skipped_release_is_not_offered_but_a_newer_one_is() {
+        let skipping = UpdateSettings {
+            skipped_version: Some(Version::new(0, 1, 7)),
+            ..UpdateSettings::default()
+        };
+        assert!(!skipping.offers(Version::new(0, 1, 7)));
+        assert!(skipping.offers(Version::new(0, 1, 8)));
+        assert!(UpdateSettings::default().offers(Version::new(0, 1, 7)));
     }
 
     #[test]
@@ -199,5 +246,10 @@ mod tests {
             s.update_base_from_remote,
             "settings saved before the field existed start with it on"
         );
+        assert!(s.updates.check_automatically);
+        let skipped: Settings =
+            serde_json::from_str(r#"{"updates": {"skipped_version": "0.1.7"}}"#).unwrap();
+        assert_eq!(skipped.updates.skipped_version, Some(Version::new(0, 1, 7)));
+        assert!(skipped.updates.check_automatically);
     }
 }

@@ -267,6 +267,30 @@ fn settings_round_trip() {
 }
 
 #[test]
+fn update_settings_round_trip_and_default_on() {
+    let mut s = Settings::default();
+    s.updates.check_automatically = false;
+    s.updates.skipped_version = Some(urushi_core::Version::new(0, 1, 7));
+    assert_eq!(settings_from_proto(&settings_to_proto(&s)).unwrap(), s);
+    // An older daemon sends none: checks are on, nothing is skipped.
+    let mut old = settings_to_proto(&Settings::default());
+    old.updates = None;
+    assert_eq!(
+        settings_from_proto(&old).unwrap().updates,
+        urushi_core::UpdateSettings::default()
+    );
+    // Unset `check_automatically` means on; a garbled skipped version is forgotten.
+    let partial = v1::UpdateSettings {
+        check_automatically: None,
+        skipped_version: "soon".into(),
+    };
+    assert_eq!(
+        update_settings_from_proto(Some(&partial)),
+        urushi_core::UpdateSettings::default()
+    );
+}
+
+#[test]
 fn agents_round_trip_and_unknown_values_mean_a_plain_shell() {
     for agent in urushi_core::Agent::ALL {
         assert_eq!(agent_from_proto(agent_to_proto(agent).into()), Some(agent));
