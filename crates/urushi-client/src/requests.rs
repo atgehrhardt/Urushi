@@ -65,6 +65,20 @@ impl Client {
         self.ok(body, "MoveFolder").await
     }
 
+    /// Sets the color of a project's sidebar section; `LabelColor::Unspecified` clears
+    /// it. Needs protocol 1.27.
+    pub async fn set_project_color(
+        &self,
+        project_id: &str,
+        color: v1::LabelColor,
+    ) -> Result<(), ClientError> {
+        let body = Body::SetFolderColor(v1::SetFolderColorRequest {
+            folder_id: project_id.into(),
+            color: color.into(),
+        });
+        self.ok(body, "SetFolderColor").await
+    }
+
     /// Moves a thread to `index` in the workspace's thread list (0 is first; clamped to
     /// the end). The sidebar keeps this order inside each project, pin and status group.
     /// Needs protocol 1.24.

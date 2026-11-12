@@ -1,8 +1,10 @@
 //! Projects (user-made groups of threads) and the organization of threads: titles,
-//! pins, statuses and which project a thread is filed under. None of this touches
-//! worktrees or branches.
+//! pins, statuses, unread marks, notes, which project a thread is filed under, and each
+//! project's color. None of this touches worktrees or branches.
 
-use urushi_core::{Project, ProjectId, ProjectSettings, Status, ThreadId, order, project};
+use urushi_core::{
+    LabelColor, Project, ProjectId, ProjectSettings, Status, ThreadId, order, project, thread_notes,
+};
 
 use super::{Service, ServiceError, ServiceResult, new_uuid, now};
 
@@ -26,6 +28,10 @@ pub struct ThreadUpdate {
     pub status: Option<Assign<Status>>,
     /// File under a project, or ungroup.
     pub project: Option<Assign<ProjectId>>,
+    /// Mark unread or read.
+    pub unread: Option<bool>,
+    /// Replace the notes (empty clears them).
+    pub notes: Option<String>,
 }
 
 /// Longest project name, in characters.
@@ -54,6 +60,7 @@ impl Service {
             name: project_name(name)?,
             created_at: now(),
             settings: ProjectSettings::default(),
+            color: None,
         };
         self.mutate(|state| {
             state.projects.push(project.clone());
@@ -66,6 +73,14 @@ impl Service {
         let name = project_name(name)?;
         self.mutate(|state| {
             state.project_mut(id)?.name = name;
+            Ok(())
+        })
+    }
+
+    /// Sets or clears (`None`) the color of a project's sidebar section.
+    pub fn set_project_color(&self, id: ProjectId, color: Option<LabelColor>) -> ServiceResult<()> {
+        self.mutate(|state| {
+            state.project_mut(id)?.color = color;
             Ok(())
         })
     }
@@ -113,6 +128,12 @@ impl Service {
             Some("") => return Err(ServiceError::Invalid("title must not be empty".into())),
             other => other.map(str::to_owned),
         };
+        let notes = update
+            .notes
+            .as_deref()
+            .map(thread_notes)
+            .transpose()
+            .map_err(|e| ServiceError::Invalid(e.to_string()))?;
         self.mutate(|state| {
             if let Some(Assign::Set(project)) = update.project {
                 state.project(project)?;
@@ -145,6 +166,12 @@ impl Service {
                 Some(Assign::Set(project)) => thread.project = Some(project),
                 Some(Assign::Clear) => thread.project = None,
                 None => {}
+            }
+            if let Some(unread) = update.unread {
+                thread.unread = unread;
+            }
+            if let Some(notes) = notes {
+                thread.notes = notes;
             }
             Ok(())
         })

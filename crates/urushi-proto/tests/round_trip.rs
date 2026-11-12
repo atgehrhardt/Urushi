@@ -182,6 +182,12 @@ fn all_request_kinds() {
             pinned: Some(true),
             status: Some(String::new()),
             folder_id: Some("f".into()),
+            unread: Some(true),
+            notes: Some("Check the logs\nfirst".into()),
+        }),
+        B::SetFolderColor(v1::SetFolderColorRequest {
+            folder_id: "f".into(),
+            color: v1::LabelColor::Teal.into(),
         }),
         B::CreateFolder(v1::CreateFolderRequest {
             name: "Billing".into(),
@@ -249,6 +255,10 @@ fn all_request_kinds() {
         B::CancelLanPairing(v1::CancelLanPairingRequest {}),
         B::RevokeLanDevice(v1::RevokeLanDeviceRequest {
             device_id: "d".into(),
+        }),
+        B::CheckForUpdates(v1::CheckForUpdatesRequest {}),
+        B::InstallUpdate(v1::InstallUpdateRequest {
+            version: "0.1.7".into(),
         }),
         B::Ping(v1::PingRequest {}),
     ];
@@ -329,6 +339,7 @@ fn all_response_kinds() {
                 base_branch: "main".into(),
                 base_thread: None,
             }),
+            ..Default::default()
         }),
         O::Workspace(v1::Workspace {
             folders: vec![v1::Folder::default()],
@@ -357,6 +368,23 @@ fn all_response_kinds() {
     for (i, outcome) in outcomes.into_iter().enumerate() {
         round_trip(&envelope::response(i as u64, outcome));
     }
+}
+
+#[test]
+fn folder_colors_and_thread_notes_round_trip() {
+    let workspace = response::Outcome::Workspace(v1::Workspace {
+        folders: vec![v1::Folder {
+            color: v1::LabelColor::Orange.into(),
+            ..Default::default()
+        }],
+        threads: vec![v1::Thread {
+            unread: true,
+            notes: "Ship after the demo".into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
+    round_trip(&envelope::response(1, workspace));
 }
 
 #[test]
@@ -541,4 +569,47 @@ fn lan_status_round_trips() {
         fingerprint: "0011-2233-4455-6677".into(),
     });
     round_trip(&envelope::response(1, outcome));
+}
+
+#[test]
+fn update_messages_round_trip() {
+    use v1::response::Outcome as O;
+    round_trip(&envelope::response(
+        1,
+        O::UpdateCheck(v1::UpdateCheck {
+            current_version: "0.1.6".into(),
+            latest_version: "0.1.7".into(),
+            available: true,
+            release_url: "https://github.com/o/r/releases/tag/v0.1.7".into(),
+        }),
+    ));
+    round_trip(&envelope::response(
+        2,
+        O::UpdateInstalled(v1::UpdateInstalled {
+            version: "0.1.7".into(),
+            bundle_path: "/Applications/Urushi.app".into(),
+        }),
+    ));
+    round_trip(&envelope::response(
+        3,
+        O::Settings(v1::Settings {
+            updates: Some(v1::UpdateSettings {
+                check_automatically: Some(false),
+                skipped_version: "0.1.7".into(),
+            }),
+            ..Default::default()
+        }),
+    ));
+    round_trip(&envelope::event(v1::event::Body::WorkspaceChanged(
+        v1::Workspace {
+            revision: 4,
+            update: Some(v1::AvailableUpdate {
+                version: "0.1.7".into(),
+                current_version: "0.1.6".into(),
+                release_url: "https://github.com/o/r/releases/tag/v0.1.7".into(),
+                installing: true,
+            }),
+            ..Default::default()
+        },
+    )));
 }

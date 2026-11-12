@@ -35,7 +35,21 @@ pub(super) fn update_thread(
             pinned: r.pinned,
             status,
             project,
+            unread: r.unread,
+            notes: r.notes,
         },
+    )?;
+    Ok(ok())
+}
+
+/// `SetFolderColor`: an unspecified (or unknown) color clears it.
+pub(super) fn set_folder_color(
+    service: &Service,
+    r: &v1::SetFolderColorRequest,
+) -> ServiceResult<Outcome> {
+    service.set_project_color(
+        parse(&r.folder_id, "folder_id")?,
+        convert::color_from_proto(r.color),
     )?;
     Ok(ok())
 }

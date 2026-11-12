@@ -59,7 +59,16 @@ fn source(board: &v1::Board) -> String {
     } else {
         String::new()
     };
-    format!("  · Jira {} at {} ({state}{dropped})", j.name, j.site)
+    // Which sign-in syncs it (1.29), when the daemon says.
+    let account = if j.account.is_empty() {
+        String::new()
+    } else {
+        format!(" as {}", j.account)
+    };
+    format!(
+        "  · Jira {} at {}{account} ({state}{dropped})",
+        j.name, j.site
+    )
 }
 
 /// "  #ui #backend" for a task's tags.

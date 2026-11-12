@@ -1,8 +1,8 @@
-# Feature: Organizing threads (projects, pins, statuses)
+# Feature: Organizing threads (projects, pins, statuses, unread, notes, colors)
 
 - **Status:** Shipped
-- **Owners (crates):** `urushi-core` (`project`, `status`, `thread`, `order`), `urushi-daemon` (`service/projects.rs`, `server/organize.rs`, `store.rs`), `urushi-client` (`thread_links.rs`), `urushi-app` (`organize.rs`, `update/organize.rs`, `update/sidebar_drag.rs`, `view/projects.rs`, `view/thread_card.rs`, `brand_icons.rs`, `view/menu/`, `view/new_thread.rs`), `urushi-ui` (positioned nodes, secondary click, drag and drop, selectors), `urushi-cli`
-- **Related ADRs:** [0010](../adr/0010-repos-and-projects.md), [0002](../adr/0002-daemon-source-of-truth.md), [0036](../adr/0036-pull-requests-from-jira-dev-info-and-local-links.md), [0038](../adr/0038-reorder-threads-in-the-stored-list.md)
+- **Owners (crates):** `urushi-core` (`project`, `status`, `thread`, `order`), `urushi-daemon` (`service/projects.rs`, `server/organize.rs`, `store.rs`), `urushi-client` (`thread_links.rs`), `urushi-app` (`organize.rs`, `update/organize.rs`, `update/sidebar_drag.rs`, `update/thread_extras.rs`, `view/projects.rs`, `view/thread_card/`, `view/thread_notes.rs`, `brand_icons.rs`, `view/menu/`, `view/new_thread.rs`), `urushi-ui` (positioned nodes, secondary click, drag and drop, selectors), `urushi-cli`
+- **Related ADRs:** [0010](../adr/0010-repos-and-projects.md), [0002](../adr/0002-daemon-source-of-truth.md), [0036](../adr/0036-pull-requests-from-jira-dev-info-and-local-links.md), [0038](../adr/0038-reorder-threads-in-the-stored-list.md), [0048](../adr/0048-thread-unread-notes-and-project-colors-in-the-daemon.md)
 
 ## What it does
 - **Repos** are git repositories (what used to be called projects). **Projects** are groups of threads you make yourself, and can hold threads from any repo. A thread is in at most one project; the rest are listed under **No project**, below the projects. Projects are listed in the order you give them; a new project goes at the bottom.
@@ -15,7 +15,10 @@
     ([task boards](task-boards.md)), or a Jira issue's open one (else its newest) from
     Jira's development info ([Jira boards](jira-boards.md)).
   - **Repos:** each repo with its path, thread count, and **+** for a new thread.
-- **Right-click** (two-finger click on a trackpad) a thread for: Rename…, Pin/Unpin, Status ›, Move to project ›, Move up, Move down, Delete thread…. Move up/down swap it with its neighbour in its group, and only appear where it has one. Right-click a project for: New thread…, Rename…, Project settings… (its [parent branch](project-parent-branch.md), protocol 1.18), Move up, Move down, Delete project. Move up/down only appear where the project can go that way. Deleting a project keeps its threads, which become ungrouped.
+- **Right-click** (two-finger click on a trackpad) a thread for: Rename…, Pin/Unpin, Mark as unread/read, Add/Edit notes…, Status ›, Move to project ›, Move up, Move down, Delete thread…. Move up/down swap it with its neighbour in its group, and only appear where it has one. Right-click a project for: New thread…, Rename…, Project settings… (its [parent branch](project-parent-branch.md), protocol 1.18), Color ›, Move up, Move down, Delete project. Move up/down only appear where the project can go that way. Deleting a project keeps its threads, which become ungrouped.
+- **Unread** (UR-63, ADR 0048): *Mark as unread* makes a thread's title bold with an accent dot before it, on every client, until the thread is opened (selected) again; *Mark as read* clears it by hand. Marking the open thread unread keeps it unread until it is opened again. This is separate from [agent attention](agent-attention.md), which marks threads whose agent finished or waits.
+- **Notes** (UR-64): *Add notes…* / *Edit notes…* opens an editor for several lines of plain text. Save (or Cmd/Ctrl+Enter) keeps them, and Cancel or Esc leaves them as they were. A card with notes shows a small note mark after its title, and the notes' first non-blank line under the repo and branch, cut to the card's width. Saving empty notes removes them.
+- **Project colors** (UR-65): a project's *Color ›* page offers None and the board palette (red, orange, yellow, green, teal, blue, purple, pink, gray). A colored project shows a dot of its color before its name and a stripe of it down the left edge of each of its thread cards. "No project" has no color.
 - **Statuses are user-defined**: the Status page lists every status in use, plus "New status…" and "Clear status". A status (and its sidebar section) exists while some thread has it.
 - **Drag** a thread onto a project, or onto "No project", to move it.
 - **Drag a thread onto another thread** to reorder: it takes that thread's place, so it lands below a thread further down and above one further up, and it joins that thread's group (its project, pin and status). Dropped on a pinned thread, it is pinned and keeps its status. While dragging, the dragged thread is highlighted and an accent line shows where it would land. The parent-branch thread takes no drops.
@@ -36,14 +39,33 @@
   glyphs, pre-rendered as white 48 px masks in `assets/brands/` and tinted to
   `theme.text_muted`, each tint cached under its own image id. A click sends
   `Msg::OpenUrl` → `Effect::OpenUrl`, and the platform opens only `https://` URLs.
-- CLI: `urushi project new|rename|rm|move <project> <index>`, `urushi thread pin|unpin|status|move`, `urushi thread reorder <thread> <index>`, `urushi thread new <repo> --project <id>`; `urushi ls` shows pins, statuses and projects.
+- Unread, notes and colors (ADR 0048, protocol 1.27):
+  - Wire: `Thread.{unread, notes}`, `UpdateThread.{optional unread, optional notes}`, `Folder.color` (`LabelColor`), and `SetFolderColor{folder_id, color}`.
+  - Validation: `urushi_core::thread_notes` drops trailing whitespace and refuses more than `MAX_THREAD_NOTES` (10 000) characters. `update_thread` checks it before changing anything, so a refused update changes nothing. `Service::set_project_color` sets or clears the color, and an unknown project is `NOT_FOUND`.
+  - Storage: the stored JSON gets `unread`, `notes` and a project's `color` only when they are set, so older workspaces load unchanged.
+  - App:
+    - `ThreadMsg` (`msg/threads.rs`) is handled in `update/thread_extras.rs`.
+    - `select_thread` calls `mark_read`, which sends `UpdateThread{unread: false}` only for an unread thread.
+    - The notes editor is `Dialog::ThreadNotes` with `Field::ThreadNotes` (`view/thread_notes.rs`).
+    - The thread menu lives in `view/menu/thread.rs`. The Color page (`view/menu/mod.rs::color_page`) is shared with tasks and columns.
+    - `view/thread_card/title.rs` draws the unread dot, the note mark (drawn, since the bundled fonts have no note glyph) and the notes' first line.
+    - `view/thread_card/mod.rs::with_stripe` draws the project's stripe. `view/projects.rs` draws the header dot and passes the color to its cards.
+    - Older daemons (minor < 27) get none of the menu items and are never sent the requests (`AppState::daemon_supports_thread_extras`).
+- CLI: `urushi project new|rename|rm|move <project> <index>`, `urushi project color <project> <color|none>`, `urushi thread unread|read <thread>`, `urushi thread notes <thread> [--set <text>|--set -|--clear]` (with neither option, it prints them), `urushi thread pin|unpin|status|move`, `urushi thread reorder <thread> <index>`, `urushi thread new <repo> --project <id>`; `urushi ls` shows pins, statuses, projects (with their color), `[unread]` and `[notes]`.
 
 ## Invariants
 - Organizing never touches worktrees, branches or terminals (`service/projects.rs` only edits state; e2e test checks the worktree survives deleting the project).
+- Unread marks, notes and colors are only organization: they never touch worktrees, branches or terminals (`tests/thread_extras.rs` checks the worktree survives).
 - An `UpdateThread` is all or nothing: if any field is invalid, nothing changes (`threads_and_agents.rs`).
 - Old workspaces load unchanged (`store.rs` and `thread.rs` tests).
 
 ## Tests
+- Unread, notes and colors:
+  - `urushi-core/src/thread.rs`, `thread/notes.rs` and `project.rs`: validation, and the new fields stored only when set.
+  - `urushi-proto`: conversions and round trips, including an unknown color reading as none.
+  - `urushi-daemon/tests/thread_extras.rs`: over the wire, setting and clearing each one, too-long notes refusing the whole update, an unknown project, and everything surviving a restart.
+  - `urushi-app/src/update/tests/thread_extras.rs`: the menu items (and none for older daemons), opening an unread thread marking it read once, the notes editor saving and cancelling, the Color page, and how cards and headers look.
+  - Snapshot scenarios `thread-extras`, `thread-notes` and `project-color-menu`.
 - `crates/urushi-core/src/{status,thread}.rs`: validation; loading threads saved before the rename. `order.rs` and `project.rs`: moving items and projects (up, down, clamped, unknown).
 - `crates/urushi-daemon/src/store.rs`: loading old documents. `tests/threads_and_agents.rs::threads_are_organized_into_projects_with_pins_and_statuses`: the whole flow over the wire, including a daemon restart. `tests/project_order.rs` and `tests/thread_order.rs`: reordering over the wire, `NOT_FOUND`, a thread keeping its project, pin and status, and the order surviving a restart.
 - `crates/urushi-client/src/workspace.rs`: grouping and the status list. `thread_links.rs`: a thread's issue and pull request (open first, invalid links ignored, the first linked task wins).
@@ -53,6 +75,9 @@
 - Snapshot scenarios `menu`, `menu-status`, `drag`, `drag-thread`, `drag-project`, `repos`, `new-thread-base`, `new-thread-project`, `thread-links` (cards with Jira and GitHub marks; see the GUI doc).
 
 ## Limitations and follow-ups
+- Notes are plain text, without formatting or history. Two clients editing the same notes at once: the last Save wins.
+- Nothing marks a thread unread automatically. A finished or waiting agent shows through [agent attention](agent-attention.md) instead.
+- Projects can't be colored from the new-project prompt; color one from its menu after creating it.
 - Statuses can't be reordered; they sort alphabetically.
 - A dragged project can't be dropped onto "No project" to send it to the bottom; drop it on the last project instead.
 - A dragged project or thread doesn't scroll a sidebar that is taller than the window.

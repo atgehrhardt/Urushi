@@ -137,6 +137,8 @@ pub enum Field {
     ThreadBranch,
     /// A one-line prompt (rename, new status, new project).
     Prompt,
+    /// A thread's notes.
+    ThreadNotes,
     /// Settings: branch prefix.
     BranchPrefix,
     /// Settings: default shell.
@@ -272,6 +274,13 @@ pub enum Dialog {
         /// For a task: a new thread, or a new tab in one that exists.
         target: ThreadTarget,
     },
+    /// A thread's notes, edited over several lines (ADR 0048).
+    ThreadNotes {
+        /// Thread id.
+        thread: String,
+        /// The notes.
+        notes: TextField,
+    },
     /// A one-line text prompt.
     Prompt {
         /// What it's for.
@@ -306,6 +315,8 @@ pub enum Dialog {
         /// The Appearance section's draft, shown live until Save or Cancel.
         look: Box<crate::appearance::LookDraft>,
     },
+    /// Confirm updating the app, which restarts the daemon (ADR 0049).
+    InstallUpdate(Box<crate::updates::UpdateDialog>),
     /// Confirm restarting the local daemon, which closes every terminal.
     RestartDaemon {
         /// Open terminals that will close.
@@ -390,6 +401,9 @@ pub enum Dialog {
     },
     /// Choose a Jira board to import.
     ImportJira {
+        /// The sign-in whose site's boards are listed (`JiraAccount.key`; empty: the
+        /// daemon's first).
+        account: String,
         /// Narrows the list by name (sent to Jira with Enter).
         query: TextField,
         /// The boards found; `None` while loading.
@@ -513,8 +527,9 @@ pub struct AppState {
     pub drag: Option<Drag>,
     /// Settings, once loaded.
     pub settings: Option<v1::Settings>,
-    /// Who the daemon is signed in to Jira as, once asked (protocol 1.12).
-    pub jira: Option<v1::JiraAccount>,
+    /// The daemon's Jira sign-ins, once asked (protocol 1.12; several since 1.29, ADR
+    /// 0051). Only connected ones.
+    pub jira_accounts: Vec<v1::JiraAccount>,
     /// Tailnet status, once loaded.
     pub tailnet: Option<v1::TailnetStatus>,
     /// LAN access status, once loaded (only from the daemon on this machine).
@@ -582,6 +597,8 @@ pub struct AppState {
     pub window_height: f32,
     /// When the setup wizard may open.
     pub setup: crate::task_agent::SetupGate,
+    /// Checks for app updates asked for in Settings (ADR 0049).
+    pub update_checks: crate::updates::UpdateChecks,
 }
 
 impl AppState {
@@ -606,7 +623,7 @@ impl AppState {
             selection: None,
             drag: None,
             settings: None,
-            jira: None,
+            jira_accounts: Vec::new(),
             tailnet: None,
             lan: None,
             lan_hosts: Vec::new(),
@@ -638,6 +655,7 @@ impl AppState {
             now_ms: 0,
             window_height: 0.0,
             setup: crate::task_agent::SetupGate::default(),
+            update_checks: crate::updates::UpdateChecks::default(),
         }
     }
 
@@ -689,6 +707,11 @@ impl AppState {
         self.daemon_minor >= crate::board::JIRA_SINCE_MINOR
     }
 
+    /// Whether the daemon keeps several Jira sign-ins (protocol 1.29, ADR 0051).
+    pub fn daemon_supports_jira_accounts(&self) -> bool {
+        self.daemon_minor >= crate::board::JIRA_ACCOUNTS_SINCE_MINOR
+    }
+
     /// Whether the daemon creates epics on Jira boards, as cards (protocol 1.15).
     pub fn daemon_supports_epic_cards(&self) -> bool {
         self.daemon_minor >= crate::board::EPIC_CARDS_SINCE_MINOR
@@ -719,6 +742,12 @@ impl AppState {
     /// Whether the daemon can reorder projects (protocol 1.11).
     pub fn daemon_supports_project_order(&self) -> bool {
         self.daemon_minor >= crate::organize::PROJECT_ORDER_SINCE_MINOR
+    }
+
+    /// Whether the daemon keeps unread marks, thread notes and project colors (protocol
+    /// 1.27).
+    pub fn daemon_supports_thread_extras(&self) -> bool {
+        self.daemon_minor >= crate::organize::THREAD_EXTRAS_SINCE_MINOR
     }
 
     /// Whether the daemon can reorder threads (protocol 1.24).

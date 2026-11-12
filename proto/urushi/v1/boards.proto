@@ -72,6 +72,9 @@ message JiraBoardSource {
   // Its quick filters, as Jira shows them above the board; QueryJiraFilter evaluates
   // them. Since 1.13.
   repeated JiraQuickFilter quick_filters = 10;
+  // The key of the Jira sign-in that syncs it (JiraAccount.key); empty for a board
+  // imported before 1.29, which uses the sign-in for its site. Since 1.29.
+  string account = 11;
 }
 
 // A Jira board's quick filter. Since 1.13.

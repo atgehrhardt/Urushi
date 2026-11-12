@@ -14,9 +14,10 @@ use std::time::{Duration, Instant};
 use urushi_core::BoardId;
 use urushi_core::board::PullRequest;
 
+use super::jira::account_for;
 use super::jira_sync::backoff;
 use super::{Service, ServiceResult, blocking, lock};
-use crate::jira::JiraError;
+use crate::jira::{Account, JiraError};
 
 /// How often a linked issue's pull requests are read while a client watches.
 pub const PR_ACTIVE_INTERVAL: Duration = Duration::from_secs(60);
@@ -30,8 +31,8 @@ const TICK: Duration = Duration::from_secs(5);
 /// When each linked issue's pull requests were last read, and the backoff.
 #[derive(Default)]
 pub(crate) struct DevReads {
-    /// By Jira issue id.
-    last: HashMap<String, Instant>,
+    /// By board and Jira issue id (two sites can share an id).
+    last: HashMap<(BoardId, String), Instant>,
     wait_until: Option<Instant>,
     failures: u32,
     running: bool,
@@ -50,10 +51,15 @@ impl Service {
         } else {
             PR_IDLE_INTERVAL
         };
+        let accounts = self.jira.accounts();
+        // Only boards a sign-in reads: the others can't be asked.
         let linked: Vec<(BoardId, String)> = lock(&self.state)
             .boards
             .iter()
-            .filter(|b| b.jira().is_some())
+            .filter(|b| {
+                b.jira()
+                    .is_some_and(|j| account_for(&accounts, j).is_some())
+            })
             .flat_map(|b| b.linked_issue_ids().into_iter().map(move |id| (b.id, id)))
             .collect();
         let mut dev = lock(&self.jira.dev);
@@ -62,14 +68,14 @@ impl Service {
             return None;
         }
         // Forget unlinked issues, so linking one again reads it at once.
-        let ids: HashSet<&str> = linked.iter().map(|(_, id)| id.as_str()).collect();
-        dev.last.retain(|id, _| ids.contains(id.as_str()));
+        let ids: HashSet<&(BoardId, String)> = linked.iter().collect();
+        dev.last.retain(|at, _| ids.contains(at));
         let mut due: Vec<(BoardId, String)> = linked
             .into_iter()
-            .filter(|(_, id)| dev.last.get(id).is_none_or(|t| now - *t >= every))
+            .filter(|at| dev.last.get(at).is_none_or(|t| now - *t >= every))
             .collect();
         // Never read first, then the longest ago.
-        due.sort_by_key(|(_, id)| dev.last.get(id).copied());
+        due.sort_by_key(|at| dev.last.get(at).copied());
         due.truncate(PR_PER_ROUND);
         dev.running = true;
         Some(due)
@@ -77,18 +83,31 @@ impl Service {
 
     /// Reads the pull requests of the linked Jira issues that are due, and keeps what
     /// changed; also clears those of issues no longer linked. Returns how many issues
-    /// were read. Without a Jira sign-in it does nothing.
+    /// were read. Each issue is asked about with its board's sign-in; without any, it
+    /// does nothing.
     pub async fn read_pull_requests(&self) -> ServiceResult<usize> {
-        let Some(account) = self.jira.account() else {
+        let accounts = self.jira.accounts();
+        if accounts.is_empty() {
             return Ok(0);
-        };
+        }
         let Some(due) = self.due_pull_requests() else {
             return Ok(0);
+        };
+        // Each due issue with the sign-in of its board.
+        let due: Vec<(BoardId, String, Account)> = {
+            let state = lock(&self.state);
+            due.into_iter()
+                .filter_map(|(board, id)| {
+                    let jira = state.boards.iter().find(|b| b.id == board)?.jira()?;
+                    let account = account_for(&accounts, jira)?.clone();
+                    Some((board, id, account))
+                })
+                .collect()
         };
         let api = self.jira.api.clone();
         let (found, error) = blocking(move || {
             let mut found: Found = Vec::new();
-            for (board, id) in due {
+            for (board, id, account) in due {
                 match api.pull_requests(&account, &id) {
                     Ok(prs) => found.push((board, id, prs)),
                     // Stop at the first failure: the rest would most likely fail too.
@@ -104,8 +123,8 @@ impl Service {
         let mut dev = lock(&self.jira.dev);
         dev.running = false;
         let now = Instant::now();
-        for (_, id, _) in &found {
-            dev.last.insert(id.clone(), now);
+        for (board, id, _) in &found {
+            dev.last.insert((*board, id.clone()), now);
         }
         if let Some(e) = error {
             tracing::debug!(error = %e, "reading pull requests failed");

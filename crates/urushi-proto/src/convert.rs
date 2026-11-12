@@ -12,6 +12,7 @@ use urushi_core::{
     Agent, AgentMode, AgentSettings, Axis, BranchName, BranchPrefix, Direction, LanSettings,
     Layout, PaneId, PromptDelivery, Repo, RepoSettingsOverrides, Settings, Slug, Status, Tab,
     TabId, TailnetSettings, TaskMessage, Thread, ThreadKind, ThreadState, Timestamp,
+    UpdateSettings,
 };
 
 use crate::v1;
@@ -263,6 +264,8 @@ pub fn thread_to_proto(t: &Thread) -> v1::Thread {
             .unwrap_or_default(),
         project_base: t.is_project_base(),
         attached_checkout: t.is_attached(),
+        unread: t.unread,
+        notes: t.notes.clone(),
     }
 }
 
@@ -311,6 +314,8 @@ pub fn thread_from_proto(t: &v1::Thread) -> Result<Thread, ConvertError> {
         } else {
             ThreadKind::Branch
         },
+        unread: t.unread,
+        notes: t.notes.clone(),
     })
 }
 
@@ -353,6 +358,27 @@ pub fn settings_to_proto(s: &Settings) -> v1::Settings {
             task_message: s.agents.task_message.text.clone(),
         }),
         appearance: Some(appearance_to_proto(s.appearance)),
+        updates: Some(update_settings_to_proto(&s.updates)),
+    }
+}
+
+/// Core update settings → wire.
+pub fn update_settings_to_proto(u: &UpdateSettings) -> v1::UpdateSettings {
+    v1::UpdateSettings {
+        check_automatically: Some(u.check_automatically),
+        skipped_version: u.skipped_version.map(|v| v.to_string()).unwrap_or_default(),
+    }
+}
+
+/// Wire update settings → core. Unset (an older daemon) gives the defaults, and a
+/// skipped version that doesn't parse is forgotten rather than refused.
+pub fn update_settings_from_proto(u: Option<&v1::UpdateSettings>) -> UpdateSettings {
+    let Some(u) = u else {
+        return UpdateSettings::default();
+    };
+    UpdateSettings {
+        check_automatically: u.check_automatically.unwrap_or(true),
+        skipped_version: u.skipped_version.parse().ok(),
     }
 }
 
@@ -379,6 +405,7 @@ pub fn settings_from_proto(s: &v1::Settings) -> Result<Settings, ConvertError> {
         },
         agents: agent_settings_from_proto(s.agents.clone().unwrap_or_default()),
         appearance: appearance_from_proto(s.appearance.as_ref()),
+        updates: update_settings_from_proto(s.updates.as_ref()),
     })
 }
 

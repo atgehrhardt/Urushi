@@ -83,7 +83,7 @@ async fn signed_in(home: &std::path::Path) -> (Daemon, Client, Arc<FakeJira>, St
     let daemon = start(home, jira.clone()).await;
     let (client, _events) = daemon.connect().await;
     client.connect_jira("acme", "a@b.c", TOKEN).await.unwrap();
-    let imported = client.import_jira_board(7).await.unwrap();
+    let imported = client.import_jira_board("", 7).await.unwrap();
     client.sync_board(&imported.id).await.unwrap();
     (daemon, client, jira, imported.id)
 }

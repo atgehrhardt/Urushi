@@ -10,7 +10,7 @@ use urushi_ui::{Key, Length, Node, Theme, key};
 use super::super::labels::{color, tag_color};
 use super::tasks::dot_item;
 use super::{back, check, item, separator};
-use crate::filter::{Dim, board_dims, board_values};
+use crate::filter::Dim;
 use crate::msg::{FilterMsg, Msg};
 use crate::organize::MenuPage;
 use crate::state::AppState;
@@ -20,9 +20,10 @@ const VISIBLE: usize = 10;
 /// Height of one menu row (as `item` draws it), with the gap under it.
 const ROW: f32 = 29.0;
 
-/// Key of a filter page's scrolling list.
-pub(crate) fn filter_scroll_key() -> Key {
-    key(&["filter-values"])
+/// Key of a filter page's scrolling list: one per field, so each page opens where it
+/// was left, not where another one was.
+pub(crate) fn filter_scroll_key(dim: Dim) -> Key {
+    key(&["filter-values", dim.name()])
 }
 
 /// The menu's rows for `page`.
@@ -92,7 +93,7 @@ fn main_page(state: &AppState, theme: &Theme, board: &urushi_client::v1::Board) 
     if !board.quick_filters.is_empty() {
         items.push(separator(theme));
     }
-    for dim in board_dims(board) {
+    for dim in state.board.filtered.dims(board) {
         let chosen = f
             .chosen
             .get(&dim)
@@ -143,8 +144,19 @@ fn values_page(
     scroll: &HashMap<Key, f32>,
 ) -> Vec<Node<Msg>> {
     let f = &state.board.filter;
-    let rows: Vec<Node<Msg>> = board_values(board, dim)
+    let values = state.board.filtered.values(board, dim);
+    // Values chosen that no task has any more stay, so they can be unticked.
+    let gone = f
+        .chosen
+        .get(&dim)
         .into_iter()
+        .flatten()
+        .filter(|v| !values.iter().any(|(value, _)| value == *v))
+        .map(|v| (v.clone(), v.clone()));
+    let rows: Vec<Node<Msg>> = values
+        .iter()
+        .cloned()
+        .chain(gone)
         .map(|(value, label)| {
             let fill = match dim {
                 Dim::Label => Some(tag_color(theme, &label)),
@@ -168,10 +180,10 @@ fn values_page(
     if rows.len() > VISIBLE {
         #[allow(clippy::cast_precision_loss, reason = "a handful of rows")]
         let height = VISIBLE as f32 * ROW;
-        let offset = scroll.get(&filter_scroll_key()).copied().unwrap_or(0.0);
+        let offset = scroll.get(&filter_scroll_key(dim)).copied().unwrap_or(0.0);
         list = list
             .height(Length::Fixed(height))
-            .scroll(filter_scroll_key(), offset);
+            .scroll(filter_scroll_key(dim), offset);
     }
     vec![back(theme, dim.name()), list.children(rows)]
 }

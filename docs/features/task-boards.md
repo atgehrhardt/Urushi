@@ -2,7 +2,7 @@
 
 - **Status:** Shipped (manual boards, columns, colors, tags, kinds, nested subtasks, attachments, threads started from tasks; Jira boards in [jira-boards](jira-boards.md))
 - **Owners (crates):** `urushi-core` (`board`, `board/{tree,labels,columns,order,prompt,quick}.rs`), `urushi-daemon` (`service/{boards,columns,attachments}.rs`, `attachments.rs`, `server/boards.rs`, the link in `service/threads.rs` and `service/task_tabs.rs`, unlinking in `service/deletion.rs`), `urushi-proto` (`convert/boards/`), `urushi-client` (`boards.rs`, `tasks.rs`, `WorkspaceMirror::{boards, board, column, task, find_task}`), `urushi-app` (`board.rs`, `update/board.rs`, `update/cards.rs`, `update/tasks.rs`, `update/task_nav.rs`, `update/task_threads.rs`, `update/attachments.rs`, `files.rs`, `platform/`, `view/board/` (tabs in `tabs.rs`, the header in `header.rs`, the phone layout in `phone.rs`), `scrolling.rs`, `view/tasks/`, `view/labels.rs`, `view/menu/{tasks,boards}.rs`), `urushi-ui` (`Theme::labels`), `urushi-cli` (`urushi board`, `urushi thread new --task`, `urushi tab new --task`)
-- **Related ADRs:** [0047](../adr/0047-board-columns-keep-a-width-and-scroll-sideways.md), [0046](../adr/0046-one-board-column-at-a-time-on-phones.md), [0037](../adr/0037-quick-filters-written-to-jira-or-kept-here.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
+- **Related ADRs:** [0050](../adr/0050-draw-what-shows-and-redraw-only-on-change.md), [0047](../adr/0047-board-columns-keep-a-width-and-scroll-sideways.md), [0046](../adr/0046-one-board-column-at-a-time-on-phones.md), [0037](../adr/0037-quick-filters-written-to-jira-or-kept-here.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0008](../adr/0008-json-document-store.md), [0012](../adr/0012-subtasks-as-checklists-and-thread-links.md), [0015](../adr/0015-subtasks-are-nested-tasks.md), [0016](../adr/0016-daemon-stores-attachments.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0018](../adr/0018-start-tasks-in-existing-threads.md)
 
 ## What it does
 A **Tasks** button sits under the sidebar's Projects | Repos tabs. It shows the number of
@@ -37,7 +37,15 @@ it back.
   **Filters ▾**, with a page for the types and one for the tags the board's tasks have;
   several can be chosen, and a card shows when it or a subtask passes. The column
   counts then read "shown/all", and **Clear** drops every filter. Choosing another board
-  clears them. Jira boards filter by much more ([jira-boards](jira-boards.md)).
+  clears them. Jira boards filter by much more ([jira-boards](jira-boards.md)). A field's
+  page also lists values chosen that no task has any more, so they can be unticked. A
+  chip that is on keeps its accent color under the pointer. A long **Filters ▾** menu
+  stops at the window's edge and scrolls, and each field's page keeps its own scroll.
+- **Large boards** (UR-66): a column builds only the cards in sight (all cards are the
+  same height; spacers stand in for the rest), the filter's results are kept until the
+  board or the filter changes (`filter/cache.rs`), and moving the pointer redraws only
+  when it enters or leaves something clickable (ADR 0050). A 500-issue board takes about
+  2 ms of view and layout per frame, down from about 18 ms.
 - **Quick filters** (1.23 daemons, ADR 0037): **Save filter…** in the bar (or **Save as
   quick filter…** in **Filters ▾**) saves the search, types and tags chosen under a name.
   It becomes a chip after the search field, and an entry in **Filters ▾**, that turns
@@ -408,6 +416,14 @@ restarts.
   `a_new_subtask_has_an_editor_of_its_own`,
   `the_task_editors_buttons_stay_on_screen_in_a_short_window` and
   `long_subtask_titles_are_cut_short_inside_the_editor`.
+- Large boards (UR-66): `snapshot/large_board.rs` (`jira-large-board`: only the cards
+  in sight are built and a second frame shapes no new text; `jira-large-filter-menu`:
+  the menu stops at the window and scrolls), `view/board/column.rs::window`,
+  `filter/cache/tests.rs` (the memo answers as the filter does and starts again on a
+  change), `view/board/filter.rs` (avatars by name, a hovered chip that is on),
+  `urushi-ui/tests/layout.rs::a_long_scrolled_list_paints_and_hits_only_the_rows_that_show`
+  and `only_moves_that_change_hover_need_a_new_frame`, `text_cache.rs`, and
+  `text.rs::truncating_a_long_text_measures_only_what_could_fit`.
 - Toolkit: `urushi-ui/tests/layout.rs::a_sliding_panel_moves_with_its_children_and_is_clipped`,
   `modal_covers_the_app_and_dismisses_on_backdrop` (a click inside the card doesn't),
   `a_max_height_caps_a_fit_box_which_then_scrolls`;

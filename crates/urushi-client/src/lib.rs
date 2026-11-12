@@ -24,6 +24,7 @@ mod requests;
 mod screen;
 mod tasks;
 mod thread_links;
+mod updates;
 mod workspace;
 
 pub use connection::{CONNECT_TIMEOUT, Client, Events, LIVENESS_TIMEOUT, PING_INTERVAL};
@@ -38,6 +39,7 @@ pub use quick_filters::{QUICK_FILTERS_SINCE_MINOR, jira_filter, kept_filter};
 pub use screen::{Cell, ScreenState};
 pub use tasks::{FoundTask, TaskRef};
 pub use thread_links::{IssueLink, PrLink, ThreadLinks};
+pub use updates::UPDATES_SINCE_MINOR;
 pub use urushi_proto::endpoint::{Endpoint, home_dir, parse_tcp};
 pub use urushi_proto::v1;
 pub use workspace::WorkspaceMirror;

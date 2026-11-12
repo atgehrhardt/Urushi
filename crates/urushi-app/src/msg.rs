@@ -16,6 +16,8 @@ mod jira;
 mod pane;
 mod quick;
 mod sidebar;
+mod threads;
+mod updates;
 
 pub use board::BoardMsg;
 pub use filter::FilterMsg;
@@ -24,6 +26,8 @@ pub use jira::JiraMsg;
 pub use pane::PaneMsg;
 pub use quick::QuickMsg;
 pub use sidebar::SidebarMsg;
+pub use threads::ThreadMsg;
+pub use updates::UpdateMsg;
 
 /// Something that happened.
 #[derive(Clone, Debug)]
@@ -81,6 +85,8 @@ pub enum Msg {
     CloseMenu,
     /// Pin or unpin a thread.
     TogglePin(String),
+    /// A thread's unread mark or notes, or a project's color (`update/thread_extras.rs`).
+    Thread(ThreadMsg),
     /// Set (or with `None`, clear) a thread's status.
     SetStatus {
         /// Thread id.
@@ -163,6 +169,8 @@ pub enum Msg {
     RecentHosts(Vec<String>),
     /// LAN access on the host (Settings).
     Lan(LanMsg),
+    /// Updating the app (`update/updates.rs`).
+    AppUpdate(UpdateMsg),
 
     // ---- the quick terminal (`update/quick.rs`) --------------------------------------
     /// The quick-terminal panel.
@@ -429,12 +437,15 @@ pub enum Followup {
     },
     /// Remember who the daemon is signed in to Jira as.
     JiraAccount,
+    /// Keep the daemon's Jira sign-ins (1.29).
+    JiraAccounts,
     /// Signed in from the connect dialog: go on to importing a board.
     JiraConnected,
     /// Show the site's boards in the import dialog.
     JiraBoards,
-    /// The issues of this board its quick filters let through.
-    QuickFilter(String),
+    /// The issues of this board its quick filters let through, as asked by the query
+    /// with this number (`BoardPanel::quick_query`).
+    QuickFilter(String, u64),
     /// A quick filter was saved on this board: turn it on, or say why it failed.
     QuickFilterSaved(String),
     /// A quick filter was changed: close the dialog, or say why it failed.
@@ -445,10 +456,18 @@ pub enum Followup {
     JiraFound(String),
     /// Show the fields a new issue of this kind (a wire `TaskKind`) has.
     JiraCreateFields(i32),
+    /// Show what looking for a new release found (Settings).
+    UpdateChecked,
+    /// The release is installed: restart the daemon, then the app.
+    UpdateInstalled,
 }
 
 /// Something the app needs done.
 #[derive(Clone, Debug)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "requests carry generated protobuf bodies; effects are few and short-lived, so boxing would only add an allocation per request"
+)]
 pub enum Effect {
     /// Send a request; deliver the outcome as [`Msg::Response`].
     Request {
@@ -476,6 +495,9 @@ pub enum Effect {
     },
     /// Drop the connection, stop the local daemon, and deliver [`Msg::DaemonStopped`].
     StopDaemon,
+    /// Open the app bundle at this path once this app has quit, and quit (after an
+    /// update, ADR 0049).
+    Relaunch(String),
     /// Show the system file picker, then read the chosen files and deliver each as
     /// [`BoardMsg::Attach`] for `task`.
     PickFiles {

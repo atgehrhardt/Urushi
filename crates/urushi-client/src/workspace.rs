@@ -197,6 +197,13 @@ impl WorkspaceMirror {
         (total + quick, threads.len())
     }
 
+    /// How many panes have an agent working right now (ADR 0039): what restarting the
+    /// daemon would interrupt mid-task.
+    pub fn running_agents(&self) -> usize {
+        let tabs: usize = self.workspace.tabs.iter().map(|t| t.running.len()).sum();
+        tabs + self.quick_terminal_raw().map_or(0, |q| q.running.len())
+    }
+
     /// Finds an entity id by unique prefix among repos, projects, threads, tabs, the
     /// quick terminal, panes, boards, columns, tasks (subtasks at any depth too) and
     /// attachments, e.g. so the CLI accepts short ids. `None` if nothing or more than one
@@ -329,5 +336,34 @@ mod tests {
         assert_eq!(mirror.owner_of_pane(&pane.to_string()), Some(id.clone()));
         assert_eq!(mirror.open_terminals(), (1, 0), "in no thread");
         assert_eq!(mirror.resolve(&id[id.len() - 4..]), Some(id));
+    }
+
+    #[test]
+    fn running_agents_are_counted_in_tabs_and_the_quick_terminal() {
+        let running = |n: u128| v1::PaneRunning {
+            pane_id: PaneId::from_u128(n).to_string(),
+            since_ms: 1,
+        };
+        let mut quick = convert::quick_terminal_to_proto(&QuickTerminal::new(
+            urushi_core::TabId::from_u128(3),
+            PaneId::from_u128(7),
+        ));
+        quick.running = vec![running(7)];
+        let mirror = WorkspaceMirror::new(v1::Workspace {
+            tabs: vec![
+                v1::Tab {
+                    running: vec![running(1), running(2)],
+                    ..Default::default()
+                },
+                v1::Tab::default(),
+            ],
+            quick_terminal: Some(quick),
+            ..Default::default()
+        });
+        assert_eq!(mirror.running_agents(), 3);
+        assert_eq!(
+            WorkspaceMirror::new(v1::Workspace::default()).running_agents(),
+            0
+        );
     }
 }

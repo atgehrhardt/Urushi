@@ -4,11 +4,9 @@
 //! clip become one instanced draw. Text is shaped at physical pixel size (crisp on
 //! high-DPI screens), and the shaped result is cached per (text, font, size).
 
-use std::collections::HashMap;
-
 use bytemuck::{Pod, Zeroable};
 use cosmic_text::CacheKey;
-use urushi_ui::{Color, Font, Image, Primitive, Rect, Scene, Text, TextSystem};
+use urushi_ui::{Color, Font, Image, Primitive, Rect, Scene, Text, TextCache, TextSystem};
 
 use crate::atlas::{ATLAS_SIZE, Atlas, AtlasFull};
 use crate::blur::{BackdropInstance, Blur, levels_for};
@@ -111,9 +109,13 @@ pub struct SceneRenderer {
     atlas: Atlas,
     quad_buffer: wgpu::Buffer,
     glyph_buffer: wgpu::Buffer,
-    shaped: HashMap<(String, Font, u32), Shaped>,
+    shaped: TextCache<Shaped>,
     blur: Blur,
 }
+
+/// Shaped lines kept in each generation of the cache: a screen full of terminals and
+/// a board, several times over.
+const SHAPED_PER_GENERATION: usize = 20_000;
 
 fn rgba(c: Color) -> [f32; 4] {
     [c.r, c.g, c.b, c.a]
@@ -166,7 +168,7 @@ impl SceneRenderer {
                 "glyphs",
                 4096 * std::mem::size_of::<GlyphInstance>() as u64,
             ),
-            shaped: HashMap::new(),
+            shaped: TextCache::new(SHAPED_PER_GENERATION),
             blur,
         }
     }
@@ -459,17 +461,12 @@ impl SceneRenderer {
         text: &mut TextSystem,
         frame: &mut FrameData,
     ) -> Result<(), AtlasFull> {
-        let key = (t.text.clone(), t.font, (t.size * scale).to_bits());
-        if !self.shaped.contains_key(&key) {
-            if self.shaped.len() > 20_000 {
-                self.shaped.clear();
-            }
-            let shaped = shape(text, &t.text, t.font, t.size * scale);
-            self.shaped.insert(key.clone(), shaped);
-        }
-        let Some(shaped) = self.shaped.get(&key) else {
-            return Ok(());
-        };
+        let physical = t.size * scale;
+        let shaped = self
+            .shaped
+            .get_or_insert_with((&t.text, t.font, physical.to_bits()), || {
+                shape(text, &t.text, t.font, physical)
+            });
         let ox = (t.origin.x * scale).round();
         let oy = (t.origin.y * scale).round();
         #[allow(

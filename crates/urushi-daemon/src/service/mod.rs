@@ -41,6 +41,7 @@ mod task_agent;
 mod task_draft;
 mod task_tabs;
 mod threads;
+mod updates;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -141,6 +142,8 @@ pub struct ServiceConfig {
     pub jira: Arc<dyn crate::jira::JiraApi>,
     /// The `urushi` CLI next to the daemon, if found.
     pub cli: Option<PathBuf>,
+    /// Where app updates come from and which bundle they replace (ADR 0049).
+    pub updates: crate::update::UpdateConfig,
 }
 
 /// The workspace service. Always used as `Arc<Service>`.
@@ -187,6 +190,8 @@ pub struct Service {
     me: Weak<Service>,
     /// The `urushi` CLI, for agents in panes (ADR 0024).
     cli: Option<PathBuf>,
+    /// App updates: the newer release found, and installing it (`updates.rs`).
+    updates: Arc<crate::update::Updater>,
 }
 
 /// Locks a mutex, recovering the data if a previous holder panicked. Critical sections
@@ -264,6 +269,7 @@ impl Service {
             drafts: Mutex::default(),
             home: config.home,
             cli: config.cli,
+            updates: Arc::new(crate::update::Updater::new(config.updates)),
             changes: watch::channel(revision).0,
             shutdown: tokio::sync::Notify::new(),
             stopping: watch::channel(false).0,
@@ -275,6 +281,7 @@ impl Service {
         service.keep_restore_points();
         service.keep_jira_synced();
         service.keep_pull_requests_current();
+        service.keep_updates_checked();
         Ok(service)
     }
 
@@ -300,12 +307,13 @@ impl Service {
     }
 
     /// The whole workspace as a wire message, with each tab's attention and running
-    /// panes.
+    /// panes, and the newer release of the app if one was found.
     pub fn workspace(&self) -> v1::Workspace {
         let state = lock(&self.state);
         let mut workspace = state.to_proto();
         self.add_attention(&mut workspace, &state);
         self.add_running(&mut workspace, &state);
+        workspace.update = self.updates.to_proto();
         workspace
     }
 

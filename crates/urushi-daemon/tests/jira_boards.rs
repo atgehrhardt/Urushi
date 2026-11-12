@@ -59,7 +59,7 @@ async fn signed_in(home: &std::path::Path) -> (Daemon, Client, Arc<FakeJira>, v1
     let daemon = start(home, jira.clone()).await;
     let (client, _events) = daemon.connect().await;
     client.connect_jira("acme", "a@b.c", TOKEN).await.unwrap();
-    let imported = client.import_jira_board(7).await.unwrap();
+    let imported = client.import_jira_board("", 7).await.unwrap();
     client.sync_board(&imported.id).await.unwrap();
     let b = board(&client).await;
     (daemon, client, jira, b)
@@ -117,9 +117,9 @@ async fn imported_boards_show_jiras_columns_issues_and_changes() {
     assert_eq!(checkout.url, "https://acme.atlassian.net/browse/ACME-1");
 
     // Listing says it is imported, and importing again answers the same board.
-    let listed = client.list_jira_boards("").await.unwrap();
+    let listed = client.list_jira_boards("", "").await.unwrap();
     assert_eq!(listed[0].imported_board_id, b.id);
-    assert_eq!(client.import_jira_board(7).await.unwrap().id, b.id);
+    assert_eq!(client.import_jira_board("", 7).await.unwrap().id, b.id);
 
     // Changes made in Jira arrive; issues gone from Jira go.
     jira.with(1, |r| {
@@ -426,10 +426,13 @@ async fn the_sign_in_survives_restarts_and_never_leaves_the_daemon() {
     assert_eq!(keys(&board(&client).await, 1), keys(&b, 1));
 
     // Signing out keeps the board, marked as not syncing.
-    client.disconnect_jira().await.unwrap();
+    client.disconnect_jira("").await.unwrap();
     assert!(!client.jira_account().await.unwrap().connected);
     let b = board(&client).await;
-    assert_eq!(b.jira.as_ref().unwrap().error, "Not signed in to Jira");
+    assert_eq!(
+        b.jira.as_ref().unwrap().error,
+        "Not signed in to Jira at acme.atlassian.net"
+    );
     assert!(client.sync_board(&b.id).await.is_err());
     assert!(!home.path().join("home/jira-credentials.json").exists());
     daemon.stop().await;
@@ -443,7 +446,7 @@ async fn boards_follow_jira_on_their_own() {
     let (client, mut events) = daemon.connect().await;
     client.list_workspace(true).await.unwrap();
     client.connect_jira("acme", "a@b.c", TOKEN).await.unwrap();
-    client.import_jira_board(7).await.unwrap();
+    client.import_jira_board("", 7).await.unwrap();
     // The import's first sync runs in the background and reaches subscribers.
     common::next_event(&mut events, |e| match e {
         v1::event::Body::WorkspaceChanged(w) => w
@@ -488,7 +491,7 @@ async fn a_watched_board_follows_jira_within_seconds_reading_only_what_changed()
     let (client, mut events) = daemon.connect().await;
     client.list_workspace(true).await.unwrap();
     client.connect_jira("acme", "a@b.c", TOKEN).await.unwrap();
-    let imported = client.import_jira_board(7).await.unwrap();
+    let imported = client.import_jira_board("", 7).await.unwrap();
     client.sync_board(&imported.id).await.unwrap();
     client.watch_board(Some(&imported.id)).await.unwrap();
     let before = jira.calls().len();

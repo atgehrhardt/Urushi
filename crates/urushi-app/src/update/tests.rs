@@ -48,6 +48,7 @@ pub(super) fn workspace() -> v1::Workspace {
         folders: Vec::new(),
         boards: Vec::new(),
         quick_terminal: None,
+        update: None,
     }
 }
 
@@ -419,4 +420,6 @@ mod subtask_drafts;
 mod task_in_thread;
 mod task_message;
 mod tasks;
+mod thread_extras;
 mod thread_order;
+mod updates;

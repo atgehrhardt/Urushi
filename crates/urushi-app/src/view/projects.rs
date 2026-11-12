@@ -1,6 +1,7 @@
 //! The sidebar's Projects tab: each project (collapsible), then threads in no project.
 //! Inside each group: pinned threads first, then one collapsible section per status in
-//! use, then threads without a status. Threads can be dragged onto a project (or onto
+//! use, then threads without a status. A project with a color shows a dot of it in its
+//! header and a stripe of it down its threads' cards (ADR 0048). Threads can be dragged onto a project (or onto
 //! "No project") to move them, or onto another thread to take its place and join its
 //! group (`thread_card.rs`), and a project's header can be dragged onto another project
 //! to take its place.
@@ -14,6 +15,7 @@ use crate::organize::{Dragged, DropTarget, MenuTarget, section_key};
 use crate::state::{AppState, Connection};
 
 use super::board::drop_line;
+use super::labels;
 use super::thread_card::thread_card;
 
 /// Every row of the Projects tab.
@@ -44,6 +46,7 @@ pub(super) fn list(state: &AppState, theme: &Theme) -> Vec<Node<Msg>> {
                 threads: ungrouped,
                 header_extra: None,
                 menu: None,
+                color: None,
             },
         ));
     }
@@ -108,6 +111,7 @@ fn project_block(state: &AppState, theme: &Theme, project: &v1::Folder) -> Node<
                 },
             )),
             menu: Some(MenuTarget::Project(project.id.clone())),
+            color: labels::color(theme, project.color),
         },
     )
 }
@@ -118,6 +122,8 @@ struct Block<'a> {
     threads: Vec<&'a v1::Thread>,
     header_extra: Option<Node<Msg>>,
     menu: Option<MenuTarget>,
+    /// The project's color, if it has one.
+    color: Option<Color>,
 }
 
 /// A project (or the ungrouped threads): a collapsible header and its threads. While a
@@ -143,6 +149,10 @@ fn block(state: &AppState, theme: &Theme, b: Block<'_>) -> Node<Msg> {
             format!("{} ({} threads)", b.title, b.threads.len()),
         )
         .child(chevron(theme, collapsed))
+        .children(
+            b.color
+                .map(|c| labels::dot(theme, Some(c), 8.0).key(key(&["project-color", &key_]))),
+        )
         .child(
             Node::text(b.title, Font::UiSemibold, theme.font_size, theme.text)
                 .width(Length::Fill(1.0)),
@@ -196,7 +206,7 @@ fn block(state: &AppState, theme: &Theme, b: Block<'_>) -> Node<Msg> {
     } else if b.threads.is_empty() {
         vec![hint(theme, "Drag threads here, or use + for a new one.")]
     } else {
-        group(state, theme, b.project, &b.threads)
+        group(state, theme, (b.project, b.color), &b.threads)
     };
     column
         .children(line_above.then(|| drop_line(theme)))
@@ -227,12 +237,12 @@ fn drop_line_at(state: &AppState, project: Option<&str>) -> (bool, bool) {
 fn group(
     state: &AppState,
     theme: &Theme,
-    project: Option<&str>,
+    (project, color): (Option<&str>, Option<Color>),
     threads: &[&v1::Thread],
 ) -> Vec<Node<Msg>> {
     // Each thread's Jira issue and pull request (ADR 0036), read in one pass.
     let links = state.workspace.thread_links();
-    let thread_card = |t: &v1::Thread| thread_card(state, theme, t, links.get(&t.id));
+    let thread_card = |t: &v1::Thread| thread_card(state, theme, t, links.get(&t.id), color);
     let mut out: Vec<Node<Msg>> = threads
         .iter()
         .filter(|t| t.project_base)

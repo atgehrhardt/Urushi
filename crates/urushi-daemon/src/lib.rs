@@ -7,7 +7,8 @@
 //! - finding installed agent CLIs ([`agents`]),
 //! - restore points, so panes come back as they were after a restart ([`restore`]),
 //! - remote access over Tailscale ([`tailscale`]) and from paired LAN devices ([`lan`]),
-//! - boards that follow Jira, and its sign-in ([`jira`], over [`http`]).
+//! - boards that follow Jira, and its sign-in ([`jira`], over [`http`]),
+//! - updating the macOS app from GitHub Releases ([`update`]).
 //!
 //! It is a library as well as a binary, so tests (and future embedders) can run a daemon
 //! in-process with fakes injected through [`DaemonOptions`].
@@ -27,6 +28,7 @@ pub mod service;
 pub mod store;
 pub mod tailscale;
 mod time;
+pub mod update;
 pub mod usage;
 
 use std::fs::{File, TryLockError};
@@ -46,6 +48,7 @@ use crate::lan::{LanInterfaces, SystemInterfaces};
 use crate::service::{Service, ServiceConfig, ServiceError};
 use crate::store::JsonFileStore;
 use crate::tailscale::{CliTailscale, TailscaleProvider};
+use crate::update::UpdateConfig;
 use crate::usage::{SystemUsage, UsageMonitor, UsageSource};
 
 /// Daemon startup failures.
@@ -83,6 +86,8 @@ pub struct DaemonOptions {
     /// The `urushi` CLI, for agents in panes (`None`: not found; prompts then copy
     /// tasks instead of referring to them).
     pub cli: Option<PathBuf>,
+    /// Where app updates come from and which bundle they replace.
+    pub updates: UpdateConfig,
 }
 
 impl DaemonOptions {
@@ -98,6 +103,7 @@ impl DaemonOptions {
             usage: Arc::new(SystemUsage),
             jira: Arc::new(CloudJira::new(Arc::new(CurlHttp::default()))),
             cli: cli::locate(),
+            updates: UpdateConfig::system(),
         }
     }
 }
@@ -142,6 +148,7 @@ pub async fn run(
         usage: Arc::new(UsageMonitor::new(options.usage)),
         jira: options.jira,
         cli: options.cli,
+        updates: options.updates,
     })?;
 
     // Remote listeners come up beside the local socket, not before it: asking

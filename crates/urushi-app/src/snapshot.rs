@@ -42,8 +42,9 @@ pub fn scene(
 /// the sidebar hidden (`sidebar-collapsed`), the quick terminal dropped down over it
 /// (`quick-terminal`, `snapshot/quick.rs`), the first-run `setup` wizard (its mode
 /// step in `setup-mode`), the Jira screens (`snapshot/jira.rs`), quick filters
-/// (`snapshot/quick_filters.rs`), and a project's
-/// parent branch (`snapshot/project_base.rs`).
+/// (`snapshot/quick_filters.rs`), a large Jira board (`snapshot/large_board.rs`), a
+/// project's parent branch (`snapshot/project_base.rs`), and unread threads, thread
+/// notes and project colors (`snapshot/threads_bar.rs`).
 pub const SCENARIOS: &[&str] = &[
     "launcher",
     "picker",
@@ -96,8 +97,15 @@ pub const SCENARIOS: &[&str] = &[
     "quick-filter-menu",
     "jira-delete-issue",
     "jira-delete-subtask",
+    "jira-large-board",
+    "jira-large-filter-menu",
+    "jira-accounts",
+    "jira-import-accounts",
     "project-base-thread",
     "project-settings",
+    "thread-extras",
+    "thread-notes",
+    "project-color-menu",
 ];
 
 fn sample_attachment(id: &str, name: &str, (width, height): (u32, u32)) -> v1::Attachment {
@@ -372,6 +380,37 @@ fn scenario_frame(
     width: f32,
     height: f32,
 ) -> Option<urushi_ui::Frame<Msg>> {
+    scenario_frame_at(name, theme, text, (width, height), &HashMap::new())
+}
+
+/// [`scenario`] with every scrolling list scrolled to its end: lists show only what
+/// is in sight (ADR 0050), so this is how checks see the end of a long dialog.
+#[cfg(test)]
+fn scenario_scrolled_to_end(
+    name: &str,
+    theme: &Theme,
+    text: &mut TextSystem,
+    width: f32,
+    height: f32,
+) -> Option<Scene> {
+    let first = scenario_frame(name, theme, text, width, height)?;
+    // The layout clamps each offset to its list's end.
+    let scroll: HashMap<urushi_ui::Key, f32> = first
+        .scroll_regions
+        .iter()
+        .map(|r| (r.key, f32::MAX))
+        .collect();
+    scenario_frame_at(name, theme, text, (width, height), &scroll).map(|f| f.scene)
+}
+
+/// [`scenario_frame`] with the lists scrolled to `scroll`.
+fn scenario_frame_at(
+    name: &str,
+    theme: &Theme,
+    text: &mut TextSystem,
+    (width, height): (f32, f32),
+    scroll: &HashMap<urushi_ui::Key, f32>,
+) -> Option<urushi_ui::Frame<Msg>> {
     if !SCENARIOS.contains(&name) {
         return None;
     }
@@ -453,8 +492,10 @@ fn scenario_frame(
         }
         "quick-terminal" => quick::show(&mut state),
         name if jira::SCENARIOS.contains(&name) => jira::show(&mut state, name),
+        name if large_board::SCENARIOS.contains(&name) => large_board::show(&mut state, name),
         name if quick_filters::SCENARIOS.contains(&name) => quick_filters::show(&mut state, name),
         name if project_base::SCENARIOS.contains(&name) => project_base::show(&mut state, name),
+        name if threads_bar::SCENARIOS.contains(&name) => threads_bar::show(&mut state, name),
         name if BOARD_SCENARIOS.contains(&name) || name == "status" || name == "pane-menu" => {
             show_board_or_usage(&mut state, name);
         }
@@ -465,7 +506,7 @@ fn scenario_frame(
     let themed =
         (look != urushi_core::Appearance::default()).then(|| crate::appearance::theme_for(look));
     let theme = themed.as_ref().unwrap_or(theme);
-    let root = crate::view::view(&state, theme, &HashMap::new());
+    let root = crate::view::view(&state, theme, scroll);
     let pointer = state.dragging.as_ref().map(|(_, p)| *p);
     Some(build(
         &root,
@@ -646,9 +687,11 @@ fn show_board_or_usage(state: &mut AppState, name: &str) {
 
 mod jira;
 mod jira_issue;
+mod large_board;
 mod project_base;
 mod quick;
 mod quick_filters;
+mod threads_bar;
 
 #[cfg(test)]
 mod board_width;

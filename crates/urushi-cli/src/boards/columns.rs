@@ -112,7 +112,7 @@ async fn find(client: &Client, board: &str, column: &str) -> Result<String> {
 }
 
 /// A color named on the command line; "none" is no color.
-pub(super) fn color_arg(name: &str) -> Result<v1::LabelColor> {
+pub(crate) fn color_arg(name: &str) -> Result<v1::LabelColor> {
     if name.trim().eq_ignore_ascii_case("none") {
         return Ok(v1::LabelColor::Unspecified);
     }

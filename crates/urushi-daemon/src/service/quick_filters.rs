@@ -55,7 +55,7 @@ impl Service {
             name: quick_filter_name(name)?,
             jql: jira_rule(rule)?,
         };
-        let account = self.jira_account()?;
+        let account = self.jira_account(board)?;
         let guard = self.jira.lock(board);
         let _one_at_a_time = guard.lock().await;
         let api = self.jira.api.clone();
@@ -196,7 +196,7 @@ impl Service {
         + Send
         + 'static,
     ) -> ServiceResult<()> {
-        let account = self.jira_account()?;
+        let account = self.jira_account(board)?;
         let jira = self.read(|s| s.jira_board(board))?;
         let guard = self.jira.lock(board);
         let _one_at_a_time = guard.lock().await;

@@ -1,0 +1,52 @@
+// Updating the macOS app from GitHub Releases (ADR 0049). Since 1.28.
+syntax = "proto3";
+
+package urushi.v1;
+
+message UpdateSettings {
+  // Look for a new release at start and every few hours. Unset means on.
+  optional bool check_automatically = 1;
+  // The release the user chose not to be told about again ("Later"), X.Y.Z. Empty:
+  // none. A newer release is offered as usual.
+  string skipped_version = 2;
+}
+
+// A release newer than the installed app, found by the daemon. In Workspace.update
+// while there is one; never stored.
+message AvailableUpdate {
+  // The release's version, X.Y.Z.
+  string version = 1;
+  // The installed app's version, X.Y.Z.
+  string current_version = 2;
+  // The release's page (its notes).
+  string release_url = 3;
+  // An InstallUpdate is downloading or installing it.
+  bool installing = 4;
+}
+
+// Looks for a new release now, whatever the settings say. Answered with UpdateCheck,
+// or an error saying why it couldn't look (offline, not a macOS app bundle, ...).
+message CheckForUpdatesRequest {}
+
+message UpdateCheck {
+  string current_version = 1;
+  string latest_version = 2;
+  // latest_version is newer than current_version.
+  bool available = 3;
+  string release_url = 4;
+}
+
+// Downloads `version`, checks it and puts it in place of the installed app. Accepted
+// only from clients on the host itself. Running processes, the daemon included, keep
+// their old binaries: the caller restarts the daemon and the app afterwards. Answered
+// with UpdateInstalled.
+message InstallUpdateRequest {
+  // The version the user agreed to, X.Y.Z; refused if it's no longer the latest.
+  string version = 1;
+}
+
+message UpdateInstalled {
+  string version = 1;
+  // The app bundle that now holds the new version, to relaunch.
+  string bundle_path = 2;
+}

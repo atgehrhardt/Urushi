@@ -59,10 +59,11 @@ impl Client {
         }
     }
 
-    /// People matching `query` (who may be assigned the task's issue, if `assignable`).
+    /// People matching `query` (who may be assigned the task's issue, if `assignable`),
+    /// searched with the sign-in of the task's board, else of `board_id`'s (1.29).
     pub async fn search_jira_users(
         &self,
-        task_id: &str,
+        (task_id, board_id): (&str, &str),
         query: &str,
         assignable: bool,
     ) -> Result<Vec<v1::JiraUser>, ClientError> {
@@ -70,6 +71,7 @@ impl Client {
             task_id: task_id.into(),
             query: query.into(),
             assignable,
+            board_id: board_id.into(),
         });
         match self.request(body).await? {
             Outcome::JiraUsers(users) => Ok(users.users),

@@ -195,9 +195,6 @@ fn field_box<M>(
     node
 }
 
-/// More characters than any one line of text shows, at any width a box can have.
-const MAX_LINE_CHARS: usize = 1024;
-
 /// Text wrapped to its box, showing as many lines as fit; when there's more, the last
 /// line shown ends with an ellipsis. Line breaks in `text` start new lines. Give it a
 /// fixed or filling height: it doesn't grow to fit.
@@ -221,12 +218,12 @@ pub fn wrapped_text<M>(text: &str, font: Font, size: f32, color: Color) -> Node<
             for (row, range) in lines.iter().take(fit).enumerate() {
                 let more = row + 1 == fit && lines.len() > fit;
                 let shown = if more {
-                    // The rest of the text on one line, cut short with an ellipsis. No
-                    // line shows more than a few hundred characters, so the rest of a
-                    // long text isn't measured.
+                    // The rest of the text on one line, cut short with an ellipsis. Only
+                    // as many characters as could fit the line are taken, so the rest of
+                    // a long text is never measured.
                     let rest: String = text[range.start..]
                         .chars()
-                        .take(MAX_LINE_CHARS)
+                        .take(TextSystem::most_chars(size, rect.width))
                         .map(|c| if c == '\n' { ' ' } else { c })
                         .collect();
                     ts.truncate(rest.trim_end(), font, size, rect.width)

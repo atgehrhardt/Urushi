@@ -3,7 +3,8 @@
 //! Installing never touches the running daemon (it owns every terminal), so the user
 //! restarts it on purpose: a confirmation says how many terminals will close, then the
 //! backend stops the daemon and the app reconnects, which starts the daemon bundled with
-//! this app. Threads, tabs and layouts come back with fresh shells.
+//! this app. Panes come back from their restore points (ADR 0013). An update (ADR 0049)
+//! goes the same way, then relaunches the app.
 
 use crate::config::ConnectTarget;
 use crate::msg::Effect;
@@ -42,10 +43,14 @@ impl AppState {
     /// The old daemon is gone (or wouldn't stop): reconnect either way. Connecting
     /// starts this app's daemon if none is running.
     pub(super) fn daemon_stopped(&mut self, result: Result<(), String>, fx: &mut Vec<Effect>) {
+        // After an update, the app relaunches from the new bundle (`updates.rs`).
+        let updated = self.update_daemon_stopped(fx);
         self.dialog = None;
         self.focus = None;
         if let Err(message) = result {
             self.error = Some(format!("Could not restart the daemon: {message}"));
+        } else if updated {
+            tracing::info!("the daemon stopped for an update");
         }
         self.connection = Connection::Connecting;
         self.reset_panes();

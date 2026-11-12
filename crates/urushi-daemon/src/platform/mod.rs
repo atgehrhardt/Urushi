@@ -2,6 +2,9 @@
 //! permissions, private files, canonical paths, shutdown signals, finding executables, listing processes, where
 //! agents keep their sign-ins, and the open-file limit.
 
+/// Whether this OS has app updates (ADR 0049): only macOS has a released app bundle.
+pub(crate) const UPDATES_SUPPORTED: bool = cfg!(target_os = "macos");
+
 #[cfg(unix)]
 mod unix;
 #[cfg(unix)]

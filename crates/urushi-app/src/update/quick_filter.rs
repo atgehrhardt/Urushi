@@ -234,9 +234,7 @@ impl AppState {
             self.focus = None;
         }
         if edited.is_some_and(|f| f.is_on(&self.board.filter)) {
-            self.board.filter.quick_matches = None;
-            self.board.quick_asking = false;
-            self.refresh_quick_filter(fx);
+            self.ask_quick_filter_again(fx);
         }
     }
 
@@ -279,9 +277,7 @@ impl AppState {
                     self.board.filter.saved.remove(id);
                 }
             }
-            self.board.filter.quick_matches = None;
-            self.board.quick_asking = false;
-            self.refresh_quick_filter(fx);
+            self.ask_quick_filter_again(fx);
         }
     }
 }

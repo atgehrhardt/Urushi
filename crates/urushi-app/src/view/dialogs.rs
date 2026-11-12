@@ -19,24 +19,9 @@ pub(super) fn view(
     Some(match state.dialog.as_ref()? {
         Dialog::AddProject { path } => add_project(state, theme, path),
         Dialog::NewThread { .. } => super::new_thread::view(state, theme, scroll)?,
-        Dialog::Prompt {
-            prompt,
-            field: text,
-        } => {
-            let (title, placeholder, action) = prompt.texts();
-            let body = field(state, theme, text, Field::Prompt, placeholder);
-            modal(
-                state,
-                theme,
-                title,
-                420.0,
-                body,
-                vec![
-                    cancel(theme),
-                    button(theme, action, ButtonKind::Primary, Msg::Submit),
-                ],
-                Some(Msg::CloseDialog),
-            )
+        Dialog::Prompt { prompt, field } => prompt_dialog(state, theme, prompt, field),
+        Dialog::ThreadNotes { thread, notes } => {
+            super::thread_notes::dialog(state, theme, thread, notes)
         }
         Dialog::NewTab { highlighted } => super::launcher::dialog(state, theme, *highlighted),
         Dialog::DeleteThread { title, plan, .. } => delete_dialog(state, theme, title, plan),
@@ -55,6 +40,7 @@ pub(super) fn view(
             threads,
             restarting,
         } => super::daemon::confirm(state, theme, *terminals, *threads, *restarting),
+        Dialog::InstallUpdate(dialog) => super::updates::confirm(state, theme, dialog),
         Dialog::Task {
             board,
             column,
@@ -84,28 +70,9 @@ pub(super) fn view(
                 .is_some_and(|b| b.jira.is_some());
             super::board::delete_board(state, theme, name, *tasks, jira)
         }
-        Dialog::ConnectJira {
-            site,
-            email,
-            token,
-            busy,
-            error,
-        } => super::jira::connect(
-            state,
-            theme,
-            (site, email, token),
-            (*busy, error.as_deref()),
-        ),
-        Dialog::ImportJira {
-            query,
-            boards,
-            error,
-        } => super::jira::import(
-            state,
-            (theme, scroll),
-            query,
-            (boards.as_deref(), error.as_deref()),
-        ),
+        jira @ (Dialog::ConnectJira { .. } | Dialog::ImportJira { .. }) => {
+            super::jira::dialog(state, (theme, scroll), jira)?
+        }
         Dialog::NestTask { task, query } => {
             super::tasks::nest_picker(state, (theme, scroll), task, query)
         }
@@ -116,6 +83,29 @@ pub(super) fn view(
             super::setup::wizard(state, theme, *step, *agent, *mode)
         }
     })
+}
+
+/// A one-line prompt: rename, new status, new project, and so on.
+fn prompt_dialog(
+    state: &AppState,
+    theme: &Theme,
+    prompt: &crate::organize::Prompt,
+    text: &TextField,
+) -> Node<Msg> {
+    let (title, placeholder, action) = prompt.texts();
+    let body = field(state, theme, text, Field::Prompt, placeholder);
+    modal(
+        state,
+        theme,
+        title,
+        420.0,
+        body,
+        vec![
+            cancel(theme),
+            button(theme, action, ButtonKind::Primary, Msg::Submit),
+        ],
+        Some(Msg::CloseDialog),
+    )
 }
 
 pub(super) fn field(
@@ -419,6 +409,7 @@ fn settings_dialog(
     let status = tailnet_status(&tailnet);
     let mut body = Node::column().width(Length::Fill(1.0)).gap(10.0);
     body = body.children(super::daemon::settings_section(state, theme));
+    body = body.children(super::updates::settings_rows(state, theme));
     if state.daemon_minor >= crate::issue::ISSUES_SINCE_MINOR {
         body = body.children(super::appearance::section(state, theme, look));
     }

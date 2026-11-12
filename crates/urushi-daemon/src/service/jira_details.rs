@@ -56,23 +56,23 @@ impl Service {
     }
 
     pub(super) async fn read_issue_details(&self, at: &IssueAt) -> ServiceResult<IssueDetails> {
-        let account = self.jira_account()?;
+        let account = self.jira_account(at.board)?;
         let api = self.jira.api.clone();
         let (key, board) = (at.key.clone(), at.jira.board_id);
         let details = blocking(move || Ok(api.details(&account, &key, board)?)).await?;
-        self.remember_kinds(&at.key, &details.fields);
+        self.remember_kinds(at, &details.fields);
         Ok(details)
     }
 
     /// Keeps the kinds of an issue's fields, for writing edits to them.
-    fn remember_kinds(&self, key: &str, fields: &[Field]) {
+    fn remember_kinds(&self, at: &IssueAt, fields: &[Field]) {
         let kinds: HashMap<_, _> = fields.iter().map(|f| (f.id.clone(), f.kind)).collect();
         let mut all = lock(&self.jira.kinds);
         // Bounded: issues opened long ago are read again when edited.
         if all.len() >= 256 {
             all.clear();
         }
-        all.insert(key.to_owned(), kinds);
+        all.insert((at.board, at.key.clone()), kinds);
     }
 
     /// The fields a new issue of `kind` on `board` has.
@@ -82,24 +82,31 @@ impl Service {
         kind: TaskKind,
     ) -> ServiceResult<Vec<Field>> {
         let jira = self.read(|state| state.jira_board(board))?;
-        let account = self.jira_account()?;
+        let account = self.jira_account(board)?;
         let api = self.jira.api.clone();
         blocking(move || Ok(api.create_fields(&account, &jira.project_key, kind)?)).await
     }
 
     /// People matching `query`: who may be assigned task `id`'s issue, or anyone
-    /// (without a task: a new issue).
+    /// (without a task: a new issue on `board`). They are searched with the sign-in of
+    /// the task's board, else `board`'s, else the first.
     pub async fn search_jira_users(
         &self,
-        id: Option<TaskId>,
+        (id, board): (Option<TaskId>, Option<BoardId>),
         query: &str,
         assignable: bool,
     ) -> ServiceResult<Vec<Person>> {
-        let key = match id {
-            Some(id) if assignable => Some(self.issue_at(id)?.key),
-            _ => None,
+        let at = id.map(|id| self.issue_at(id)).transpose()?;
+        let key = at.as_ref().filter(|_| assignable).map(|at| at.key.clone());
+        let account = match at.map(|at| at.board).or(board) {
+            Some(board) => self.jira_account(board)?,
+            None => self.jira.account_named("").ok_or_else(|| {
+                ServiceError::Precondition(format!(
+                    "{}: connect it first",
+                    super::jira::NOT_SIGNED_IN
+                ))
+            })?,
         };
-        let account = self.jira_account()?;
         let api = self.jira.api.clone();
         let query = query.to_owned();
         blocking(move || Ok(api.users(&account, &query, key.as_deref())?)).await
@@ -112,7 +119,7 @@ impl Service {
         query: &str,
     ) -> ServiceResult<Vec<IssueRef>> {
         let jira = self.read(|state| state.jira_board(board))?;
-        let account = self.jira_account()?;
+        let account = self.jira_account(board)?;
         let api = self.jira.api.clone();
         let query = query.to_owned();
         blocking(move || Ok(api.search(&account, &jira.project_key, &query, ISSUES_FOUND)?)).await
@@ -143,7 +150,7 @@ impl Service {
                 file.name
             )));
         }
-        let account = self.jira_account()?;
+        let account = self.jira_account(self.issue_at(id)?.board)?;
         let api = self.jira.api.clone();
         let url = file.content_url.clone();
         let bytes = blocking(move || Ok(api.download(&account, &url)?)).await?;

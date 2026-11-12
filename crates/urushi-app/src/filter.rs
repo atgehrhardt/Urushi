@@ -17,6 +17,7 @@ use std::collections::{BTreeSet, HashSet};
 use urushi_client::{TaskRef, v1};
 use urushi_ui::TextField;
 
+pub mod cache;
 pub mod editor;
 pub mod jql;
 pub mod quick;
@@ -316,19 +317,19 @@ pub fn kind_name(kind: i32) -> Option<&'static str> {
 /// The values a board's tasks (at any depth) have in `dim`, each once, in first-seen
 /// order, as `(value, label)`. Epics are labeled with their summaries.
 pub fn board_values(board: &v1::Board, dim: Dim) -> Vec<(String, String)> {
-    fn walk(t: TaskRef<'_>, dim: Dim, out: &mut Vec<(String, String)>) {
+    fn walk(t: TaskRef<'_>, dim: Dim, seen: &mut HashSet<String>, out: &mut Vec<(String, String)>) {
         for v in values(dim, t) {
-            if !out.iter().any(|(o, _)| *o == v.0) {
+            if seen.insert(v.0.clone()) {
                 out.push(v);
             }
         }
         for s in t.subtasks() {
-            walk(TaskRef::Sub(s), dim, out);
+            walk(TaskRef::Sub(s), dim, seen, out);
         }
     }
-    let mut out = Vec::new();
+    let (mut seen, mut out) = (HashSet::new(), Vec::new());
     for card in board.columns.iter().flat_map(|c| &c.tasks) {
-        walk(TaskRef::Card(card), dim, &mut out);
+        walk(TaskRef::Card(card), dim, &mut seen, &mut out);
     }
     if dim == Dim::Epic {
         for (key, label) in &mut out {

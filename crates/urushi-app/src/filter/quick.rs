@@ -88,7 +88,12 @@ pub fn rule_from_selection(f: &BoardFilter, board: &v1::Board) -> Option<v1::Qui
                 .map(|k| i32::from(*k))
         })
         .collect::<Vec<_>>();
-    let labels = board_values(board, Dim::Label);
+    // Only walked when labels are chosen: the bar asks this on every frame.
+    let labels = if chosen(Dim::Label).next().is_some() {
+        board_values(board, Dim::Label)
+    } else {
+        Vec::new()
+    };
     let tags = chosen(Dim::Label)
         .map(|v| {
             labels
