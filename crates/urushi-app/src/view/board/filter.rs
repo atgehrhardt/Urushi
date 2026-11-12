@@ -11,8 +11,8 @@ use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key};
 
 use super::jira::initials;
 use super::shorten;
+use crate::filter::Dim;
 use crate::filter::quick::QuickRef;
-use crate::filter::{Dim, board_values};
 use crate::msg::{FilterMsg, Msg};
 use crate::organize::MenuTarget;
 use crate::state::{AppState, Field};
@@ -94,7 +94,7 @@ pub(super) fn bar(
         }
     }
     if !narrow {
-        let chips_key = key(&["board-filter-chips"]);
+        let chips_key = key(&["board-filter-chips", &board.id]);
         let offset = scroll.get(&chips_key).copied().unwrap_or(0.0);
         row = row.child(chips.scroll_x(chips_key, offset));
     }
@@ -163,10 +163,9 @@ fn quick_chip(
 /// The people the board's issues are assigned to, each toggling the filter on them.
 fn avatars(state: &AppState, theme: &Theme, board: &v1::Board) -> Vec<Node<Msg>> {
     let side = 24.0;
-    board_values(board, Dim::Assignee)
+    let people = state.board.filtered.values(board, Dim::Assignee);
+    avatar_people(&people, &state.board.filter)
         .into_iter()
-        .filter(|(id, _)| !id.is_empty())
-        .take(AVATARS)
         .map(|(id, name)| {
             let on = state.board.filter.has(Dim::Assignee, &id);
             Node::row()
@@ -193,6 +192,27 @@ fn avatars(state: &AppState, theme: &Theme, board: &v1::Board) -> Vec<Node<Msg>>
         .collect()
 }
 
+/// Who gets an avatar: the first [`AVATARS`] people by name, then anyone else chosen
+/// (in the menu), so every person filtered on shows and avatars don't move as issues
+/// do.
+fn avatar_people(
+    people: &[(String, String)],
+    filter: &crate::filter::BoardFilter,
+) -> Vec<(String, String)> {
+    let mut people: Vec<(String, String)> = people
+        .iter()
+        .filter(|(id, _)| !id.is_empty())
+        .cloned()
+        .collect();
+    people.sort_by_cached_key(|(id, name)| (name.to_lowercase(), id.clone()));
+    let mut shown = 0;
+    people.retain(|(id, _)| {
+        shown += 1;
+        shown <= AVATARS || filter.has(Dim::Assignee, id)
+    });
+    people
+}
+
 /// A filter that is on or off.
 fn chip(theme: &Theme, label: &str, on: bool, msg: Msg) -> Node<Msg> {
     pill(theme, label, on)
@@ -210,11 +230,65 @@ fn pill(theme: &Theme, label: &str, on: bool) -> Node<Msg> {
         } else {
             Color::TRANSPARENT
         })
-        .hover_background(theme.hover)
+        // A chip that is on stays the accent's color under the pointer, a little
+        // stronger, so it never looks off while hovered.
+        .hover_background(if on {
+            theme.accent.with_alpha(0.28)
+        } else {
+            theme.hover
+        })
         .child(Node::text(
             label,
             Font::UiMedium,
             theme.font_size_small,
             if on { theme.text } else { theme.text_muted },
         ))
+}
+
+#[cfg(test)]
+mod tests {
+    use urushi_ui::{Point, Primitive, Rect, TextSystem, Theme, build};
+
+    use super::{AVATARS, avatar_people, chip};
+    use crate::filter::{BoardFilter, Dim};
+    use crate::msg::Msg;
+
+    #[test]
+    fn a_chip_that_is_on_keeps_its_color_under_the_pointer() {
+        let theme = Theme::dark();
+        let mut text = TextSystem::bundled_only();
+        let mut fill = |on: bool| {
+            let frame = build(
+                &chip(&theme, "Bugs", on, Msg::CloseMenu),
+                Rect::new(0.0, 0.0, 100.0, 30.0),
+                &mut text,
+                Some(Point::new(5.0, 5.0)),
+            );
+            frame.scene.primitives.iter().find_map(|p| match p {
+                Primitive::Quad(q) => Some(q.color),
+                _ => None,
+            })
+        };
+        assert_eq!(fill(true), Some(theme.accent.with_alpha(0.28)));
+        assert_eq!(fill(false), Some(theme.hover));
+    }
+
+    #[test]
+    fn avatars_go_by_name_and_everyone_chosen_has_one() {
+        let people: Vec<(String, String)> = (0..12)
+            .rev()
+            .map(|n| (format!("acc-{n}"), format!("Person {n:02}")))
+            .chain([(String::new(), "Unassigned".to_owned())])
+            .collect();
+        let mut f = BoardFilter::default();
+        let shown = avatar_people(&people, &f);
+        assert_eq!(shown.len(), AVATARS);
+        assert_eq!(shown[0].1, "Person 00");
+        f.toggle(Dim::Assignee, "acc-11");
+        f.toggle(Dim::Assignee, "acc-0");
+        let shown = avatar_people(&people, &f);
+        assert_eq!(shown.len(), AVATARS + 1);
+        assert_eq!(shown[0].1, "Person 00", "a chosen one keeps its place");
+        assert_eq!(shown[AVATARS].0, "acc-11", "one past the first is added");
+    }
 }

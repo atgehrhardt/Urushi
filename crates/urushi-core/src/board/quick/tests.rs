@@ -18,6 +18,7 @@ fn jira_board() -> Board {
     let mut b = board();
     b.source = Some(BoardSource::Jira(JiraBoard {
         site: "https://acme.atlassian.net".into(),
+        account: String::new(),
         board_id: 7,
         name: "ACME".into(),
         project_key: "ACME".into(),

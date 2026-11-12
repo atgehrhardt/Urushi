@@ -16,9 +16,9 @@ impl AppState {
         self.dialog.is_none() && self.focus == Some(Field::BoardSearch) && self.board.visible()
     }
 
-    /// Who "me" is and the time, for the filter.
+    /// Who "me" is (on the board's own sign-in) and the time, for the filter.
     pub(crate) fn filter_context(&self) -> Context<'_> {
-        let me = self.jira.as_ref().filter(|a| a.connected).map(|a| {
+        let me = self.shown_jira_account().map(|a| {
             if a.account_id.is_empty() {
                 a.display_name.as_str()
             } else {
@@ -47,17 +47,13 @@ impl AppState {
                 if !f.quick.remove(&id) {
                     f.quick.insert(id);
                 }
-                f.quick_matches = None;
-                self.board.quick_asking = false;
-                self.refresh_quick_filter(fx);
+                self.ask_quick_filter_again(fx);
             }
             FilterMsg::Saved(id) => {
                 if !f.saved.remove(&id) {
                     f.saved.insert(id);
                 }
-                f.quick_matches = None;
-                self.board.quick_asking = false;
-                self.refresh_quick_filter(fx);
+                self.ask_quick_filter_again(fx);
             }
             FilterMsg::Clear => {
                 f.clear();
@@ -67,6 +63,21 @@ impl AppState {
             }
             other => self.quick_filter_msg(other, fx),
         }
+    }
+
+    /// The quick filters on changed: asks Jira again at once, whatever is on its way.
+    /// Until it answers, the board stays filtered as Jira last said, so it changes once,
+    /// when the answer comes, instead of showing everything meanwhile (UR-66).
+    pub(super) fn ask_quick_filter_again(&mut self, fx: &mut Vec<Effect>) {
+        let needs_jira = self
+            .board
+            .board(&self.workspace)
+            .is_some_and(|b| self.board.filter.needs_jira(&b.quick_filters));
+        if !needs_jira {
+            self.board.filter.quick_matches = None;
+        }
+        self.board.quick_asking = false;
+        self.refresh_quick_filter(fx);
     }
 
     /// Asks which issues the quick filters in JQL that are on let through, unless an
@@ -88,12 +99,16 @@ impl AppState {
         }
         self.board.quick_asking = true;
         self.board.quick_stale = false;
+        self.board.quick_query += 1;
         let body = Body::QueryJiraFilter(v1::QueryJiraFilterRequest {
             board_id: board.clone(),
             quick_filter_ids: self.board.filter.quick.iter().copied().collect(),
             kept_quick_filter_ids: kept,
         });
-        fx.push(request(body, Followup::QuickFilter(board)));
+        fx.push(request(
+            body,
+            Followup::QuickFilter(board, self.board.quick_query),
+        ));
     }
 
     /// Tells the daemon which Jira board the panel shows, when that changes, so it is
@@ -119,13 +134,17 @@ impl AppState {
         fx.push(request(body, Followup::None));
     }
 
-    /// The daemon's answer to a quick-filter query.
+    /// The daemon's answer to a quick-filter query. One to a query older than the last
+    /// sent is dropped: the filters it answered for have changed since.
     pub(super) fn quick_filter_answered(
         &mut self,
-        board: &str,
+        (board, query): (&str, u64),
         ids: Option<Vec<String>>,
         fx: &mut Vec<Effect>,
     ) {
+        if query != self.board.quick_query {
+            return;
+        }
         self.board.quick_asking = false;
         let Some(shown) = self.board.board(&self.workspace) else {
             return;

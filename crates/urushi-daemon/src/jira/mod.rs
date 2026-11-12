@@ -1,7 +1,7 @@
 //! Jira Cloud: the daemon's sign-in, and the calls that read and change Jira boards
 //! (ADR 0020).
 //!
-//! - [`credentials`]: the sign-in (site, email, API token), kept in a private file in
+//! - [`credentials`]: the sign-ins (site, email, API token), kept in a private file in
 //!   the daemon's home and never sent to clients (ADR 0021).
 //! - [`JiraApi`]: what the daemon asks of Jira, as a trait so tests answer from memory;
 //!   [`CloudJira`] asks Jira Cloud over HTTPS through `curl` ([`crate::http`]).
@@ -22,4 +22,4 @@ pub use api::{
     JiraResult, Me, NewIssue, QuickFilterDraft, Rank, Transition,
 };
 pub use cloud::{CloudJira, DONE_DAYS, jql};
-pub use credentials::{Account, CredentialStore, site_address};
+pub use credentials::{Account, CredentialStore, key_of, site_address};

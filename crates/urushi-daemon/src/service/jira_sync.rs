@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 
 use urushi_core::{Board, BoardId, ColumnId, TaskId, Timestamp};
 
-use super::jira::{NOT_SIGNED_IN, board_query};
+use super::jira::{account_for, board_query, not_signed_in};
 use super::{Service, ServiceError, ServiceResult, State, blocking, lock, new_uuid, now};
 use crate::jira::{BoardConfig, JiraError, Me};
 
@@ -161,10 +161,11 @@ impl Service {
         let guard = self.jira.lock(board);
         let _one_at_a_time = guard.lock().await;
         let jira = self.read(|state| state.jira_board(board))?;
-        let Some(account) = self.jira.account() else {
+        let Some(account) = self.jira.account_for(&jira) else {
             self.note_not_signed_in()?;
-            return Err(ServiceError::Precondition(NOT_SIGNED_IN.into()));
+            return Err(ServiceError::Precondition(not_signed_in(&jira)));
         };
+        let account_key = account.key();
         let (cached, last_read, last_full, known) = {
             let boards = lock(&self.jira.boards);
             let sync = boards.get(&board);
@@ -250,7 +251,7 @@ impl Service {
         sync.wait_until = None;
         drop(boards);
         if let Some(me) = read.me {
-            self.learn_me(&me);
+            self.learn_me(&account_key, &me);
         }
         Ok(())
     }
@@ -290,10 +291,10 @@ impl Service {
         Ok(())
     }
 
-    /// Keeps the account id (and name) Jira says the sign-in has.
-    fn learn_me(&self, me: &Me) {
-        let mut account = lock(&self.jira.account);
-        let Some(a) = account.as_mut() else {
+    /// Keeps the account id (and name) Jira says the sign-in named `key` has.
+    fn learn_me(&self, key: &str, me: &Me) {
+        let mut accounts = self.jira.accounts();
+        let Some(a) = accounts.iter_mut().find(|a| a.key() == key) else {
             return;
         };
         if me.account_id.is_empty() || a.account_id == me.account_id {
@@ -301,7 +302,7 @@ impl Service {
         }
         a.account_id.clone_from(&me.account_id);
         a.display_name.clone_from(&me.display_name);
-        if let Err(e) = self.jira.store.save(a) {
+        if let Err(e) = self.jira.save_accounts(accounts) {
             tracing::warn!(error = %e, "couldn't keep the Jira account id");
         }
     }
@@ -354,18 +355,23 @@ impl Service {
     /// The Jira boards due for a read now (and not being read), marked as being read.
     fn due_boards(&self) -> Vec<BoardId> {
         let subscribed = self.changes.receiver_count() > 0;
-        let ids: Vec<BoardId> = lock(&self.state)
+        let accounts = self.jira.accounts();
+        // Every Jira board, and whether a sign-in reads it: those without one wait.
+        let ids: Vec<(BoardId, bool)> = lock(&self.state)
             .boards
             .iter()
-            .filter(|b| b.jira().is_some())
-            .map(|b| b.id)
+            .filter_map(|b| Some((b.id, account_for(&accounts, b.jira()?).is_some())))
             .collect();
         let watched = lock(&self.jira.watched).clone();
         let mut boards = lock(&self.jira.boards);
-        boards.retain(|id, _| ids.contains(id));
+        boards.retain(|id, _| ids.iter().any(|(i, _)| i == id));
         let now = Instant::now();
         let mut due = Vec::new();
-        for id in ids {
+        for id in ids
+            .into_iter()
+            .filter(|(_, signed_in)| *signed_in)
+            .map(|(id, _)| id)
+        {
             let sync = boards.entry(id).or_default();
             let every = interval(watched.contains_key(&id), subscribed);
             let ready = sync.wait_until.is_none_or(|t| now >= t)
@@ -388,10 +394,8 @@ impl Service {
             loop {
                 tick.tick().await;
                 let Some(service) = me.upgrade() else { break };
-                if service.jira.account().is_none() {
-                    let _ = service.note_not_signed_in();
-                    continue;
-                }
+                // Boards no sign-in reads say so, and aren't due.
+                let _ = service.note_not_signed_in();
                 for board in service.due_boards() {
                     let me = service.me.clone();
                     // Side by side: a slow board doesn't hold up the others.

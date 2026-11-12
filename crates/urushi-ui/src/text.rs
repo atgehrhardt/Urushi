@@ -11,6 +11,7 @@ use std::ops::Range;
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, Weight, fontdb};
 
 use crate::scene::Font;
+use crate::text_cache::TextCache;
 
 const INTER_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/Inter-Regular.ttf");
 const INTER_MEDIUM: &[u8] = include_bytes!("../../../assets/fonts/Inter-Medium.ttf");
@@ -36,7 +37,9 @@ pub struct CellMetrics {
 /// Fonts plus measurement caches.
 pub struct TextSystem {
     fonts: FontSystem,
-    widths: HashMap<(String, Font, u32), f32>,
+    widths: TextCache<f32>,
+    /// How many times text was shaped to be measured (cache misses), for tests.
+    shaped: u64,
     cells: HashMap<u32, CellMetrics>,
 }
 
@@ -56,7 +59,8 @@ impl TextSystem {
     fn with_db(db: fontdb::Database) -> Self {
         Self {
             fonts: FontSystem::new_with_locale_and_db("en-US".into(), db),
-            widths: HashMap::new(),
+            widths: TextCache::new(WIDTHS_PER_GENERATION),
+            shaped: 0,
             cells: HashMap::new(),
         }
     }
@@ -89,38 +93,40 @@ impl TextSystem {
 
     /// Shapes one line of `text` (no wrapping).
     pub fn shape(&mut self, text: &str, font: Font, size: f32) -> Buffer {
-        let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(size, Self::line_height(size)));
-        buffer.set_size(None, None);
-        buffer.set_text(text, &Self::attrs(font), Shaping::Advanced, None);
-        buffer.shape_until_scroll(&mut self.fonts, false);
-        buffer
+        shape_line(&mut self.fonts, text, font, size)
     }
 
     /// Width of one line of text.
     pub fn measure(&mut self, text: &str, font: Font, size: f32) -> f32 {
-        let key = (text.to_owned(), font, size.to_bits());
-        if let Some(width) = self.widths.get(&key) {
-            return *width;
-        }
-        let width = self
-            .shape(text, font, size)
-            .layout_runs()
-            .map(|run| run.line_w)
-            .fold(0.0, f32::max);
-        if self.widths.len() > 10_000 {
-            self.widths.clear();
-        }
-        self.widths.insert(key, width);
-        width
+        let Self {
+            fonts,
+            widths,
+            shaped,
+            ..
+        } = self;
+        *widths.get_or_insert_with((text, font, size.to_bits()), || {
+            *shaped += 1;
+            shape_line(fonts, text, font, size)
+                .layout_runs()
+                .map(|run| run.line_w)
+                .fold(0.0, f32::max)
+        })
+    }
+
+    /// How many lines of text have been shaped to measure them: what the cache missed.
+    pub fn shaped_count(&self) -> u64 {
+        self.shaped
     }
 
     /// `text`, shortened with an ellipsis if it is wider than `max_width`.
     pub fn truncate(&mut self, text: &str, font: Font, size: f32, max_width: f32) -> String {
-        if self.measure(text, font, size) <= max_width {
+        let chars: Vec<char> = text.chars().collect();
+        // No more characters than this fit, so a long text is never measured whole.
+        let most = Self::most_chars(size, max_width);
+        if chars.len() <= most && self.measure(text, font, size) <= max_width {
             return text.to_owned();
         }
-        let chars: Vec<char> = text.chars().collect();
-        let (mut low, mut high) = (0, chars.len());
+        let (mut low, mut high) = (0, chars.len().min(most));
         while low < high {
             let mid = (low + high).div_ceil(2);
             let candidate: String = chars[..mid].iter().collect::<String>() + "…";
@@ -131,6 +137,20 @@ impl TextSystem {
             }
         }
         chars[..low].iter().collect::<String>() + "…"
+    }
+
+    /// The most characters of text at `size` that can fit in `width`: no glyph in the
+    /// bundled fonts is narrower than a fifth of the size (zero-width ones aside, which
+    /// only make text end a little early).
+    pub fn most_chars(size: f32, width: f32) -> usize {
+        let narrowest = (size * NARROWEST_GLYPH).max(0.5);
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a non-negative count of characters on one line"
+        )]
+        let most = (width.max(0.0) / narrowest).ceil() as usize;
+        most.saturating_add(1)
     }
 
     /// The lines `text` takes up at `width`: it breaks at each `\n`, and between words
@@ -260,6 +280,23 @@ impl Default for TextSystem {
     }
 }
 
+/// The narrowest glyph of the bundled fonts, as a share of the font size (Inter's
+/// thinnest letters and punctuation are about a quarter of it).
+const NARROWEST_GLYPH: f32 = 0.2;
+
+/// Entries in each generation of the width cache: enough for every label of a large
+/// board, several times over.
+const WIDTHS_PER_GENERATION: usize = 20_000;
+
+/// Shapes one line of `text` (no wrapping) with `fonts`.
+fn shape_line(fonts: &mut FontSystem, text: &str, font: Font, size: f32) -> Buffer {
+    let mut buffer = Buffer::new(fonts, Metrics::new(size, TextSystem::line_height(size)));
+    buffer.set_size(None, None);
+    buffer.set_text(text, &TextSystem::attrs(font), Shaping::Advanced, None);
+    buffer.shape_until_scroll(fonts, false);
+    buffer
+}
+
 fn bundled_db() -> fontdb::Database {
     let mut db = fontdb::Database::new();
     for data in [
@@ -294,6 +331,23 @@ mod tests {
     }
 
     #[test]
+    fn truncating_a_long_text_measures_only_what_could_fit() {
+        let long = "word ".repeat(400);
+        let mut t = TextSystem::bundled_only();
+        let short = t.truncate(&long, Font::Ui, 13.0, 120.0);
+        assert!(
+            short.ends_with('…') && short.chars().count() < 60,
+            "{short}"
+        );
+        assert!(t.measure(&short, Font::Ui, 13.0) <= 120.0);
+        // A binary search over a bounded prefix, never the whole text.
+        assert!(t.shaped_count() < 12, "{}", t.shaped_count());
+        let again = t.shaped_count();
+        assert_eq!(t.truncate(&long, Font::Ui, 13.0, 120.0), short);
+        assert_eq!(t.shaped_count(), again, "a second time is all cache hits");
+    }
+
+    #[test]
     fn monospace_cells() {
         let mut t = TextSystem::bundled_only();
         let m = t.cell_metrics(13.0);
@@ -312,14 +366,14 @@ mod tests {
             .join(" ");
         let mut all = TextSystem::bundled_only();
         let every = all.wrap(&text, Font::Ui, 13.0, 15.0);
-        let measured_all = all.widths.len();
+        let measured_all = all.shaped_count();
         let mut first = TextSystem::bundled_only();
         let two = first.wrap_first(&text, Font::Ui, 13.0, 15.0, 3);
         assert_eq!(two, every[..3]);
         assert!(
-            first.widths.len() * 50 < measured_all,
+            first.shaped_count() * 50 < measured_all,
             "{} vs {measured_all}",
-            first.widths.len()
+            first.shaped_count()
         );
         // Asking for more lines than there are gives them all.
         assert_eq!(

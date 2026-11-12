@@ -30,7 +30,7 @@ const TINT: f32 = 0.1;
 
 /// The height of every card, whatever it holds: the title, two lines of notes and the
 /// footer, so a board reads as a grid.
-fn card_height(theme: &Theme) -> f32 {
+pub(super) fn card_height(theme: &Theme) -> f32 {
     2.0 * CARD_PADDING
         + TextSystem::line_height(theme.font_size)
         + 2.0 * CARD_ROW_GAP
@@ -218,11 +218,11 @@ fn card_footer(
     dragged: bool,
     interactive: bool,
 ) -> Node<Msg> {
-    let link = TaskLink {
-        task: task.id.clone(),
-        subtask: None,
-    };
-    let thread = state.linked_thread(&link);
+    // The card knows its thread: no need to look the task up in the workspace again,
+    // which made a large board quadratic (UR-66).
+    let thread = Some(task.thread_id.as_str())
+        .filter(|t| !t.is_empty())
+        .and_then(|t| state.workspace.thread(t));
     let muted = if dragged {
         theme.text_muted.with_alpha(0.35)
     } else {
@@ -287,7 +287,10 @@ fn card_footer(
             chip = chip
                 .hover_background(theme.accent.with_alpha(0.3))
                 .key(key(&["task-thread", &task.id]))
-                .on_click(Msg::StartThread(link))
+                .on_click(Msg::StartThread(TaskLink {
+                    task: task.id.clone(),
+                    subtask: None,
+                }))
                 .role(Role::Button, format!("Go to thread {}", thread.title));
         }
         row = row.child(Node::spacer()).child(chip);

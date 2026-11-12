@@ -6,7 +6,9 @@
 //! (`jira-issue-picker`), a new epic in the editor (`jira-new-epic`), signing in
 //! (`jira-connect`), choosing a board to import (`jira-import`), and the questions
 //! before an issue is deleted in Jira: from its card's menu (`jira-delete-issue`) and
-//! for a subtask in the editor (`jira-delete-subtask`). `thread-links` shows the sidebar
+//! for a subtask in the editor (`jira-delete-subtask`). With two sign-ins (ADR 0051):
+//! Settings' Jira rows (`jira-accounts`) and the import dialog's site chips
+//! (`jira-import-accounts`). `thread-links` shows the sidebar
 //! with the marks of threads' Jira issues and pull requests (ADR 0036).
 
 use urushi_client::v1;
@@ -30,11 +32,18 @@ pub(super) const SCENARIOS: &[&str] = &[
     "jira-import",
     "jira-delete-issue",
     "jira-delete-subtask",
+    "jira-accounts",
+    "jira-import-accounts",
 ];
 
 const SITE: &str = "https://acme.atlassian.net";
 
-fn issue(key: &str, (kind, status): (v1::TaskKind, &str), assignee: &str, epic: &str) -> v1::Task {
+pub(super) fn issue(
+    key: &str,
+    (kind, status): (v1::TaskKind, &str),
+    assignee: &str,
+    epic: &str,
+) -> v1::Task {
     let type_name = match kind {
         v1::TaskKind::Story => "Story",
         v1::TaskKind::Bug => "Bug",
@@ -77,7 +86,7 @@ fn link_thread(task: &mut v1::Task) {
 }
 
 /// "ACME board": three columns of stories, bugs and tasks in two epics.
-fn board() -> v1::Board {
+pub(super) fn board() -> v1::Board {
     let column = |id: &str, name: &str, tasks: Vec<v1::Task>| v1::BoardColumn {
         id: id.into(),
         name: name.into(),
@@ -206,20 +215,50 @@ fn ask_to_delete(state: &mut AppState, name: &str) {
     }
 }
 
+/// The sign-in the ACME board is synced with.
+pub(super) fn account() -> v1::JiraAccount {
+    v1::JiraAccount {
+        connected: true,
+        site: SITE.into(),
+        email: "ada@acme.com".into(),
+        display_name: "Ada Lovelace".into(),
+        account_id: "acc-ada".into(),
+        key: "acme.atlassian.net/ada@acme.com".into(),
+    }
+}
+
+/// The scenario's sign-ins: none to connect, a second site's in the two-sign-in
+/// scenarios, else the ACME one.
+fn sign_in(state: &mut AppState, name: &str) {
+    state.jira_accounts = if name == "jira-connect" {
+        Vec::new()
+    } else {
+        vec![account()]
+    };
+    if name == "jira-accounts" || name == "jira-import-accounts" {
+        state.jira_accounts.push(v1::JiraAccount {
+            connected: true,
+            site: "https://globex.atlassian.net".into(),
+            email: "ada@globex.com".into(),
+            display_name: "Ada Lovelace".into(),
+            account_id: "acc-ada-globex".into(),
+            key: "globex.atlassian.net/ada@globex.com".into(),
+        });
+    }
+}
+
 /// Sets up a Jira scenario on a connected state.
 pub(super) fn show(state: &mut AppState, name: &str) {
     let mut workspace = state.workspace.raw().clone();
     workspace.boards.insert(0, board());
     state.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(workspace)));
     state.now_ms = 1_000_000;
-    state.jira = Some(v1::JiraAccount {
-        connected: name != "jira-connect",
-        site: SITE.into(),
-        email: "ada@acme.com".into(),
-        display_name: "Ada Lovelace".into(),
-        account_id: "acc-ada".into(),
-    });
+    sign_in(state, name);
     if name == "thread-links" {
+        return;
+    }
+    if name == "jira-accounts" {
+        state.update(Msg::OpenSettings);
         return;
     }
     state.update(Msg::ToggleBoard);
@@ -282,7 +321,7 @@ pub(super) fn show(state: &mut AppState, name: &str) {
             state.update(Msg::Jira(JiraMsg::OpenConnect));
             state.update(Msg::Paste("acme".into()));
         }
-        "jira-import" => {
+        "jira-import" | "jira-import-accounts" => {
             state.update(Msg::Jira(JiraMsg::OpenImport));
             state.update(Msg::Response {
                 followup: crate::msg::Followup::JiraBoards,

@@ -108,7 +108,7 @@ pub(super) fn column_tabs(state: &AppState, theme: &Theme, board: &v1::Board) ->
             board
                 .columns
                 .iter()
-                .map(|c| column_tab(state, theme, c, shown == Some(c.id.as_str()))),
+                .map(|c| column_tab(state, theme, (board, c), shown == Some(c.id.as_str()))),
         );
     if state.daemon_supports_board_extras()
         && board.jira.is_none()
@@ -126,13 +126,17 @@ pub(super) fn column_tabs(state: &AppState, theme: &Theme, board: &v1::Board) ->
 
 /// One column's tab: the count of its tasks the filter shows, its name (cut short to
 /// share the width), and a line under it when it is the one shown.
-fn column_tab(state: &AppState, theme: &Theme, column: &v1::BoardColumn, shown: bool) -> Node<Msg> {
-    let filter = state.filter_context();
-    let passing = column
-        .tasks
-        .iter()
-        .filter(|t| state.board.filter.shows(t, filter))
-        .count();
+fn column_tab(
+    state: &AppState,
+    theme: &Theme,
+    (board, column): (&v1::Board, &v1::BoardColumn),
+    shown: bool,
+) -> Node<Msg> {
+    let passing =
+        state
+            .board
+            .filtered
+            .count(board, column, &state.board.filter, state.filter_context());
     let count = if passing == column.tasks.len() {
         passing.to_string()
     } else {

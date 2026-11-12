@@ -437,12 +437,15 @@ pub enum Followup {
     },
     /// Remember who the daemon is signed in to Jira as.
     JiraAccount,
+    /// Keep the daemon's Jira sign-ins (1.29).
+    JiraAccounts,
     /// Signed in from the connect dialog: go on to importing a board.
     JiraConnected,
     /// Show the site's boards in the import dialog.
     JiraBoards,
-    /// The issues of this board its quick filters let through.
-    QuickFilter(String),
+    /// The issues of this board its quick filters let through, as asked by the query
+    /// with this number (`BoardPanel::quick_query`).
+    QuickFilter(String, u64),
     /// A quick filter was saved on this board: turn it on, or say why it failed.
     QuickFilterSaved(String),
     /// A quick filter was changed: close the dialog, or say why it failed.

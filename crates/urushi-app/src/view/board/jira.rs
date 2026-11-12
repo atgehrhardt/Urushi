@@ -89,7 +89,7 @@ pub(super) fn actions(state: &AppState, theme: &Theme, board: &v1::Board) -> Vec
         )
         .padding(Insets::symmetric(0.0, 6.0)),
     ];
-    let signed_in = state.jira.as_ref().is_some_and(|a| a.connected);
+    let signed_in = state.jira_account_of(board).is_some();
     out.push(if signed_in {
         button(
             theme,
@@ -102,7 +102,7 @@ pub(super) fn actions(state: &AppState, theme: &Theme, board: &v1::Board) -> Vec
             theme,
             "Connect…",
             ButtonKind::Ghost,
-            Msg::Jira(JiraMsg::OpenConnect),
+            Msg::Jira(JiraMsg::Reconnect(board.id.clone())),
         )
     });
     out.push(button(

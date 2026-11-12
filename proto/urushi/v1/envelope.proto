@@ -143,6 +143,8 @@ message Request {
     // Since 1.28.
     CheckForUpdatesRequest check_for_updates = 82;
     InstallUpdateRequest install_update = 83;
+    // Since 1.29.
+    ListJiraAccountsRequest list_jira_accounts = 84;
   }
 }
 
@@ -192,6 +194,8 @@ message Response {
     // Since 1.28.
     UpdateCheck update_check = 34;
     UpdateInstalled update_installed = 35;
+    // Since 1.29.
+    JiraAccountList jira_accounts = 36;
   }
 }
 

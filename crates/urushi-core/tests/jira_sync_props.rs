@@ -76,6 +76,7 @@ fn board() -> Board {
         BoardId::from_u128(1),
         JiraBoard {
             site: "https://x.atlassian.net".into(),
+            account: String::new(),
             board_id: 1,
             name: "b".into(),
             project_key: "P".into(),

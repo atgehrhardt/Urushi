@@ -83,6 +83,7 @@ fn issues_and_sources_round_trip() {
 
     let source = BoardSource::Jira(JiraBoard {
         site: "https://acme.atlassian.net".into(),
+        account: "acme.atlassian.net/a@b.c".into(),
         board_id: 7,
         name: "ACME".into(),
         project_key: "ACME".into(),
@@ -110,6 +111,7 @@ fn issues_and_sources_round_trip() {
 fn jira_boards_round_trip_with_issue_addresses() {
     let jira = JiraBoard {
         site: "https://acme.atlassian.net".into(),
+        account: String::new(),
         board_id: 7,
         name: "ACME".into(),
         project_key: "ACME".into(),
@@ -174,9 +176,18 @@ fn jira_messages_round_trip_on_the_wire() {
             api_token: "t".into(),
         }),
         Body::GetJiraAccount(v1::GetJiraAccountRequest {}),
-        Body::DisconnectJira(v1::DisconnectJiraRequest {}),
-        Body::ListJiraBoards(v1::ListJiraBoardsRequest { query: "q".into() }),
-        Body::ImportJiraBoard(v1::ImportJiraBoardRequest { jira_board_id: 7 }),
+        Body::DisconnectJira(v1::DisconnectJiraRequest {
+            account: "acme.atlassian.net/a@b.c".into(),
+        }),
+        Body::ListJiraAccounts(v1::ListJiraAccountsRequest {}),
+        Body::ListJiraBoards(v1::ListJiraBoardsRequest {
+            query: "q".into(),
+            account: "acme.atlassian.net/a@b.c".into(),
+        }),
+        Body::ImportJiraBoard(v1::ImportJiraBoardRequest {
+            jira_board_id: 7,
+            account: "acme.atlassian.net/a@b.c".into(),
+        }),
         Body::SyncBoard(v1::SyncBoardRequest {
             board_id: "1".into(),
         }),
@@ -201,6 +212,14 @@ fn jira_messages_round_trip_on_the_wire() {
             email: "a@b.c".into(),
             display_name: "Ada".into(),
             account_id: "acc-ada".into(),
+            key: "acme.atlassian.net/a@b.c".into(),
+        }),
+        Outcome::JiraAccounts(v1::JiraAccountList {
+            accounts: vec![v1::JiraAccount {
+                connected: true,
+                key: "globex.atlassian.net/a@b.c".into(),
+                ..Default::default()
+            }],
         }),
         Outcome::JiraIssueIds(v1::JiraIssueIds {
             ids: vec!["10001".into()],
@@ -294,6 +313,7 @@ fn issue_editor_messages_round_trip() {
             task_id: "t".into(),
             query: "ad".into(),
             assignable: true,
+            board_id: "b".into(),
         }),
         Body::SearchJiraIssues(v1::SearchJiraIssuesRequest {
             board_id: "b".into(),

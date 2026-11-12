@@ -118,9 +118,9 @@ impl AppState {
 
     /// Fields and their pickers: drafts, sent with Save.
     fn issue_field_msg(&mut self, msg: IssueMsg, fx: &mut Vec<Effect>) {
+        // "Me" is the sign-in of the board the issue is on.
         let me = self
-            .jira
-            .as_ref()
+            .shown_jira_account()
             .map(|a| (a.account_id.clone(), a.display_name.clone()));
         let Some((_, editor)) = self.issue_editor() else {
             return;
@@ -316,6 +316,8 @@ impl AppState {
                 task_id: task,
                 query,
                 assignable: open == "assignee",
+                // A new issue has no task yet: search with its board's sign-in.
+                board_id: board.unwrap_or_default(),
             })
         } else if open == LINK || kind == Some(v1::JiraFieldKind::Issue.into()) {
             let Some(board_id) = board else {

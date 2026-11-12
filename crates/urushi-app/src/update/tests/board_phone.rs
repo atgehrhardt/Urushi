@@ -160,10 +160,11 @@ fn the_board_picker_lists_the_boards_and_ways_to_add_one() {
 #[test]
 fn a_phones_board_menu_holds_the_header_actions() {
     let mut s = phone();
-    s.jira = Some(v1::JiraAccount {
+    s.jira_accounts = vec![v1::JiraAccount {
         connected: true,
+        site: "https://acme.atlassian.net".into(),
         ..Default::default()
-    });
+    }];
     s.update(Msg::OpenMenu(MenuTarget::Board("jb".into())));
     let frame = render(&s);
     let dump = frame.scene.dump();

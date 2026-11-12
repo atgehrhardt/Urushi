@@ -22,6 +22,19 @@ fn signed_in() -> v1::JiraAccount {
         email: "a@b.c".into(),
         display_name: "Ada".into(),
         account_id: "acc-ada".into(),
+        key: "acme.atlassian.net/a@b.c".into(),
+    }
+}
+
+/// Signed in on a second site (1.29).
+fn globex() -> v1::JiraAccount {
+    v1::JiraAccount {
+        connected: true,
+        site: "https://globex.atlassian.net".into(),
+        email: "a@b.c".into(),
+        display_name: "Ada".into(),
+        account_id: "acc-ada-globex".into(),
+        key: "globex.atlassian.net/a@b.c".into(),
     }
 }
 
@@ -124,10 +137,8 @@ fn a_new_daemon_is_asked_who_it_is_signed_in_as() {
         Followup::JiraAccount,
         Outcome::JiraAccount(signed_in()),
     );
-    assert_eq!(
-        s.jira.as_ref().map(|a| a.display_name.as_str()),
-        Some("Ada")
-    );
+    assert_eq!(s.jira_accounts.len(), 1);
+    assert_eq!(s.jira_accounts[0].display_name, "Ada");
     // An older daemon isn't asked.
     let fx = super::connected().update(Msg::Connected {
         welcome: v1::Welcome::default(),
@@ -217,14 +228,17 @@ fn importing_signs_in_first_then_lists_and_imports_a_board() {
     type_into(&mut s, Field::JiraQuery, "mob");
     let fx = s.update(Msg::Submit);
     assert!(
-        matches!(bodies(&fx)[..], [Body::ListJiraBoards(v1::ListJiraBoardsRequest { query })] if query == "mob")
+        matches!(bodies(&fx)[..], [Body::ListJiraBoards(v1::ListJiraBoardsRequest { query, .. })] if query == "mob")
     );
 
     let fx = s.update(Msg::Jira(JiraMsg::Import(8)));
     assert!(matches!(
         fx[..],
         [Effect::Request {
-            body: Body::ImportJiraBoard(v1::ImportJiraBoardRequest { jira_board_id: 8 }),
+            body: Body::ImportJiraBoard(v1::ImportJiraBoardRequest {
+                jira_board_id: 8,
+                ..
+            }),
             followup: Followup::BoardCreated,
         }]
     ));
@@ -251,10 +265,10 @@ fn boards_sync_and_issues_open_in_jira() {
     let fx = s.update(Msg::Jira(JiraMsg::Open(url.into())));
     assert!(matches!(&fx[..], [Effect::OpenUrl(u)] if u == url));
     // Signing out from Settings.
-    s.jira = Some(signed_in());
-    let fx = s.update(Msg::Jira(JiraMsg::Disconnect));
+    s.jira_accounts = vec![signed_in()];
+    let fx = s.update(Msg::Jira(JiraMsg::Disconnect(signed_in().key)));
     assert!(matches!(bodies(&fx)[..], [Body::DisconnectJira(_)]));
-    assert!(!s.jira.as_ref().is_some_and(|a| a.connected));
+    assert!(s.jira_accounts.is_empty());
 }
 
 #[test]
@@ -275,7 +289,7 @@ fn filters_narrow_a_jira_board_and_reset_with_another_board() {
     assert!(!s.board.filter.shows(card, s.filter_context()));
     // "Only my issues" goes by the signed-in account.
     s.update(Msg::Filter(FilterMsg::Clear));
-    s.jira = Some(signed_in());
+    s.jira_accounts = vec![signed_in()];
     s.update(Msg::Filter(FilterMsg::Mine));
     assert_eq!(s.filter_context().me, Some("acc-ada"));
     s.update(Msg::SelectBoard("b".into()));
@@ -290,18 +304,31 @@ fn quick_filters_ask_jira_and_ask_again_when_the_board_changes() {
     let fx = s.update(Msg::Filter(FilterMsg::Quick(4)));
     assert!(matches!(
         &fx[..],
-        [Effect::Request { body: Body::QueryJiraFilter(v1::QueryJiraFilterRequest { board_id, quick_filter_ids, .. }), followup: Followup::QuickFilter(b) }]
+        [Effect::Request { body: Body::QueryJiraFilter(v1::QueryJiraFilterRequest { board_id, quick_filter_ids, .. }), followup: Followup::QuickFilter(b, 1) }]
             if board_id == "jb" && quick_filter_ids == &[4] && b == "jb"
     ));
+    // A change that leaves the board alone (an agent's attention) asks nothing.
+    let unchanged = |s: &AppState| {
+        let mut workspace = super::workspace();
+        workspace.boards = s.workspace.raw().boards.clone();
+        workspace
+    };
+    let same = unchanged(&s);
+    assert!(bodies(&s.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(same)))).is_empty());
+    assert!(!s.board.quick_stale);
     // The board changes before Jira answers: asked again once the answer comes.
-    let mut workspace = super::workspace();
-    workspace.boards = vec![jira_board(), super::board::board()];
+    let mut workspace = unchanged(&s);
+    for b in &mut workspace.boards {
+        if b.id == "jb" {
+            b.columns[0].tasks[0].title = "Checkout, again".into();
+        }
+    }
     assert!(
         bodies(&s.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(workspace)))).is_empty()
     );
     let fx = answer(
         &mut s,
-        Followup::QuickFilter("jb".into()),
+        Followup::QuickFilter("jb".into(), 1),
         Outcome::JiraIssueIds(v1::JiraIssueIds {
             ids: vec!["nope".into()],
         }),
@@ -320,6 +347,49 @@ fn quick_filters_ask_jira_and_ask_again_when_the_board_changes() {
             .filter
             .shows(&board.columns[0].tasks[0], s.filter_context())
     );
+}
+
+#[test]
+fn turning_quick_filters_on_and_off_never_flashes_the_whole_board() {
+    let mut s = with_jira();
+    s.daemon_minor = 13;
+    s.update(Msg::SelectBoard("jb".into()));
+    let card = jira_board().columns[0].tasks[0].clone();
+    s.update(Msg::Filter(FilterMsg::Quick(4)));
+    answer(
+        &mut s,
+        Followup::QuickFilter("jb".into(), 1),
+        Outcome::JiraIssueIds(v1::JiraIssueIds {
+            ids: vec!["nope".into()],
+        }),
+    );
+    assert!(!s.board.filter.shows(&card, s.filter_context()));
+    // Another one on: until Jira answers, the board stays as it was, not unfiltered.
+    s.update(Msg::Filter(FilterMsg::Quick(5)));
+    assert!(s.board.quick_asking);
+    assert!(!s.board.filter.shows(&card, s.filter_context()));
+    // The answer to the first query, arriving late, is dropped.
+    let issue = card
+        .issue
+        .as_ref()
+        .map(|i| i.id.clone())
+        .unwrap_or_default();
+    answer(
+        &mut s,
+        Followup::QuickFilter("jb".into(), 1),
+        Outcome::JiraIssueIds(v1::JiraIssueIds {
+            ids: vec![issue.clone()],
+        }),
+    );
+    assert!(!s.board.filter.shows(&card, s.filter_context()));
+    assert!(s.board.quick_asking, "still waiting for the newer answer");
+    answer(
+        &mut s,
+        Followup::QuickFilter("jb".into(), 2),
+        Outcome::JiraIssueIds(v1::JiraIssueIds { ids: vec![issue] }),
+    );
+    assert!(s.board.filter.shows(&card, s.filter_context()));
+    assert!(!s.board.quick_asking);
 }
 
 #[test]
@@ -422,7 +492,7 @@ fn the_new_board_button_offers_an_import_on_a_jira_daemon() {
         s.menu.as_ref().map(|m| &m.target),
         Some(MenuTarget::NewBoard)
     ));
-    s.jira = Some(signed_in());
+    s.jira_accounts = vec![signed_in()];
     let fx = s.update(Msg::Jira(JiraMsg::OpenImport));
     assert!(s.menu.is_none());
     assert!(
@@ -524,7 +594,7 @@ fn with_jira_13() -> AppState {
 /// The Jira board on a 1.13 daemon, the editor open on ACME-1, its issue answered.
 fn editing_issue() -> AppState {
     let mut s = with_jira_13();
-    s.jira = Some(signed_in());
+    s.jira_accounts = vec![signed_in()];
     let fx = s.update(Msg::Board(BoardMsg::OpenTask("j1".into())));
     assert!(
         matches!(&fx[..], [Effect::Request { body: Body::GetJiraIssue(r), followup: Followup::JiraIssue(t) }] if r.task_id == "j1" && t == "j1"),
@@ -737,4 +807,112 @@ fn a_new_jira_task_needs_its_required_fields() {
     assert!(
         matches!(bodies(&fx)[..], [Body::GetJiraCreateFields(r)] if r.kind == i32::from(v1::TaskKind::Bug))
     );
+}
+
+#[test]
+fn a_new_daemon_lists_every_sign_in() {
+    let mut s = AppState::new(crate::config::ConnectTarget::Local(None), super::CELL);
+    let fx = s.update(Msg::Connected {
+        welcome: v1::Welcome {
+            protocol_minor: crate::board::JIRA_ACCOUNTS_SINCE_MINOR,
+            ..Default::default()
+        },
+        workspace: super::workspace(),
+    });
+    assert!(
+        bodies(&fx)
+            .iter()
+            .any(|b| matches!(b, Body::ListJiraAccounts(_)))
+    );
+    answer(
+        &mut s,
+        Followup::JiraAccounts,
+        Outcome::JiraAccounts(v1::JiraAccountList {
+            accounts: vec![signed_in(), globex()],
+        }),
+    );
+    assert_eq!(s.jira_accounts, [signed_in(), globex()]);
+}
+
+#[test]
+fn several_sign_ins_import_from_the_one_chosen_and_each_board_has_its_own_me() {
+    let mut s = with_jira();
+    s.daemon_minor = crate::board::JIRA_ACCOUNTS_SINCE_MINOR;
+    s.jira_accounts = vec![signed_in(), globex()];
+    // The import dialog lists the first site's boards, then the one picked.
+    // (The panel's board is now watched too: a 1.13+ daemon.)
+    let fx = s.update(Msg::Jira(JiraMsg::OpenImport));
+    assert!(
+        bodies(&fx)
+            .iter()
+            .any(|b| matches!(b, Body::ListJiraBoards(r) if r.account == signed_in().key)),
+        "{fx:?}"
+    );
+    let fx = s.update(Msg::Jira(JiraMsg::ImportFrom(globex().key)));
+    assert!(matches!(
+        &bodies(&fx)[..],
+        [Body::ListJiraBoards(r)] if r.account == globex().key
+    ));
+    let fx = s.update(Msg::Jira(JiraMsg::Import(8)));
+    assert!(matches!(
+        &bodies(&fx)[..],
+        [Body::ImportJiraBoard(r)] if r.account == globex().key && r.jira_board_id == 8
+    ));
+    s.update(Msg::CloseDialog);
+
+    // "Me" is the sign-in of the board on screen: by the key it names, else its site.
+    s.update(Msg::SelectBoard("jb".into()));
+    assert_eq!(s.filter_context().me, Some("acc-ada"));
+    let mut workspace = super::workspace();
+    let mut board = jira_board();
+    if let Some(j) = board.jira.as_mut() {
+        j.site = "https://globex.atlassian.net".into();
+        j.account = globex().key;
+    }
+    workspace.boards = vec![board, super::board::board()];
+    s.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(workspace)));
+    assert_eq!(s.filter_context().me, Some("acc-ada-globex"));
+
+    // Signing out of one keeps the other; its board can't sync, and offers to sign in.
+    let fx = s.update(Msg::Jira(JiraMsg::Disconnect(globex().key)));
+    assert!(matches!(
+        &bodies(&fx)[..],
+        [Body::DisconnectJira(r)] if r.account == globex().key
+    ));
+    assert_eq!(s.jira_accounts, [signed_in()]);
+    assert_eq!(s.filter_context().me, None);
+    s.update(Msg::Jira(JiraMsg::Reconnect("jb".into())));
+    let Some(Dialog::ConnectJira { site, email, .. }) = &s.dialog else {
+        panic!("signing in again");
+    };
+    assert_eq!(
+        (site.text(), email.text()),
+        ("globex.atlassian.net", "a@b.c")
+    );
+    assert_eq!(s.focus, Some(Field::JiraToken));
+    // Signed in again: added beside the other, not replacing it.
+    answer(
+        &mut s,
+        Followup::JiraConnected,
+        Outcome::JiraAccount(globex()),
+    );
+    assert_eq!(s.jira_accounts, [signed_in(), globex()]);
+}
+
+#[test]
+fn an_older_daemon_has_one_sign_in_that_a_new_one_replaces() {
+    let mut s = with_jira();
+    s.jira_accounts = vec![signed_in()];
+    s.update(Msg::Jira(JiraMsg::OpenConnect));
+    answer(
+        &mut s,
+        Followup::JiraConnected,
+        Outcome::JiraAccount(globex()),
+    );
+    assert_eq!(s.jira_accounts, [globex()]);
+    // Its import dialog has no account picker, and asks for the daemon's one.
+    let Some(Dialog::ImportJira { account, .. }) = &s.dialog else {
+        panic!("importing");
+    };
+    assert_eq!(*account, globex().key);
 }

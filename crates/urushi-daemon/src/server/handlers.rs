@@ -336,6 +336,7 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         | Body::NestTask(_)) => super::boards::route(service, body).await?,
         body @ (Body::ConnectJira(_)
         | Body::GetJiraAccount(_)
+        | Body::ListJiraAccounts(_)
         | Body::DisconnectJira(_)
         | Body::ListJiraBoards(_)
         | Body::ImportJiraBoard(_)

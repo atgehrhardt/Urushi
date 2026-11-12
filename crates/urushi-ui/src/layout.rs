@@ -134,6 +134,16 @@ impl<M: Clone> Frame<M> {
         None
     }
 
+    /// Whether the pointer moving from `from` to `to` changes what this frame draws as
+    /// hovered: if not, there is nothing to draw again (ADR 0050).
+    pub fn hover_changes(&self, from: Option<Point>, to: Option<Point>) -> bool {
+        let inside = |p: Option<Point>, r: &Rect| p.is_some_and(|p| r.contains(p));
+        self.hits
+            .iter()
+            .filter(|h| h.on_click.is_some() || h.on_drop.is_some())
+            .any(|h| inside(from, &h.rect) != inside(to, &h.rect))
+    }
+
     /// The cursor to show at `p`.
     pub fn cursor(&self, p: Point) -> CursorIcon {
         self.hit(p).map_or(CursorIcon::Default, |h| h.cursor)
@@ -558,10 +568,34 @@ impl<M: Clone> Ctx<'_, M> {
                     Rect::new(inner.x + cross_offset, inner.y + offset, cross_len, *main)
                 }
             };
-            self.place(child, rect, index);
+            self.place_child(child, rect, index, node.scroll.is_some());
             offset += main + s.gap + extra_gap;
         }
     }
+}
+
+impl<M: Clone> Ctx<'_, M> {
+    /// Places one child at `rect`. In a scrolling box, one outside the clip is skipped,
+    /// so a long list costs what it shows (UR-66, ADR 0050); its ids are still counted,
+    /// so those of the nodes after it don't change as it scrolls.
+    fn place_child(&mut self, child: &Node<M>, rect: Rect, index: &mut u64, scrolling: bool) {
+        let in_sight = self.clips.last().is_none_or(|clip| overlaps(rect, *clip));
+        if scrolling && !in_sight {
+            *index += subtree_len(child);
+        } else {
+            self.place(child, rect, index);
+        }
+    }
+}
+
+/// Whether `a` and `b` share any area.
+fn overlaps(a: Rect, b: Rect) -> bool {
+    a.x < b.right() && b.x < a.right() && a.y < b.bottom() && b.y < a.bottom()
+}
+
+/// How many nodes `node` and everything under it are.
+fn subtree_len<M>(node: &Node<M>) -> u64 {
+    1 + node.children.iter().map(subtree_len).sum::<u64>()
 }
 
 /// A rectangle of `size` at `at`, moved (not shrunk, unless it can't fit) to stay inside
