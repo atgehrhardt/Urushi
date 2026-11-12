@@ -1,0 +1,34 @@
+name: Build
+
+# Every merge to main builds the apps a release would ship (Urushi.app for Apple Silicon,
+# the Android APK, the unsigned iOS .ipa) plus the iOS Simulator app, and keeps them as
+# workflow artifacts for 30 days. Nothing is published: releases are started by hand
+# (release.yml). Pull requests that change how the apps are built or packaged get the same
+# build, so a packaging break fails the pull request rather than the next merge.
+# See docs/features/ci-and-releases.md and ADR 0053.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - .github/workflows/build.yml
+      - .github/workflows/build-apps.yml
+      - .github/workflows/release.yml
+      - scripts/bundle-macos.sh
+      - scripts/build-android.sh
+      - scripts/bundle-ios.sh
+      - apps/android/AndroidManifest.xml
+
+# A newer push to a pull request replaces its running build; every merge to main keeps its own.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  apps:
+    uses: ./.github/workflows/build-apps.yml
+    with:
+      release: false
+      simulator: true
+      retention-days: 30

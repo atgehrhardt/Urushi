@@ -67,6 +67,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0050 – Lay out and paint only what a scrolling list shows, keep text caches in two generations, and redraw on pointer moves only when hover changes](adr/0050-draw-what-shows-and-redraw-only-on-change.md)
 - [0051 – Keep several Jira sign-ins, keyed by site and email, and tie each imported board to one](adr/0051-several-jira-sign-ins-keyed-by-site-and-email.md)
 - [0052 – Make a connection work both ways or end: a client heartbeat, writers that hang up, ack timeouts, listeners that never stop the daemon](adr/0052-connections-work-both-ways-or-end.md)
+- [0053 – Build the apps on every merge to main; release only from a button that tags Cargo.toml's version](adr/0053-build-every-merge-release-from-a-button.md)
 
 ## Features
 - [_template](features/_template.md)
