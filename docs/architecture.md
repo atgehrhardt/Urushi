@@ -38,6 +38,8 @@ The multiplexer is **invisible infrastructure**. It exists so terminal sessions 
                      written through, issues read in full on demand, pull requests of issues
                      linked to threads from Jira's development info (ADR 0020, 0022, 0023, 0036)
    http              HTTPS through the system's curl, request on stdin (ADR 0021)
+   update            new releases of the macOS app from GitHub: checks, then installs in place
+                     of the bundle on request; the app restarts the daemon and itself (ADR 0048)
    remote            Tailscale provider (status/whois) + tailnet listener
    lan               private-address listener, pairing codes, paired-device keys (ADR 0041)
 ```
@@ -131,6 +133,6 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
 
 ## Dependencies on external programs
 
-- `git` and `tailscale` are run as separate processes, never linked. So are `ps` (which agent runs in a pane), `curl` (Claude's usage endpoint, ADR 0011; Jira Cloud's REST APIs, ADR 0021) and, on macOS, `security` (Claude's keychain sign-in); see ADR 0011.
+- `git` and `tailscale` are run as separate processes, never linked. So are `ps` (which agent runs in a pane), `curl` (Claude's usage endpoint, ADR 0011; Jira Cloud's REST APIs, ADR 0021; GitHub's releases, ADR 0048) and, on macOS, `security` (Claude's keychain sign-in; see ADR 0011) and `shasum`, `ditto` and `codesign` (checking and installing an update, ADR 0048).
 - The Jira sign-in (site, email, API token) is kept by the daemon in `<home>/jira-credentials.json` (0600) and never sent to clients (ADR 0021).
 - Their absence is reported in the UI with a clear explanation.

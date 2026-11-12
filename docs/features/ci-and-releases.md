@@ -62,6 +62,11 @@ get them, so their APKs are debug-signed. Locally, `scripts/build-android.sh` si
 Android's standard debug key, `~/.android/debug.keystore`.
 
 ## Invariants
+- The macOS updater depends on what releases publish (ADR 0048,
+  [updates](updates.md)): a tag `vX.Y.Z`, `Urushi-X.Y.Z-macos-arm64.zip` holding one
+  `Urushi.app` whose `CFBundleShortVersionString` is `X.Y.Z`, and its `.sha256` in
+  `shasum`'s format. `releases/latest` must not be a draft or a pre-release. Renaming
+  these breaks updating for every installed app.
 - A release's version, its tag, the apps' `CFBundleShortVersionString` and the APK's
   `versionName` are equal. The `version` job refuses a mismatched tag, and
   `build-android.sh` and `bundle-ios.sh` stamp their builds from `Cargo.toml`. The

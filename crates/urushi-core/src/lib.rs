@@ -29,6 +29,7 @@ pub mod status;
 pub mod tab;
 pub mod thread;
 pub mod time;
+pub mod version;
 
 pub use agent::{
     Agent, AgentMode, AgentSessionId, AgentSettings, InvalidSessionId, PromptDelivery,
@@ -53,8 +54,10 @@ pub use quick_terminal::QuickTerminal;
 pub use repo::Repo;
 pub use settings::{
     EffectiveSettings, LanSettings, RepoSettingsOverrides, Settings, TailnetSettings,
+    UpdateSettings,
 };
 pub use status::{Status, StatusError};
 pub use tab::Tab;
 pub use thread::{NewThread, Thread, ThreadKind, ThreadState, ThreadStateError};
 pub use time::Timestamp;
+pub use version::{InvalidVersion, Version};

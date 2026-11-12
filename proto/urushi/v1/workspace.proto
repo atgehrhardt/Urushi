@@ -11,6 +11,7 @@ package urushi.v1;
 import "urushi/v1/agents.proto";
 import "urushi/v1/boards.proto";
 import "urushi/v1/settings.proto";
+import "urushi/v1/updates.proto";
 
 message ListWorkspaceRequest {
   // Also stream WorkspaceChanged events on this connection.
@@ -31,6 +32,9 @@ message Workspace {
   repeated Board boards = 6;
   // The daemon's quick terminal; absent when none is open. Since 1.20.
   QuickTerminal quick_terminal = 7;
+  // A newer release of the app, while the daemon knows of one (ADR 0048). Not
+  // stored. Since 1.27.
+  AvailableUpdate update = 8;
 }
 
 // A user-made group of threads, shown to users as a "project". It can hold threads

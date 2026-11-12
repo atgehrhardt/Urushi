@@ -24,6 +24,7 @@ mod task_in_thread;
 mod tasks;
 mod terminal_area;
 mod thread_card;
+mod updates;
 
 use std::collections::HashMap;
 
@@ -102,6 +103,10 @@ pub(crate) fn view(state: &AppState, theme: &Theme, scroll: &HashMap<Key, f32>) 
         .height(Length::Fill(1.0))
         .child(backdrop(theme))
         .child(app);
+    // The update notice sits in the corner over the app, under dialogs and menus.
+    if let Some(notice) = updates::notice(state, theme) {
+        root = root.child(notice);
+    }
     if let Some(dialog) = dialogs::view(state, theme, scroll) {
         root = root.child(dialog);
     }

@@ -62,6 +62,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0045 – Release the unsigned iOS .ipa from the same tag, for users to sideload (supersedes 0040's iOS part)](adr/0045-release-the-unsigned-ios-ipa-for-sideloading.md)
 - [0046 – Show one board column at a time on phones, switched by tabs and swipes](adr/0046-one-board-column-at-a-time-on-phones.md)
 - [0047 – Give board columns a minimum width and scroll the board sideways, rather than shrink them](adr/0047-board-columns-keep-a-width-and-scroll-sideways.md)
+- [0048 – Update the macOS app from GitHub Releases in the daemon, by swapping the bundle and restarting](adr/0048-update-the-macos-app-from-github-releases-in-the-daemon.md)
 
 ## Features
 - [_template](features/_template.md)
@@ -81,3 +82,4 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [Agent attention and activity (finished / running / needs input)](features/agent-attention.md)
 - [Quick terminal](features/quick-terminal.md)
 - [CI and releases](features/ci-and-releases.md)
+- [App updates from GitHub Releases](features/updates.md)

@@ -16,6 +16,7 @@ mod jira;
 mod pane;
 mod quick;
 mod sidebar;
+mod updates;
 
 pub use board::BoardMsg;
 pub use filter::FilterMsg;
@@ -24,6 +25,7 @@ pub use jira::JiraMsg;
 pub use pane::PaneMsg;
 pub use quick::QuickMsg;
 pub use sidebar::SidebarMsg;
+pub use updates::UpdateMsg;
 
 /// Something that happened.
 #[derive(Clone, Debug)]
@@ -163,6 +165,8 @@ pub enum Msg {
     RecentHosts(Vec<String>),
     /// LAN access on the host (Settings).
     Lan(LanMsg),
+    /// Updating the app (`update/updates.rs`).
+    AppUpdate(UpdateMsg),
 
     // ---- the quick terminal (`update/quick.rs`) --------------------------------------
     /// The quick-terminal panel.
@@ -445,10 +449,18 @@ pub enum Followup {
     JiraFound(String),
     /// Show the fields a new issue of this kind (a wire `TaskKind`) has.
     JiraCreateFields(i32),
+    /// Show what looking for a new release found (Settings).
+    UpdateChecked,
+    /// The release is installed: restart the daemon, then the app.
+    UpdateInstalled,
 }
 
 /// Something the app needs done.
 #[derive(Clone, Debug)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "requests carry generated protobuf bodies; effects are few and short-lived, so boxing would only add an allocation per request"
+)]
 pub enum Effect {
     /// Send a request; deliver the outcome as [`Msg::Response`].
     Request {
@@ -476,6 +488,9 @@ pub enum Effect {
     },
     /// Drop the connection, stop the local daemon, and deliver [`Msg::DaemonStopped`].
     StopDaemon,
+    /// Open the app bundle at this path once this app has quit, and quit (after an
+    /// update, ADR 0048).
+    Relaunch(String),
     /// Show the system file picker, then read the chosen files and deliver each as
     /// [`BoardMsg::Attach`] for `task`.
     PickFiles {

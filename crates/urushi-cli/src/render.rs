@@ -245,6 +245,22 @@ pub(crate) fn print_settings(s: &v1::Settings) -> Result<()> {
     let (colors, logo) = crate::look::describe(s);
     writeln!(o, "colors                  {colors}")?;
     writeln!(o, "logo                    {logo}")?;
+    if let Some(u) = &s.updates {
+        writeln!(
+            o,
+            "check-updates           {}",
+            u.check_automatically.unwrap_or(true)
+        )?;
+        writeln!(
+            o,
+            "skipped-update          {}",
+            if u.skipped_version.is_empty() {
+                "(none)"
+            } else {
+                &u.skipped_version
+            }
+        )?;
+    }
     Ok(())
 }
 

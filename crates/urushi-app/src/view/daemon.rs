@@ -91,7 +91,7 @@ pub(super) fn confirm(
         body = body.child(line("No terminals are open.".to_owned(), theme.text));
     }
     body = body.child(line(
-        "Threads, tabs and layouts come back with fresh shells.".to_owned(),
+        "Panes come back as they were; agents reopen their conversations.".to_owned(),
         theme.text_muted,
     ));
     let mut restart = button(

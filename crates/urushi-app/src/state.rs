@@ -306,6 +306,8 @@ pub enum Dialog {
         /// The Appearance section's draft, shown live until Save or Cancel.
         look: Box<crate::appearance::LookDraft>,
     },
+    /// Confirm updating the app, which restarts the daemon (ADR 0048).
+    InstallUpdate(Box<crate::updates::UpdateDialog>),
     /// Confirm restarting the local daemon, which closes every terminal.
     RestartDaemon {
         /// Open terminals that will close.
@@ -582,6 +584,8 @@ pub struct AppState {
     pub window_height: f32,
     /// When the setup wizard may open.
     pub setup: crate::task_agent::SetupGate,
+    /// Checks for app updates asked for in Settings (ADR 0048).
+    pub update_checks: crate::updates::UpdateChecks,
 }
 
 impl AppState {
@@ -638,6 +642,7 @@ impl AppState {
             now_ms: 0,
             window_height: 0.0,
             setup: crate::task_agent::SetupGate::default(),
+            update_checks: crate::updates::UpdateChecks::default(),
         }
     }
 

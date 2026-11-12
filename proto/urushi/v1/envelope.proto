@@ -11,6 +11,7 @@ import "urushi/v1/quick_filters.proto";
 import "urushi/v1/remote.proto";
 import "urushi/v1/settings.proto";
 import "urushi/v1/terminal.proto";
+import "urushi/v1/updates.proto";
 import "urushi/v1/usage.proto";
 import "urushi/v1/workspace.proto";
 
@@ -137,6 +138,9 @@ message Request {
     StartLanPairingRequest start_lan_pairing = 78;
     CancelLanPairingRequest cancel_lan_pairing = 79;
     RevokeLanDeviceRequest revoke_lan_device = 80;
+    // Since 1.27.
+    CheckForUpdatesRequest check_for_updates = 81;
+    InstallUpdateRequest install_update = 82;
   }
 }
 
@@ -183,6 +187,9 @@ message Response {
     QuickFilterSaved quick_filter_saved = 32;
     // Since 1.26.
     LanStatus lan_status = 33;
+    // Since 1.27.
+    UpdateCheck update_check = 34;
+    UpdateInstalled update_installed = 35;
   }
 }
 

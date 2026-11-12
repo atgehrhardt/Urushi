@@ -22,22 +22,7 @@ pub(super) fn view(
         Dialog::Prompt {
             prompt,
             field: text,
-        } => {
-            let (title, placeholder, action) = prompt.texts();
-            let body = field(state, theme, text, Field::Prompt, placeholder);
-            modal(
-                state,
-                theme,
-                title,
-                420.0,
-                body,
-                vec![
-                    cancel(theme),
-                    button(theme, action, ButtonKind::Primary, Msg::Submit),
-                ],
-                Some(Msg::CloseDialog),
-            )
-        }
+        } => prompt_dialog(state, theme, prompt, text),
         Dialog::NewTab { highlighted } => super::launcher::dialog(state, theme, *highlighted),
         Dialog::DeleteThread { title, plan, .. } => delete_dialog(state, theme, title, plan),
         Dialog::ProjectSettings(draft) => {
@@ -55,6 +40,7 @@ pub(super) fn view(
             threads,
             restarting,
         } => super::daemon::confirm(state, theme, *terminals, *threads, *restarting),
+        Dialog::InstallUpdate(dialog) => super::updates::confirm(state, theme, dialog),
         Dialog::Task {
             board,
             column,
@@ -157,6 +143,29 @@ pub(super) fn area(
 /// The key of a dialog field's widget (the runner finds fields by it while selecting).
 pub(crate) fn field_key(which: Field) -> urushi_ui::Key {
     key(&["field", &format!("{which:?}")])
+}
+
+/// A one-line text prompt (a name for something).
+fn prompt_dialog(
+    state: &AppState,
+    theme: &Theme,
+    prompt: &crate::organize::Prompt,
+    text: &TextField,
+) -> Node<Msg> {
+    let (title, placeholder, action) = prompt.texts();
+    let body = field(state, theme, text, Field::Prompt, placeholder);
+    modal(
+        state,
+        theme,
+        title,
+        420.0,
+        body,
+        vec![
+            cancel(theme),
+            button(theme, action, ButtonKind::Primary, Msg::Submit),
+        ],
+        Some(Msg::CloseDialog),
+    )
 }
 
 pub(super) fn label(theme: &Theme, text: &str) -> Node<Msg> {
@@ -419,6 +428,7 @@ fn settings_dialog(
     let status = tailnet_status(&tailnet);
     let mut body = Node::column().width(Length::Fill(1.0)).gap(10.0);
     body = body.children(super::daemon::settings_section(state, theme));
+    body = body.children(super::updates::settings_rows(state, theme));
     if state.daemon_minor >= crate::issue::ISSUES_SINCE_MINOR {
         body = body.children(super::appearance::section(state, theme, look));
     }

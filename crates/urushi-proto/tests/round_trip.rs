@@ -250,6 +250,10 @@ fn all_request_kinds() {
         B::RevokeLanDevice(v1::RevokeLanDeviceRequest {
             device_id: "d".into(),
         }),
+        B::CheckForUpdates(v1::CheckForUpdatesRequest {}),
+        B::InstallUpdate(v1::InstallUpdateRequest {
+            version: "0.1.7".into(),
+        }),
     ];
     for (i, body) in bodies.into_iter().enumerate() {
         round_trip(&envelope::request(i as u64, body));
@@ -540,4 +544,47 @@ fn lan_status_round_trips() {
         fingerprint: "0011-2233-4455-6677".into(),
     });
     round_trip(&envelope::response(1, outcome));
+}
+
+#[test]
+fn update_messages_round_trip() {
+    use v1::response::Outcome as O;
+    round_trip(&envelope::response(
+        1,
+        O::UpdateCheck(v1::UpdateCheck {
+            current_version: "0.1.6".into(),
+            latest_version: "0.1.7".into(),
+            available: true,
+            release_url: "https://github.com/o/r/releases/tag/v0.1.7".into(),
+        }),
+    ));
+    round_trip(&envelope::response(
+        2,
+        O::UpdateInstalled(v1::UpdateInstalled {
+            version: "0.1.7".into(),
+            bundle_path: "/Applications/Urushi.app".into(),
+        }),
+    ));
+    round_trip(&envelope::response(
+        3,
+        O::Settings(v1::Settings {
+            updates: Some(v1::UpdateSettings {
+                check_automatically: Some(false),
+                skipped_version: "0.1.7".into(),
+            }),
+            ..Default::default()
+        }),
+    ));
+    round_trip(&envelope::event(v1::event::Body::WorkspaceChanged(
+        v1::Workspace {
+            revision: 4,
+            update: Some(v1::AvailableUpdate {
+                version: "0.1.7".into(),
+                current_version: "0.1.6".into(),
+                release_url: "https://github.com/o/r/releases/tag/v0.1.7".into(),
+                installing: true,
+            }),
+            ..Default::default()
+        },
+    )));
 }
