@@ -127,6 +127,8 @@ pub async fn run(
     // Lets tooling (scripts/dev.sh) stop exactly this daemon, never a different one.
     let pid_file = options.home.join("urushid.pid");
     std::fs::write(&pid_file, format!("{}\n", std::process::id()))?;
+    // Before any pane opens: tens of panes outgrow the default limit (UR-69).
+    platform::raise_open_file_limit();
 
     let store = Arc::new(JsonFileStore::new(options.home.join("workspace.json")));
     let service = Service::start(ServiceConfig {
@@ -142,9 +144,16 @@ pub async fn run(
         cli: options.cli,
     })?;
 
-    server::remote::reconcile(&service).await;
+    // Remote listeners come up beside the local socket, not before it: asking
+    // Tailscale can take seconds, and clients wait for the socket (UR-69).
+    let remote_start = tokio::spawn({
+        let service = service.clone();
+        async move {
+            server::remote::reconcile(&service).await;
+            server::lan::reconcile(&service).await;
+        }
+    });
     let watchdog = server::remote::spawn_watchdog(Arc::downgrade(&service));
-    server::lan::reconcile(&service).await;
     let lan_watchdog = server::lan::spawn_watchdog(Arc::downgrade(&service));
 
     let result = tokio::select! {
@@ -154,6 +163,7 @@ pub async fn run(
     };
 
     tracing::info!("shutting down");
+    remote_start.abort();
     watchdog.abort();
     lan_watchdog.abort();
     // Save what every pane is doing before its process ends, so the next daemon can

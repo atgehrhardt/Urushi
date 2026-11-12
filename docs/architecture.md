@@ -85,9 +85,15 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
 
 1. The PTY produces bytes. The Session actor feeds them to the emulator (`alacritty_terminal` behind the `Emulator` trait) and records which rows changed.
 2. Updates are batched to at most ~120 Hz. Each attached client gets only the rows that changed, as styled spans, sent by its own subscriber.
-3. **Flow control:** at most one un-acknowledged update per client per pane. A slow client gets one larger, merged update rather than an unbounded queue. This matters for mobile and remote links.
+3. **Flow control:** at most one un-acknowledged update per client per pane. A slow client gets one larger, merged update rather than an unbounded queue. This matters for mobile and remote links. An ack that never comes holds a pane up for at most 2 s (ADR 0048).
 4. Input travels as *abstract* events (key + modifiers, text, paste, mouse). The daemon turns them into escape sequences, because it knows the terminal's current modes (application cursor keys, bracketed paste, kitty keyboard protocol).
 5. **Reattach** = a full snapshot, then live diffs. Because the screen state lives in the daemon, a new client sees exactly what was on screen.
+
+## Staying up under load (ADR 0048)
+- **Nothing about one connection stops the daemon.** Accept loops log failures and retry (`server::accept`), and the daemon raises its open-file limit at startup (`platform::raise_open_file_limit`), so hundreds of panes fit.
+- **A connection works both ways or ends.** The daemon hangs up when it can't write. The client pings a quiet connection and closes it after 30 s of silence, so the app reconnects instead of waiting forever.
+- **Runtime workers never block.** PTY reads and writes, killing and reaping processes (`kill_and_reap`), `git`, `curl`, `tailscale` and `ps` run on their own threads, each external program with a time limit (`exec`). Saving `workspace.json` runs in `block_in_place` (`service::off_the_runtime`).
+- **Busy panes are batched.** A pane's actor feeds all queued output to the emulator before it publishes a version (`session/output.rs`). Each client gets at most one `WorkspaceChanged` per 50 ms.
 
 ## Thread lifecycle
 

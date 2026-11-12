@@ -250,6 +250,7 @@ fn all_request_kinds() {
         B::RevokeLanDevice(v1::RevokeLanDeviceRequest {
             device_id: "d".into(),
         }),
+        B::Ping(v1::PingRequest {}),
     ];
     for (i, body) in bodies.into_iter().enumerate() {
         round_trip(&envelope::request(i as u64, body));

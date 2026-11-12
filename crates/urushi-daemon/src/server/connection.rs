@@ -3,15 +3,20 @@
 //!
 //! Requests run concurrently (each in its own task, answered by id). Notifications
 //! (keystrokes, acks, scrolling) are handled in order, inline, because their order matters.
+//!
+//! A connection works in both directions or not at all (ADR 0048): when the writer
+//! can't write, the whole connection closes, so the client sees it end and reconnects
+//! rather than waiting on answers that will never come.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use urushi_core::PaneId;
-use urushi_proto::codec::{read_envelope, write_envelope};
+use urushi_proto::codec::{FrameError, read_envelope, write_envelope};
 use urushi_proto::v1::{self, Envelope, envelope::Kind, notification, request};
 use urushi_proto::{PROTOCOL_MAJOR, PROTOCOL_MINOR, convert, envelope};
 
@@ -21,6 +26,16 @@ use crate::service::{Service, lock};
 /// Frames queued for one client. Screen updates are flow-controlled, so this only needs
 /// to absorb bursts of responses.
 const OUTBOUND_QUEUE: usize = 256;
+
+/// How long a new connection has to say `Hello`. A peer that connects and stays silent
+/// would otherwise hold its socket (a file descriptor) for as long as the daemon runs.
+pub(crate) const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The shortest gap between two `WorkspaceChanged` sent to one client. Changes in
+/// between (agents starting and finishing, attention) coalesce into the next one, so
+/// many busy agents can't make the daemon rebuild and resend the workspace hundreds of
+/// times a second.
+pub(crate) const WORKSPACE_EVENT_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Who is on the other end.
 #[derive(Clone, Debug)]
@@ -66,6 +81,7 @@ impl Connection {
                 if out.send(event).await.is_err() {
                     break;
                 }
+                tokio::time::sleep(WORKSPACE_EVENT_INTERVAL).await;
             }
         }));
     }
@@ -95,22 +111,18 @@ where
     Box::pin(serve(service, stream, peer))
 }
 
-/// Serves one connection until the client disconnects.
+/// Serves one connection until the client disconnects, the daemon stops, the
+/// connection's access ends, or the daemon can no longer write to it.
 pub(crate) async fn serve<S>(service: Arc<Service>, stream: S, peer: Peer)
 where
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
-    let (mut reader, mut writer) = tokio::io::split(stream);
-    let (out, mut outbound) = mpsc::channel::<Envelope>(OUTBOUND_QUEUE);
-    let writer_task = tokio::spawn(async move {
-        while let Some(frame) = outbound.recv().await {
-            if write_envelope(&mut writer, &frame).await.is_err() {
-                break;
-            }
-        }
-    });
+    let (mut reader, writer) = tokio::io::split(stream);
+    let (out, outbound) = mpsc::channel::<Envelope>(OUTBOUND_QUEUE);
+    let mut writer_task = tokio::spawn(write_frames(writer, outbound, peer.description.clone()));
 
-    if let Err(reason) = handshake(&mut reader, &out).await {
+    let handshake = tokio::time::timeout(HANDSHAKE_TIMEOUT, handshake(&mut reader, &out)).await;
+    if let Err(reason) = handshake.unwrap_or_else(|_| Err("no hello in time".into())) {
         tracing::info!(peer = %peer.description, %reason, "rejected connection");
         drop(out);
         let _ = writer_task.await;
@@ -151,6 +163,9 @@ where
                 writer_task.abort();
                 break;
             }
+            // The writer gave up: nothing more can reach the client, so hang up and
+            // let it reconnect.
+            _ = &mut writer_task => break,
         };
         match read {
             Ok(Some(frame)) => dispatch(&connection, frame).await,
@@ -161,8 +176,52 @@ where
             }
         }
     }
+    writer_task.abort();
     connection.close();
     tracing::debug!(peer = %peer.description, "client disconnected");
+}
+
+/// Writes queued frames until the queue closes or a write fails. A frame too large to
+/// send is dropped and logged instead of ending the connection; if it answered a
+/// request, the request gets an error in its place, so the client isn't left waiting.
+async fn write_frames<W>(mut writer: W, mut outbound: mpsc::Receiver<Envelope>, peer: String)
+where
+    W: AsyncWrite + Unpin,
+{
+    while let Some(frame) = outbound.recv().await {
+        match write_envelope(&mut writer, &frame).await {
+            Ok(()) => {}
+            Err(FrameError::TooLarge(len)) => {
+                tracing::error!(%peer, len, kind = frame_kind(&frame), "dropped a frame too large to send");
+                if let Some(Kind::Response(response)) = &frame.kind {
+                    let error = envelope::error(
+                        response.id,
+                        v1::ErrorCode::Internal,
+                        format!("the answer ({len} bytes) is too large to send"),
+                    );
+                    if write_envelope(&mut writer, &error).await.is_err() {
+                        break;
+                    }
+                }
+            }
+            Err(error) => {
+                tracing::info!(%peer, %error, "could not write to a client; closing the connection");
+                break;
+            }
+        }
+    }
+}
+
+/// A frame's kind, for logs.
+fn frame_kind(frame: &Envelope) -> &'static str {
+    match &frame.kind {
+        Some(Kind::Response(_)) => "response",
+        Some(Kind::Event(v1::Event {
+            body: Some(v1::event::Body::WorkspaceChanged(_)),
+        })) => "WorkspaceChanged",
+        Some(Kind::Event(_)) => "event",
+        _ => "other",
+    }
 }
 
 async fn handshake<R>(reader: &mut R, out: &mpsc::Sender<Envelope>) -> Result<(), String>
@@ -275,3 +334,6 @@ fn is_user_action(input: &urushi_mux::Input) -> bool {
         Input::Wheel(_) => false,
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.26 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.27 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -22,7 +22,9 @@ The protocol never assumes client and daemon are on the same machine. No file pa
 
 ## Framing
 
-Each frame is `u32` big-endian length, then a protobuf-encoded `Envelope`. Frames have a maximum size (initially 8 MiB). Anything larger closes the connection.
+Each frame is `u32` big-endian length, then a protobuf-encoded `Envelope`. Frames are at most 8 MiB (`codec::MAX_FRAME_LEN`).
+- **Receiving** a larger frame closes the connection.
+- **Sending:** a frame too large to send is dropped and logged, and the connection carries on. If it was a response, the daemon answers that request with `INTERNAL` ("too large to send") instead.
 
 ```
 Envelope {
@@ -35,6 +37,12 @@ Envelope {
 }
 ```
 
+## Liveness (ADR 0048)
+A connection works in both directions or it ends.
+- **The client** sends `Ping` (an empty request, answered with `Ok`) after every 5 s without a frame from the daemon (`PING_INTERVAL`). If 30 s pass with no frame at all (`LIVENESS_TIMEOUT`), it closes the connection: requests in flight fail with `Disconnected`, and the event stream ends. Any answer counts, including the error a daemon before 1.27 gives an unknown request. Connecting plus the handshake are limited to 10 s (`CONNECT_TIMEOUT`).
+- **The daemon** closes a connection whose writes fail, so the client sees it end. A new connection has 10 s to send `Hello`.
+- **A screen update** waits at most 2 s for its `AckScreen` (`ACK_TIMEOUT`); after that, it counts as acknowledged.
+
 ## Handshake
 
 The client sends `Hello { protocol_major, protocol_minor, client_name, client_version }`.
@@ -44,6 +52,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 27 | `Ping` → `Ok`, for liveness (ADR 0048, see Liveness). Older daemons answer it with an error, which clients also count as alive. No other wire change; the daemon also no longer waits forever for a lost `AckScreen` (2 s). |
 | 26 | LAN access (ADR 0041). `Settings.lan` (`LanSettings{enabled, port}`; unset from older daemons = off, port 0 = 7421). `SettingsPatch.{lan_enabled, lan_port}`. `LanStatus` → `LanStatus{enabled, serving, addresses, port, error, devices[LanDevice{id, name, fingerprint, paired_at_ms, last_seen_ms, connected}], pairing (LanPairing{code, expires_in_secs}), fingerprint}`. `StartLanPairing`, `CancelLanPairing` and `RevokeLanDevice{device_id}` → `LanStatus`. Changing LAN access (the `lan_*` patch fields, pairing, revoking) from anything but the host's local socket is `PERMISSION_DENIED`. Only local clients see the pairing code. Pairing with LAN access off is `INVALID_ARGUMENT`; an unknown device is `NOT_FOUND`. `write_envelope` now flushes each frame, which the encrypted stream needs. Clients check `Welcome.protocol_minor ≥ 26`. |
 | 25 | Running agents (ADR 0039): `Tab.running` and `QuickTerminal.running` (`PaneRunning{pane_id, since_ms}`) list panes whose agent is working, as its hooks say. Like attention, running panes aren't stored: changes arrive as `WorkspaceChanged` with the same `revision`. Esc or Ctrl+C sent as `Input` to a pane ends its running. Older daemons send none, so nothing shows as running. |
 | 24 | `MoveThread{thread_id, index}` reorders threads (ADR 0038): the index is into `Workspace.threads`, counted without the moved thread and clamped to the end; an unknown thread is `NOT_FOUND`. A thread's project, pin and status don't change. `Workspace.threads` is in display order: the sidebar shows each group (project, pin, status) in it. Clients check `Welcome.protocol_minor ≥ 24` before sending it. |
@@ -78,7 +87,7 @@ v1 field names are frozen (`buf breaking` uses `WIRE_JSON`). On the wire, **`Pro
 
 - **Workspace:** `ListWorkspace{subscribe}`, `AddProject`, `RemoveProject`, `ListBranches`, `CreateThread{branch, skip_initial_tab, folder_id, task_id, subtask_id, start_task_agent}`, `RenameThread`, `UpdateThread`, `CreateFolder`, `RenameFolder`, `DeleteFolder`, `MoveFolder`, `MoveThread` (since 1.24), `UpdateFolderSettings`, `PlanThreadDeletion` → `DeletionPlan{token}`, `DeleteThread{token}`, `CreateTab{agent, task_id, subtask_id, start_task_agent}`, `ListAgents`, `GetAgentUsage`, `CloseTab`, `RenameTab`, `SplitPane`, `ClosePane`, `FocusPane`, `ClearAttention`, `MoveDivider`, `ResizePaneEdge`, `Equalize`, `OpenQuickTerminal` → `QuickTerminal`. The daemon sends `WorkspaceChanged` events to subscribers.
 - **Terminal:**
-  - `AttachPane{pane, cols, rows}` returns a full `ScreenUpdate`. After that the daemon streams `ScreenUpdate{seq}` events, and the client must send the `AckScreen{seq}` notification before the next one is sent.
+  - `AttachPane{pane, cols, rows}` returns a full `ScreenUpdate`. After that the daemon streams `ScreenUpdate{seq}` events, and the client must send the `AckScreen{seq}` notification before the next one is sent (the daemon waits at most 2 s for it).
   - `DetachPane`, `SetPaneSize` (the pane has one size, the last asked for by any client; ADR 0044), the `Input{key|text|paste|mouse|wheel}` and `ScrollPane` notifications, and `ReadScreenText` (plain text, for the CLI and tests).
   - Events: `PaneExited`, `PaneBell`.
 - **Task boards:** `CreateBoard`, `RenameBoard`, `MoveBoard` (since 1.17: a board to `index` among the others, counted without it and clamped; `Workspace.boards` is in that order), `DeleteBoard`, `CreateColumn`, `UpdateColumn`, `MoveColumn`, `DeleteColumn`, `CreateTask` (since 1.14 with `subtask_details`: `NewSubtask`s carrying notes, color, tags, kind and Jira fields), `UpdateTask`, `MoveTask`, `NestTask`, `DeleteTask`, `CreateSubtask` (since 1.14 with the same details; older daemons read only the title), `UpdateSubtask`, `DeleteSubtask`, `AddAttachment`, `GetAttachment`, `DeleteAttachment`, and since 1.21 `CreateQuickFilter`, `UpdateQuickFilter`, `DeleteQuickFilter` (a board's quick filters; on a Jira board written to Jira). Boards arrive with the workspace (`Workspace.boards`), so subscribers see changes through `WorkspaceChanged`.

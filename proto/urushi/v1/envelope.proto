@@ -137,6 +137,8 @@ message Request {
     StartLanPairingRequest start_lan_pairing = 78;
     CancelLanPairingRequest cancel_lan_pairing = 79;
     RevokeLanDeviceRequest revoke_lan_device = 80;
+    // Since 1.27.
+    PingRequest ping = 81;
   }
 }
 
@@ -213,6 +215,12 @@ message Empty {}
 // shells by the next daemon. Only local connections may ask (PERMISSION_DENIED over the
 // tailnet). Since protocol 1.4; older daemons are stopped with a signal instead.
 message ShutdownDaemonRequest {}
+
+// Answered at once with Ok, to show the connection still works both ways. Clients send
+// it when nothing else has arrived for a while and reconnect if no frame comes back in
+// time (ADR 0048). Since protocol 1.27; older daemons answer it with an error, which
+// proves they are alive just as well.
+message PingRequest {}
 
 message Error {
   ErrorCode code = 1;

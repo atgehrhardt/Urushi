@@ -26,7 +26,7 @@ mod tasks;
 mod thread_links;
 mod workspace;
 
-pub use connection::{Client, Events};
+pub use connection::{CONNECT_TIMEOUT, Client, Events, LIVENESS_TIMEOUT, PING_INTERVAL};
 pub use hosts::RecentHosts;
 pub use lan::{LanHost, LanKeyring, pair_lan};
 pub use launcher::{
@@ -58,6 +58,9 @@ pub enum ClientError {
     /// The connection dropped.
     #[error("disconnected from the daemon")]
     Disconnected,
+    /// The daemon didn't answer in time (connecting or the handshake).
+    #[error("the daemon did not answer: {0}")]
+    TimedOut(&'static str),
     /// The daemon answered with an error.
     #[error("{message}")]
     Remote {

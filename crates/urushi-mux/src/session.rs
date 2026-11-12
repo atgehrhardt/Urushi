@@ -99,10 +99,8 @@ enum Command {
     Kill,
 }
 
-enum Output {
-    Bytes(Vec<u8>),
-    Closed,
-}
+mod output;
+use output::{Output, take_queued};
 
 /// A cheap, cloneable handle to a session actor. When the last handle is dropped, the
 /// process is killed.
@@ -209,6 +207,23 @@ impl SessionHandle {
     }
 }
 
+/// Kills the process and reaps it on a thread of its own. portable-pty's kill sleeps
+/// while it waits for the process to go, and reaping blocks; on the async runtime that
+/// stalls every pane and connection, and many panes closing at once froze the daemon
+/// (UR-69). Reaping keeps a killed shell from lingering as a zombie.
+fn kill_and_reap(mut control: Box<dyn PtyControl>) {
+    let spawned = std::thread::Builder::new()
+        .name("urushi-pty-reaper".into())
+        .spawn(move || {
+            let _ = control.kill();
+            let _ = control.wait();
+        });
+    if let Err(error) = spawned {
+        // Dropping the control closes the PTY, which hangs up on the process.
+        tracing::warn!(%error, "could not start a thread to end a pane's process");
+    }
+}
+
 fn spawn_reader(
     mut reader: Box<dyn Read + Send>,
     tx: mpsc::Sender<Output>,
@@ -282,18 +297,25 @@ impl Actor {
                     Some(Command::Kill) | None => break,
                     Some(command) => self.handle(command),
                 },
-                chunk = output.recv(), if pty_open => match chunk {
-                    Some(Output::Bytes(bytes)) => self.process_output(&bytes),
-                    Some(Output::Closed) | None => {
+                chunk = output.recv(), if pty_open => {
+                    let closed = match chunk {
+                        Some(Output::Bytes(bytes)) => {
+                            let (batch, closed) = take_queued(bytes, &mut output);
+                            self.process_output(&batch);
+                            closed
+                        }
+                        Some(Output::Closed) | None => true,
+                    };
+                    if closed {
                         pty_open = false;
                         let code = self.wait_for_exit().await;
                         self.status.send_modify(|s| s.exit_code = Some(code));
                     }
-                },
+                }
             }
         }
         if pty_open {
-            let _ = self.control.kill();
+            kill_and_reap(self.control);
         }
     }
 
@@ -359,14 +381,19 @@ impl Actor {
         }
     }
 
-    fn process_output(&mut self, bytes: &[u8]) {
+    /// Feeds `chunks` to the emulator, then publishes what changed once.
+    fn process_output(&mut self, chunks: &[Vec<u8>]) {
         let mut bells = 0;
         let mut alerts = 0;
         let mut alert = None;
         let mut ready = 0;
         let mut activity = 0;
         let mut running = None;
-        for event in self.emulator.advance(bytes) {
+        let events = chunks
+            .iter()
+            .flat_map(|chunk| self.emulator.advance(chunk))
+            .collect::<Vec<_>>();
+        for event in events {
             match event {
                 EmulatorEvent::Reply(reply) => self.write(reply),
                 EmulatorEvent::Title(title) => self.title = title.unwrap_or_default(),

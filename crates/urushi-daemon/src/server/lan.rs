@@ -12,6 +12,7 @@
 //!   connection ends.
 
 use std::net::{IpAddr, SocketAddr};
+use std::ops::ControlFlow;
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
@@ -20,6 +21,7 @@ use tokio::task::JoinHandle;
 use urushi_proto::lan::{self, LanError, Mode};
 use urushi_proto::v1;
 
+use super::accept::accept_forever;
 use super::connection::{self, Peer};
 use crate::lan::addresses::is_allowed_peer;
 use crate::service::{Service, ServiceError, ServiceResult, lock, new_uuid, now};
@@ -115,54 +117,54 @@ pub(crate) fn spawn_watchdog(service: Weak<Service>) -> JoinHandle<()> {
 }
 
 async fn accept_loop(service: Weak<Service>, listener: TcpListener) {
-    loop {
-        let (stream, peer) = match listener.accept().await {
-            Ok(accepted) => accepted,
-            Err(e) => {
-                // Out of file descriptors, for example: don't spin.
-                tracing::debug!(error = %e, "LAN accept failed");
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                continue;
+    accept_forever(
+        "LAN",
+        || listener.accept(),
+        |(stream, peer)| {
+            if !is_allowed_peer(peer.ip()) {
+                tracing::warn!(%peer, "refused a LAN connection from outside the LAN");
+                return ControlFlow::Continue(());
             }
-        };
-        if !is_allowed_peer(peer.ip()) {
-            tracing::warn!(%peer, "refused a LAN connection from outside the LAN");
-            continue;
-        }
-        let Some(service) = service.upgrade() else {
-            return;
-        };
-        let _ = stream.set_nodelay(true);
-        let handshakes = lock(&service.lan).handshakes.clone();
-        let Ok(permit) = handshakes.try_acquire_owned() else {
-            tracing::warn!(%peer, "refused a LAN connection: too many handshakes at once");
-            continue;
-        };
-        tokio::spawn(async move {
-            let handshake =
-                tokio::time::timeout(HANDSHAKE_TIMEOUT, handshake(&service, stream, peer)).await;
-            drop(permit);
-            match handshake {
-                Ok(Ok(Some((stream, live)))) => {
-                    let description = format!("LAN device {} at {peer}", live.device_name);
-                    connection::serve_boxed(
-                        service.clone(),
-                        stream,
-                        Peer {
-                            description,
-                            local: false,
-                            close: Some(live.close),
-                        },
-                    )
-                    .await;
-                    lock(&service.lan).disconnected(&live.device_id, live.id);
+            let Some(service) = service.upgrade() else {
+                return ControlFlow::Break(());
+            };
+            let _ = stream.set_nodelay(true);
+            let handshakes = lock(&service.lan).handshakes.clone();
+            let Ok(permit) = handshakes.try_acquire_owned() else {
+                tracing::warn!(%peer, "refused a LAN connection: too many handshakes at once");
+                return ControlFlow::Continue(());
+            };
+            tokio::spawn(async move {
+                let handshake =
+                    tokio::time::timeout(HANDSHAKE_TIMEOUT, handshake(&service, stream, peer))
+                        .await;
+                drop(permit);
+                match handshake {
+                    Ok(Ok(Some((stream, live)))) => {
+                        let description = format!("LAN device {} at {peer}", live.device_name);
+                        connection::serve_boxed(
+                            service.clone(),
+                            stream,
+                            Peer {
+                                description,
+                                local: false,
+                                close: Some(live.close),
+                            },
+                        )
+                        .await;
+                        lock(&service.lan).disconnected(&live.device_id, live.id);
+                    }
+                    Ok(Ok(None)) => {}
+                    Ok(Err(e)) => tracing::warn!(%peer, error = %e, "refused a LAN connection"),
+                    Err(_) => {
+                        tracing::warn!(%peer, "refused a LAN connection: handshake timed out");
+                    }
                 }
-                Ok(Ok(None)) => {}
-                Ok(Err(e)) => tracing::warn!(%peer, error = %e, "refused a LAN connection"),
-                Err(_) => tracing::warn!(%peer, "refused a LAN connection: handshake timed out"),
-            }
-        });
-    }
+            });
+            ControlFlow::Continue(())
+        },
+    )
+    .await;
 }
 
 type Accepted = (

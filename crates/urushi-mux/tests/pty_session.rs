@@ -300,3 +300,39 @@ async fn output_reaches_the_screen_windows() {
     );
     wait_for_text(&s, "hello from pty").await;
 }
+
+/// The state `ps` reports for `pid` (`Z` for a zombie), or `None` once it is gone.
+#[cfg(unix)]
+fn process_state(pid: u32) -> Option<String> {
+    let out = std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", &pid.to_string()])
+        .output()
+        .expect("ps");
+    let state = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    (!state.is_empty()).then_some(state)
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_killed_process_is_reaped_not_left_a_zombie() {
+    // Ignores the hang-up, so ending it takes the escalation to SIGKILL.
+    let session = spawn(
+        "/bin/sh",
+        &["-c", "trap '' HUP; echo ready; while :; do sleep 1; done"],
+        TermSize::new(80, 24),
+    );
+    wait_for_text(&session, "ready").await;
+    let pid = session.pid().expect("pid");
+    session.kill().await.unwrap();
+    let deadline = tokio::time::Instant::now() + TIMEOUT;
+    loop {
+        match process_state(pid) {
+            None => break,
+            Some(state) => assert!(
+                tokio::time::Instant::now() < deadline,
+                "process {pid} still there after kill (state {state})"
+            ),
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}

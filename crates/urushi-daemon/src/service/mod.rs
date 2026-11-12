@@ -195,6 +195,20 @@ pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// Runs `f`, which blocks (writing and syncing a file), without stalling the async
+/// tasks that share its worker thread: on a multi-threaded runtime they move to another
+/// worker while `f` runs. Elsewhere (single-threaded test runtimes, plain threads) `f`
+/// just runs. Many panes and agents make changes often, and each one used to hold a
+/// worker for a whole `fsync` (UR-69).
+pub(crate) fn off_the_runtime<R>(f: impl FnOnce() -> R) -> R {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(f)
+        }
+        _ => f(),
+    }
+}
+
 /// The current wall-clock time.
 pub(crate) fn now() -> Timestamp {
     let millis = SystemTime::now()
@@ -351,13 +365,14 @@ impl Service {
             let state = lock(&self.state);
             (state.to_document(), state.revision)
         };
-        {
+        off_the_runtime(|| {
             let mut saved = lock(&self.saved_revision);
             if revision > *saved || revision == 0 {
                 self.store.save(&document)?;
                 *saved = revision;
             }
-        }
+            Ok::<_, ServiceError>(())
+        })?;
         self.changes.send_replace(revision);
         Ok(())
     }

@@ -13,10 +13,14 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::time::Duration;
 
 use serde::Deserialize;
 use thiserror::Error;
+
+/// Longest one `tailscale` command may take before it is killed.
+const CLI_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Tailscale failures.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -115,12 +119,12 @@ impl CliTailscale {
 
     fn json(&self, args: &[&str]) -> Result<String, TailscaleError> {
         let binary = self.binary().ok_or(TailscaleError::NotInstalled)?;
-        let out = Command::new(binary)
-            .args(args)
-            .env("TAILSCALE_BE_CLI", "1")
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|e| TailscaleError::Cli(e.to_string()))?;
+        let mut command = Command::new(binary);
+        command.args(args).env("TAILSCALE_BE_CLI", "1");
+        // A wedged tailscaled must not hang whoever asked (the startup reconcile, the
+        // watchdog, a settings request) for good.
+        let out = crate::exec::run_command(command, "tailscale", None, CLI_TIMEOUT)
+            .map_err(TailscaleError::Cli)?;
         if !out.status.success() {
             return Err(TailscaleError::Cli(
                 String::from_utf8_lossy(&out.stderr).trim().to_owned(),

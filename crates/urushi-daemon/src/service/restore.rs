@@ -233,7 +233,10 @@ impl Service {
             let (mut seen, mut record) = previous.clone().unwrap_or_default();
             let version = handle.status().borrow().version;
             if previous.is_none() || version != seen {
-                let Ok(snapshot) = handle.snapshot(SCREEN_LINES).await else {
+                // An agent pane keeps no output (its agent redraws it on resume), so
+                // don't make its actor copy thousands of lines only to drop them.
+                let lines = if agent.is_some() { 0 } else { SCREEN_LINES };
+                let Ok(snapshot) = handle.snapshot(lines).await else {
                     continue; // The pane just closed.
                 };
                 record.cols = snapshot.size.cols;
