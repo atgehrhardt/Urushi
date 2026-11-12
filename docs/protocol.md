@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.29 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.30 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -22,7 +22,9 @@ The protocol never assumes client and daemon are on the same machine. No file pa
 
 ## Framing
 
-Each frame is `u32` big-endian length, then a protobuf-encoded `Envelope`. Frames have a maximum size (initially 8 MiB). Anything larger closes the connection.
+Each frame is `u32` big-endian length, then a protobuf-encoded `Envelope`. Frames are at most 8 MiB (`codec::MAX_FRAME_LEN`).
+- **Receiving** a larger frame closes the connection.
+- **Sending:** a frame too large to send is dropped and logged, and the connection carries on. If it was a response, the daemon answers that request with `INTERNAL` ("too large to send") instead.
 
 ```
 Envelope {
@@ -35,6 +37,12 @@ Envelope {
 }
 ```
 
+## Liveness (ADR 0052)
+A connection works in both directions or it ends.
+- **The client** sends `Ping` (an empty request, answered with `Ok`) after every 5 s without a frame from the daemon (`PING_INTERVAL`). If 30 s pass with no frame at all (`LIVENESS_TIMEOUT`), it closes the connection: requests in flight fail with `Disconnected`, and the event stream ends. Any answer counts, including the error a daemon before 1.30 gives an unknown request. Connecting plus the handshake are limited to 10 s (`CONNECT_TIMEOUT`).
+- **The daemon** closes a connection whose writes fail, so the client sees it end. A new connection has 10 s to send `Hello`.
+- **A screen update** waits at most 2 s for its `AckScreen` (`ACK_TIMEOUT`); after that, it counts as acknowledged.
+
 ## Handshake
 
 The client sends `Hello { protocol_major, protocol_minor, client_name, client_version }`.
@@ -44,6 +52,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 30 | `Ping` → `Ok`, for liveness (ADR 0052, see Liveness). Older daemons answer it with an error, which clients also count as alive. No other wire change; the daemon also no longer waits forever for a lost `AckScreen` (2 s). |
 | 29 | Several Jira sign-ins (UR-61, ADR 0051). `ConnectJira` adds a sign-in beside the others (the same site and email replaces that one) instead of replacing the only one. `JiraAccount.key` names a sign-in (`<site host>/<email>`, e.g. `acme.atlassian.net/ada@acme.com`). `ListJiraAccounts` → `JiraAccountList{accounts}`, every sign-in in the order made. `DisconnectJira.account`, `ListJiraBoards.account` and `ImportJiraBoard.account` pick one by key; empty means the first, as before, and an unknown key is `NOT_FOUND`. `GetJiraAccount` answers the first. `JiraBoardSource.account` is the key of the sign-in that syncs a board; empty for a board imported earlier, which uses the sign-in for its site. `SearchJiraUsers.board_id` picks the sign-in for a new issue (no task yet). A board with no sign-in says `Not signed in to Jira at <host>` in `error`. Clients check `Welcome.protocol_minor ≥ 29` before sending `ListJiraAccounts` or offering more than one sign-in. |
 | 28 | App updates (ADR 0049, `updates.proto`). `Settings.updates` (`UpdateSettings{optional check_automatically, skipped_version}`; unset `check_automatically` means on; unset from older daemons, which can't update). `SettingsPatch.{check_updates_automatically, skipped_update_version}` (an empty version forgets it; one that isn't `X.Y.Z` is `INVALID_ARGUMENT`). `Workspace.update` (`AvailableUpdate{version, current_version, release_url, installing}`) while the daemon knows of a release newer than the installed app; not stored, so changes arrive as `WorkspaceChanged` with the same `revision`. `CheckForUpdates` → `UpdateCheck{current_version, latest_version, available, release_url}` (GitHub unreachable or limiting is `UNAVAILABLE`). `InstallUpdate{version}` → `UpdateInstalled{version, bundle_path}`: installs the release in place of the app and restarts nothing. Both are `FAILED_PRECONDITION` from a daemon not running from Urushi's macOS bundle; `InstallUpdate` is `PERMISSION_DENIED` from anything but the host's local socket, `CONFLICT` for a version that isn't the latest found or while another install runs, and `UNAVAILABLE` when downloading or checking fails. Clients check `Welcome.protocol_minor ≥ 28`. |
 | 27 | Threads bar (UR-62, ADR 0048): `Thread.unread` and `Thread.notes` (plain text; empty = none), set with `UpdateThread.{optional unread, optional notes}` (an empty `notes` clears them; trailing whitespace is dropped; over 10 000 characters is `INVALID_ARGUMENT`, and the whole update is refused). `Folder.color` (a `LabelColor`; unspecified = none, unknown values read as none) and `SetFolderColor{folder_id, color}` → `Empty` (unspecified clears it; an unknown folder is `NOT_FOUND`). The client that opens an unread thread sends `UpdateThread{unread: false}`. Clients check `Welcome.protocol_minor ≥ 27` before offering any of them. |
@@ -81,7 +90,7 @@ v1 field names are frozen (`buf breaking` uses `WIRE_JSON`). On the wire, **`Pro
 
 - **Workspace:** `ListWorkspace{subscribe}`, `AddProject`, `RemoveProject`, `ListBranches`, `CreateThread{branch, skip_initial_tab, folder_id, task_id, subtask_id, start_task_agent}`, `RenameThread`, `UpdateThread`, `CreateFolder`, `RenameFolder`, `DeleteFolder`, `MoveFolder`, `MoveThread` (since 1.24), `UpdateFolderSettings`, `SetFolderColor` (since 1.27), `PlanThreadDeletion` → `DeletionPlan{token}`, `DeleteThread{token}`, `CreateTab{agent, task_id, subtask_id, start_task_agent}`, `ListAgents`, `GetAgentUsage`, `CloseTab`, `RenameTab`, `SplitPane`, `ClosePane`, `FocusPane`, `ClearAttention`, `MoveDivider`, `ResizePaneEdge`, `Equalize`, `OpenQuickTerminal` → `QuickTerminal`. The daemon sends `WorkspaceChanged` events to subscribers.
 - **Terminal:**
-  - `AttachPane{pane, cols, rows}` returns a full `ScreenUpdate`. After that the daemon streams `ScreenUpdate{seq}` events, and the client must send the `AckScreen{seq}` notification before the next one is sent.
+  - `AttachPane{pane, cols, rows}` returns a full `ScreenUpdate`. After that the daemon streams `ScreenUpdate{seq}` events, and the client must send the `AckScreen{seq}` notification before the next one is sent (the daemon waits at most 2 s for it).
   - `DetachPane`, `SetPaneSize` (the pane has one size, the last asked for by any client; ADR 0044), the `Input{key|text|paste|mouse|wheel}` and `ScrollPane` notifications, and `ReadScreenText` (plain text, for the CLI and tests).
   - Events: `PaneExited`, `PaneBell`.
 - **Task boards:** `CreateBoard`, `RenameBoard`, `MoveBoard` (since 1.17: a board to `index` among the others, counted without it and clamped; `Workspace.boards` is in that order), `DeleteBoard`, `CreateColumn`, `UpdateColumn`, `MoveColumn`, `DeleteColumn`, `CreateTask` (since 1.14 with `subtask_details`: `NewSubtask`s carrying notes, color, tags, kind and Jira fields), `UpdateTask`, `MoveTask`, `NestTask`, `DeleteTask`, `CreateSubtask` (since 1.14 with the same details; older daemons read only the title), `UpdateSubtask`, `DeleteSubtask`, `AddAttachment`, `GetAttachment`, `DeleteAttachment`, and since 1.21 `CreateQuickFilter`, `UpdateQuickFilter`, `DeleteQuickFilter` (a board's quick filters; on a Jira board written to Jira). Boards arrive with the workspace (`Workspace.boards`), so subscribers see changes through `WorkspaceChanged`.

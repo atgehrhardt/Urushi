@@ -17,7 +17,10 @@ When the daemon itself stops (**Restart daemon…**, a reboot, a crash), the pro
 - **`SessionHandle::spawn`** starts the process (`Pty` trait, `NativePty` via portable-pty) and an actor task that alone owns the `Emulator` (`AlacrittyEmulator`).
 - **Blocking PTY I/O runs on dedicated threads.** The queues between those threads and the actor are bounded.
 - **Line versions:** after each output chunk, the actor turns the emulator's damage into per-line versions. Watchers are notified through `watch<SessionStatus>`.
-- **Clients pull changes:** a client asks for `frame_since(version)` and gets only the lines changed since then (a `full` frame after a resize or full damage). Combined with the protocol's ack rule (one un-acknowledged `ScreenUpdate` per pane), slow clients get merged updates instead of growing queues.
+- **Output is batched:** the actor takes every output chunk already queued (up to 1 MiB, `session/output.rs`) before it records damage and bumps the version once, so a busy pane wakes its watchers once per batch.
+- **Clients pull changes:** a client asks for `frame_since(version)` and gets only the lines changed since then (a `full` frame after a resize or full damage). Combined with the protocol's ack rule (one un-acknowledged `ScreenUpdate` per pane), slow clients get merged updates instead of growing queues. The daemon waits at most 2 s for an ack (`server/attach.rs::ACK_TIMEOUT`), so a lost one only delays the pane (ADR 0052).
+- **Ending a process** (closing a pane, deleting a thread): the actor hands the process to a thread of its own, which signals it (escalating to SIGKILL) and reaps it (`session.rs::kill_and_reap`). No runtime worker sleeps, and no zombie is left.
+- **Many panes:** every pane holds about three file descriptors, so the daemon raises its open-file limit at startup (to the hard limit, at most 10 240; logged as "open file limit"). Without that, a daemon started by the macOS app stops at 256, which is about 75 panes.
 - **One size per pane:** a session has one terminal size, the last one asked for (`AttachPane` or `SetPaneSize`, from any client). Every attached client gets the full frame that follows, at the new size. Which client asks is the GUI's choice (ADR 0044).
 - **Input encoding happens in the daemon** (`keys::encode_key`, `encode_paste`, `mouse::encode_mouse`), because it depends on terminal modes such as application cursor keys, bracketed paste and mouse tracking.
 - **Mouse** (`urushi-mux/src/mouse.rs`): reports follow the application's tracking mode (1000 click, 1002 drag, 1003 any motion) and encoding (SGR 1006, UTF-8 1005, or X10, which can't report beyond column/row 223). **The wheel** (`mouse::wheel`) becomes mouse reports if the app tracks the mouse, arrow keys on the alternate screen (1007, on by default), and otherwise scrolls the scrollback. Full-screen agents such as Claude Code use the alternate screen with SGR tracking, so they scroll their own transcript.
@@ -55,7 +58,10 @@ When the daemon itself stops (**Restart daemon…**, a reboot, a crash), the pro
 - `crates/urushi-daemon/tests/restart.rs`: stopping the real `urushid` by request and by signal, and the next daemon restoring the workspace. `tests/e2e.rs`: `ShutdownDaemon` refused over the tailnet.
 - `crates/urushi-daemon/tests/shutdown.rs`: after a stop, the killed shell's pane is still in `workspace.json`, and a client that was connected has been hung up on, without the store being written.
 - `crates/urushi-daemon/tests/mouse.rs`: SGR reports reaching a real program, arrow keys on the alternate screen, scrollback in a plain shell, also when output lands after the first frame (the tests ack every update, as clients must; `common::next_screen_update`).
-- `crates/urushi-mux/tests/pty_session.rs`: real processes (output, echo, exit codes, resize, incremental frames, env/cwd).
+- `crates/urushi-mux/tests/pty_session.rs`: real processes (output, echo, exit codes, resize, incremental frames, env/cwd), and a killed process that ignores SIGHUP is reaped, not left a zombie. `session/output.rs`: queued output taken in batches.
+- `crates/urushi-daemon/tests/many_panes.rs`: 100 panes from a daemon started with a 256 open-file limit all work, and new connections are still served. `tests/stability.rs`: a pane whose ack is never sent still updates.
+- `crates/urushi-daemon/src/server/accept.rs`: an accept error is retried, never fatal. `server/connection/tests.rs`: an oversized response becomes an error, an oversized event is dropped, a failed write ends the writer.
+- `crates/urushi-client/tests/liveness.rs`: a silent daemon ends the connection after the liveness timeout and fails requests in flight; an older daemon answering pings with errors stays connected; dropping every client closes the socket; a missing `Welcome` times out.
 - `crates/urushi-daemon/tests/e2e.rs`:
   - screen survives a client disconnect
   - no update is sent before an ack
@@ -72,3 +78,6 @@ When the daemon itself stops (**Restart daemon…**, a reboot, a crash), the pro
 - Windows has no `ps`, so agents and programs aren't restored there (output and directories are).
 - The app's remembered selection is per machine, for the local daemon only; remote and mobile clients start on the first thread.
 - Stopping a daemon by signal (protocol before 1.4) works on macOS and Linux, not Windows.
+- Each pane keeps up to 10 000 lines of scrollback at its full width, so many wide, chatty panes use a lot of memory. Not yet bounded by total size.
+- Killing a pane signals its shell, not the shell's whole process group, so a program that left the terminal's session can outlive it.
+- The emulator's synchronized-output timeout (DEC 2026, 150 ms) isn't driven by a timer: an application that starts a synchronized update and then goes quiet shows stale content until it writes again.

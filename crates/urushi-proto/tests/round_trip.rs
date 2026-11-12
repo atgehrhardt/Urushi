@@ -260,6 +260,7 @@ fn all_request_kinds() {
         B::InstallUpdate(v1::InstallUpdateRequest {
             version: "0.1.7".into(),
         }),
+        B::Ping(v1::PingRequest {}),
     ];
     for (i, body) in bodies.into_iter().enumerate() {
         round_trip(&envelope::request(i as u64, body));

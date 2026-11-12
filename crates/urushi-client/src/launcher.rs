@@ -16,7 +16,9 @@ use crate::{Client, ClientError, Events, platform};
 /// Environment variable naming the `urushid` binary to start.
 pub const DAEMON_BIN_ENV: &str = "URUSHID";
 
-const START_ATTEMPTS: u32 = 100;
+/// How long a just-started daemon has to accept connections. It restores every pane
+/// before it listens, which takes a while with many of them (UR-69).
+const START_TIMEOUT: Duration = Duration::from_secs(30);
 const START_POLL: Duration = Duration::from_millis(50);
 /// How long a stopping daemon gets to close its terminals and exit.
 const STOP_TIMEOUT: Duration = Duration::from_secs(15);
@@ -62,12 +64,17 @@ pub async fn ensure_local_daemon(
     client_name: &str,
 ) -> Result<(Client, Events), ClientError> {
     let (home, endpoint) = local_daemon_endpoint(home)?;
-    if let Ok(connected) = Client::connect(&endpoint, client_name).await {
-        return Ok(connected);
+    match Client::connect(&endpoint, client_name).await {
+        Ok(connected) => return Ok(connected),
+        // A daemon is there but doesn't answer: starting another can't help (it would
+        // find this one's lock and exit). Report it; the caller retries.
+        Err(e @ ClientError::TimedOut(_)) => return Err(e),
+        Err(_) => {}
     }
     start_daemon(&home)?;
     let mut last_error = None;
-    for _ in 0..START_ATTEMPTS {
+    let deadline = tokio::time::Instant::now() + START_TIMEOUT;
+    while tokio::time::Instant::now() < deadline {
         tokio::time::sleep(START_POLL).await;
         match Client::connect(&endpoint, client_name).await {
             Ok(connected) => return Ok(connected),

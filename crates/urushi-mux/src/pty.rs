@@ -41,6 +41,11 @@ pub trait PtyControl: Send {
     fn kill(&mut self) -> io::Result<()>;
     /// The exit code, if the process has exited.
     fn try_wait(&mut self) -> io::Result<Option<i32>>;
+    /// Waits until the process has exited and reaps it, so it doesn't linger as a
+    /// zombie. Blocks: call it off the async runtime, after [`PtyControl::kill`].
+    fn wait(&mut self) -> io::Result<Option<i32>> {
+        self.try_wait()
+    }
     /// OS process id, if known.
     fn pid(&self) -> Option<u32>;
 }
@@ -142,6 +147,12 @@ impl PtyControl for NativeControl {
             .child
             .try_wait()?
             .map(|status| i32::try_from(status.exit_code()).unwrap_or(i32::MAX)))
+    }
+
+    fn wait(&mut self) -> io::Result<Option<i32>> {
+        Ok(Some(
+            i32::try_from(self.child.wait()?.exit_code()).unwrap_or(i32::MAX),
+        ))
     }
 
     fn pid(&self) -> Option<u32> {

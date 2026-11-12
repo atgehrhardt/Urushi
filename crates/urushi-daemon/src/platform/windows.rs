@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::net::windows::named_pipe::ServerOptions;
 use urushi_proto::endpoint::LocalEndpoint;
 
+use crate::server::accept::ACCEPT_RETRY;
 use crate::server::connection::{self, Peer};
 use crate::service::Service;
 
@@ -42,11 +43,32 @@ pub(crate) async fn serve_local(
         .reject_remote_clients(true)
         .create(name)?;
     loop {
-        server.connect().await?;
+        // A failed connect or a pipe instance we can't create says nothing about the
+        // listener, and must not stop the daemon (UR-69): wait a moment and carry on.
+        if let Err(error) = server.connect().await {
+            tracing::warn!(%error, "accepting a pipe connection failed; retrying");
+            tokio::time::sleep(ACCEPT_RETRY).await;
+            if let Ok(fresh) = ServerOptions::new()
+                .reject_remote_clients(true)
+                .create(name)
+            {
+                server = fresh;
+            }
+            continue;
+        }
         let connected = server;
-        server = ServerOptions::new()
-            .reject_remote_clients(true)
-            .create(name)?;
+        server = loop {
+            match ServerOptions::new()
+                .reject_remote_clients(true)
+                .create(name)
+            {
+                Ok(next) => break next,
+                Err(error) => {
+                    tracing::warn!(%error, "creating the next pipe instance failed; retrying");
+                    tokio::time::sleep(ACCEPT_RETRY).await;
+                }
+            }
+        };
         let service = service.clone();
         tokio::spawn(connection::serve(
             service,

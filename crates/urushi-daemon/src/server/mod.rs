@@ -1,6 +1,7 @@
 //! The protocol server: local IPC, tailnet and LAN listeners feed connections into
 //! [`connection::serve`], which translates frames into calls on the service.
 
+pub(crate) mod accept;
 pub(crate) mod attach;
 mod boards;
 pub(crate) mod connection;

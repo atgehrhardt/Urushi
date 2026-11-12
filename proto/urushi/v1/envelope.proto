@@ -145,6 +145,8 @@ message Request {
     InstallUpdateRequest install_update = 83;
     // Since 1.29.
     ListJiraAccountsRequest list_jira_accounts = 84;
+    // Since 1.30.
+    PingRequest ping = 85;
   }
 }
 
@@ -226,6 +228,12 @@ message Empty {}
 // shells by the next daemon. Only local connections may ask (PERMISSION_DENIED over the
 // tailnet). Since protocol 1.4; older daemons are stopped with a signal instead.
 message ShutdownDaemonRequest {}
+
+// Answered at once with Ok, to show the connection still works both ways. Clients send
+// it when nothing else has arrived for a while and reconnect if no frame comes back in
+// time (ADR 0052). Since protocol 1.30; older daemons answer it with an error, which
+// proves they are alive just as well.
+message PingRequest {}
 
 message Error {
   ErrorCode code = 1;

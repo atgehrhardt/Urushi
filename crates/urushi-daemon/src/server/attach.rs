@@ -4,12 +4,17 @@
 //! for the client's `AckScreen` before sending the next update. It then sends only what
 //! changed since the last frame it sent. A slow client gets fewer, larger updates instead
 //! of a growing queue. Updates are also limited to about 120 per second.
+//!
+//! An ack that never comes (a client dropped it under load, ADR 0052) holds the stream up
+//! for at most [`ACK_TIMEOUT`]: then the update counts as acknowledged. The next frame is
+//! still a correct diff, from the last frame *sent*, so nothing on screen is lost.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use urushi_core::PaneId;
 use urushi_mux::{SessionHandle, TermSize};
 use urushi_proto::envelope;
@@ -20,6 +25,10 @@ use super::screen;
 use crate::service::{ServiceResult, lock};
 
 const MIN_FRAME_INTERVAL: Duration = Duration::from_millis(8);
+
+/// Longest the stream waits for an `AckScreen` before sending the next update anyway.
+/// A client that is merely slow still gets at most one update per this interval.
+pub(crate) const ACK_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// A live attachment of one pane to one connection.
 pub(crate) struct Attachment {
@@ -116,6 +125,8 @@ async fn pump(
     mut sent_version: u64,
 ) -> Ended {
     let mut seq: u64 = 1;
+    // The first frame went out in `AttachPane`'s answer just now.
+    let mut sent_at = Instant::now();
     let mut bells_seen = status.borrow().bells;
     let pane_id = pane.to_string();
     loop {
@@ -129,7 +140,7 @@ async fn pump(
                 return Ended::ClientGone;
             }
         }
-        let acked = *acks.borrow_and_update() >= seq;
+        let acked = *acks.borrow_and_update() >= seq || sent_at.elapsed() >= ACK_TIMEOUT;
         if acked && current.version > sent_version {
             let Ok(frame) = session.frame_since(sent_version).await else {
                 return Ended::SessionGone;
@@ -142,6 +153,7 @@ async fn pump(
             if out.send(update).await.is_err() {
                 return Ended::ClientGone;
             }
+            sent_at = Instant::now();
             tokio::time::sleep(MIN_FRAME_INTERVAL).await;
             continue;
         }
@@ -151,6 +163,8 @@ async fn pump(
         tokio::select! {
             changed = status.changed() => if changed.is_err() { return Ended::SessionGone },
             changed = acks.changed() => if changed.is_err() { return Ended::ClientGone },
+            // Only while an update waits for its ack: then stop waiting.
+            () = tokio::time::sleep_until(sent_at + ACK_TIMEOUT), if !acked => {}
         }
     }
 }

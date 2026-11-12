@@ -41,6 +41,8 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 snow = { version = "0.10", default-features = false, features = ["use-chacha20poly1305", "use-blake2", "use-curve25519", "use-getrandom"] }
 getrandom = { version = "0.3", default-features = false }
 if-addrs = "0.15"
+# Raising the daemon's open-file limit without `unsafe` (UR-69).
+rustix = { version = "1.1", default-features = false, features = ["std", "process"] }
 
 # GUI
 winit = "0.30"

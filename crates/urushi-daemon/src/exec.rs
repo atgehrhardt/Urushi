@@ -1,4 +1,4 @@
-//! Running a helper program (`curl`, `security`, `ps`) with a time limit.
+//! Running a helper program (`curl`, `security`, `ps`, `tailscale`) with a time limit.
 //! Blocking: call it off the async runtime.
 //!
 //! Input and output each move on their own thread, so a program that answers while it
@@ -43,15 +43,39 @@ fn run_status(
     input: Option<&[u8]>,
     timeout: Duration,
 ) -> Result<(std::process::ExitStatus, Vec<u8>), String> {
-    let mut child = Command::new(program)
-        .args(args)
+    let mut command = Command::new(program);
+    command.args(args);
+    let finished = run_command(command, program, input, timeout)?;
+    Ok((finished.status, finished.stdout))
+}
+
+/// A helper program that ran to its end.
+pub(crate) struct Finished {
+    /// How it exited.
+    pub(crate) status: std::process::ExitStatus,
+    /// What it wrote to stdout (at most 8 MiB).
+    pub(crate) stdout: Vec<u8>,
+    /// What it wrote to stderr (at most 8 MiB), e.g. why it failed.
+    pub(crate) stderr: Vec<u8>,
+}
+
+/// Runs `command` (its program and arguments, and any environment, set by the caller),
+/// writes `input` to its stdin, and collects its output, if it exits within `timeout`.
+/// `program` names it in errors. Otherwise it is killed.
+pub(crate) fn run_command(
+    mut command: Command,
+    program: &str,
+    input: Option<&[u8]>,
+    timeout: Duration,
+) -> Result<Finished, String> {
+    let mut child = command
         .stdin(if input.is_some() {
             Stdio::piped()
         } else {
             Stdio::null()
         })
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("cannot run {program}: {e}"))?;
     let writer = match (input, child.stdin.take()) {
@@ -65,15 +89,18 @@ fn run_status(
         }
         _ => None,
     };
-    let mut stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| format!("{program}: no output"))?;
-    let reader = std::thread::spawn(move || {
-        let mut out = Vec::new();
-        let _ = (&mut stdout).take(MAX_OUTPUT).read_to_end(&mut out);
-        out
-    });
+    let stdout = read_all(
+        child
+            .stdout
+            .take()
+            .ok_or_else(|| format!("{program}: no output"))?,
+    );
+    let stderr = read_all(
+        child
+            .stderr
+            .take()
+            .ok_or_else(|| format!("{program}: no error output"))?,
+    );
     let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -89,13 +116,27 @@ fn run_status(
             Err(e) => return Err(format!("{program}: {e}")),
         }
     };
-    let out = reader
+    let stdout = stdout
         .join()
         .map_err(|_| format!("{program}: reading its output failed"))?;
+    let stderr = stderr.join().unwrap_or_default();
     if let Some(writer) = writer {
         let _ = writer.join();
     }
-    Ok((status, out))
+    Ok(Finished {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+/// Reads `pipe` to its end (at most [`MAX_OUTPUT`]) on a thread of its own.
+fn read_all(pipe: impl Read + Send + 'static) -> std::thread::JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        let mut out = Vec::new();
+        let _ = pipe.take(MAX_OUTPUT).read_to_end(&mut out);
+        out
+    })
 }
 
 #[cfg(all(test, unix))]
@@ -112,6 +153,18 @@ mod tests {
         assert!(slow.unwrap_err().contains("timed out"));
         assert!(started.elapsed() < Duration::from_secs(3));
         assert!(run("/no/such/program", &[], None, Duration::from_secs(1)).is_err());
+    }
+
+    #[test]
+    fn a_command_gets_its_environment_and_its_errors_are_kept() {
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", "echo \"$GREETING\"; echo oops >&2; exit 3"])
+            .env("GREETING", "hi");
+        let out = run_command(command, "sh", None, Duration::from_secs(5)).unwrap();
+        assert_eq!(out.stdout, b"hi\n");
+        assert_eq!(out.stderr, b"oops\n");
+        assert_eq!(out.status.code(), Some(3));
     }
 
     #[test]

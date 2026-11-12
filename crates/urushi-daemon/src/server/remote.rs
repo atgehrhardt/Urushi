@@ -6,6 +6,7 @@
 //! watchdog re-checks the addresses periodically and re-binds when they change.
 
 use std::net::{IpAddr, SocketAddr};
+use std::ops::ControlFlow;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
@@ -14,6 +15,7 @@ use tokio::task::JoinHandle;
 use urushi_core::TailnetSettings;
 use urushi_proto::v1;
 
+use super::accept::accept_forever;
 use super::connection::{self, Peer};
 use crate::service::{Service, lock};
 use crate::tailscale::{Identity, TailscaleError};
@@ -147,33 +149,37 @@ pub(crate) fn spawn_watchdog(service: Weak<Service>) -> JoinHandle<()> {
 }
 
 async fn accept_loop(service: Weak<Service>, listener: TcpListener) {
-    loop {
-        let Ok((stream, peer)) = listener.accept().await else {
-            continue;
-        };
-        let Some(service) = service.upgrade() else {
-            return;
-        };
-        tokio::spawn(async move {
-            match identify(&service, peer.ip()).await {
-                Ok(identity) => {
-                    let description = format!("{} ({}) at {peer}", identity.login, identity.node);
-                    let _ = stream.set_nodelay(true);
-                    connection::serve_boxed(
-                        service,
-                        stream,
-                        Peer {
-                            description,
-                            local: false,
-                            close: None,
-                        },
-                    )
-                    .await;
+    accept_forever(
+        "tailnet",
+        || listener.accept(),
+        |(stream, peer)| {
+            let Some(service) = service.upgrade() else {
+                return ControlFlow::Break(());
+            };
+            tokio::spawn(async move {
+                match identify(&service, peer.ip()).await {
+                    Ok(identity) => {
+                        let description =
+                            format!("{} ({}) at {peer}", identity.login, identity.node);
+                        let _ = stream.set_nodelay(true);
+                        connection::serve_boxed(
+                            service,
+                            stream,
+                            Peer {
+                                description,
+                                local: false,
+                                close: None,
+                            },
+                        )
+                        .await;
+                    }
+                    Err(reason) => tracing::warn!(%peer, %reason, "refused tailnet connection"),
                 }
-                Err(reason) => tracing::warn!(%peer, %reason, "refused tailnet connection"),
-            }
-        });
-    }
+            });
+            ControlFlow::Continue(())
+        },
+    )
+    .await;
 }
 
 async fn identify(service: &Arc<Service>, ip: IpAddr) -> Result<Identity, String> {

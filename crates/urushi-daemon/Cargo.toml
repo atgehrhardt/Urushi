@@ -28,9 +28,16 @@ urushi-mux = { workspace = true }
 urushi-proto = { workspace = true, features = ["io", "lan"] }
 uuid = { workspace = true, features = ["v7"] }
 
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true }
+
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 urushi-client = { workspace = true }
+
+[target.'cfg(unix)'.dev-dependencies]
+rustix = { workspace = true }
 
 [lints]
 workspace = true

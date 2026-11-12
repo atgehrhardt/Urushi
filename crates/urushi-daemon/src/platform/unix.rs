@@ -1,3 +1,4 @@
+use std::ops::ControlFlow;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -5,6 +6,7 @@ use std::sync::Arc;
 use tokio::net::UnixListener;
 use urushi_proto::endpoint::LocalEndpoint;
 
+use crate::server::accept::accept_forever;
 use crate::server::connection::{self, Peer};
 use crate::service::Service;
 
@@ -55,25 +57,69 @@ pub(crate) async fn serve_local(
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     let owner = std::fs::metadata(service.home())?.uid();
     tracing::info!(socket = %path.display(), "listening");
-    loop {
-        let (stream, _) = listener.accept().await?;
-        let uid = stream.peer_cred().map(|c| c.uid()).ok();
-        if uid != Some(owner) {
-            tracing::warn!(?uid, "refused local connection from another user");
-            continue;
-        }
-        let service = service.clone();
-        tokio::spawn(connection::serve(
-            service,
-            stream,
-            Peer {
-                description: "local".into(),
-                local: true,
-                close: None,
-            },
-        ));
-    }
+    accept_forever(
+        "local socket",
+        || listener.accept(),
+        |(stream, _)| {
+            match stream.peer_cred().map(|c| c.uid()) {
+                Ok(uid) if uid == owner => {}
+                Ok(uid) => {
+                    tracing::warn!(uid, "refused local connection from another user");
+                    return ControlFlow::Continue(());
+                }
+                // The peer hung up before we could ask who it is (a client probing
+                // whether the daemon is up does this).
+                Err(error) => {
+                    tracing::debug!(%error, "dropped a local connection that closed at once");
+                    return ControlFlow::Continue(());
+                }
+            }
+            tokio::spawn(connection::serve(
+                service.clone(),
+                stream,
+                Peer {
+                    description: "local".into(),
+                    local: true,
+                    close: None,
+                },
+            ));
+            ControlFlow::Continue(())
+        },
+    )
+    .await;
+    Ok(())
 }
+
+/// Raises this process's soft limit on open files to its hard limit (at most
+/// [`MAX_OPEN_FILES`]), and returns the `(before, after)` soft limits.
+///
+/// Every pane holds a few descriptors (its PTY, and a reader and writer onto it), and
+/// so does every connection and every `git` or `curl` the daemon runs. A daemon started
+/// from the macOS GUI inherits a soft limit of 256, which tens of panes use up; past it,
+/// new panes, connections and commands all fail (UR-69). The hard limit is the user's
+/// own ceiling, so raising to it needs no privilege.
+pub(crate) fn raise_fd_limit() -> std::io::Result<(u64, u64)> {
+    use rustix::process::{Resource, Rlimit, getrlimit, setrlimit};
+    let limit = getrlimit(Resource::Nofile);
+    let before = limit.current.unwrap_or(u64::MAX);
+    let target = limit.maximum.unwrap_or(u64::MAX).min(MAX_OPEN_FILES);
+    if target <= before {
+        return Ok((before, before));
+    }
+    setrlimit(
+        Resource::Nofile,
+        Rlimit {
+            current: Some(target),
+            maximum: limit.maximum,
+        },
+    )?;
+    Ok((before, target))
+}
+
+/// The most open files [`raise_fd_limit`] asks for. macOS refuses a soft limit above
+/// `OPEN_MAX` (10 240) even when the hard limit is unlimited, and it is plenty: hundreds
+/// of panes need a few thousand.
+pub(crate) const MAX_OPEN_FILES: u64 = 10_240;
 
 /// Resolves on Ctrl-C or SIGTERM.
 pub(crate) async fn shutdown_signal() {
@@ -184,4 +230,23 @@ pub(crate) fn claude_credentials() -> Result<String, String> {
         }
     }
     crate::usage::claude_credentials_file()
+}
+
+#[cfg(test)]
+mod tests {
+    use rustix::process::{Resource, getrlimit};
+
+    use super::*;
+
+    #[test]
+    fn the_open_file_limit_is_raised_within_the_hard_limit() {
+        let (before, after) = raise_fd_limit().unwrap();
+        assert!(after >= before);
+        let limit = getrlimit(Resource::Nofile);
+        assert_eq!(limit.current, Some(after));
+        let hard = limit.maximum.unwrap_or(u64::MAX);
+        assert!(after <= hard.min(MAX_OPEN_FILES).max(before));
+        // Raising again changes nothing.
+        assert_eq!(raise_fd_limit().unwrap(), (after, after));
+    }
 }

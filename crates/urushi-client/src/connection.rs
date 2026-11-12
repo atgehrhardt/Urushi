@@ -1,11 +1,20 @@
 //! A connection to a daemon: handshake, request/response matching, and the event stream.
+//!
+//! A connection either works both ways or ends (ADR 0052). It ends when the daemon
+//! closes it, when a write fails, when every [`Client`] clone is dropped, or when nothing
+//! at all has arrived from the daemon for [`LIVENESS_TIMEOUT`] although the client kept
+//! asking ([`Ping`](request::Body::Ping) every [`PING_INTERVAL`] of quiet). Ending closes the
+//! socket, fails requests in flight with [`ClientError::Disconnected`], and ends the
+//! [`Events`] stream, which is how applications learn to reconnect.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
+use tokio::time::Instant;
 use urushi_proto::codec::{read_envelope, write_envelope};
 use urushi_proto::endpoint::Endpoint;
 use urushi_proto::envelope;
@@ -21,6 +30,18 @@ const EVENT_QUEUE: usize = 1024;
 /// an application that asked for every movement).
 const OUTBOUND_QUEUE: usize = 1024;
 
+/// How long the connection may be quiet before the client pings the daemon.
+pub const PING_INTERVAL: Duration = Duration::from_secs(5);
+/// How long the connection may go without a single frame from the daemon, pings
+/// included, before it counts as dead. Generous: a daemon busy for seconds is still
+/// alive, and reconnecting re-attaches every pane, which costs it more.
+pub const LIVENESS_TIMEOUT: Duration = Duration::from_secs(30);
+/// Longest connecting and the handshake may take together.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// The request id pings use. Real requests count from 1, and the reader drops answers
+/// nobody waits for, so a ping's answer only counts as hearing from the daemon.
+const PING_ID: u64 = 0;
+
 type Pending = Mutex<HashMap<u64, oneshot::Sender<Outcome>>>;
 
 /// A connected, handshaken client. Cheap to clone; all clones share one connection.
@@ -30,6 +51,8 @@ pub struct Client {
     pending: Arc<Pending>,
     next_id: Arc<AtomicU64>,
     alive: Arc<AtomicBool>,
+    /// Becomes `true` once the connection has ended, for whatever reason.
+    closed: watch::Receiver<bool>,
     welcome: Arc<v1::Welcome>,
 }
 
@@ -42,7 +65,9 @@ impl Client {
         endpoint: &Endpoint,
         client_name: &str,
     ) -> Result<(Self, Events), ClientError> {
-        let stream = platform::connect(endpoint).await?;
+        let stream = tokio::time::timeout(CONNECT_TIMEOUT, platform::connect(endpoint))
+            .await
+            .map_err(|_| ClientError::TimedOut("connecting"))??;
         Self::over(stream, client_name).await
     }
 
@@ -52,51 +77,57 @@ impl Client {
         S: AsyncRead + AsyncWrite + Send + 'static,
     {
         let (mut reader, mut writer) = tokio::io::split(stream);
-        write_envelope(
-            &mut writer,
-            &envelope::hello(0, client_name, env!("CARGO_PKG_VERSION")),
+        let welcome = tokio::time::timeout(
+            CONNECT_TIMEOUT,
+            handshake(&mut reader, &mut writer, client_name),
         )
-        .await?;
-        let welcome = match read_envelope(&mut reader).await? {
-            Some(v1::Envelope {
-                kind:
-                    Some(Kind::Response(v1::Response {
-                        outcome: Some(outcome),
-                        ..
-                    })),
-            }) => match outcome {
-                Outcome::Welcome(w) => w,
-                Outcome::Error(e) => return Err(ClientError::from_wire(&e)),
-                _ => {
-                    return Err(ClientError::Protocol(
-                        "unexpected handshake response".into(),
-                    ));
-                }
-            },
-            _ => {
-                return Err(ClientError::Protocol(
-                    "daemon closed the connection during handshake".into(),
-                ));
-            }
-        };
+        .await
+        .map_err(|_| ClientError::TimedOut("the handshake"))??;
+
+        let (closed_tx, closed) = watch::channel(false);
+        let closed_tx = Arc::new(closed_tx);
+        let last_heard = Arc::new(Mutex::new(Instant::now()));
 
         let (out, mut outbound) = mpsc::channel::<v1::Envelope>(OUTBOUND_QUEUE);
+        let writer_closed = closed_tx.clone();
+        let mut writer_stop = closed.clone();
         tokio::spawn(async move {
-            while let Some(frame) = outbound.recv().await {
-                if write_envelope(&mut writer, &frame).await.is_err() {
+            loop {
+                let frame = tokio::select! {
+                    frame = outbound.recv() => frame,
+                    _ = writer_stop.wait_for(|closed| *closed) => None,
+                };
+                // `None`: every `Client` was dropped, or the connection ended.
+                let Some(frame) = frame else { break };
+                if let Err(error) = write_envelope(&mut writer, &frame).await {
+                    tracing::info!(%error, "writing to the daemon failed; closing the connection");
                     break;
                 }
             }
+            writer_closed.send_replace(true);
         });
+
+        tokio::spawn(heartbeat(
+            out.downgrade(),
+            last_heard.clone(),
+            closed_tx.clone(),
+            closed.clone(),
+        ));
 
         let pending: Arc<Pending> = Arc::default();
         let (events_tx, events) = mpsc::channel(EVENT_QUEUE);
         let reader_pending = pending.clone();
         let alive = Arc::new(AtomicBool::new(true));
         let reader_alive = alive.clone();
+        let mut reader_stop = closed.clone();
         tokio::spawn(async move {
             loop {
-                match read_envelope(&mut reader).await {
+                let frame = tokio::select! {
+                    frame = read_envelope(&mut reader) => frame,
+                    _ = reader_stop.wait_for(|closed| *closed) => break,
+                };
+                *last_heard.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
+                match frame {
                     Ok(Some(v1::Envelope {
                         kind:
                             Some(Kind::Response(v1::Response {
@@ -120,11 +151,17 @@ impl Client {
                         }
                     }
                     Ok(Some(_)) => {}
-                    Ok(None) | Err(_) => break,
+                    Ok(None) => break,
+                    Err(error) => {
+                        tracing::info!(%error, "reading from the daemon failed");
+                        break;
+                    }
                 }
             }
-            // Dropping the senders fails every in-flight request with `Disconnected`.
+            // Dropping the senders fails every in-flight request with `Disconnected`,
+            // and dropping `events_tx` (and the read half) ends the stream and the socket.
             reader_alive.store(false, Ordering::SeqCst);
+            closed_tx.send_replace(true);
             reader_pending
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -137,6 +174,7 @@ impl Client {
                 pending,
                 next_id: Arc::new(AtomicU64::new(1)),
                 alive,
+                closed,
                 welcome: Arc::new(welcome),
             },
             events,
@@ -195,6 +233,83 @@ impl Client {
 
     /// Whether the connection is still open.
     pub fn is_connected(&self) -> bool {
-        self.alive.load(Ordering::SeqCst) && !self.out.is_closed()
+        self.alive.load(Ordering::SeqCst) && !self.out.is_closed() && !*self.closed.borrow()
+    }
+}
+
+/// Sends `Hello` and reads the daemon's `Welcome`.
+async fn handshake<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    client_name: &str,
+) -> Result<v1::Welcome, ClientError>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    write_envelope(
+        writer,
+        &envelope::hello(0, client_name, env!("CARGO_PKG_VERSION")),
+    )
+    .await?;
+    match read_envelope(reader).await? {
+        Some(v1::Envelope {
+            kind:
+                Some(Kind::Response(v1::Response {
+                    outcome: Some(outcome),
+                    ..
+                })),
+        }) => match outcome {
+            Outcome::Welcome(w) => Ok(w),
+            Outcome::Error(e) => Err(ClientError::from_wire(&e)),
+            _ => Err(ClientError::Protocol(
+                "unexpected handshake response".into(),
+            )),
+        },
+        _ => Err(ClientError::Protocol(
+            "daemon closed the connection during handshake".into(),
+        )),
+    }
+}
+
+/// Pings the daemon whenever the connection has been quiet for [`PING_INTERVAL`], and
+/// ends the connection once nothing has arrived for [`LIVENESS_TIMEOUT`]. Holds only a
+/// weak sender, so it never keeps a connection open that every `Client` has dropped.
+async fn heartbeat(
+    out: mpsc::WeakSender<v1::Envelope>,
+    last_heard: Arc<Mutex<Instant>>,
+    close: Arc<watch::Sender<bool>>,
+    mut closed: watch::Receiver<bool>,
+) {
+    let mut interval = tokio::time::interval(PING_INTERVAL);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    interval.tick().await;
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = closed.wait_for(|closed| *closed) => return,
+        }
+        let quiet = last_heard
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .elapsed();
+        if quiet >= LIVENESS_TIMEOUT {
+            tracing::warn!(
+                quiet_secs = quiet.as_secs(),
+                "the daemon stopped answering; closing the connection"
+            );
+            close.send_replace(true);
+            return;
+        }
+        let Some(out) = out.upgrade() else {
+            return;
+        };
+        if quiet >= PING_INTERVAL {
+            // A full queue already has frames on the way out; skipping a ping is fine.
+            let _ = out.try_send(envelope::request(
+                PING_ID,
+                request::Body::Ping(v1::PingRequest {}),
+            ));
+        }
     }
 }
