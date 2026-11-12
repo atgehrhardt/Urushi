@@ -24,6 +24,7 @@ mod task_in_thread;
 mod tasks;
 mod terminal_area;
 mod thread_card;
+mod thread_notes;
 
 use std::collections::HashMap;
 

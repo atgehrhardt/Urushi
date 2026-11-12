@@ -658,3 +658,20 @@ fn the_quick_terminal_drops_down_over_the_thread_with_its_toggles() {
         }
     }
 }
+
+#[test]
+fn the_threads_bar_shows_unread_threads_notes_and_project_colors() {
+    let sidebar = dump("thread-extras", 1280.0);
+    assert!(
+        sidebar.contains("\"Waiting on the copy review"),
+        "{sidebar}"
+    );
+    assert!(!sidebar.contains("Then ship behind the flag."), "{sidebar}");
+    let notes = dump("thread-notes", 1280.0);
+    assert!(notes.contains("\"Notes — Pricing page\""), "{notes}");
+    assert!(notes.contains("Then ship behind the flag."), "{notes}");
+    let menu = dump("project-color-menu", 1280.0);
+    for color in ["\"None\"", "\"Teal\"", "\"Purple\""] {
+        assert!(menu.contains(color), "{color} missing: {menu}");
+    }
+}

@@ -310,6 +310,7 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             ok()
         }
         Body::UpdateThread(r) => super::organize::update_thread(connection, r)?,
+        Body::SetFolderColor(r) => super::organize::set_folder_color(service, &r)?,
         Body::UpdateFolderSettings(r) => {
             super::organize::update_folder_settings(service, r).await?
         }

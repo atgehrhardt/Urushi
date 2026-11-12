@@ -10,6 +10,7 @@ mod daemon;
 mod jira;
 mod lan;
 mod look;
+mod organize;
 mod project_settings;
 mod render;
 
@@ -48,7 +49,7 @@ enum Command {
     Repo(RepoCmd),
     /// Manage projects (groups of threads, from any repo).
     #[command(subcommand)]
-    Project(ProjectCmd),
+    Project(organize::ProjectCmd),
     /// Manage threads (each one is a worktree).
     #[command(subcommand)]
     Thread(ThreadCmd),
@@ -143,60 +144,6 @@ enum RepoCmd {
 }
 
 #[derive(Subcommand)]
-enum ProjectCmd {
-    /// Create a project.
-    New {
-        /// Name.
-        name: String,
-    },
-    /// Rename a project.
-    Rename {
-        /// Project id.
-        project: String,
-        /// New name.
-        name: String,
-    },
-    /// Delete a project. Its threads become ungrouped; nothing on disk changes.
-    Rm {
-        /// Project id.
-        project: String,
-    },
-    /// Move a project to a position in the list (0 is first).
-    Move {
-        /// Project id.
-        project: String,
-        /// New position, counted without the project (clamped to the end).
-        index: u32,
-    },
-    /// Show or change a project's settings: its parent branch, which its new threads
-    /// start from, and whether a parent-branch thread is kept at its top. With no
-    /// options, prints them.
-    Settings {
-        /// Project id.
-        project: String,
-        /// The parent branch's repo (default: the one already set).
-        #[arg(long)]
-        repo: Option<String>,
-        /// The parent branch: a local branch, or a remote one such as `origin/x`.
-        #[arg(long)]
-        branch: Option<String>,
-        /// Remove the parent branch.
-        #[arg(long, conflicts_with_all = ["repo", "branch"])]
-        clear: bool,
-        /// Keep a parent-branch thread at the project's top. Switching it off while it
-        /// is open is refused: close it with `urushi thread rm`.
-        #[arg(long, value_enum)]
-        base_thread: Option<OnOff>,
-    },
-}
-
-#[derive(Clone, Copy, ValueEnum)]
-enum OnOff {
-    On,
-    Off,
-}
-
-#[derive(Subcommand)]
 enum ThreadCmd {
     /// Create a thread: a new branch and worktree, with a terminal in it.
     New {
@@ -234,6 +181,27 @@ enum ThreadCmd {
     Unpin {
         /// Thread id.
         thread: String,
+    },
+    /// Mark a thread unread: it stands out in the sidebar until it is opened.
+    Unread {
+        /// Thread id.
+        thread: String,
+    },
+    /// Mark a thread read.
+    Read {
+        /// Thread id.
+        thread: String,
+    },
+    /// Print a thread's notes, or change them with --set or --clear.
+    Notes {
+        /// Thread id.
+        thread: String,
+        /// New notes; "-" reads them from standard input.
+        #[arg(long)]
+        set: Option<String>,
+        /// Remove the notes.
+        #[arg(long, conflicts_with = "set")]
+        clear: bool,
     },
     /// Set a thread's status, or clear it when STATUS is omitted.
     Status {

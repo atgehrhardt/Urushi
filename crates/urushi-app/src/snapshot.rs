@@ -43,7 +43,8 @@ pub fn scene(
 /// (`quick-terminal`, `snapshot/quick.rs`), the first-run `setup` wizard (its mode
 /// step in `setup-mode`), the Jira screens (`snapshot/jira.rs`), quick filters
 /// (`snapshot/quick_filters.rs`), and a project's
-/// parent branch (`snapshot/project_base.rs`).
+/// parent branch (`snapshot/project_base.rs`), and unread threads, thread notes and
+/// project colors (`snapshot/threads_bar.rs`).
 pub const SCENARIOS: &[&str] = &[
     "launcher",
     "picker",
@@ -98,6 +99,9 @@ pub const SCENARIOS: &[&str] = &[
     "jira-delete-subtask",
     "project-base-thread",
     "project-settings",
+    "thread-extras",
+    "thread-notes",
+    "project-color-menu",
 ];
 
 fn sample_attachment(id: &str, name: &str, (width, height): (u32, u32)) -> v1::Attachment {
@@ -455,6 +459,7 @@ fn scenario_frame(
         name if jira::SCENARIOS.contains(&name) => jira::show(&mut state, name),
         name if quick_filters::SCENARIOS.contains(&name) => quick_filters::show(&mut state, name),
         name if project_base::SCENARIOS.contains(&name) => project_base::show(&mut state, name),
+        name if threads_bar::SCENARIOS.contains(&name) => threads_bar::show(&mut state, name),
         name if BOARD_SCENARIOS.contains(&name) || name == "status" || name == "pane-menu" => {
             show_board_or_usage(&mut state, name);
         }
@@ -649,6 +654,7 @@ mod jira_issue;
 mod project_base;
 mod quick;
 mod quick_filters;
+mod threads_bar;
 
 #[cfg(test)]
 mod board_width;

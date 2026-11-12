@@ -41,6 +41,8 @@ message Folder {
   int64 created_at_ms = 3;
   // Project settings. Since 1.18.
   FolderSettings settings = 4;
+  // The color its sidebar section is shown in; unspecified means none. Since 1.27.
+  LabelColor color = 5;
 }
 
 // A project's settings (ADR 0029). Since 1.18.
@@ -99,6 +101,10 @@ message Thread {
   // Runs in a checkout Urushi didn't create (e.g. the repo's own folder), which
   // closing the thread leaves alone. Only set with `project_base`. Since 1.18.
   bool attached_checkout = 17;
+  // Marked unread by the user; the client that opens the thread clears it. Since 1.27.
+  bool unread = 18;
+  // The user's notes on the thread (plain text); empty means none. Since 1.27.
+  string notes = 19;
 }
 
 message Tab {
@@ -255,6 +261,10 @@ message UpdateThreadRequest {
   optional string status = 4;
   // Empty ungroups the thread.
   optional string folder_id = 5;
+  // Mark the thread unread or read. Since 1.27.
+  optional bool unread = 6;
+  // Replace the thread's notes; empty clears them. At most 10,000 characters. Since 1.27.
+  optional string notes = 7;
 }
 
 // Folders are shown to users as projects. Since protocol 1.2.
@@ -279,6 +289,13 @@ message DeleteFolderRequest {
 message UpdateFolderSettingsRequest {
   string folder_id = 1;
   FolderSettings settings = 2;
+}
+
+// Sets the color of a folder's (project's) sidebar section; unspecified clears it.
+// Since 1.27.
+message SetFolderColorRequest {
+  string folder_id = 1;
+  LabelColor color = 2;
 }
 
 // Moves a folder to `index` among the others (counted without it; clamped to the end).
