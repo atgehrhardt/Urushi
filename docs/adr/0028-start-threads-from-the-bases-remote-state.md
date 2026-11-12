@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-10
+- **Amended by:** [0055](0055-prefetch-a-new-threads-base-and-share-fetches.md) (fetches shared and reused for 60 s, prefetched while the dialog is open)
 
 ## Context
 A thread branches from a base, usually `main`. Urushi resolved that base to the

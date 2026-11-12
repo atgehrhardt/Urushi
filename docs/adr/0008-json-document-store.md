@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-06
+- **Amended by:** [0054](0054-save-the-workspace-from-one-coalescing-saver.md) (one saver writes it, coalescing changes)
 
 ## Context
 The daemon must persist projects, threads (with private facts such as the branches that existed before each thread), tabs, layouts and settings. The original plan said SQLite. In practice the whole workspace is small: kilobytes even with thousands of threads. It changes at human speed (a click, a split), and it's always read in full at startup.

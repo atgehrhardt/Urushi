@@ -28,6 +28,9 @@ impl AppState {
             self.pulse = brightness.clamp(0.0, 1.0);
             return Vec::new();
         }
+        if self.ignores_while_saving(&msg) {
+            return Vec::new();
+        }
         let before = crate::errors::BeforeUpdate::of(self);
         let mut fx = Vec::new();
         match msg {
@@ -82,6 +85,7 @@ impl AppState {
             Msg::Daemon(event) => self.on_event(event, &mut fx),
             Msg::Response { followup, result } => self.on_response(followup, result, &mut fx),
             Msg::SelectThread(id) => self.select_thread(id, &mut fx),
+            Msg::SelectPending(key) => self.show_pending(key, &mut fx),
             Msg::OpenUrl(url) => fx.push(Effect::OpenUrl(url)),
             Msg::SetCompact(compact) => self.compact = compact,
             Msg::WindowHeight(height) => self.window_height = height,
@@ -100,13 +104,7 @@ impl AppState {
             Msg::SelectTab(id) => self.select_tab(id, &mut fx),
             Msg::OpenAddProject => self.open_add_repo(),
             Msg::OpenNewThread { repo, project } => self.open_new_thread(repo, project, &mut fx),
-            Msg::RequestDeleteThread(thread_id) => {
-                self.menu = None;
-                fx.push(request(
-                    Body::PlanThreadDeletion(v1::PlanThreadDeletionRequest { thread_id }),
-                    Followup::DeletionPlan(None),
-                ));
-            }
+            Msg::RequestDeleteThread(thread_id) => self.request_delete(thread_id, &mut fx),
             Msg::OpenSettings => self.open_settings(&mut fx),
             Msg::OpenConnect => self.open_connect(),
             msg @ (Msg::ConnectTo(_)
@@ -250,6 +248,7 @@ impl AppState {
         self.want_thumbnails(&mut fx);
         self.watch_shown_board(&mut fx);
         self.attend(&mut fx);
+        self.note_saving(&fx);
         // An error shown in a dialog goes with it (`errors.rs`).
         crate::errors::forget_dialog_error(self, &before);
         fx
@@ -331,19 +330,6 @@ impl AppState {
 
     /// Shows the deletion warning for `plan`; `then`: project settings to save once the
     /// thread is closed.
-    fn show_deletion_plan(
-        &mut self,
-        plan: v1::DeletionPlan,
-        then: Option<Box<crate::project_settings::PendingSettings>>,
-    ) {
-        let title = self
-            .workspace
-            .thread(&plan.thread_id)
-            .map(|t| t.title.clone())
-            .unwrap_or_default();
-        self.open(Dialog::DeleteThread { title, plan, then }, None);
-    }
-
     /// Typed or pasted text goes to the focused dialog field, otherwise to the focused pane.
     fn insert_text(
         &mut self,
@@ -402,6 +388,8 @@ impl AppState {
         }
         self.dialog = None;
         self.focus = None;
+        // A save still unanswered can't close the next dialog of the same kind.
+        self.submitting = None;
     }
 
     fn on_workspace(&mut self, workspace: v1::Workspace, fx: &mut Vec<Effect>) {
@@ -439,6 +427,16 @@ impl AppState {
                 // alone: Jira is asked about its quick filters only when it changed.
                 let before = self.board.board(&self.workspace).cloned();
                 self.on_workspace(workspace, fx);
+                let dragged = self.divider.group().map(str::to_owned);
+                if let Some(id) = dragged {
+                    let group = self.workspace.group(&id);
+                    self.divider.workspace(group.as_ref());
+                }
+                let split = self.starting.split_group().map(str::to_owned);
+                if let Some(id) = split {
+                    let group = self.workspace.group(&id);
+                    self.starting.workspace(group.as_ref());
+                }
                 if self.board.board(&self.workspace) != before.as_ref() {
                     self.refresh_quick_filter(fx);
                 }
@@ -481,6 +479,40 @@ impl AppState {
         }
     }
 
+    /// A refusal of something shown ahead of the daemon's answer (ADR 0056): undoes or
+    /// ends what was shown. Returns whether it handled the refusal.
+    fn request_refused(
+        &mut self,
+        followup: &Followup,
+        message: &str,
+        fx: &mut Vec<Effect>,
+    ) -> bool {
+        match followup {
+            Followup::Ignore => {}
+            Followup::CloseDialog => {
+                self.not_saved();
+                self.error = Some(message.to_owned());
+            }
+            Followup::DividerMoved => {
+                self.divider_answered(fx);
+                self.error = Some(message.to_owned());
+            }
+            Followup::ThreadCreated(key) => self.thread_not_created(*key, message.to_owned()),
+            Followup::DeletionPlan(_) => self.deletion_unplanned(message),
+            Followup::TabCreated(key) => {
+                self.starting.tab_done(*key);
+                self.error = Some(message.to_owned());
+            }
+            Followup::PaneCreated => {
+                self.starting.split_done(None);
+                self.sync_panes(fx);
+                self.error = Some(message.to_owned());
+            }
+            _ => return false,
+        }
+        true
+    }
+
     /// Any other answer: a failure is shown (or, where it only means "nothing to
     /// show", dropped), an outcome applied.
     fn answered(
@@ -491,6 +523,7 @@ impl AppState {
     ) {
         let outcome = match result {
             Ok(outcome) => outcome,
+            Err(message) if self.request_refused(&followup, &message, fx) => return,
             // An older daemon, or no agents: the picker just offers a terminal.
             Err(_) if followup == Followup::Agents => return,
             // Without branches the selector just offers the repo's default.
@@ -532,7 +565,9 @@ impl AppState {
                     )));
                 }
             }
-            (Followup::ThreadCreated, Outcome::Thread(thread)) => self.thread_created(thread, fx),
+            (Followup::ThreadCreated(key), Outcome::Thread(thread)) => {
+                self.thread_created(key, thread, fx);
+            }
             (Followup::Agents, Outcome::Agents(agents)) => {
                 self.set_agents(&agents);
                 self.maybe_open_setup();
@@ -547,11 +582,14 @@ impl AppState {
                 self.show_deletion_plan(plan, then);
             }
             (Followup::TaskTabCreated, Outcome::Tab(tab)) => self.task_tab_created(tab, fx),
-            (Followup::TabCreated, Outcome::Tab(tab)) => {
+            (Followup::TabCreated(key), Outcome::Tab(tab)) => {
+                self.starting.tab_done(key);
                 self.selected_tab.insert(tab.thread_id, tab.id);
                 self.sync_panes(fx);
             }
+            (Followup::DividerMoved, _) => self.divider_answered(fx),
             (Followup::PaneCreated, Outcome::PaneCreated(created)) => {
+                self.starting.split_done(created.pane_id.parse().ok());
                 self.focused_override
                     .insert(created.tab_id, created.pane_id);
             }
@@ -573,25 +611,9 @@ impl AppState {
                 self.dialog = None;
                 self.focus = None;
             }
-            (Followup::CloseDialog, _) => {
-                self.dialog = None;
-                self.focus = None;
-            }
+            (Followup::CloseDialog, _) => self.saved(),
             _ => {}
         }
-    }
-
-    /// The new thread exists: show it.
-    fn thread_created(&mut self, thread: v1::Thread, fx: &mut Vec<Effect>) {
-        // Started from a task: the board makes way for the new thread.
-        if matches!(self.dialog, Some(Dialog::NewThread { task: Some(_), .. })) {
-            self.board.open = false;
-        }
-        self.selected_thread = Some(thread.id);
-        self.close_dialog();
-        self.sync_panes(fx);
-        // The new thread shows the launcher; make sure it lists what's installed.
-        self.request_agents(fx);
     }
 
     fn submit(&mut self, fx: &mut Vec<Effect>) {
@@ -618,7 +640,7 @@ impl AppState {
                 // From a task, with a task agent chosen: the daemon starts it with the
                 // task as its prompt. Otherwise the thread opens on the launcher.
                 let start_task_agent = task.is_some() && self.task_agent().is_some();
-                let body = Body::CreateThread(v1::CreateThreadRequest {
+                let body = v1::CreateThreadRequest {
                     project_id: repo.clone(),
                     title: title.text().trim().to_owned(),
                     base_ref: base.clone().unwrap_or_default(),
@@ -632,8 +654,8 @@ impl AppState {
                         .and_then(|l| l.subtask.clone())
                         .unwrap_or_default(),
                     start_task_agent,
-                });
-                fx.push(request(body, Followup::ThreadCreated));
+                };
+                self.submit_new_thread(body, fx);
             }
             Some(Dialog::Prompt { .. }) => self.submit_prompt(fx),
             Some(Dialog::ThreadNotes { .. }) => self.submit_thread_notes(fx),
@@ -758,6 +780,7 @@ mod attachments;
 mod attention;
 mod board;
 mod cards;
+mod creating;
 mod daemon;
 mod deletion;
 mod fields;
@@ -775,6 +798,7 @@ mod pointer;
 mod project_settings;
 mod quick;
 mod quick_filter;
+mod saving;
 mod setup;
 mod sidebar;
 mod sidebar_drag;

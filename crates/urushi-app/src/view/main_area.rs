@@ -26,12 +26,16 @@ pub(super) fn view(state: &AppState, theme: &Theme) -> Node<Msg> {
         if cfg!(any(target_os = "ios", target_os = "android")) {
             column = column.child(super::terminal_area::key_bar(theme));
         }
+    } else if let Some(pending) = state.shown_pending() {
+        column = column.child(creating(theme, &pending.title));
     } else if let Some(thread) = state.empty_thread() {
         // A new thread, or one whose last tab was closed: keep the tab bar (and its "+")
-        // and offer what to run.
-        column = column
-            .child(tab_bar(state, theme))
-            .child(super::launcher::inline(state, theme, &thread.title));
+        // and offer what to run, unless the first tab is on its way already.
+        column = column.child(tab_bar(state, theme));
+        column = match state.starting.tabs_of(&thread.id).next() {
+            Some(tab) => column.child(starting_tab(theme, &tab.title)),
+            None => column.child(super::launcher::inline(state, theme, &thread.title)),
+        };
     } else {
         // Without a tab bar, the button that shows a collapsed sidebar goes on top.
         if !state.compact && state.sidebar.collapsed() {
@@ -52,6 +56,63 @@ pub(super) fn view(state: &AppState, theme: &Theme) -> Node<Msg> {
         crate::errors::ErrorPlace::Main,
         None,
     ))
+}
+
+/// A thread the daemon is still creating (ADR 0056): the base is updated from its
+/// remote and the worktree made, which can take a few seconds.
+fn creating(theme: &Theme, title: &str) -> Node<Msg> {
+    Node::column()
+        .width(Length::Fill(1.0))
+        .height(Length::Fill(1.0))
+        .justify(Align::Center)
+        .align(Align::Center)
+        .gap(10.0)
+        .key(key(&["creating-thread"]))
+        .role(Role::Label, format!("Creating thread {title}"))
+        .child(Node::text(
+            format!("Creating \u{201c}{title}\u{201d}\u{2026}"),
+            Font::UiSemibold,
+            theme.font_size + 4.0,
+            theme.text,
+        ))
+        .child(Node::text(
+            "Updating its base from the remote and making its worktree. It opens here when ready.",
+            Font::Ui,
+            theme.font_size,
+            theme.text_muted,
+        ))
+}
+
+/// A tab in the tab bar while the daemon starts it.
+fn starting_chip(theme: &Theme, tab: &crate::starting::StartingTab) -> Node<Msg> {
+    Node::row()
+        .height(Length::Fill(1.0))
+        .padding(Insets::symmetric(0.0, 12.0))
+        .align(Align::Center)
+        .key(key(&["starting-tab", &tab.key.to_string()]))
+        .role(Role::Label, format!("Starting {}", tab.title))
+        .child(Node::text(
+            format!("{}\u{2026}", tab.title),
+            Font::UiMedium,
+            theme.font_size,
+            theme.text_muted,
+        ))
+}
+
+/// The first tab of a thread, while the daemon starts it.
+fn starting_tab(theme: &Theme, title: &str) -> Node<Msg> {
+    Node::column()
+        .width(Length::Fill(1.0))
+        .height(Length::Fill(1.0))
+        .justify(Align::Center)
+        .align(Align::Center)
+        .key(key(&["starting-first-tab"]))
+        .child(Node::text(
+            format!("Starting {title}\u{2026}"),
+            Font::UiMedium,
+            theme.font_size + 2.0,
+            theme.text_muted,
+        ))
 }
 
 fn empty_state(state: &AppState, theme: &Theme) -> Node<Msg> {
@@ -189,7 +250,12 @@ fn tab_bar(state: &AppState, theme: &Theme) -> Node<Msg> {
                 .child(super::sidebar_toggle(state, theme)),
         );
     }
-    let mut bar = bar.children(tabs).child(
+    // Tabs the daemon is still starting (`starting.rs`).
+    let starting = state
+        .starting
+        .tabs_of(&thread)
+        .map(|t| starting_chip(theme, t));
+    let mut bar = bar.children(tabs).children(starting).child(
         Node::row()
             .align(Align::Center)
             .padding(Insets::symmetric(0.0, 4.0))

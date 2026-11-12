@@ -1,9 +1,10 @@
 //! Durable workspace state.
 //!
-//! The whole workspace (settings, repos, projects, threads, tabs) is one small document. It is
-//! rewritten atomically on every change: write a temp file, fsync, rename. A document of
-//! thousands of threads is still only kilobytes, so this stays simple and needs no C
-//! dependency. The [`Store`] trait lets us move to an embedded database if that ever
+//! The whole workspace (settings, repos, projects, threads, tabs, boards) is one document,
+//! rewritten atomically: write a temp file, fsync, rename. It is written by one saver,
+//! which covers a burst of changes with one write (`service/saver.rs`, ADR 0054). With
+//! synced Jira boards it runs to a few hundred kilobytes, which this still handles with no
+//! C dependency. The [`Store`] trait lets us move to an embedded database if that ever
 //! changes (see ADR 0008).
 
 use std::collections::BTreeSet;

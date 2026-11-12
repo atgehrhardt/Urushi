@@ -256,6 +256,21 @@ message CreateThreadRequest {
   bool start_task_agent = 9;
 }
 
+// A hint that the user is about to create a thread: with
+// Settings.update_base_from_remote on, the daemon starts fetching the base that
+// CreateThread with the same fields would start from, and a CreateThread soon after
+// reuses that fetch (ADR 0055). Answered with Ok at once. An unknown repo or folder is
+// NOT_FOUND. Since 1.31.
+message PrepareThreadBaseRequest {
+  // As CreateThreadRequest.project_id: the repo.
+  string project_id = 1;
+  // As CreateThreadRequest.base_ref; empty uses the folder's parent branch or the
+  // repo's default base.
+  string base_ref = 2;
+  // As CreateThreadRequest.folder_id: picks the folder's parent branch.
+  string folder_id = 3;
+}
+
 // Changes a thread's organization. Unset fields are left unchanged. Since 1.2.
 message UpdateThreadRequest {
   string thread_id = 1;

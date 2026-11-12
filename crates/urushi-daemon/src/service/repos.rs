@@ -85,6 +85,7 @@ impl Service {
         let repo = self.read(|s| Ok(s.repo(id)?.repo_root.clone()))?;
         let git = self.git.clone();
         blocking(move || {
+            let _watch = super::timing::Stopwatch::start("list branches").on_drop("total");
             Ok(BranchList {
                 local: git.local_branches(&repo)?,
                 current: git.current_branch(&repo)?,

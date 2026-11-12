@@ -54,10 +54,12 @@ impl AppState {
         let Some(thread_id) = self.selected_thread.clone() else {
             return;
         };
-        let agent = match choice {
-            Launch::Terminal => v1::Agent::Unspecified,
-            Launch::Agent(agent) => convert::agent_to_proto(agent),
+        let (agent, title) = match choice {
+            Launch::Terminal => (v1::Agent::Unspecified, "Terminal"),
+            Launch::Agent(agent) => (convert::agent_to_proto(agent), agent.display_name()),
         };
+        // A chip shows the tab coming until the daemon has started it (`starting.rs`).
+        let key = self.starting.tab(thread_id.clone(), title.to_owned());
         fx.push(request(
             Body::CreateTab(v1::CreateTabRequest {
                 thread_id,
@@ -65,7 +67,7 @@ impl AppState {
                 agent: agent.into(),
                 ..Default::default()
             }),
-            Followup::TabCreated,
+            Followup::TabCreated(key),
         ));
     }
 

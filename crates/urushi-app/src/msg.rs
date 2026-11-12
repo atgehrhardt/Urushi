@@ -55,6 +55,8 @@ pub enum Msg {
     // ---- sidebar ---------------------------------------------------------------------
     /// Show a thread.
     SelectThread(String),
+    /// Show a thread still being created (its key in `creations.rs`).
+    SelectPending(u64),
     /// Open a web page (a thread's Jira issue or pull request) in the system browser.
     OpenUrl(String),
     /// The window became narrow (`true`) or wide.
@@ -385,8 +387,12 @@ pub enum Followup {
     None,
     /// The daemon attached a pane (outcome: first screen).
     Attached(String),
-    /// Select the new thread.
-    ThreadCreated,
+    /// The daemon answered the create with this key (`creations.rs`): show the new
+    /// thread, or bring the dialog back.
+    ThreadCreated(u64),
+    /// Nothing at all, not even errors: a hint the daemon may not know (e.g.
+    /// `PrepareThreadBase`).
+    Ignore,
     /// Show the deletion warning; when closing a parent-branch thread to change its
     /// project's settings, save them once it is closed.
     DeletionPlan(Option<Box<crate::project_settings::PendingSettings>>),
@@ -397,12 +403,14 @@ pub enum Followup {
     /// to change the project's settings: save them, or on failure show the thread again
     /// and say why. Never touches dialogs or focus.
     ProjectBaseClosed(String, Box<crate::project_settings::PendingSettings>),
-    /// Select the new tab.
-    TabCreated,
+    /// Select the new tab; its chip (this key, `starting.rs`) goes.
+    TabCreated(u64),
     /// A task was started in an existing thread: go to its new tab.
     TaskTabCreated,
     /// Focus the new pane.
     PaneCreated,
+    /// The daemon answered a divider move: send the newest position, if one waits.
+    DividerMoved,
     /// The daemon opened (or returned) its quick terminal.
     QuickTerminal,
     /// Show settings.

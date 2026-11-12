@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use urushi_ui::widgets::{ButtonKind, SelectOption, button, select_button, toggle};
+use urushi_ui::widgets::{SelectOption, select_button, toggle};
 use urushi_ui::{Key, Length, Node, Theme, key};
 
 use super::dialogs::{cancel, hint, label};
@@ -58,7 +58,7 @@ pub(super) fn view(
         body,
         vec![
             cancel(theme),
-            button(theme, "Save", ButtonKind::Primary, Msg::Submit),
+            super::modal::submit_button(state, theme, "Save"),
         ],
         Some(Msg::CloseDialog),
     )

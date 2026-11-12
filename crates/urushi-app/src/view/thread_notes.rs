@@ -1,7 +1,6 @@
 //! The notes editor: a thread's notes over several lines, saved with Save (or
 //! Cmd/Ctrl+Enter) and kept by the daemon (ADR 0048).
 
-use urushi_ui::widgets::{ButtonKind, button};
 use urushi_ui::{Length, Node, TextField, Theme};
 
 use super::dialogs::{area, cancel, hint};
@@ -47,7 +46,7 @@ pub(super) fn dialog(
         body,
         vec![
             cancel(theme),
-            button(theme, "Save", ButtonKind::Primary, Msg::Submit),
+            super::modal::submit_button(state, theme, "Save"),
         ],
         Some(Msg::CloseDialog),
     )

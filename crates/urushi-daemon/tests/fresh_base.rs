@@ -98,8 +98,13 @@ async fn a_checked_out_base_is_fetched_and_the_checkout_left_alone() {
     );
     assert_eq!(rev(&f.repo, "main"), stale, "main is checked out: it stays");
     assert!(!f.repo.join("fresh.txt").exists(), "no files change there");
+    daemon.stop().await;
+}
 
-    // A remote-tracking base is fetched too.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_remote_tracking_base_is_fetched_too() {
+    // A daemon of its own: a fetch of `main` from the last minute would be reused.
+    let (_home, f, daemon, client, project) = setup().await;
     let pushed = push_from_teammate(&f, "main", "fresher.txt");
     let thread = thread_from(&client, &project, "origin/main").await;
     assert_eq!(thread.base_commit, pushed);
@@ -183,6 +188,105 @@ async fn with_the_setting_off_threads_start_from_the_local_commit() {
         rev(&f.repo, "origin/main"),
         stale,
         "nothing was fetched either"
+    );
+    daemon.stop().await;
+}
+
+/// Makes every fetch from `origin` in `f.repo` append a line to a log first (and wait
+/// `delay` seconds), so a test can count fetches. Returns the log's path.
+fn count_fetches(f: &Fixture, delay: u32) -> PathBuf {
+    let log = f.root.join("fetches.log");
+    let script = f.root.join("upload-pack.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\necho fetch >> '{}'\nsleep {delay}\nexec git upload-pack \"$@\"\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    git(
+        &f.repo,
+        &[
+            "config",
+            "remote.origin.uploadpack",
+            script.to_str().unwrap(),
+        ],
+    );
+    log
+}
+
+fn fetches(log: &Path) -> usize {
+    std::fs::read_to_string(log).map_or(0, |s| s.lines().count())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_prepared_base_is_reused_by_the_create() {
+    let (_home, f, daemon, client, project) = setup().await;
+    let log = count_fetches(&f, 0);
+    let prefetched = push_from_teammate(&f, "main", "first.txt");
+    client.prepare_thread_base(&project, "", "").await.unwrap();
+    wait_until("the prefetch", || async {
+        (fetches(&log) == 1 && rev(&f.repo, "origin/main") == prefetched).then_some(())
+    })
+    .await;
+    // A later push isn't seen: the fetch from a moment ago is fresh enough.
+    push_from_teammate(&f, "main", "second.txt");
+    let thread = thread_from(&client, &project, "").await;
+    assert_eq!(thread.base_commit, prefetched);
+    assert_eq!(fetches(&log), 1, "the create fetched again");
+    daemon.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_create_joins_a_prefetch_in_flight() {
+    let (_home, f, daemon, client, project) = setup().await;
+    let log = count_fetches(&f, 1);
+    let pushed = push_from_teammate(&f, "main", "fresh.txt");
+    client
+        .prepare_thread_base(&project, "main", "")
+        .await
+        .unwrap();
+    let thread = thread_from(&client, &project, "main").await;
+    assert_eq!(thread.base_commit, pushed);
+    assert_eq!(fetches(&log), 1);
+    daemon.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn with_the_setting_off_preparing_fetches_nothing() {
+    let (_home, f, daemon, client, project) = setup().await;
+    let log = count_fetches(&f, 0);
+    client
+        .update_settings(v1::SettingsPatch {
+            update_base_from_remote: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    client.prepare_thread_base(&project, "", "").await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert_eq!(fetches(&log), 0);
+    daemon.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn preparing_an_unknown_repo_is_not_found() {
+    let (_home, _f, daemon, client, _project) = setup().await;
+    let error = client
+        .prepare_thread_base("01900000-0000-7000-8000-000000000000", "", "")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            urushi_client::ClientError::Remote {
+                code: v1::ErrorCode::NotFound,
+                ..
+            }
+        ),
+        "{error:?}"
     );
     daemon.stop().await;
 }

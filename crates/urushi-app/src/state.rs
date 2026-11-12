@@ -297,8 +297,11 @@ pub enum Dialog {
     DeleteThread {
         /// Thread title, for the heading.
         title: String,
-        /// What the daemon will delete.
-        plan: v1::DeletionPlan,
+        /// Thread id.
+        thread: String,
+        /// What the daemon will delete; `None` while it works that out (it takes a few
+        /// git commands), so the warning opens at once.
+        plan: Option<v1::DeletionPlan>,
         /// Project settings to save once the thread (a parent-branch thread) is closed.
         then: Option<Box<crate::project_settings::PendingSettings>>,
     },
@@ -503,6 +506,10 @@ pub struct AppState {
     pub deletions: crate::deletions::Deletions,
     /// The thread shown in the main area.
     pub selected_thread: Option<String>,
+    /// Threads this app asked the daemon to create, shown until it answers (ADR 0056).
+    pub creations: crate::creations::Creations,
+    /// The pending create shown in the main area, while no thread is selected.
+    pub selected_pending: Option<u64>,
     /// The tab shown per thread.
     pub selected_tab: HashMap<String, String>,
     /// Screens of attached panes.
@@ -519,12 +526,18 @@ pub struct AppState {
     pub dialog: Option<Dialog>,
     /// The focused dialog field.
     pub focus: Option<Field>,
+    /// The dialog as it was submitted, while the daemon saves it (`update/saving.rs`).
+    pub submitting: Option<Box<Dialog>>,
     /// The error to show, on whatever surface is on top (`errors.rs`).
     pub error: Option<String>,
     /// Text selection: pane and range.
     pub selection: Option<(String, Selection)>,
     /// The drag in progress.
     pub drag: Option<Drag>,
+    /// A divider dragged on screen ahead of the daemon (`divider.rs`).
+    pub divider: crate::divider::DividerDrag,
+    /// Tabs and splits the daemon is still making, shown ahead of it (`starting.rs`).
+    pub starting: crate::starting::Starting,
     /// Settings, once loaded.
     pub settings: Option<v1::Settings>,
     /// The daemon's Jira sign-ins, once asked (protocol 1.12; several since 1.29, ADR
@@ -612,6 +625,8 @@ impl AppState {
             workspace: WorkspaceMirror::default(),
             deletions: crate::deletions::Deletions::default(),
             selected_thread: None,
+            creations: crate::creations::Creations::default(),
+            selected_pending: None,
             selected_tab: HashMap::new(),
             screens: HashMap::new(),
             attaching: HashSet::new(),
@@ -619,9 +634,12 @@ impl AppState {
             area: None,
             cell,
             dialog,
+            submitting: None,
             error: None,
             selection: None,
             drag: None,
+            divider: crate::divider::DividerDrag::default(),
+            starting: crate::starting::Starting::default(),
             settings: None,
             jira_accounts: Vec::new(),
             tailnet: None,

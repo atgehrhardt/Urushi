@@ -139,11 +139,10 @@ pub(super) fn editor_actions(
         }
     }
     actions.push(cancel(theme));
-    actions.push(button(
+    actions.push(crate::view::modal::submit_button(
+        state,
         theme,
         if editing { "Save" } else { "Add task" },
-        ButtonKind::Primary,
-        Msg::Submit,
     ));
     actions
 }

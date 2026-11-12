@@ -24,7 +24,12 @@ pub(super) fn view(
             super::thread_notes::dialog(state, theme, thread, notes)
         }
         Dialog::NewTab { highlighted } => super::launcher::dialog(state, theme, *highlighted),
-        Dialog::DeleteThread { title, plan, .. } => delete_dialog(state, theme, title, plan),
+        Dialog::DeleteThread {
+            title,
+            thread,
+            plan,
+            ..
+        } => delete_dialog(state, theme, (title, thread), plan.as_ref()),
         Dialog::ProjectSettings(draft) => {
             super::project_settings::view(state, theme, scroll, draft)
         }
@@ -102,7 +107,7 @@ fn prompt_dialog(
         body,
         vec![
             cancel(theme),
-            button(theme, action, ButtonKind::Primary, Msg::Submit),
+            super::modal::submit_button(state, theme, action),
         ],
         Some(Msg::CloseDialog),
     )
@@ -287,13 +292,16 @@ fn plan_heading(theme: &Theme, plan: &v1::DeletionPlan, base: bool) -> [Node<Msg
 fn delete_dialog(
     state: &AppState,
     theme: &Theme,
-    title: &str,
-    plan: &v1::DeletionPlan,
+    (title, thread): (&str, &str),
+    plan: Option<&v1::DeletionPlan>,
 ) -> Node<Msg> {
     let base = state
         .workspace
-        .thread(&plan.thread_id)
+        .thread(thread)
         .is_some_and(|t| t.project_base);
+    let Some(plan) = plan else {
+        return checking_deletion(state, theme, title);
+    };
     let row = |what: &str, detail: String, color: Color| plan_row(theme, what, detail, color);
     let mut body = Node::column()
         .width(Length::Fill(1.0))
@@ -364,6 +372,38 @@ fn delete_dialog(
         vec![
             button(theme, "Cancel", ButtonKind::Secondary, Msg::CloseDialog),
             delete,
+        ],
+        Some(Msg::CloseDialog),
+    )
+}
+
+/// The warning while the daemon works out what deleting removes: Cancel works, Delete
+/// waits.
+fn checking_deletion(state: &AppState, theme: &Theme, title: &str) -> Node<Msg> {
+    let body = Node::column()
+        .width(Length::Fill(1.0))
+        .key(key(&["checking-deletion"]))
+        .child(Node::text(
+            "Checking what deleting removes\u{2026}",
+            Font::Ui,
+            theme.font_size,
+            theme.text_muted,
+        ))
+        .role(Role::Label, "Checking what deleting removes");
+    modal(
+        state,
+        theme,
+        &format!("Delete \u{201c}{title}\u{201d}?"),
+        600.0,
+        body,
+        vec![
+            button(theme, "Cancel", ButtonKind::Secondary, Msg::CloseDialog),
+            button(
+                theme,
+                "Checking\u{2026}",
+                ButtonKind::Secondary,
+                Msg::ConfirmDelete,
+            ),
         ],
         Some(Msg::CloseDialog),
     )
@@ -491,7 +531,7 @@ fn settings_dialog(
         body,
         vec![
             button(theme, "Close", ButtonKind::Secondary, Msg::CloseDialog),
-            button(theme, "Save", ButtonKind::Primary, Msg::Submit),
+            super::modal::submit_button(state, theme, "Save"),
         ],
         Some(Msg::CloseDialog),
     )

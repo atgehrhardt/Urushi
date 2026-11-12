@@ -4,7 +4,7 @@
 use urushi_client::v1::{self, request::Body, response::Outcome};
 
 use super::board::board;
-use super::{attached, bodies, named};
+use super::{attached, bodies, named, sent};
 use crate::keys::Named;
 use crate::msg::{Followup, Msg};
 use crate::state::{AppState, Dialog, TaskLink};
@@ -152,7 +152,7 @@ fn start_thread_on_task(s: &mut AppState) -> v1::CreateThreadRequest {
     }));
     assert!(matches!(s.dialog, Some(Dialog::NewThread { .. })));
     let fx = s.update(Msg::Submit);
-    match bodies(&fx)[..] {
+    match sent(&fx)[..] {
         [Body::CreateThread(r)] => r.clone(),
         _ => panic!("{fx:?}"),
     }

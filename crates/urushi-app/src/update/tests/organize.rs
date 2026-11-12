@@ -5,7 +5,7 @@ use urushi_client::v1::{self, request::Body, response::Outcome};
 use urushi_core::{RepoId, ThreadId};
 use urushi_ui::Point;
 
-use super::{attached, bodies, named, workspace};
+use super::{attached, bodies, named, sent, workspace};
 use crate::keys::Named;
 use crate::msg::{Effect, Followup, Msg};
 use crate::organize::{
@@ -222,7 +222,7 @@ fn the_new_thread_dialog_picks_repo_and_base_from_lists() {
 
     let fx = s.update(Msg::Submit);
     assert!(
-        matches!(bodies(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { project_id, base_ref, folder_id, .. })] if *project_id == repo() && base_ref == "dev" && folder_id == "f1"),
+        matches!(sent(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { project_id, base_ref, folder_id, .. })] if *project_id == repo() && base_ref == "dev" && folder_id == "f1"),
         "{fx:?}"
     );
 }
@@ -263,7 +263,7 @@ fn the_new_thread_dialog_picks_the_project_or_none() {
     );
     let fx = s.update(Msg::Submit);
     assert!(
-        matches!(bodies(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { folder_id, .. })] if folder_id == "f1"),
+        matches!(sent(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { folder_id, .. })] if folder_id == "f1"),
         "{fx:?}"
     );
 
@@ -283,7 +283,7 @@ fn the_new_thread_dialog_picks_the_project_or_none() {
     ));
     let fx = s.update(Msg::Submit);
     assert!(
-        matches!(bodies(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { folder_id, .. })] if folder_id.is_empty()),
+        matches!(sent(&fx)[..], [Body::CreateThread(v1::CreateThreadRequest { folder_id, .. })] if folder_id.is_empty()),
         "{fx:?}"
     );
 }

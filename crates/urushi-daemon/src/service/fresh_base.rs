@@ -10,19 +10,58 @@ use std::path::Path;
 
 use urushi_core::BranchName;
 
+use super::base_fetch::{BaseFetches, FetchKey, FetchOrigin};
 use crate::git::{Git, GitError};
 
 /// The commit a thread on `base` should start from: `local_commit` (what `base` resolves
-/// to locally), or the remote's newer commit for it.
-pub(super) fn fresh_base(git: &dyn Git, repo: &Path, base: &str, local_commit: String) -> String {
-    match refresh(git, repo, base, &local_commit) {
-        Ok(Some(commit)) => commit,
-        Ok(None) => local_commit,
+/// to locally), or the remote's newer commit for it. The fetch is shared with a recent or
+/// running one of the same branch (`base_fetch`). Also says how the fetch went, for logs.
+pub(super) fn fresh_base(
+    git: &dyn Git,
+    fetches: &BaseFetches,
+    repo: &Path,
+    base: &str,
+    local_commit: String,
+) -> (String, &'static str) {
+    let mut outcome = "skipped";
+    match refresh(git, fetches, repo, base, &local_commit, &mut outcome) {
+        Ok(Some(commit)) => (commit, outcome),
+        Ok(None) => (local_commit, outcome),
         Err(e) => {
             tracing::warn!(base, error = %e, "couldn't update the base from its remote; starting from the local commit");
-            local_commit
+            (local_commit, "failed")
         }
     }
+}
+
+/// Fetches `base`'s branch ahead of a new thread on it, so the thread can reuse the
+/// fetch (ADR 0055). `None` when the base doesn't track a remote.
+pub(super) fn prefetch(
+    git: &dyn Git,
+    fetches: &BaseFetches,
+    repo: &Path,
+    base: &str,
+) -> Result<Option<FetchOrigin>, GitError> {
+    let Some(tracked) = tracking(git, repo, base)? else {
+        return Ok(None);
+    };
+    fetch(git, fetches, repo, &tracked).map(Some)
+}
+
+fn fetch(
+    git: &dyn Git,
+    fetches: &BaseFetches,
+    repo: &Path,
+    tracked: &Tracked,
+) -> Result<FetchOrigin, GitError> {
+    let key = FetchKey {
+        repo: repo.to_path_buf(),
+        remote: tracked.remote.clone(),
+        branch: tracked.branch.clone(),
+    };
+    fetches.fetch(&key, || {
+        git.fetch_branch(repo, &tracked.remote, &tracked.branch)
+    })
 }
 
 /// Where a base is kept on a remote.
@@ -36,14 +75,16 @@ struct Tracked {
 /// Fetches the base and returns the remote's commit when the thread should start there.
 fn refresh(
     git: &dyn Git,
+    fetches: &BaseFetches,
     repo: &Path,
     base: &str,
     local_commit: &str,
+    outcome: &mut &'static str,
 ) -> Result<Option<String>, GitError> {
     let Some(tracked) = tracking(git, repo, base)? else {
         return Ok(None);
     };
-    git.fetch_branch(repo, &tracked.remote, &tracked.branch)?;
+    *outcome = fetch(git, fetches, repo, &tracked)?.as_str();
     let remote_ref = format!("refs/remotes/{}/{}", tracked.remote, tracked.branch);
     let remote_commit = git.resolve_commit(repo, &remote_ref)?;
     let Some(local) = tracked.local else {

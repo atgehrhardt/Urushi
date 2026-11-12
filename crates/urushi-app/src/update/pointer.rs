@@ -14,6 +14,7 @@ use urushi_client::v1::{self, notification, request::Body};
 use urushi_ui::{Point, Rect};
 
 use super::{input, request};
+use crate::divider::DividerPreview;
 use crate::msg::{Effect, Followup, Msg};
 use crate::state::{AppState, Drag, Selection};
 use crate::terminal;
@@ -131,15 +132,18 @@ impl AppState {
                 axis,
                 split,
             }) => {
-                let position = terminal::divider_position(axis, split, p);
-                let axis = urushi_proto::convert::axis_to_proto(axis);
-                let body = Body::MoveDivider(v1::MoveDividerRequest {
-                    tab_id: tab,
-                    anchor_pane_id: anchor,
-                    axis: axis.into(),
-                    position,
-                });
-                fx.push(request(body, Followup::None));
+                let Ok(anchor) = anchor.parse::<urushi_core::PaneId>() else {
+                    return;
+                };
+                let preview = DividerPreview {
+                    group: tab,
+                    anchor,
+                    axis,
+                    position: terminal::divider_position(axis, split, p),
+                };
+                if let Some(position) = self.divider.moved(preview) {
+                    self.send_divider(position, fx);
+                }
             }
             Some(Drag::Select { pane }) => {
                 if let Some((col, row)) = self.cell_in(&pane, p)
@@ -160,8 +164,12 @@ impl AppState {
     }
 
     fn area_release(&mut self, p: Point, fx: &mut Vec<Effect>) {
-        if let Some(Drag::Report { pane, button }) = self.drag.take() {
-            self.mouse(&pane, p, button, v1::MouseAction::Release, fx);
+        match self.drag.take() {
+            Some(Drag::Report { pane, button }) => {
+                self.mouse(&pane, p, button, v1::MouseAction::Release, fx);
+            }
+            Some(Drag::Divider { .. }) => self.divider.released(),
+            _ => {}
         }
         if self
             .selection
@@ -223,6 +231,27 @@ impl AppState {
                 v1::MouseAction::Release
             };
             self.mouse(&pane, p, button, action, fx);
+        }
+    }
+
+    /// Sends the dragged divider's position (`divider.rs` decides when).
+    fn send_divider(&self, position: f64, fx: &mut Vec<Effect>) {
+        let Some(preview) = self.divider.preview() else {
+            return;
+        };
+        let body = Body::MoveDivider(v1::MoveDividerRequest {
+            tab_id: preview.group.clone(),
+            anchor_pane_id: preview.anchor.to_string(),
+            axis: urushi_proto::convert::axis_to_proto(preview.axis).into(),
+            position,
+        });
+        fx.push(request(body, Followup::DividerMoved));
+    }
+
+    /// The daemon answered a divider move (or refused it): the next one may go.
+    pub(super) fn divider_answered(&mut self, fx: &mut Vec<Effect>) {
+        if let Some(position) = self.divider.answered() {
+            self.send_divider(position, fx);
         }
     }
 

@@ -12,6 +12,8 @@ use urushi_core::{BranchPrefix, IssueKey};
 use urushi_mux::TermSize;
 
 use super::task_agent::TaskAgent;
+use super::thread_base::{WorktreePlan, make_worktree, start_ref};
+use super::timing::Stopwatch;
 use super::{Service, ServiceError, ServiceResult, blocking, new_uuid, now};
 use crate::store::ThreadRecord;
 
@@ -68,6 +70,7 @@ impl Service {
             task,
             start_task_agent,
         } = request;
+        let mut watch = Stopwatch::start("create thread");
         let branch = parse_branch(branch)?;
         let title = thread_title(&title);
         let (project, settings, worktree_root, issue_key, parent, refresh) = self.read(|s| {
@@ -92,55 +95,31 @@ impl Service {
         let agent = self
             .task_agent_for(start_task_agent, task, settings.default_shell.clone())
             .await?;
+        watch.lap("prepare");
 
         let id = ThreadId::from_uuid(new_uuid());
-        let worktree_path = worktree_dir(&worktree_root, &project, &title, id);
-
-        let git = self.git.clone();
-        let repo = project.repo_root.clone();
-        let base_ref = start_ref(base_ref, parent, project.default_base.clone());
         let prefix = settings.branch_prefix.clone();
-        let branch = issue_branch(branch, issue_key.as_ref(), &prefix, &title, id)?;
-        let created_at = now();
-        let (mut thread, preexisting) = blocking(move || {
-            let (base, base_commit) = start_point(&*git, &repo, base_ref, refresh)?;
-            let preexisting: BTreeSet<BranchName> = git
-                .local_branches(&repo)?
-                .into_iter()
-                .filter_map(|b| BranchName::new(b).ok())
-                .collect();
-            let thread = Thread::new(
-                NewThread {
-                    id,
-                    repo: repo_id,
-                    project: project_id,
-                    title,
-                    worktree_path,
-                    base_ref: base,
-                    base_commit,
-                    created_at,
-                    branch,
-                },
-                &prefix,
-            )
-            .map_err(|e| ServiceError::Invalid(e.to_string()))?;
-            if preexisting.contains(&thread.primary_branch) {
-                return Err(ServiceError::Conflict(format!(
-                    "branch {} already exists",
-                    thread.primary_branch
-                )));
-            }
-            if let Some(parent) = thread.worktree_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| ServiceError::Internal(e.to_string()))?;
-            }
-            git.worktree_add(
-                &repo,
-                &thread.worktree_path,
-                &thread.primary_branch,
-                &thread.base_commit,
-            )?;
-            Ok((thread, preexisting))
+        let plan = WorktreePlan {
+            spec: NewThread {
+                id,
+                repo: repo_id,
+                project: project_id,
+                worktree_path: worktree_dir(&worktree_root, &project, &title, id),
+                base_ref: String::new(),
+                base_commit: String::new(),
+                created_at: now(),
+                branch: issue_branch(branch, issue_key.as_ref(), &prefix, &title, id)?,
+                title,
+            },
+            prefix,
+            repo: project.repo_root.clone(),
+            base_ref: start_ref(base_ref, parent, project.default_base.clone()),
+            refresh,
+        };
+        let (git, fetches) = (Arc::clone(&self.git), Arc::clone(&self.base_fetches));
+        let (mut thread, preexisting, mut watch) = blocking(move || {
+            let made = make_worktree(&*git, &fetches, plan, &mut watch)?;
+            Ok((made.0, made.1, watch))
         })
         .await?;
 
@@ -157,10 +136,18 @@ impl Service {
                 return Err(e);
             }
         };
+        watch.lap("record");
         if let Some((pane, agent)) = started {
             self.start_task_agent(thread.id, pane, agent).await;
+            watch.lap("start task agent");
         }
-        self.adopt_project_base(&thread).await;
+        // A project's first thread may open its parent-branch thread: a second worktree
+        // the new thread's reply needn't wait for.
+        if thread.project.is_some() {
+            let (service, created) = (Arc::clone(self), thread.clone());
+            tokio::spawn(async move { service.adopt_project_base(&created).await });
+        }
+        watch.lap("total");
         Ok(thread)
     }
 
@@ -299,19 +286,6 @@ fn issue_branch(
     }
 }
 
-/// What a thread starts from: the ref asked for, else its project's parent branch (in
-/// this repo), else the repo's default base. `None` leaves it to [`resolve_base`].
-fn start_ref(
-    requested: Option<String>,
-    parent: Option<BranchName>,
-    repo_default: Option<String>,
-) -> Option<String> {
-    requested
-        .filter(|b| !b.trim().is_empty())
-        .or_else(|| parent.map(|b| b.to_string()))
-        .or(repo_default)
-}
-
 /// Validates a branch name the user typed. Blank means "generate one".
 fn parse_branch(branch: Option<String>) -> ServiceResult<Option<BranchName>> {
     branch
@@ -320,42 +294,4 @@ fn parse_branch(branch: Option<String>) -> ServiceResult<Option<BranchName>> {
         .map(BranchName::new)
         .transpose()
         .map_err(|e| ServiceError::Invalid(e.to_string()))
-}
-
-/// The base and the commit a new thread starts from: [`resolve_base`], then, with
-/// `refresh`, updated from the base's remote so it doesn't start from a stale local copy
-/// (ADR 0028).
-fn start_point(
-    git: &dyn crate::git::Git,
-    repo: &std::path::Path,
-    base_ref: Option<String>,
-    refresh: bool,
-) -> ServiceResult<(String, String)> {
-    let (base, commit) = resolve_base(git, repo, base_ref)?;
-    if !refresh {
-        return Ok((base, commit));
-    }
-    let commit = super::fresh_base::fresh_base(git, repo, &base, commit);
-    Ok((base, commit))
-}
-
-/// The ref to branch from (`base_ref`, else the repo's current branch, else `HEAD`) and
-/// the commit it points to. A ref that doesn't exist is the user's mistake, so it is
-/// reported as such rather than as a git failure.
-fn resolve_base(
-    git: &dyn crate::git::Git,
-    repo: &std::path::Path,
-    base_ref: Option<String>,
-) -> ServiceResult<(String, String)> {
-    let base = match base_ref {
-        Some(base) => base,
-        None => git.current_branch(repo)?.unwrap_or_else(|| "HEAD".into()),
-    };
-    match git.resolve_commit(repo, &base) {
-        Ok(commit) => Ok((base, commit)),
-        Err(crate::git::GitError::Failed { .. }) => Err(ServiceError::Invalid(format!(
-            "cannot start from {base:?}: no branch, tag or commit has that name"
-        ))),
-        Err(e) => Err(e.into()),
-    }
 }

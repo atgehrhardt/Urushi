@@ -25,12 +25,15 @@ impl AppState {
         match surface {
             Surface::Main => {
                 let id = self.current_tab()?.id.clone();
-                let group = self.workspace.group(&id)?;
-                Some((id, group))
+                let group = self.divider.apply(&id, self.workspace.group(&id)?);
+                Some((id.clone(), self.starting.apply(&id, group)))
             }
             Surface::Quick => {
                 let quick = self.workspace.quick_terminal()?;
-                Some((quick.id().to_string(), quick.group().clone()))
+                let id = quick.id().to_string();
+                let group = self.divider.apply(&id, quick.group().clone());
+                let group = self.starting.apply(&id, group);
+                Some((id, group))
             }
         }
     }
@@ -150,13 +153,19 @@ impl AppState {
         rects
     }
 
-    /// Panes on `surface`, with their rectangles.
+    /// Panes on `surface`, with their rectangles. A split's placeholder
+    /// (`starting.rs`) takes room on screen but isn't a pane: it is never attached,
+    /// focused or clicked.
     pub fn pane_rects_of(&self, surface: Surface) -> Vec<(String, Rect)> {
         if surface == Surface::Quick && !self.quick.visible() {
             return Vec::new();
         }
+        let placeholder = crate::starting::PLACEHOLDER.to_string();
         match (self.surface_area(surface), self.surface_group(surface)) {
-            (Some(area), Some((_, group))) => terminal::pane_rects(group.layout(), area),
+            (Some(area), Some((_, group))) => terminal::pane_rects(group.layout(), area)
+                .into_iter()
+                .filter(|(pane, _)| *pane != placeholder)
+                .collect(),
             _ => Vec::new(),
         }
     }

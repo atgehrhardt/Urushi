@@ -261,6 +261,11 @@ fn all_request_kinds() {
             version: "0.1.7".into(),
         }),
         B::Ping(v1::PingRequest {}),
+        B::PrepareThreadBase(v1::PrepareThreadBaseRequest {
+            project_id: "r".into(),
+            base_ref: "main".into(),
+            folder_id: "f".into(),
+        }),
     ];
     for (i, body) in bodies.into_iter().enumerate() {
         round_trip(&envelope::request(i as u64, body));

@@ -141,7 +141,7 @@ fn a_new_thread_opens_on_the_launcher() {
         })]
     ));
     let fx = s.update(Msg::Response {
-        followup: Followup::ThreadCreated,
+        followup: Followup::ThreadCreated(1),
         result: Ok(Outcome::Thread(v1::Thread {
             id: thread_id(),
             ..Default::default()

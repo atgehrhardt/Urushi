@@ -100,20 +100,25 @@ impl Service {
     /// After the first thread of a project without a parent branch was created from a
     /// local branch, makes that branch the project's parent branch (and so, unless it is
     /// switched off, opens the parent-branch thread). This is what makes the
-    /// parent-branch thread appear "on by default". Failures are only logged: the
-    /// thread that triggered it already exists.
+    /// parent-branch thread appear "on by default". It runs after the new thread's
+    /// reply (ADR 0055), so failures are only logged: that thread already exists.
     pub(crate) async fn adopt_project_base(self: &Arc<Self>, thread: &Thread) {
         let Some(project) = thread.project else {
             return;
         };
+        if self.is_stopping() {
+            return;
+        }
+        let _watch = super::timing::Stopwatch::start("adopt project base").on_drop("total");
         let adopt = self.read(|s| {
             let p = s.project(project)?;
+            // "First" is the oldest of the project's own threads (ids are time-ordered),
+            // so of several created at once exactly one adopts, whichever looks first.
             let first = s
                 .threads
                 .iter()
-                .filter(|r| r.thread.project == Some(project))
-                .count()
-                == 1;
+                .filter(|r| r.thread.project == Some(project) && !r.thread.is_project_base())
+                .all(|r| r.thread.id >= thread.id);
             Ok((first && p.settings.base.is_none()).then_some(p.settings.base_thread))
         });
         let Ok(Some(base_thread)) = adopt else {
