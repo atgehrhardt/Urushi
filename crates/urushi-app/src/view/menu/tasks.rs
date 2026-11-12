@@ -3,10 +3,10 @@
 //! without opening it), a column's (rename, color, move, remove), and the
 //! tag filter.
 
-use urushi_ui::{Font, Insets, Key, Length, Node, Role, Theme, key};
+use urushi_ui::{Font, Insets, Key, Length, Node, Role, Theme};
 
-use super::super::labels::{color, color_name, dot, palette};
-use super::{back, check, item, separator};
+use super::super::labels::{color_name, dot};
+use super::{back, check, color_page, item, separator};
 use crate::msg::{BoardMsg, Msg};
 use crate::organize::{ContextMenu, MenuPage, Prompt};
 use crate::state::{AppState, TaskLink};
@@ -138,9 +138,11 @@ fn task_page(
             }));
             Some(items)
         }
-        MenuPage::Color => Some(color_page(theme, task.color(), |c| BoardMsg::ColorTask {
-            task: id.clone(),
-            color: c,
+        MenuPage::Color => Some(color_page(theme, task.color(), |c| {
+            act(BoardMsg::ColorTask {
+                task: id.clone(),
+                color: c,
+            })
         })),
         MenuPage::Main | MenuPage::Status | MenuPage::Filter(_) => None,
     }
@@ -156,9 +158,11 @@ pub(super) fn column_items(
         return Vec::new();
     };
     if menu.page == MenuPage::Color {
-        return color_page(theme, column.color, |c| BoardMsg::ColorColumn {
-            column: column.id.clone(),
-            color: c,
+        return color_page(theme, column.color, |c| {
+            act(BoardMsg::ColorColumn {
+                column: column.id.clone(),
+                color: c,
+            })
         });
     }
     let color_item = item(
@@ -212,29 +216,6 @@ pub(super) fn column_items(
             act(BoardMsg::OpenDeleteColumn(column.id.clone())),
         ));
     }
-    items
-}
-
-/// "None", then each palette color with its swatch.
-fn color_page(theme: &Theme, current: i32, pick: impl Fn(i32) -> BoardMsg) -> Vec<Node<Msg>> {
-    let mut items = vec![back(theme, "Color")];
-    items.push(dot_item(
-        theme,
-        ("None", None),
-        current == 0,
-        key(&["menu-color", "none"]),
-        act(pick(0)),
-    ));
-    items.extend(palette().map(|(_, wire)| {
-        let name = color_name(wire);
-        dot_item(
-            theme,
-            (&name, color(theme, wire)),
-            current == wire,
-            key(&["menu-color", &name]),
-            act(pick(wire)),
-        )
-    }));
     items
 }
 

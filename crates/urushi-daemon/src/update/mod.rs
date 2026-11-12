@@ -1,4 +1,4 @@
-//! Updating the macOS app from GitHub Releases (ADR 0048).
+//! Updating the macOS app from GitHub Releases (ADR 0049).
 //!
 //! The daemon looks for a newer release ([`github`]) when it starts and every few hours,
 //! and tells clients through the workspace (`Workspace.update`). When the user agrees,

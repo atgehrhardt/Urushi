@@ -16,6 +16,7 @@ mod jira;
 mod pane;
 mod quick;
 mod sidebar;
+mod threads;
 mod updates;
 
 pub use board::BoardMsg;
@@ -25,6 +26,7 @@ pub use jira::JiraMsg;
 pub use pane::PaneMsg;
 pub use quick::QuickMsg;
 pub use sidebar::SidebarMsg;
+pub use threads::ThreadMsg;
 pub use updates::UpdateMsg;
 
 /// Something that happened.
@@ -83,6 +85,8 @@ pub enum Msg {
     CloseMenu,
     /// Pin or unpin a thread.
     TogglePin(String),
+    /// A thread's unread mark or notes, or a project's color (`update/thread_extras.rs`).
+    Thread(ThreadMsg),
     /// Set (or with `None`, clear) a thread's status.
     SetStatus {
         /// Thread id.
@@ -489,7 +493,7 @@ pub enum Effect {
     /// Drop the connection, stop the local daemon, and deliver [`Msg::DaemonStopped`].
     StopDaemon,
     /// Open the app bundle at this path once this app has quit, and quit (after an
-    /// update, ADR 0048).
+    /// update, ADR 0049).
     Relaunch(String),
     /// Show the system file picker, then read the chosen files and deliver each as
     /// [`BoardMsg::Attach`] for `task`.

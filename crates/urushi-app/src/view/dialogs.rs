@@ -19,10 +19,10 @@ pub(super) fn view(
     Some(match state.dialog.as_ref()? {
         Dialog::AddProject { path } => add_project(state, theme, path),
         Dialog::NewThread { .. } => super::new_thread::view(state, theme, scroll)?,
-        Dialog::Prompt {
-            prompt,
-            field: text,
-        } => prompt_dialog(state, theme, prompt, text),
+        Dialog::Prompt { prompt, field } => prompt_dialog(state, theme, prompt, field),
+        Dialog::ThreadNotes { thread, notes } => {
+            super::thread_notes::dialog(state, theme, thread, notes)
+        }
         Dialog::NewTab { highlighted } => super::launcher::dialog(state, theme, *highlighted),
         Dialog::DeleteThread { title, plan, .. } => delete_dialog(state, theme, title, plan),
         Dialog::ProjectSettings(draft) => {
@@ -104,6 +104,29 @@ pub(super) fn view(
     })
 }
 
+/// A one-line prompt: rename, new status, new project, and so on.
+fn prompt_dialog(
+    state: &AppState,
+    theme: &Theme,
+    prompt: &crate::organize::Prompt,
+    text: &TextField,
+) -> Node<Msg> {
+    let (title, placeholder, action) = prompt.texts();
+    let body = field(state, theme, text, Field::Prompt, placeholder);
+    modal(
+        state,
+        theme,
+        title,
+        420.0,
+        body,
+        vec![
+            cancel(theme),
+            button(theme, action, ButtonKind::Primary, Msg::Submit),
+        ],
+        Some(Msg::CloseDialog),
+    )
+}
+
 pub(super) fn field(
     state: &AppState,
     theme: &Theme,
@@ -143,29 +166,6 @@ pub(super) fn area(
 /// The key of a dialog field's widget (the runner finds fields by it while selecting).
 pub(crate) fn field_key(which: Field) -> urushi_ui::Key {
     key(&["field", &format!("{which:?}")])
-}
-
-/// A one-line text prompt (a name for something).
-fn prompt_dialog(
-    state: &AppState,
-    theme: &Theme,
-    prompt: &crate::organize::Prompt,
-    text: &TextField,
-) -> Node<Msg> {
-    let (title, placeholder, action) = prompt.texts();
-    let body = field(state, theme, text, Field::Prompt, placeholder);
-    modal(
-        state,
-        theme,
-        title,
-        420.0,
-        body,
-        vec![
-            cancel(theme),
-            button(theme, action, ButtonKind::Primary, Msg::Submit),
-        ],
-        Some(Msg::CloseDialog),
-    )
 }
 
 pub(super) fn label(theme: &Theme, text: &str) -> Node<Msg> {

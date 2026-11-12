@@ -1,4 +1,4 @@
-//! App updates (ADR 0048): checking for a newer release now and every few hours, and
+//! App updates (ADR 0049): checking for a newer release now and every few hours, and
 //! installing it when a client on this machine asks.
 //!
 //! The [`crate::update::Updater`] does the work; this wires it to settings, the

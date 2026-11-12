@@ -1,4 +1,4 @@
-//! Putting a downloaded release in place of the installed app (ADR 0048).
+//! Putting a downloaded release in place of the installed app (ADR 0049).
 //!
 //! The steps, each of which leaves the installed app untouched if it fails:
 //! 1. download the zip and its `.sha256` into the daemon's private `updates` folder;

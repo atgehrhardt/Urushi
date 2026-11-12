@@ -1,4 +1,4 @@
-# 0048. Update the macOS app from GitHub Releases in the daemon, by swapping the bundle and restarting
+# 0049. Update the macOS app from GitHub Releases in the daemon, by swapping the bundle and restarting
 
 - **Status:** Accepted
 - **Date:** 2026-11-12
@@ -62,7 +62,7 @@ one appears.
 - Release asset names (`Urushi-<version>-macos-<arch>.zip` and `.sha256`) and the tag
   format are a contract with the updater; `releases/latest` must not be a draft or a
   pre-release.
-- A daemon from before protocol 1.27 can't update. The user restarts it once after
+- A daemon from before protocol 1.28 can't update. The user restarts it once after
   installing the first version with updates.
 - The daemon calls GitHub's API without credentials (60 requests an hour per address);
   checking every 6 h is far below that.

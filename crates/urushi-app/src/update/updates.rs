@@ -1,4 +1,4 @@
-//! Updating the app (ADR 0048): the notice, its confirmation, installing, then
+//! Updating the app (ADR 0049): the notice, its confirmation, installing, then
 //! restarting the daemon and relaunching; and the Updates section of Settings.
 //!
 //! The flow, once the user confirms:
@@ -30,7 +30,7 @@ fn patch(patch: v1::SettingsPatch) -> Effect {
 
 impl AppState {
     /// Whether this app can update itself through the daemon it's connected to: the
-    /// macOS app, on the daemon it started on this machine, which speaks protocol 1.27.
+    /// macOS app, on the daemon it started on this machine, which speaks protocol 1.28.
     pub fn can_update_app(&self) -> bool {
         crate::updates::SUPPORTED
             && matches!(self.target, ConnectTarget::Local(_))

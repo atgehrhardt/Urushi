@@ -1,4 +1,4 @@
-//! Updating the app (ADR 0048): the notice in the window's bottom-right corner, the
+//! Updating the app (ADR 0049): the notice in the window's bottom-right corner, the
 //! confirmation that says what updating stops, and the Updates rows of Settings.
 
 use urushi_ui::widgets::{ButtonKind, button, overlay, toggle};

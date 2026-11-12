@@ -1,4 +1,4 @@
-//! App updates (ADR 0048): asking the daemon for a newer release, and having it install
+//! App updates (ADR 0049): asking the daemon for a newer release, and having it install
 //! one. Restarting the daemon and the app afterwards is the caller's job
 //! ([`crate::restart_local_daemon`] and relaunching).
 
@@ -8,10 +8,10 @@ use crate::requests::unexpected;
 use crate::{Client, ClientError};
 
 /// The first protocol minor version with updates.
-pub const UPDATES_SINCE_MINOR: u32 = 27;
+pub const UPDATES_SINCE_MINOR: u32 = 28;
 
 impl Client {
-    /// Asks GitHub, through the daemon, for the latest release. Needs protocol 1.27.
+    /// Asks GitHub, through the daemon, for the latest release. Needs protocol 1.28.
     pub async fn check_for_updates(&self) -> Result<v1::UpdateCheck, ClientError> {
         let body = Body::CheckForUpdates(v1::CheckForUpdatesRequest {});
         match self.request(body).await? {

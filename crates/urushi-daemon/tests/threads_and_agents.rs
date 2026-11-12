@@ -221,7 +221,7 @@ async fn threads_are_organized_into_projects_with_pins_and_statuses() {
             title: Some("API work".into()),
             pinned: Some(true),
             status: Some(" In   review ".into()),
-            folder_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();

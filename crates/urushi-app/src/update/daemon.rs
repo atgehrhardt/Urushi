@@ -3,7 +3,7 @@
 //! Installing never touches the running daemon (it owns every terminal), so the user
 //! restarts it on purpose: a confirmation says how many terminals will close, then the
 //! backend stops the daemon and the app reconnects, which starts the daemon bundled with
-//! this app. Panes come back from their restore points (ADR 0013). An update (ADR 0048)
+//! this app. Panes come back from their restore points (ADR 0013). An update (ADR 0049)
 //! goes the same way, then relaunches the app.
 
 use crate::config::ConnectTarget;

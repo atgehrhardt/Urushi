@@ -1,4 +1,4 @@
-//! Messages for updating the app (ADR 0048): the update notice, its confirmation, and
+//! Messages for updating the app (ADR 0049): the update notice, its confirmation, and
 //! the Updates section of Settings.
 
 /// Something about app updates happened.

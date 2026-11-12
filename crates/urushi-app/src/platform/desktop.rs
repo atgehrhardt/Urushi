@@ -80,12 +80,12 @@ pub(crate) fn open_path(path: &std::path::Path) -> std::io::Result<()> {
     command.arg(path).spawn().map(drop)
 }
 
-/// Whether the app can be updated in place (ADR 0048): only macOS has a released app
+/// Whether the app can be updated in place (ADR 0049): only macOS has a released app
 /// bundle the daemon can replace.
 pub(crate) const HAS_APP_UPDATES: bool = cfg!(target_os = "macos");
 
 /// Opens the app bundle at `bundle` once this process has exited, so the new version
-/// starts as the old one quits (ADR 0048). A detached shell waits for this process,
+/// starts as the old one quits (ADR 0049). A detached shell waits for this process,
 /// then runs `open`. The caller quits right after.
 pub(crate) fn relaunch(bundle: &str) -> std::io::Result<()> {
     if !HAS_APP_UPDATES {

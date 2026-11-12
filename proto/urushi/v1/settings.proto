@@ -25,8 +25,8 @@ message Settings {
   bool update_base_from_remote = 8;
   // LAN access (ADR 0041). Unset from an older daemon, which has none. Since 1.26.
   LanSettings lan = 9;
-  // Updating the macOS app (ADR 0048). Unset from an older daemon, which can't.
-  // Since 1.27.
+  // Updating the macOS app (ADR 0049). Unset from an older daemon, which can't.
+  // Since 1.28.
   UpdateSettings updates = 10;
 }
 
@@ -139,7 +139,7 @@ message SettingsPatch {
   // Accepted only from clients on the host itself. Since 1.26.
   optional bool lan_enabled = 20;
   optional uint32 lan_port = 21;
-  // Since 1.27.
+  // Since 1.28.
   optional bool check_updates_automatically = 22;
   // X.Y.Z, or empty to forget the skipped release.
   optional string skipped_update_version = 23;

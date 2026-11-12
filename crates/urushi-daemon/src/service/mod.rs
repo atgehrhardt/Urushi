@@ -142,7 +142,7 @@ pub struct ServiceConfig {
     pub jira: Arc<dyn crate::jira::JiraApi>,
     /// The `urushi` CLI next to the daemon, if found.
     pub cli: Option<PathBuf>,
-    /// Where app updates come from and which bundle they replace (ADR 0048).
+    /// Where app updates come from and which bundle they replace (ADR 0049).
     pub updates: crate::update::UpdateConfig,
 }
 

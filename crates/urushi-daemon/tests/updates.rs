@@ -1,4 +1,4 @@
-//! App updates end to end (protocol 1.27, ADR 0048): a daemon running from a bundle in
+//! App updates end to end (protocol 1.28, ADR 0049): a daemon running from a bundle in
 //! a temp folder finds a newer release on a fake GitHub, tells subscribers through the
 //! workspace, and installs it on request; one outside a bundle refuses.
 #![cfg(unix)]

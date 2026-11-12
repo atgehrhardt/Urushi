@@ -1,4 +1,4 @@
-//! Updating the app (ADR 0048): when the notice shows, "Later", what the confirmation
+//! Updating the app (ADR 0049): when the notice shows, "Later", what the confirmation
 //! counts, and install → stop the daemon → relaunch, or back to asking on failure.
 //! Only the macOS app updates itself, so elsewhere these check that nothing is offered.
 
@@ -22,7 +22,7 @@ fn offer(version: &str) -> v1::AvailableUpdate {
     }
 }
 
-/// An app attached to a local daemon speaking 1.27 that found `version`.
+/// An app attached to a local daemon speaking 1.28 that found `version`.
 fn updatable(version: &str) -> AppState {
     let mut s = attached();
     s.daemon_minor = urushi_client::UPDATES_SINCE_MINOR;

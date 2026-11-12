@@ -34,7 +34,7 @@ pub struct Settings {
     pub agents: AgentSettings,
     /// How the app looks: its colors and logo.
     pub appearance: Appearance,
-    /// Updating the macOS app from GitHub Releases (ADR 0048).
+    /// Updating the macOS app from GitHub Releases (ADR 0049).
     pub updates: UpdateSettings,
 }
 
@@ -55,7 +55,7 @@ impl Default for Settings {
     }
 }
 
-/// Settings for updating the macOS app from GitHub Releases (ADR 0048).
+/// Settings for updating the macOS app from GitHub Releases (ADR 0049).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UpdateSettings {

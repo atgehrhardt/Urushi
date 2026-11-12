@@ -182,6 +182,12 @@ fn all_request_kinds() {
             pinned: Some(true),
             status: Some(String::new()),
             folder_id: Some("f".into()),
+            unread: Some(true),
+            notes: Some("Check the logs\nfirst".into()),
+        }),
+        B::SetFolderColor(v1::SetFolderColorRequest {
+            folder_id: "f".into(),
+            color: v1::LabelColor::Teal.into(),
         }),
         B::CreateFolder(v1::CreateFolderRequest {
             name: "Billing".into(),
@@ -332,6 +338,7 @@ fn all_response_kinds() {
                 base_branch: "main".into(),
                 base_thread: None,
             }),
+            ..Default::default()
         }),
         O::Workspace(v1::Workspace {
             folders: vec![v1::Folder::default()],
@@ -360,6 +367,23 @@ fn all_response_kinds() {
     for (i, outcome) in outcomes.into_iter().enumerate() {
         round_trip(&envelope::response(i as u64, outcome));
     }
+}
+
+#[test]
+fn folder_colors_and_thread_notes_round_trip() {
+    let workspace = response::Outcome::Workspace(v1::Workspace {
+        folders: vec![v1::Folder {
+            color: v1::LabelColor::Orange.into(),
+            ..Default::default()
+        }],
+        threads: vec![v1::Thread {
+            unread: true,
+            notes: "Ship after the demo".into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
+    round_trip(&envelope::response(1, workspace));
 }
 
 #[test]

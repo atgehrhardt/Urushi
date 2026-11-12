@@ -420,5 +420,6 @@ mod subtask_drafts;
 mod task_in_thread;
 mod task_message;
 mod tasks;
+mod thread_extras;
 mod thread_order;
 mod updates;

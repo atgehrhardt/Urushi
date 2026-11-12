@@ -10,6 +10,9 @@ use urushi_ui::Point;
 pub const PROJECT_ORDER_SINCE_MINOR: u32 = 11;
 /// First protocol minor version that can reorder threads (`MoveThread`).
 pub const THREAD_ORDER_SINCE_MINOR: u32 = 24;
+/// First protocol minor version with unread marks and notes on threads, and colors on
+/// projects (`UpdateThread.{unread, notes}`, `SetFolderColor`, ADR 0048).
+pub const THREAD_EXTRAS_SINCE_MINOR: u32 = 27;
 /// First protocol minor version with project settings: a parent branch and its
 /// parent-branch thread (`UpdateFolderSettings`, ADR 0029).
 pub const PROJECT_SETTINGS_SINCE_MINOR: u32 = 18;

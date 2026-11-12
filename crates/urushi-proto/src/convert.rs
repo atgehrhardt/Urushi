@@ -264,6 +264,8 @@ pub fn thread_to_proto(t: &Thread) -> v1::Thread {
             .unwrap_or_default(),
         project_base: t.is_project_base(),
         attached_checkout: t.is_attached(),
+        unread: t.unread,
+        notes: t.notes.clone(),
     }
 }
 
@@ -312,6 +314,8 @@ pub fn thread_from_proto(t: &v1::Thread) -> Result<Thread, ConvertError> {
         } else {
             ThreadKind::Branch
         },
+        unread: t.unread,
+        notes: t.notes.clone(),
     })
 }
 

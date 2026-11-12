@@ -2,7 +2,7 @@
 
 - **Status:** Shipped (macOS)
 - **Owners (crates):** `urushi-daemon` (`update/`, `service/updates.rs`), `urushi-app` (`updates.rs`, `update/updates.rs`, `view/updates.rs`), `urushi-cli` (`update.rs`), `urushi-core` (`Version`, `UpdateSettings`)
-- **Related ADRs:** [0048](../adr/0048-update-the-macos-app-from-github-releases-in-the-daemon.md), [0032](../adr/0032-tagged-macos-releases.md), [0013](../adr/0013-restore-points-for-panes.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md)
+- **Related ADRs:** [0049](../adr/0049-update-the-macos-app-from-github-releases-in-the-daemon.md), [0032](../adr/0032-tagged-macos-releases.md), [0013](../adr/0013-restore-points-for-panes.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md)
 
 ## What it does
 When a newer release of Urushi is published on GitHub, the macOS app shows a notice in
@@ -19,7 +19,7 @@ checks and checks by hand.
 | The daemon learns its bundle: `…/X.app/Contents/MacOS/urushid` whose `Info.plist` says `app.urushi.Urushi`. No bundle (a `cargo` build, Linux, Windows) means no updates. | `update::bundle::bundle_of`, `UpdateConfig::system`, `platform::UPDATES_SUPPORTED` |
 | 30 s after start, then every 6 h while `Settings.updates.check_automatically` is on, it asks `releases/latest` and picks `Urushi-<v>-macos-<arch>.zip` and its `.sha256`. | `Service::keep_updates_checked`, `update::github` |
 | A newer version than the **installed bundle's** `CFBundleShortVersionString` is kept in memory and sent as `Workspace.update` (`AvailableUpdate`). | `Updater::check`, `Service::workspace` |
-| The app shows the notice when connected to its local daemon (protocol ≥ 1.27), on macOS, and the version isn't `Settings.updates.skipped_version`. | `AppState::update_notice`, `view/updates.rs::notice` |
+| The app shows the notice when connected to its local daemon (protocol ≥ 1.28), on macOS, and the version isn't `Settings.updates.skipped_version`. | `AppState::update_notice`, `view/updates.rs::notice` |
 | Confirm → `InstallUpdate{version}`: download into `<home>/updates`, check the SHA-256, unpack beside the bundle, check identifier, version, executables and signature, swap with two renames. | `Service::install_update`, `update::install` |
 | `UpdateInstalled{bundle_path}` → the app stops the daemon (`Effect::StopDaemon`, which saves restore points), then `Effect::Relaunch`: a detached `sh` waits for the app to exit and `open`s the bundle. It also reconnects, in case relaunching fails. | `update/updates.rs`, `update/daemon.rs`, `platform::relaunch` |
 | `urushi update check` / `urushi update install [--yes]` do the same from a terminal and restart the daemon. Then quit and reopen the app. | `crates/urushi-cli/src/update.rs` |
@@ -56,7 +56,7 @@ the wire.
 - The checksum is downloaded from the same release, so it guards against a damaged
   download, not a compromised GitHub account. Developer ID signing and notarization
   would let the updater check the publisher.
-- A daemon older than protocol 1.27 can't update: restart it once after installing the
+- A daemon older than protocol 1.28 can't update: restart it once after installing the
   first version with updates.
 - `/Applications` must be writable by the user. If it isn't, the error says so and links
   the release.

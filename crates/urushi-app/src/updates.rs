@@ -1,4 +1,4 @@
-//! What the app knows about updating itself (ADR 0048), apart from the dialog.
+//! What the app knows about updating itself (ADR 0049), apart from the dialog.
 //!
 //! The daemon finds new releases and installs them; the newer release it knows of
 //! arrives with the workspace (`Workspace.update`). The app offers it in a notice in

@@ -1,6 +1,6 @@
 //! Release versions, as Urushi tags them (`vX.Y.Z`) and bundles them (`X.Y.Z`).
 //!
-//! Updates (ADR 0048) compare the installed version with the latest release. Comparing
+//! Updates (ADR 0049) compare the installed version with the latest release. Comparing
 //! strings would put `0.1.10` before `0.1.9`, so a version is three numbers. Pre-release
 //! and build suffixes are refused: releases are only ever plain `X.Y.Z` tags.
 

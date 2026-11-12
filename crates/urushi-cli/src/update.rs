@@ -1,5 +1,5 @@
 //! `urushi update check|install`: the macOS app's updates from the command line
-//! (ADR 0048), the same as the app's update notice.
+//! (ADR 0049), the same as the app's update notice.
 //!
 //! Installing replaces the app on disk and then restarts the daemon, which closes every
 //! terminal; restore points bring the panes back. So, like `urushi daemon restart`, it

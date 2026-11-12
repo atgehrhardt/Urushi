@@ -1,4 +1,4 @@
-// Updating the macOS app from GitHub Releases (ADR 0048). Since 1.27.
+// Updating the macOS app from GitHub Releases (ADR 0049). Since 1.28.
 syntax = "proto3";
 
 package urushi.v1;
