@@ -403,8 +403,8 @@ pub enum Followup {
     /// to change the project's settings: save them, or on failure show the thread again
     /// and say why. Never touches dialogs or focus.
     ProjectBaseClosed(String, Box<crate::project_settings::PendingSettings>),
-    /// Select the new tab.
-    TabCreated,
+    /// Select the new tab; its chip (this key, `starting.rs`) goes.
+    TabCreated(u64),
     /// A task was started in an existing thread: go to its new tab.
     TaskTabCreated,
     /// Focus the new pane.

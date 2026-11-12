@@ -274,8 +274,10 @@ fn typing_goes_to_the_focused_pane_and_shortcuts_do_not() {
     let fx = s.update(Msg::Key(named(Named::Enter)));
     assert!(matches!(bodies(&fx)[..], [Body::CreateTab(_)]));
     let fx = s.update(Msg::Key(key("d", shortcut())));
+    // The split shows at once, so the pane that shrinks is resized with it (UR-68).
     assert!(
-        matches!(bodies(&fx)[..], [Body::SplitPane(v1::SplitPaneRequest { side, .. })] if *side == v1::Direction::Right as i32)
+        matches!(bodies(&fx)[..], [Body::SplitPane(v1::SplitPaneRequest { side, .. }), Body::SetPaneSize(_)] if *side == v1::Direction::Right as i32),
+        "{fx:?}"
     );
 }
 
@@ -287,6 +289,15 @@ fn deleting_a_thread_always_goes_through_the_warning() {
     assert!(
         matches!(bodies(&fx)[..], [Body::PlanThreadDeletion(_)]),
         "asks for a plan first, never deletes directly"
+    );
+    // The warning opens at once; Delete waits for the plan (UR-68).
+    assert!(matches!(
+        &s.dialog,
+        Some(Dialog::DeleteThread { plan: None, .. })
+    ));
+    assert!(
+        s.update(Msg::ConfirmDelete).is_empty(),
+        "nothing to confirm yet"
     );
 
     let plan = v1::DeletionPlan {
@@ -428,6 +439,7 @@ mod setup;
 mod sidebar;
 mod sizing;
 mod soft_keyboard;
+mod starting;
 mod subtask_drafts;
 mod task_in_thread;
 mod task_message;
@@ -435,3 +447,31 @@ mod tasks;
 mod thread_extras;
 mod thread_order;
 mod updates;
+
+#[test]
+fn a_deletion_plan_that_fails_closes_its_warning_and_says_why() {
+    let mut s = attached();
+    s.update(Msg::RequestDeleteThread(
+        ThreadId::from_u128(10).to_string(),
+    ));
+    s.update(Msg::Response {
+        followup: Followup::DeletionPlan(None),
+        result: Err("git status failed".into()),
+    });
+    assert!(s.dialog.is_none());
+    assert_eq!(s.error.as_deref(), Some("git status failed"));
+
+    // Closed before the plan came: it stays closed.
+    s.update(Msg::RequestDeleteThread(
+        ThreadId::from_u128(10).to_string(),
+    ));
+    s.update(Msg::CloseDialog);
+    s.update(Msg::Response {
+        followup: Followup::DeletionPlan(None),
+        result: Ok(Outcome::DeletionPlan(v1::DeletionPlan {
+            thread_id: ThreadId::from_u128(10).to_string(),
+            ..Default::default()
+        })),
+    });
+    assert!(s.dialog.is_none());
+}

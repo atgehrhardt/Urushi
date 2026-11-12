@@ -14,15 +14,26 @@ use crate::terminal;
 
 impl AppState {
     /// Splits `pane` of the current tab; the new pane goes on `side` and gets focus.
-    pub(super) fn split(&self, pane: String, side: v1::Direction, fx: &mut Vec<Effect>) {
-        if let Some(tab) = self.tab_of(&pane) {
-            let body = Body::SplitPane(v1::SplitPaneRequest {
-                tab_id: tab,
-                pane_id: pane,
-                side: side.into(),
-            });
-            fx.push(request(body, Followup::PaneCreated));
+    /// The split shows at once, with an empty pane until the daemon's arrives; another
+    /// split waits until then (`starting.rs`).
+    pub(super) fn split(&mut self, pane: String, side: v1::Direction, fx: &mut Vec<Effect>) {
+        let Some(tab) = self.tab_of(&pane) else {
+            return;
+        };
+        if let (Ok(id), Ok(direction)) = (
+            pane.parse::<urushi_core::PaneId>(),
+            urushi_proto::convert::direction_from_proto(side.into()),
+        ) && !self.starting.split(tab.clone(), id, direction)
+        {
+            return;
         }
+        let body = Body::SplitPane(v1::SplitPaneRequest {
+            tab_id: tab,
+            pane_id: pane,
+            side: side.into(),
+        });
+        fx.push(request(body, Followup::PaneCreated));
+        self.sync_panes(fx);
     }
 
     /// Closes `pane` of the current tab (and the tab, if it was the last pane).

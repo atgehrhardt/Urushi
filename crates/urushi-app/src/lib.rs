@@ -38,6 +38,7 @@ mod scrolling;
 pub mod sidebar;
 pub mod snapshot;
 mod soft_keyboard;
+pub mod starting;
 pub mod state;
 pub mod surface;
 pub mod task_agent;

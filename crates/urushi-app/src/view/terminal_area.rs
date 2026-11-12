@@ -35,6 +35,7 @@ pub(super) fn surface(state: &AppState, theme: &Theme, surface: Surface, key: Ke
     let (cell, font_size) = (state.cell, theme.terminal_font_size);
     let (divider, accent, muted) = (theme.glass_border, theme.accent, theme.text_muted);
     let radius = theme.radius;
+    let placeholder = crate::starting::PLACEHOLDER.to_string();
     let area = Node::new()
         .width(Length::Fill(1.0))
         .height(Length::Fill(1.0))
@@ -75,7 +76,12 @@ pub(super) fn surface(state: &AppState, theme: &Theme, surface: Surface, key: Ke
                     terminal::paint_pane(scene, pane_rect, &view);
                 } else {
                     let at = Point::new(pane_rect.x + 12.0, pane_rect.y + 10.0);
-                    scene.text(at, "Connecting to terminal…", Font::Ui, 12.0, muted);
+                    let note = if pane == placeholder {
+                        "Starting shell…"
+                    } else {
+                        "Connecting to terminal…"
+                    };
+                    scene.text(at, note, Font::Ui, 12.0, muted);
                 }
                 if is_focused && screens.len() > 1 {
                     scene.quad(urushi_ui::Quad {

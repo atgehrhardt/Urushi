@@ -104,13 +104,7 @@ impl AppState {
             Msg::SelectTab(id) => self.select_tab(id, &mut fx),
             Msg::OpenAddProject => self.open_add_repo(),
             Msg::OpenNewThread { repo, project } => self.open_new_thread(repo, project, &mut fx),
-            Msg::RequestDeleteThread(thread_id) => {
-                self.menu = None;
-                fx.push(request(
-                    Body::PlanThreadDeletion(v1::PlanThreadDeletionRequest { thread_id }),
-                    Followup::DeletionPlan(None),
-                ));
-            }
+            Msg::RequestDeleteThread(thread_id) => self.request_delete(thread_id, &mut fx),
             Msg::OpenSettings => self.open_settings(&mut fx),
             Msg::OpenConnect => self.open_connect(),
             msg @ (Msg::ConnectTo(_)
@@ -336,19 +330,6 @@ impl AppState {
 
     /// Shows the deletion warning for `plan`; `then`: project settings to save once the
     /// thread is closed.
-    fn show_deletion_plan(
-        &mut self,
-        plan: v1::DeletionPlan,
-        then: Option<Box<crate::project_settings::PendingSettings>>,
-    ) {
-        let title = self
-            .workspace
-            .thread(&plan.thread_id)
-            .map(|t| t.title.clone())
-            .unwrap_or_default();
-        self.open(Dialog::DeleteThread { title, plan, then }, None);
-    }
-
     /// Typed or pasted text goes to the focused dialog field, otherwise to the focused pane.
     fn insert_text(
         &mut self,
@@ -451,6 +432,11 @@ impl AppState {
                     let group = self.workspace.group(&id);
                     self.divider.workspace(group.as_ref());
                 }
+                let split = self.starting.split_group().map(str::to_owned);
+                if let Some(id) = split {
+                    let group = self.workspace.group(&id);
+                    self.starting.workspace(group.as_ref());
+                }
                 if self.board.board(&self.workspace) != before.as_ref() {
                     self.refresh_quick_filter(fx);
                 }
@@ -512,6 +498,16 @@ impl AppState {
                 self.error = Some(message.to_owned());
             }
             Followup::ThreadCreated(key) => self.thread_not_created(*key, message.to_owned()),
+            Followup::DeletionPlan(_) => self.deletion_unplanned(message),
+            Followup::TabCreated(key) => {
+                self.starting.tab_done(*key);
+                self.error = Some(message.to_owned());
+            }
+            Followup::PaneCreated => {
+                self.starting.split_done(None);
+                self.sync_panes(fx);
+                self.error = Some(message.to_owned());
+            }
             _ => return false,
         }
         true
@@ -586,12 +582,14 @@ impl AppState {
                 self.show_deletion_plan(plan, then);
             }
             (Followup::TaskTabCreated, Outcome::Tab(tab)) => self.task_tab_created(tab, fx),
-            (Followup::TabCreated, Outcome::Tab(tab)) => {
+            (Followup::TabCreated(key), Outcome::Tab(tab)) => {
+                self.starting.tab_done(key);
                 self.selected_tab.insert(tab.thread_id, tab.id);
                 self.sync_panes(fx);
             }
             (Followup::DividerMoved, _) => self.divider_answered(fx),
             (Followup::PaneCreated, Outcome::PaneCreated(created)) => {
+                self.starting.split_done(created.pane_id.parse().ok());
                 self.focused_override
                     .insert(created.tab_id, created.pane_id);
             }

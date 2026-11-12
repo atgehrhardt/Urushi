@@ -297,8 +297,11 @@ pub enum Dialog {
     DeleteThread {
         /// Thread title, for the heading.
         title: String,
-        /// What the daemon will delete.
-        plan: v1::DeletionPlan,
+        /// Thread id.
+        thread: String,
+        /// What the daemon will delete; `None` while it works that out (it takes a few
+        /// git commands), so the warning opens at once.
+        plan: Option<v1::DeletionPlan>,
         /// Project settings to save once the thread (a parent-branch thread) is closed.
         then: Option<Box<crate::project_settings::PendingSettings>>,
     },
@@ -533,6 +536,8 @@ pub struct AppState {
     pub drag: Option<Drag>,
     /// A divider dragged on screen ahead of the daemon (`divider.rs`).
     pub divider: crate::divider::DividerDrag,
+    /// Tabs and splits the daemon is still making, shown ahead of it (`starting.rs`).
+    pub starting: crate::starting::Starting,
     /// Settings, once loaded.
     pub settings: Option<v1::Settings>,
     /// The daemon's Jira sign-ins, once asked (protocol 1.12; several since 1.29, ADR
@@ -634,6 +639,7 @@ impl AppState {
             selection: None,
             drag: None,
             divider: crate::divider::DividerDrag::default(),
+            starting: crate::starting::Starting::default(),
             settings: None,
             jira_accounts: Vec::new(),
             tailnet: None,
