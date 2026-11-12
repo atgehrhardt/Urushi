@@ -1,6 +1,6 @@
 # 0032. Release macOS builds from a version tag, for Apple Silicon, as an ad-hoc signed zip
 
-- **Status:** Accepted
+- **Status:** Accepted; the tag-push trigger and the dry runs are superseded by [0053](0053-build-every-merge-release-from-a-button.md) (releases start from a button on `main`, which tags `Cargo.toml`'s version). The platform, signing and packaging decisions stand.
 - **Date:** 2026-11-10
 
 ## Context

@@ -2,7 +2,7 @@
 //!
 //! The warning opens at once, saying it is checking what deleting removes, while the
 //! daemon works out the plan (several git commands); its Delete button works once the
-//! plan is there (ADR 0055).
+//! plan is there (ADR 0056).
 //!
 //! Confirming closes the warning and hides the thread at once. The daemon then removes
 //! its worktree and branches in the background (see [`crate::deletions`]), while the

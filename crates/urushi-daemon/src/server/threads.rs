@@ -1,4 +1,4 @@
-//! Wire → service for creating threads, and preparing for it (ADR 0054).
+//! Wire → service for creating threads, and preparing for it (ADR 0055).
 
 use std::sync::Arc;
 

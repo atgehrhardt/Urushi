@@ -1,5 +1,5 @@
 //! Saving the workspace: changes are announced at once and saved together, but a reply
-//! still means the change is on disk (ADR 0053).
+//! still means the change is on disk (ADR 0054).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

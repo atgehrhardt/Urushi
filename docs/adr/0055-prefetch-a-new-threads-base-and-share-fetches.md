@@ -1,4 +1,4 @@
-# 0054. Fetch a new thread's base while its dialog is open, share fetches for 60 s, and adopt the parent branch after the reply
+# 0055. Fetch a new thread's base while its dialog is open, share fetches for 60 s, and adopt the parent branch after the reply
 
 - **Status:** Accepted
 - **Date:** 2026-11-12
@@ -34,7 +34,7 @@ types a title for a few seconds before submitting, which is time a fetch could u
 - **Fetch in the background after creating the thread, then move its branch:** this
   changes a branch under an agent that may already be working on it.
 - **Create the thread first, in the `Creating` state, and fetch afterwards:** a thread
-  without its worktree breaks invariant 8. The GUI's placeholder (ADR 0055) gives the
+  without its worktree breaks invariant 8. The GUI's placeholder (ADR 0056) gives the
   same feel without that.
 - **A shorter window (e.g. 10 s):** this would often miss the fetch started when the
   dialog opened. **A longer one:** threads would start further behind the remote.

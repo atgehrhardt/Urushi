@@ -35,7 +35,7 @@ pub(super) fn fresh_base(
 }
 
 /// Fetches `base`'s branch ahead of a new thread on it, so the thread can reuse the
-/// fetch (ADR 0054). `None` when the base doesn't track a remote.
+/// fetch (ADR 0055). `None` when the base doesn't track a remote.
 pub(super) fn prefetch(
     git: &dyn Git,
     fetches: &BaseFetches,

@@ -101,7 +101,7 @@ impl Service {
     /// local branch, makes that branch the project's parent branch (and so, unless it is
     /// switched off, opens the parent-branch thread). This is what makes the
     /// parent-branch thread appear "on by default". It runs after the new thread's
-    /// reply (ADR 0054), so failures are only logged: that thread already exists.
+    /// reply (ADR 0055), so failures are only logged: that thread already exists.
     pub(crate) async fn adopt_project_base(self: &Arc<Self>, thread: &Thread) {
         let Some(project) = thread.project else {
             return;

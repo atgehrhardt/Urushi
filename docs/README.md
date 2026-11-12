@@ -67,9 +67,10 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0050 – Lay out and paint only what a scrolling list shows, keep text caches in two generations, and redraw on pointer moves only when hover changes](adr/0050-draw-what-shows-and-redraw-only-on-change.md)
 - [0051 – Keep several Jira sign-ins, keyed by site and email, and tie each imported board to one](adr/0051-several-jira-sign-ins-keyed-by-site-and-email.md)
 - [0052 – Make a connection work both ways or end: a client heartbeat, writers that hang up, ack timeouts, listeners that never stop the daemon](adr/0052-connections-work-both-ways-or-end.md)
-- [0053 – Save the workspace from one saver that coalesces changes, and reply only once a change is saved](adr/0053-save-the-workspace-from-one-coalescing-saver.md)
-- [0054 – Fetch a new thread's base while its dialog is open, share fetches for 60 s, and adopt the parent branch after the reply](adr/0054-prefetch-a-new-threads-base-and-share-fetches.md)
-- [0055 – Show the user's own actions before the daemon confirms them, without deciding anything in the GUI](adr/0055-show-the-users-own-actions-before-the-daemon-confirms.md)
+- [0053 – Build the apps on every merge to main; release only from a button that tags Cargo.toml's version](adr/0053-build-every-merge-release-from-a-button.md)
+- [0054 – Save the workspace from one saver that coalesces changes, and reply only once a change is saved](adr/0054-save-the-workspace-from-one-coalescing-saver.md)
+- [0055 – Fetch a new thread's base while its dialog is open, share fetches for 60 s, and adopt the parent branch after the reply](adr/0055-prefetch-a-new-threads-base-and-share-fetches.md)
+- [0056 – Show the user's own actions before the daemon confirms them, without deciding anything in the GUI](adr/0056-show-the-users-own-actions-before-the-daemon-confirms.md)
 
 ## Features
 - [_template](features/_template.md)

@@ -2,7 +2,7 @@
 
 - **Status:** Shipped. Verified on macOS (rendering, input, accessibility, dialogs), in the iOS simulator and on the Android emulator (remote over Tailscale). See [platforms](../platforms.md).
 - **Owners (crates):** `urushi-app`, `urushi-ui`, `urushi-render`, `apps/desktop`
-- **Related ADRs:** [0006](../adr/0006-all-rust-gpu-gui.md), [0002](../adr/0002-daemon-source-of-truth.md), [0019](../adr/0019-in-app-frosted-glass.md), [0055](../adr/0055-show-the-users-own-actions-before-the-daemon-confirms.md)
+- **Related ADRs:** [0006](../adr/0006-all-rust-gpu-gui.md), [0002](../adr/0002-daemon-source-of-truth.md), [0019](../adr/0019-in-app-frosted-glass.md), [0056](../adr/0056-show-the-users-own-actions-before-the-daemon-confirms.md)
 
 ## What it does
 A graphical workspace in dark frosted glass. Behind everything, a near-black window has
@@ -104,7 +104,7 @@ window. On phones the panels fill the screen edge to edge.
   - Mouse: click to place the caret, drag or Shift-click to select, double-click selects a word, triple-click everything. Right-click opens Cut / Copy / Paste / Select all.
   - Tab and Shift+Tab move between fields. Long text scrolls to keep the caret in view.
   - Multiline fields (task notes) wrap their text. Enter starts a new line there, Up/Down/Home/End work on lines, and Cmd+Enter (macOS) / Ctrl+Enter (elsewhere) submits the dialog, as it does from any field.
-- **Shown before the daemon answers** (ADR 0055). The app shows what the user asked for at once, as a preview it drops when the daemon answers. It never applies a rule of its own.
+- **Shown before the daemon answers** (ADR 0056). The app shows what the user asked for at once, as a preview it drops when the daemon answers. It never applies a rule of its own.
   - **New Thread** (`creations.rs`, `update/creating.rs`):
     - Submitting closes the dialog. A "creating" row shows in the sidebar, and a "Creating …" screen in the main area.
     - The reply opens the thread if its placeholder is still shown. It never closes another dialog.

@@ -1,4 +1,4 @@
-//! Tabs and splits shown before the daemon has made them (UR-68, ADR 0055).
+//! Tabs and splits shown before the daemon has made them (UR-68, ADR 0056).
 
 use urushi_client::v1::{self, request::Body, response::Outcome};
 use urushi_core::{Direction, Layout, PaneId};

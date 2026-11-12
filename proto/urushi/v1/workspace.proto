@@ -259,7 +259,7 @@ message CreateThreadRequest {
 // A hint that the user is about to create a thread: with
 // Settings.update_base_from_remote on, the daemon starts fetching the base that
 // CreateThread with the same fields would start from, and a CreateThread soon after
-// reuses that fetch (ADR 0054). Answered with Ok at once. An unknown repo or folder is
+// reuses that fetch (ADR 0055). Answered with Ok at once. An unknown repo or folder is
 // NOT_FOUND. Since 1.31.
 message PrepareThreadBaseRequest {
   // As CreateThreadRequest.project_id: the repo.

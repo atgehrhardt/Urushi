@@ -30,8 +30,10 @@ jobs:
 
   # Builds the iOS app twice: for the Simulator (zipped .app, to try on a Mac) and for
   # devices (an UNSIGNED .ipa; re-sign it with an Apple ID to install, see
-  # docs/platforms.md).
+  # docs/platforms.md). Pull requests only: on main, the Build workflow (build.yml) builds
+  # every app.
   ios:
+    if: github.event_name == 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
@@ -55,7 +57,9 @@ jobs:
   # Builds the real APK (the runner image ships the Android SDK, NDK and a JDK), so a broken
   # Android build or packaging step fails the pull request rather than the next release.
   # Signed with a throwaway debug key; download it from the run's artifacts to try it.
+  # Pull requests only, like `ios`.
   android:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

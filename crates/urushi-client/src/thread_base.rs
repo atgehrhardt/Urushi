@@ -1,5 +1,5 @@
 //! Asking the daemon to fetch a new thread's base while the user still fills in the New
-//! Thread dialog, so creating the thread can reuse the fetch (ADR 0054).
+//! Thread dialog, so creating the thread can reuse the fetch (ADR 0055).
 
 use urushi_proto::v1::{self, request::Body};
 

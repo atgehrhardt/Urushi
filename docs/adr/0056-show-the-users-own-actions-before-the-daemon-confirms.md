@@ -1,4 +1,4 @@
-# 0055. Show the user's own actions before the daemon confirms them, without deciding anything in the GUI
+# 0056. Show the user's own actions before the daemon confirms them, without deciding anything in the GUI
 
 - **Status:** Accepted
 - **Date:** 2026-11-12

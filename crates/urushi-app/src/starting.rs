@@ -1,4 +1,4 @@
-//! Tabs and panes on their way in (ADR 0055). A new tab or a split waits for the daemon
+//! Tabs and panes on their way in (ADR 0056). A new tab or a split waits for the daemon
 //! to start a shell and save the layout; until it answers, the GUI shows what is coming:
 //! a "Starting…" chip in the tab bar for a tab, and for a split the layout already split
 //! (by the core's own `PaneGroup::split`, so nothing is decided here) with an empty pane

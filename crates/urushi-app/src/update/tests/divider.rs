@@ -1,4 +1,4 @@
-//! Dragging a divider (UR-68, ADR 0055): the panes follow the pointer at once, one move
+//! Dragging a divider (UR-68, ADR 0056): the panes follow the pointer at once, one move
 //! is sent at a time, and the preview gives way to the daemon's layout.
 
 use urushi_client::v1::{self, request::Body, response::Outcome};

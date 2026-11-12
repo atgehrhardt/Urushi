@@ -1,4 +1,4 @@
-//! Fetching a new thread's base once, shared between whoever needs it (ADR 0054).
+//! Fetching a new thread's base once, shared between whoever needs it (ADR 0055).
 //!
 //! A new thread fetches its base's branch from the remote before its worktree is made
 //! (ADR 0028), and that fetch is usually the slowest part of creating a thread. The

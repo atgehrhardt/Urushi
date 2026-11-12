@@ -1,4 +1,4 @@
-# 0053. Save the workspace from one saver that coalesces changes, and reply only once a change is saved
+# 0054. Save the workspace from one saver that coalesces changes, and reply only once a change is saved
 
 - **Status:** Accepted
 - **Date:** 2026-11-12

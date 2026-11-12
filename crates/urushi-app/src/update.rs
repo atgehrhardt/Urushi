@@ -479,7 +479,7 @@ impl AppState {
         }
     }
 
-    /// A refusal of something shown ahead of the daemon's answer (ADR 0055): undoes or
+    /// A refusal of something shown ahead of the daemon's answer (ADR 0056): undoes or
     /// ends what was shown. Returns whether it handled the refusal.
     fn request_refused(
         &mut self,

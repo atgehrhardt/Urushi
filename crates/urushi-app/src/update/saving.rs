@@ -1,4 +1,4 @@
-//! A dialog waiting on the daemon to save it (ADR 0055). Many dialogs close only once
+//! A dialog waiting on the daemon to save it (ADR 0056). Many dialogs close only once
 //! the daemon answered (`Followup::CloseDialog`): a rename, notes, a task. Meanwhile
 //! their main button says "Saving…" and submitting again does nothing, so nothing is
 //! sent twice (a dialog changed since, or another one opened, can be submitted). The

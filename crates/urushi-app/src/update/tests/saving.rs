@@ -1,4 +1,4 @@
-//! A dialog saving (UR-68, ADR 0055): "Saving…" and no second submit until the daemon
+//! A dialog saving (UR-68, ADR 0056): "Saving…" and no second submit until the daemon
 //! answers; the answer closes only a dialog of the kind that was saved.
 
 use std::collections::HashMap;

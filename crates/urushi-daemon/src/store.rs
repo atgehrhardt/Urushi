@@ -2,7 +2,7 @@
 //!
 //! The whole workspace (settings, repos, projects, threads, tabs, boards) is one document,
 //! rewritten atomically: write a temp file, fsync, rename. It is written by one saver,
-//! which covers a burst of changes with one write (`service/saver.rs`, ADR 0053). With
+//! which covers a burst of changes with one write (`service/saver.rs`, ADR 0054). With
 //! synced Jira boards it runs to a few hundred kilobytes, which this still handles with no
 //! C dependency. The [`Store`] trait lets us move to an embedded database if that ever
 //! changes (see ADR 0008).

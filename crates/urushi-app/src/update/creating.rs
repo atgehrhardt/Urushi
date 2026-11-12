@@ -1,7 +1,7 @@
-//! Creating a thread without waiting on screen (ADR 0055): the New Thread dialog closes
+//! Creating a thread without waiting on screen (ADR 0056): the New Thread dialog closes
 //! as soon as it is submitted, a placeholder shows until the daemon answers
 //! (`creations.rs`), and while the dialog is open the daemon is asked to fetch the base
-//! ahead of time (ADR 0054).
+//! ahead of time (ADR 0055).
 
 use urushi_client::v1::{self, request::Body};
 

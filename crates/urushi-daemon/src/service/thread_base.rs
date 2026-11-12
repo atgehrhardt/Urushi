@@ -1,4 +1,4 @@
-//! Where a new thread starts, and making its worktree there (ADR 0028, ADR 0054).
+//! Where a new thread starts, and making its worktree there (ADR 0028, ADR 0055).
 //!
 //! A thread starts from the ref asked for, its project's parent branch, the repo's
 //! default base or its current branch, updated from the remote when that is on. The

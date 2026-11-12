@@ -1,4 +1,4 @@
-//! Saving the workspace document from one thread, coalescing bursts (ADR 0053).
+//! Saving the workspace document from one thread, coalescing bursts (ADR 0054).
 //!
 //! Every change used to serialize and fsync the whole document before it was announced
 //! and answered, and concurrent changes queued one save each. Now a change asks the

@@ -1,4 +1,4 @@
-//! Dragging a divider without waiting for the daemon (ADR 0055).
+//! Dragging a divider without waiting for the daemon (ADR 0056).
 //!
 //! The divider follows the pointer at once: the panes on screen are the daemon's layout
 //! with the drag applied by `urushi_core::PaneGroup::move_divider`, the same rule the

@@ -1,7 +1,7 @@
 //! Threads on their way in. Creating a thread waits for the daemon to update the base
 //! from its remote and make a worktree, which can take seconds. So the New Thread dialog
 //! closes as soon as it is submitted, and a placeholder stands in for the thread in the
-//! sidebar and the main area until the daemon answers (ADR 0055).
+//! sidebar and the main area until the daemon answers (ADR 0056).
 //!
 //! The placeholder lives only in this app: the daemon still records a thread only once
 //! its worktree exists (invariant 8). When the answer comes, the placeholder goes: the

@@ -124,7 +124,7 @@ pub(super) fn thread_card(
     drop_target(state, theme, &thread.id, with_stripe(theme, stripe, card))
 }
 
-/// A thread the daemon is still creating (ADR 0055): its title and a "creating" badge.
+/// A thread the daemon is still creating (ADR 0056): its title and a "creating" badge.
 /// Click to show it; it can't be dragged or deleted yet.
 pub(super) fn pending_card(
     state: &AppState,

@@ -58,7 +58,7 @@ pub(super) fn view(state: &AppState, theme: &Theme) -> Node<Msg> {
     ))
 }
 
-/// A thread the daemon is still creating (ADR 0055): the base is updated from its
+/// A thread the daemon is still creating (ADR 0056): the base is updated from its
 /// remote and the worktree made, which can take a few seconds.
 fn creating(theme: &Theme, title: &str) -> Node<Msg> {
     Node::column()

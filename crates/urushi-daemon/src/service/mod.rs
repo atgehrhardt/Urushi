@@ -11,7 +11,7 @@
 //! change bumps the revision and wakes subscribers through a `watch` channel at once.
 //! Then it waits until the [`saver::Saver`] has written that revision (or a newer one)
 //! to disk, so a reply always means the change is saved, while a burst of changes
-//! shares one write (ADR 0053).
+//! shares one write (ADR 0054).
 
 mod agents;
 mod attachments;
@@ -164,7 +164,7 @@ pub struct Service {
     /// Writes the workspace document, coalescing bursts of changes (`saver.rs`).
     saver: saver::Saver,
     git: Arc<dyn Git>,
-    /// Fetches of new threads' bases, shared and briefly reused (ADR 0054).
+    /// Fetches of new threads' bases, shared and briefly reused (ADR 0055).
     base_fetches: Arc<base_fetch::BaseFetches>,
     pty: Arc<dyn Pty>,
     pub(crate) tailscale: Arc<dyn TailscaleProvider>,

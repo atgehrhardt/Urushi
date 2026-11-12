@@ -1,4 +1,4 @@
-//! Creating a thread without waiting on screen (UR-68, ADR 0055): the dialog closes on
+//! Creating a thread without waiting on screen (UR-68, ADR 0056): the dialog closes on
 //! submit, a placeholder shows until the daemon answers, and the base is fetched ahead.
 
 use std::collections::HashMap;
