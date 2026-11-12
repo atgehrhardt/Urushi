@@ -180,9 +180,8 @@ fn info_plists_are_read_as_the_bundle_script_writes_them() {
 #[test]
 fn only_a_daemon_inside_urushis_own_bundle_has_one() {
     let dir = tempfile::tempdir().unwrap();
-    let app = make_bundle(dir.path(), BUNDLE_ID, "0.1.6")
-        .canonicalize()
-        .unwrap();
+    // As the daemon spells paths (no `\\?\` prefix on Windows).
+    let app = crate::platform::canonicalize(&make_bundle(dir.path(), BUNDLE_ID, "0.1.6")).unwrap();
     assert_eq!(
         bundle::bundle_of(&app.join("Contents/MacOS/urushid")),
         Some(app.clone())
