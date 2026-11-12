@@ -17,7 +17,14 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
     }
     for project in mirror.projects() {
         let parent = crate::project_settings::describe(mirror, project);
-        writeln!(o, "project {} {}{parent}", short(&project.id), project.name)?;
+        let color = urushi_proto::convert::color_from_proto(project.color)
+            .map_or_else(String::new, |c| format!("  [{}]", c.name()));
+        writeln!(
+            o,
+            "project {} {}{color}{parent}",
+            short(&project.id),
+            project.name
+        )?;
     }
     for repo in mirror.repos() {
         writeln!(o, "{} {}  {}", short(&repo.id), repo.name, repo.repo_root)?;
@@ -39,6 +46,12 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
             }
             if thread.pinned {
                 organization.push_str("  pinned");
+            }
+            if thread.unread {
+                organization.push_str("  [unread]");
+            }
+            if !thread.notes.is_empty() {
+                organization.push_str("  [notes]");
             }
             if !thread.status.is_empty() {
                 let _ = std::fmt::Write::write_fmt(

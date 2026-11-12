@@ -16,6 +16,7 @@ mod jira;
 mod pane;
 mod quick;
 mod sidebar;
+mod threads;
 
 pub use board::BoardMsg;
 pub use filter::FilterMsg;
@@ -24,6 +25,7 @@ pub use jira::JiraMsg;
 pub use pane::PaneMsg;
 pub use quick::QuickMsg;
 pub use sidebar::SidebarMsg;
+pub use threads::ThreadMsg;
 
 /// Something that happened.
 #[derive(Clone, Debug)]
@@ -81,6 +83,8 @@ pub enum Msg {
     CloseMenu,
     /// Pin or unpin a thread.
     TogglePin(String),
+    /// A thread's unread mark or notes, or a project's color (`update/thread_extras.rs`).
+    Thread(ThreadMsg),
     /// Set (or with `None`, clear) a thread's status.
     SetStatus {
         /// Thread id.

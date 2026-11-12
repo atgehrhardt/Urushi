@@ -1,10 +1,13 @@
 //! Projects (`v1::Folder`, ADR 0010) and their settings: core ⇄ wire. Settings arrived
 //! in 1.18; a folder from an older peer has none and gets the defaults (no parent
-//! branch, parent-branch thread on).
+//! branch, parent-branch thread on). A folder's color arrived in 1.27; colors this side
+//! doesn't know are no color.
 
 use urushi_core::{BranchName, Project, ProjectBase, ProjectSettings};
 
-use super::{ConvertError, millis_from_proto, millis_to_proto, parse_id};
+use super::{
+    ConvertError, color_from_proto, color_to_proto, millis_from_proto, millis_to_proto, parse_id,
+};
 use crate::v1;
 
 /// Core project → wire (`v1::Folder`).
@@ -14,6 +17,7 @@ pub fn project_to_proto(p: &Project) -> v1::Folder {
         name: p.name.clone(),
         created_at_ms: millis_to_proto(p.created_at),
         settings: Some(project_settings_to_proto(&p.settings)),
+        color: color_to_proto(p.color),
     }
 }
 
@@ -29,6 +33,7 @@ pub fn project_from_proto(f: &v1::Folder) -> Result<Project, ConvertError> {
             .map(project_settings_from_proto)
             .transpose()?
             .unwrap_or_default(),
+        color: color_from_proto(f.color),
     })
 }
 

@@ -137,6 +137,8 @@ message Request {
     StartLanPairingRequest start_lan_pairing = 78;
     CancelLanPairingRequest cancel_lan_pairing = 79;
     RevokeLanDeviceRequest revoke_lan_device = 80;
+    // Since 1.27.
+    SetFolderColorRequest set_folder_color = 81;
   }
 }
 

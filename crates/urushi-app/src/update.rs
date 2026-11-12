@@ -65,6 +65,8 @@ impl AppState {
             | Msg::PickRepo(_)
             | Msg::PickBase(_)
             | Msg::PickProject(_)) => self.organize(msg, &mut fx),
+            // Unread marks, notes and project colors: `update/thread_extras.rs`.
+            Msg::Thread(msg) => self.thread_msg(msg, &mut fx),
             // Project settings: `update/project_settings.rs`.
             msg @ (Msg::OpenProjectSettings(_) | Msg::ProjectSettings(_)) => {
                 self.project_settings_msg(msg, &mut fx);
@@ -286,6 +288,7 @@ impl AppState {
     }
 
     fn select_thread(&mut self, id: String, fx: &mut Vec<Effect>) {
+        self.mark_read(&id, fx);
         self.selected_thread = Some(id);
         self.sidebar_open = false;
         self.selection = None;
@@ -617,6 +620,7 @@ impl AppState {
                 fx.push(request(body, Followup::ThreadCreated));
             }
             Some(Dialog::Prompt { .. }) => self.submit_prompt(fx),
+            Some(Dialog::ThreadNotes { .. }) => self.submit_thread_notes(fx),
             Some(Dialog::ProjectSettings(_)) => self.submit_project_settings(fx),
             Some(Dialog::Setup { .. }) => self.setup_enter(fx),
             Some(Dialog::NestTask { task, query }) => {
@@ -762,6 +766,7 @@ mod subtask_drafts;
 mod task_nav;
 mod task_threads;
 mod tasks;
+mod thread_extras;
 mod usage;
 
 #[cfg(test)]

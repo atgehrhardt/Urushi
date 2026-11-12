@@ -56,5 +56,8 @@ pub use settings::{
 };
 pub use status::{Status, StatusError};
 pub use tab::Tab;
-pub use thread::{NewThread, Thread, ThreadKind, ThreadState, ThreadStateError};
+pub use thread::{
+    MAX_THREAD_NOTES, NewThread, NotesTooLong, Thread, ThreadKind, ThreadState, ThreadStateError,
+    thread_notes,
+};
 pub use time::Timestamp;
