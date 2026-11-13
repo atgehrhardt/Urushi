@@ -1,8 +1,9 @@
 //! Pure domain model for Urushi.
 //!
 //! This crate defines *what* a workspace is: repos, projects, threads, tabs, the split-pane
-//! layout tree, task boards, and settings. It knows nothing about IO, async, platforms, or
-//! rendering. The daemon persists and changes these types. Clients mirror them.
+//! layout tree, task boards, settings, and the Markdown thread notes are written in. It
+//! knows nothing about IO, async, platforms, or rendering. The daemon persists and changes
+//! these types. Clients mirror them.
 //!
 //! Rules (see `AGENTS.md`):
 //! - No filesystem, network, process, clock or randomness access. Ids and timestamps
@@ -16,6 +17,7 @@ pub mod attention;
 pub mod board;
 pub mod ids;
 pub mod layout;
+pub mod markdown;
 pub mod naming;
 pub mod order;
 pub mod ownership;
