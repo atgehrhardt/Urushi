@@ -493,3 +493,33 @@ fn only_a_jira_board_forgets_issues() {
     ));
     assert!(own.task(id).is_some());
 }
+
+#[test]
+fn kept_issues_stay_as_they_are_through_a_full_merge_without_them() {
+    // ACME-1 was just moved to Done here; a lagging search still has it in To Do, so
+    // the daemon leaves it out of the snapshot and keeps it (UR-71).
+    let mut b = jira_board();
+    b.merge_issues(
+        vec![
+            issue(1, DONE, "0|a"),
+            subtask(3, 1, TODO),
+            issue(2, TODO, "0|b"),
+        ],
+        true,
+        ids(),
+    );
+    let before = b.task_for_issue("ACME-1").cloned();
+    let keep: HashSet<String> = ["10001".to_owned(), "10003".to_owned()].into();
+    let report = b.merge_issues_keeping(vec![issue(2, DOING, "0|b")], true, &keep, ids());
+    assert!(report.changed, "ACME-2 moved");
+    assert_eq!(keys(&b, 2), ["ACME-1"]);
+    assert_eq!(
+        b.task_for_issue("ACME-1").cloned(),
+        before,
+        "with its subtask"
+    );
+    assert_eq!(keys(&b, 1), ["ACME-2"]);
+    // Without keeping, a full merge takes it off.
+    b.merge_issues(vec![issue(2, DOING, "0|b")], true, ids());
+    assert!(b.task_for_issue("ACME-1").is_none());
+}

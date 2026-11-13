@@ -118,6 +118,17 @@ pub struct FakeJira {
     site_tokens: Mutex<HashMap<String, String>>,
     /// Every logged call as `"<site> <call>"`, in order.
     site_calls: Mutex<Vec<String>>,
+    /// While set, searches answer from this copy of the issues, as Jira's search index
+    /// lags behind its writes (see [`FakeJira::lag_search`]).
+    index: Mutex<Option<Lag>>,
+}
+
+/// A search index that lags behind.
+struct Lag {
+    /// The issues as the index has them.
+    issues: Vec<Remote>,
+    /// Whether `reconcileIssues` gets the issues named as they are now.
+    reconciles: bool,
 }
 
 thread_local! {
@@ -178,7 +189,40 @@ impl FakeJira {
             pull_requests: Mutex::default(),
             site_tokens: Mutex::default(),
             site_calls: Mutex::default(),
+            index: Mutex::new(None),
         })
+    }
+
+    /// From now on, searches see the issues as they are now, whatever is written later,
+    /// until [`FakeJira::catch_up`]; with `reconciles`, issues a search asks to
+    /// reconcile are seen as they are.
+    pub fn lag_search(&self, reconciles: bool) {
+        let issues = self.issues.lock().unwrap().clone();
+        *self.index.lock().unwrap() = Some(Lag { issues, reconciles });
+    }
+
+    /// Searches see every issue as it is again.
+    pub fn catch_up(&self) {
+        *self.index.lock().unwrap() = None;
+    }
+
+    /// The issues as a search sees them.
+    fn searched(&self, query: &IssueQuery) -> Vec<Remote> {
+        let live = self.issues.lock().unwrap().clone();
+        let index = self.index.lock().unwrap();
+        let Some(lag) = index.as_ref() else {
+            return live;
+        };
+        live.into_iter()
+            .filter_map(|r| {
+                let fresh = lag.reconciles && query.reconcile.contains(&format!("100{}", r.id));
+                if fresh {
+                    Some(r)
+                } else {
+                    lag.issues.iter().find(|i| i.id == r.id).cloned()
+                }
+            })
+            .collect()
     }
 
     /// Makes `site` (an address, `https://…`) take `token` instead of [`TOKEN`].
@@ -379,7 +423,10 @@ impl JiraApi for FakeJira {
             let ids = q.strip_prefix("id in (")?.strip_suffix(')')?;
             Some(ids.split(", ").map(str::to_owned).collect())
         });
-        let remote = self.issues.lock().unwrap().clone();
+        if !query.reconcile.is_empty() {
+            self.log(format!("reconcile {}", query.reconcile.join(", ")));
+        }
+        let remote = self.searched(query);
         let mut issues: Vec<_> = remote
             .iter()
             .map(|r| self.synced(r))
@@ -413,7 +460,7 @@ impl JiraApi for FakeJira {
     ) -> JiraResult<Vec<(String, Timestamp)>> {
         self.check(account)?;
         self.log("changed".into());
-        let remote = self.issues.lock().unwrap().clone();
+        let remote = self.searched(query);
         Ok(remote
             .iter()
             .map(|r| {

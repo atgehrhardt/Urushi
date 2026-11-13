@@ -152,6 +152,7 @@ pub(super) fn board_query(config: &BoardConfig) -> IssueQuery {
         updated_within_minutes: None,
         extra_jql: Vec::new(),
         limit: MAX_SYNCED_ISSUES,
+        reconcile: Vec::new(),
     }
 }
 

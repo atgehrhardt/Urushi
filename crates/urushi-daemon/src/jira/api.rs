@@ -104,7 +104,13 @@ pub struct IssueQuery {
     pub extra_jql: Vec<String>,
     /// Read at most this many.
     pub limit: usize,
+    /// Issues just written (by id), which Jira is asked to search as they are now, not
+    /// as its lagging index has them (`reconcileIssues`; at most [`MAX_RECONCILE`]).
+    pub reconcile: Vec<String>,
 }
+
+/// The most issues Jira reconciles in one search.
+pub const MAX_RECONCILE: usize = 50;
 
 /// Fields whose ids depend on the site or board, read with every issue.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

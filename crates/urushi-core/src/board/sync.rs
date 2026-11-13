@@ -101,6 +101,19 @@ impl Board {
         &mut self,
         snapshot: Vec<SyncedIssue>,
         full: bool,
+        new_id: impl FnMut() -> TaskId,
+    ) -> MergeReport {
+        self.merge_issues_keeping(snapshot, full, &HashSet::new(), new_id)
+    }
+
+    /// [`Board::merge_issues`], keeping the issues in `keep` (by issue id) as they are
+    /// even when a full snapshot leaves them out: the board knows a newer version of
+    /// them than the snapshot had (Jira's search lags behind its writes, UR-71).
+    pub fn merge_issues_keeping(
+        &mut self,
+        snapshot: Vec<SyncedIssue>,
+        full: bool,
+        keep: &HashSet<String>,
         mut new_id: impl FnMut() -> TaskId,
     ) -> MergeReport {
         let before = self.clone();
@@ -120,7 +133,7 @@ impl Board {
 
         if full {
             let in_snapshot: HashSet<&str> = snapshot.iter().map(|s| s.issue.id.as_str()).collect();
-            records.retain(|id, _| in_snapshot.contains(id.as_str()));
+            records.retain(|id, _| in_snapshot.contains(id.as_str()) || keep.contains(id));
         }
         for synced in snapshot {
             if synced.kind == super::TaskKind::Epic {
