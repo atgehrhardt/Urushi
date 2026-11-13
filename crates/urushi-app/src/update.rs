@@ -409,7 +409,7 @@ impl AppState {
     /// and keeps the selection and attached panes in step with it.
     fn apply_workspace(&mut self, fx: &mut Vec<Effect>) {
         let had_quick = self.workspace.quick_terminal_raw().is_some();
-        self.workspace = self.deletions.visible();
+        self.show_visible_workspace();
         self.follow_quick_terminal(had_quick);
         let thread_exists = |id: &String| self.workspace.thread(id).is_some();
         if !self.selected_thread.as_ref().is_some_and(thread_exists) {
@@ -426,6 +426,26 @@ impl AppState {
             })
             .collect();
         self.sync_panes(fx);
+    }
+
+    /// What shows: the daemon's last workspace without the threads being deleted, and
+    /// with a card dropped ahead of the daemon where it was dropped.
+    fn show_visible_workspace(&mut self) {
+        let workspace = self.deletions.visible();
+        self.workspace = if self.moving.shown().is_some() {
+            let mut raw = workspace.into_raw();
+            self.moving.apply(&mut raw);
+            urushi_client::WorkspaceMirror::new(raw)
+        } else {
+            workspace
+        };
+    }
+
+    /// The daemon answered a card move: the board shows as the daemon has it.
+    fn card_moved(&mut self, query: u64) {
+        if self.moving.answered(query) {
+            self.show_visible_workspace();
+        }
     }
 
     fn on_event(&mut self, event: v1::event::Body, fx: &mut Vec<Effect>) {
@@ -503,6 +523,10 @@ impl AppState {
             }
             Followup::DividerMoved => {
                 self.divider_answered(fx);
+                self.error = Some(message.to_owned());
+            }
+            Followup::CardMoved(query) => {
+                self.card_moved(*query);
                 self.error = Some(message.to_owned());
             }
             Followup::ThreadCreated(key) => self.thread_not_created(*key, message.to_owned()),
@@ -614,6 +638,7 @@ impl AppState {
             (Followup::Usage(pane), Outcome::AgentUsage(usage)) => {
                 self.usage_answered(pane, Some(usage));
             }
+            (Followup::CardMoved(query), _) => self.card_moved(query),
             (Followup::BoardCreated, Outcome::Board(board)) => {
                 self.board.selected = Some(board.id);
                 self.dialog = None;

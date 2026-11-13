@@ -21,6 +21,11 @@ impl WorkspaceMirror {
         &self.workspace
     }
 
+    /// The raw snapshot, taken out.
+    pub fn into_raw(self) -> v1::Workspace {
+        self.workspace
+    }
+
     /// The snapshot's revision.
     pub fn revision(&self) -> u64 {
         self.workspace.revision

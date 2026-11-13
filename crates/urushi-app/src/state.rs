@@ -536,6 +536,8 @@ pub struct AppState {
     pub drag: Option<Drag>,
     /// A divider dragged on screen ahead of the daemon (`divider.rs`).
     pub divider: crate::divider::DividerDrag,
+    /// A card dropped on screen ahead of the daemon (`moving.rs`).
+    pub moving: crate::moving::CardMoves,
     /// Tabs and splits the daemon is still making, shown ahead of it (`starting.rs`).
     pub starting: crate::starting::Starting,
     /// Settings, once loaded.
@@ -639,6 +641,7 @@ impl AppState {
             selection: None,
             drag: None,
             divider: crate::divider::DividerDrag::default(),
+            moving: crate::moving::CardMoves::default(),
             starting: crate::starting::Starting::default(),
             settings: None,
             jira_accounts: Vec::new(),

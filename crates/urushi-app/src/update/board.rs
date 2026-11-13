@@ -169,12 +169,16 @@ impl AppState {
             return;
         };
         if let Some((column_id, index)) = drop_position(board, &task, column, before) {
+            // It shows there at once, until the daemon answers (`moving.rs`).
+            let at = usize::try_from(index).unwrap_or(usize::MAX);
+            let query = self.moving.start(task.clone(), column_id.clone(), at);
+            self.show_visible_workspace();
             let body = Body::MoveTask(v1::MoveTaskRequest {
                 task_id: task,
                 column_id,
                 index,
             });
-            fx.push(request(body, Followup::None));
+            fx.push(request(body, Followup::CardMoved(query)));
         }
     }
 

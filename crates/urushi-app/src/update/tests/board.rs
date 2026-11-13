@@ -40,7 +40,7 @@ pub(super) fn board() -> v1::Board {
 }
 
 /// Connected to a 1.5 daemon, with one board, and the panel open.
-fn with_board() -> AppState {
+pub(super) fn with_board() -> AppState {
     let mut s = attached();
     s.daemon_minor = 5;
     let mut workspace = super::workspace();
