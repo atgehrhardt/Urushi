@@ -52,6 +52,7 @@ Use `scripts/dev.sh` (or the make targets) for everything:
 | Command | What it does |
 |---|---|
 | `make dev` / `scripts/dev.sh run [--keep]` | Build debug, restart the **dev** daemon (unless `--keep`), open the dev app |
+| `make dev-seeded` / `scripts/dev.sh seed` | Give the dev home your settings, Jira sign-ins and Jira boards, read from the real home (never written). Tailscale, LAN and the worktree folder stay the dev home's. The dev daemon then syncs your real Jira: moves and edits made in the dev app reach Jira. |
 | `scripts/dev.sh cli <args>` | The debug CLI against the dev daemon (`cli ls`, `cli thread new …`) |
 | `scripts/dev.sh test` | `make ci` with `URUSHI_HOME` set to a throwaway dir |
 | `scripts/dev.sh status` / `stop` | Inspect daemons; stop **only** the dev daemon (checked against its pidfile and `--home`) |
@@ -97,6 +98,7 @@ make check-targets    # cargo check for iOS + Android targets
 make check-docs       # docs indexed, links resolve, every crate documented
 make app              # build/Urushi.app (macOS)
 make dev              # debug GUI against the dev daemon (scripts/dev.sh run)
+make dev-seeded       # the same, with your settings, Jira sign-ins and boards copied in
 make ship             # tests, then install into /Applications (safe while it's running)
 make install          # install without running tests
 make ios-sim          # iOS simulator build, run and screenshot

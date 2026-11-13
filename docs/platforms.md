@@ -13,7 +13,7 @@
 - The app starts `urushid` from its own bundle when none is running. The daemon then keeps running when the app quits, so your sessions survive app restarts and upgrades.
 - A new daemon version takes effect only when the daemon next starts (e.g. after a reboot). Restarting the daemon ends its terminal sessions, so Urushi never does it for you.
 - **Developing Urushi inside Urushi:**
-  - Debug builds default to a separate dev home (`~/Library/Application Support/Urushi Dev`). `scripts/dev.sh` wraps the loop: `run` (dev app plus a fresh dev daemon), `cli`, `test`, `status`, `stop`, and `ship` (tests, then install).
+  - Debug builds default to a separate dev home (`~/Library/Application Support/Urushi Dev`). `scripts/dev.sh` wraps the loop: `run` (dev app plus a fresh dev daemon; `--seed` first runs `seed`), `seed` (copies the real home's settings, except Tailscale, LAN and the worktree folder, and its Jira sign-ins into the dev home, and imports its Jira boards there, through `scripts/seed-dev-home.py`; the real home is only read), `cli`, `test`, `status`, `stop`, and `ship` (tests, then install). `make dev-seeded` is `run --seed`.
   - The dev app is titled "Urushi (dev)" and shows a DEV badge.
 
 ## Mobile clients
