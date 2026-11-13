@@ -39,17 +39,9 @@ impl AppState {
             }
             Msg::SelectBoard(id) => {
                 // Phones choose boards from a menu.
+                // What belonged to the board shown before goes with it
+                // (`update/shown_board.rs`).
                 self.menu = None;
-                let shown = self.board.board(&self.workspace).map(|b| b.id.as_str());
-                if shown != Some(id.as_str()) {
-                    self.board.filter.clear();
-                    if self.focus == Some(crate::state::Field::BoardSearch) {
-                        self.focus = None;
-                    }
-                }
-                if shown != Some(id.as_str()) {
-                    self.board.column = None;
-                }
                 self.board.selected = Some(id);
             }
             Msg::ShowColumn(column) => self.board.column = Some(column),
@@ -177,12 +169,16 @@ impl AppState {
             return;
         };
         if let Some((column_id, index)) = drop_position(board, &task, column, before) {
+            // It shows there at once, until the daemon answers (`moving.rs`).
+            let at = usize::try_from(index).unwrap_or(usize::MAX);
+            let query = self.moving.start(task.clone(), column_id.clone(), at);
+            self.show_visible_workspace();
             let body = Body::MoveTask(v1::MoveTaskRequest {
                 task_id: task,
                 column_id,
                 index,
             });
-            fx.push(request(body, Followup::None));
+            fx.push(request(body, Followup::CardMoved(query)));
         }
     }
 

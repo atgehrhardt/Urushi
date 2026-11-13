@@ -131,8 +131,30 @@ proptest! {
             let mut seen = HashSet::new();
             let snapshot: Vec<_> = shots.iter().filter(|s| seen.insert(s.n)).map(synced).collect();
             let before = issues(&b);
-            b.merge_issues(snapshot.clone(), full, || { next += 1; TaskId::from_u128(next) });
+            // Issues kept while Jira's search lags (UR-71): some on the board, left out.
+            let keep: HashSet<String> = before
+                .keys()
+                .filter(|id| id.parse::<u32>().is_ok_and(|n| n % 3 == 0))
+                .filter(|id| !snapshot.iter().any(|s| &s.issue.id == *id))
+                .cloned()
+                .collect();
+            let kept_before: HashMap<String, Option<urushi_core::board::Task>> = keep
+                .iter()
+                .map(|id| (id.clone(), before.get(id).and_then(|t| b.task(*t).cloned())))
+                .collect();
+            b.merge_issues_keeping(snapshot.clone(), full, &keep, || { next += 1; TaskId::from_u128(next) });
             let after = issues(&b);
+            // A kept card is still there, unchanged. (A kept subtask follows its parent,
+            // which may leave the board.)
+            for (id, task) in &kept_before {
+                let now = after.get(id);
+                let card = task.as_ref().is_some_and(|t| t.issue.as_ref().is_some_and(|i| i.parent.is_none()));
+                prop_assert!(now.is_some() || !card, "kept {} went", id);
+                if let (Some(now), Some(task)) = (now, task) {
+                    prop_assert_eq!(*now, task.id);
+                    prop_assert_eq!(&b.task(*now).unwrap().issue, &task.issue);
+                }
+            }
 
             prop_assert!(b.all_tasks().count() <= MAX_SYNCED_ISSUES);
             for (issue, task) in &after {
@@ -140,7 +162,7 @@ proptest! {
                 if let Some(old) = before.get(issue) {
                     prop_assert_eq!(old, task);
                 }
-                if full {
+                if full && !keep.contains(issue) {
                     prop_assert!(seen.contains(&issue.parse::<u32>().unwrap()));
                 }
                 // So does its link.
@@ -166,7 +188,7 @@ proptest! {
 
             // Merging the same snapshot again changes nothing.
             let again = b.clone();
-            let report = b.merge_issues(snapshot, full, || TaskId::from_u128(1));
+            let report = b.merge_issues_keeping(snapshot, full, &keep, || TaskId::from_u128(1));
             prop_assert!(!report.changed);
             prop_assert_eq!(&b, &again);
         }

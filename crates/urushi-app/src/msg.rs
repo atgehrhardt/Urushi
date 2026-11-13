@@ -411,6 +411,8 @@ pub enum Followup {
     PaneCreated,
     /// The daemon answered a divider move: send the newest position, if one waits.
     DividerMoved,
+    /// A card was moved (`moving.rs`): the number of the move.
+    CardMoved(u64),
     /// The daemon opened (or returned) its quick terminal.
     QuickTerminal,
     /// Show settings.

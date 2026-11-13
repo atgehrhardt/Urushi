@@ -33,13 +33,48 @@ struct Memo {
     shown: Option<(ShownKey, Rc<HashSet<String>>)>,
 }
 
-/// What, besides the board, decides which cards show.
+/// What, besides the board, decides which cards show. The search counts by its text
+/// alone: moving its caret or selecting in it changes nothing shown.
 #[derive(Debug, PartialEq)]
 struct ShownKey {
+    search: String,
     filter: BoardFilter,
     me: Option<String>,
     /// The minute it was made in, while "Recently updated" is on.
     minute: Option<i64>,
+}
+
+impl ShownKey {
+    fn new(filter: &BoardFilter, me: Option<&str>, minute: Option<i64>) -> Self {
+        Self {
+            search: filter.search.text().to_owned(),
+            filter: BoardFilter {
+                search: urushi_ui::TextField::default(),
+                chosen: filter.chosen.clone(),
+                quick: filter.quick.clone(),
+                saved: filter.saved.clone(),
+                quick_matches: filter.quick_matches.clone(),
+                ..*filter
+            },
+            me: me.map(str::to_owned),
+            minute,
+        }
+    }
+
+    /// Whether it was made from this filter, "me" and minute; compared in place, so a
+    /// hit copies nothing.
+    fn is(&self, filter: &BoardFilter, me: Option<&str>, minute: Option<i64>) -> bool {
+        let f = &self.filter;
+        self.search == filter.search.text()
+            && self.me.as_deref() == me
+            && self.minute == minute
+            && f.mine == filter.mine
+            && f.recent == filter.recent
+            && f.chosen == filter.chosen
+            && f.quick == filter.quick
+            && f.saved == filter.saved
+            && f.quick_matches == filter.quick_matches
+    }
 }
 
 impl Clone for FilterCache {
@@ -80,12 +115,16 @@ impl FilterCache {
         })
     }
 
-    /// The fields worth offering on the board ([`super::board_dims`]).
-    pub fn dims(&self, board: &v1::Board) -> Vec<Dim> {
+    /// The fields worth offering on the board ([`super::board_dims`]), and any with a
+    /// value chosen, so it can always be unchosen (UR-71).
+    pub fn dims(&self, board: &v1::Board, filter: &BoardFilter) -> Vec<Dim> {
+        let chosen = |d: &Dim| filter.chosen.get(d).is_some_and(|v| !v.is_empty());
         Dim::ALL
             .into_iter()
-            .filter(|d| board.jira.is_some() || d.local())
-            .filter(|d| !self.values(board, *d).is_empty())
+            .filter(|d| {
+                chosen(d)
+                    || ((board.jira.is_some() || d.local()) && !self.values(board, *d).is_empty())
+            })
             .collect()
     }
 
@@ -96,17 +135,14 @@ impl FilterCache {
         filter: &BoardFilter,
         cx: Context<'_>,
     ) -> Rc<HashSet<String>> {
-        let key = ShownKey {
-            filter: filter.clone(),
-            me: cx.me.map(str::to_owned),
-            minute: filter.recent.then_some(cx.now_ms / MINUTE_MS),
-        };
+        let minute = filter.recent.then_some(cx.now_ms / MINUTE_MS);
         self.with(board, |m| {
             if let Some((k, shown)) = &m.shown
-                && *k == key
+                && k.is(filter, cx.me, minute)
             {
                 return shown.clone();
             }
+            let key = ShownKey::new(filter, cx.me, minute);
             let shown: Rc<HashSet<String>> = board
                 .columns
                 .iter()

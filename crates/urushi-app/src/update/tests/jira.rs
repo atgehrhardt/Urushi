@@ -15,7 +15,7 @@ fn answer(s: &mut AppState, followup: Followup, outcome: Outcome) -> Vec<Effect>
     })
 }
 
-fn signed_in() -> v1::JiraAccount {
+pub(super) fn signed_in() -> v1::JiraAccount {
     v1::JiraAccount {
         connected: true,
         site: "https://acme.atlassian.net".into(),
@@ -102,7 +102,7 @@ pub(super) fn jira_board() -> v1::Board {
 }
 
 /// A 1.12 daemon with the Jira board and an ordinary one, the panel open.
-fn with_jira() -> AppState {
+pub(super) fn with_jira() -> AppState {
     let mut s = attached();
     s.daemon_minor = 12;
     let mut workspace = super::workspace();

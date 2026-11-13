@@ -184,22 +184,39 @@ impl BoardFilter {
         *self = Self::default();
     }
 
-    /// Whether the card shows: it or one of its subtasks passes.
+    /// Whether the card shows: it or one of its subtasks passes. Subtasks count as in
+    /// their card's epic, as Jira gives sub-tasks none of their own (UR-71).
     pub fn shows(&self, card: &v1::Task, cx: Context<'_>) -> bool {
-        fn any(f: &BoardFilter, t: TaskRef<'_>, cx: Context<'_>) -> bool {
-            f.passes(t, cx) || t.subtasks().iter().any(|s| any(f, TaskRef::Sub(s), cx))
+        fn any(f: &BoardFilter, t: TaskRef<'_>, p: &Probe<'_>, cx: Context<'_>) -> bool {
+            f.passes_with(t, p, cx) || t.subtasks().iter().any(|s| any(f, TaskRef::Sub(s), p, cx))
         }
-        !self.active() || any(self, TaskRef::Card(card), cx)
+        if !self.active() {
+            return true;
+        }
+        let epic = values(Dim::Epic, TaskRef::Card(card));
+        let probe = Probe {
+            search: self.search.text().trim().to_lowercase(),
+            epic: epic.first().map(|(key, _)| key.as_str()),
+        };
+        any(self, TaskRef::Card(card), &probe, cx)
     }
 
     /// Whether the task itself passes every filter.
     pub fn passes(&self, task: TaskRef<'_>, cx: Context<'_>) -> bool {
+        let probe = Probe {
+            search: self.search.text().trim().to_lowercase(),
+            epic: None,
+        };
+        self.passes_with(task, &probe, cx)
+    }
+
+    fn passes_with(&self, task: TaskRef<'_>, probe: &Probe<'_>, cx: Context<'_>) -> bool {
         let issue = task.issue();
-        let search = self.search.text().trim().to_lowercase();
+        let search = probe.search.as_str();
         if !search.is_empty() {
-            let found = task.title().to_lowercase().contains(&search)
-                || task.notes().to_lowercase().contains(&search)
-                || issue.is_some_and(|i| i.key.to_lowercase().contains(&search));
+            let found = contains_folded(task.title(), search)
+                || contains_folded(task.notes(), search)
+                || issue.is_some_and(|i| contains_folded(&i.key, search));
             if !found {
                 return false;
             }
@@ -228,10 +245,37 @@ impl BoardFilter {
             .iter()
             .filter(|(_, v)| !v.is_empty())
             .all(|(dim, chosen)| {
-                values(*dim, task)
-                    .iter()
-                    .any(|(value, _)| chosen.contains(value))
+                let own = values(*dim, task);
+                if *dim == Dim::Epic
+                    && own.is_empty()
+                    && let Some(epic) = probe.epic
+                {
+                    return chosen.contains(epic);
+                }
+                own.iter().any(|(value, _)| chosen.contains(value))
             })
+    }
+}
+
+/// What a card's filtering works out once for it and its subtasks.
+struct Probe<'a> {
+    /// The search, lowercased.
+    search: String,
+    /// The card's epic, which its subtasks count as in.
+    epic: Option<&'a str>,
+}
+
+/// Whether `text` contains `lowered` (already lowercase), ignoring case. Plain ASCII,
+/// the usual case, is compared in place; anything else is lowercased first.
+fn contains_folded(text: &str, lowered: &str) -> bool {
+    if text.is_ascii() && lowered.is_ascii() {
+        let (hay, needle) = (text.as_bytes(), lowered.as_bytes());
+        needle.is_empty()
+            || hay
+                .windows(needle.len())
+                .any(|w| w.eq_ignore_ascii_case(needle))
+    } else {
+        text.to_lowercase().contains(lowered)
     }
 }
 

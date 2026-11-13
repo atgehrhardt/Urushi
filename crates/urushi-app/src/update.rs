@@ -32,6 +32,7 @@ impl AppState {
             return Vec::new();
         }
         let before = crate::errors::BeforeUpdate::of(self);
+        let shown_board = self.board.shown_id(&self.workspace);
         let mut fx = Vec::new();
         match msg {
             // A dialog field's Cut/Copy/Paste menu: `update/fields.rs`.
@@ -245,6 +246,7 @@ impl AppState {
             Msg::Paste(text) => self.insert_text(text, v1::input::Kind::Paste, &mut fx),
             Msg::Copy => self.copy(&mut fx),
         }
+        self.follow_shown_board(shown_board.as_deref());
         self.want_thumbnails(&mut fx);
         self.watch_shown_board(&mut fx);
         self.attend(&mut fx);
@@ -283,8 +285,14 @@ impl AppState {
         ));
         self.lan = None;
         self.request_lan_status(fx);
-        self.jira_accounts.clear();
+        // The sign-ins stay until the daemon says otherwise, so "me" stays known; another
+        // host's were dropped when it was chosen (`reconnect_to`).
         self.request_jira_account(fx);
+        // A new connection watches nothing, and an answer on its way was lost with the
+        // old one: tell the daemon again and ask Jira again.
+        self.board.watching = None;
+        self.board.quick_asking = false;
+        self.refresh_quick_filter(fx);
     }
 
     fn select_thread(&mut self, id: String, fx: &mut Vec<Effect>) {
@@ -401,7 +409,7 @@ impl AppState {
     /// and keeps the selection and attached panes in step with it.
     fn apply_workspace(&mut self, fx: &mut Vec<Effect>) {
         let had_quick = self.workspace.quick_terminal_raw().is_some();
-        self.workspace = self.deletions.visible();
+        self.show_visible_workspace();
         self.follow_quick_terminal(had_quick);
         let thread_exists = |id: &String| self.workspace.thread(id).is_some();
         if !self.selected_thread.as_ref().is_some_and(thread_exists) {
@@ -418,6 +426,26 @@ impl AppState {
             })
             .collect();
         self.sync_panes(fx);
+    }
+
+    /// What shows: the daemon's last workspace without the threads being deleted, and
+    /// with a card dropped ahead of the daemon where it was dropped.
+    fn show_visible_workspace(&mut self) {
+        let workspace = self.deletions.visible();
+        self.workspace = if self.moving.shown().is_some() {
+            let mut raw = workspace.into_raw();
+            self.moving.apply(&mut raw);
+            urushi_client::WorkspaceMirror::new(raw)
+        } else {
+            workspace
+        };
+    }
+
+    /// The daemon answered a card move: the board shows as the daemon has it.
+    fn card_moved(&mut self, query: u64) {
+        if self.moving.answered(query) {
+            self.show_visible_workspace();
+        }
     }
 
     fn on_event(&mut self, event: v1::event::Body, fx: &mut Vec<Effect>) {
@@ -495,6 +523,10 @@ impl AppState {
             }
             Followup::DividerMoved => {
                 self.divider_answered(fx);
+                self.error = Some(message.to_owned());
+            }
+            Followup::CardMoved(query) => {
+                self.card_moved(*query);
                 self.error = Some(message.to_owned());
             }
             Followup::ThreadCreated(key) => self.thread_not_created(*key, message.to_owned()),
@@ -606,6 +638,7 @@ impl AppState {
             (Followup::Usage(pane), Outcome::AgentUsage(usage)) => {
                 self.usage_answered(pane, Some(usage));
             }
+            (Followup::CardMoved(query), _) => self.card_moved(query),
             (Followup::BoardCreated, Outcome::Board(board)) => {
                 self.board.selected = Some(board.id);
                 self.dialog = None;
@@ -800,6 +833,7 @@ mod quick;
 mod quick_filter;
 mod saving;
 mod setup;
+mod shown_board;
 mod sidebar;
 mod sidebar_drag;
 mod subtask_drafts;

@@ -71,6 +71,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0054 – Save the workspace from one saver that coalesces changes, and reply only once a change is saved](adr/0054-save-the-workspace-from-one-coalescing-saver.md)
 - [0055 – Fetch a new thread's base while its dialog is open, share fetches for 60 s, and adopt the parent branch after the reply](adr/0055-prefetch-a-new-threads-base-and-share-fetches.md)
 - [0056 – Show the user's own actions before the daemon confirms them, without deciding anything in the GUI](adr/0056-show-the-users-own-actions-before-the-daemon-confirms.md)
+- [0057 – Never let a Jira sync move an issue back to an older version](adr/0057-jira-syncs-never-move-an-issue-back-in-time.md)
 
 ## Features
 - [_template](features/_template.md)

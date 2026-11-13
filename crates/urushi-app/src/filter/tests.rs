@@ -152,3 +152,30 @@ fn a_boards_values_come_from_every_depth() {
     };
     assert_eq!(board_dims(&local), [Dim::Type, Dim::Label]);
 }
+
+#[test]
+fn a_subtask_counts_under_its_cards_epic() {
+    // Jira gives sub-tasks no epic of their own: they are in their story's.
+    let mut c = card();
+    if let Some(i) = c.issue.as_mut() {
+        i.epic_key = "ACME-9".into();
+    }
+    let mut f = BoardFilter::default();
+    f.toggle(Dim::Epic, "ACME-9");
+    f.toggle(Dim::Assignee, "acc-grace");
+    assert!(f.shows(&c, CX), "Grace's subtask, in the story's epic");
+    f.toggle(Dim::Epic, "ACME-9");
+    f.toggle(Dim::Epic, "ACME-5");
+    assert!(!f.shows(&c, CX));
+}
+
+#[test]
+fn search_ignores_case_beyond_ascii() {
+    let mut c = card();
+    c.notes = "Straße und ÄRGER".into();
+    let mut f = BoardFilter::default();
+    for (text, shown) in [("ärger", true), ("STRASSE", false), ("straße", true)] {
+        f.search = TextField::new(text.to_owned());
+        assert_eq!(f.shows(&c, CX), shown, "{text}");
+    }
+}

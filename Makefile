@@ -1,4 +1,4 @@
-.PHONY: icons app install dev ship ios-sim ios android build test fmt fmt-check clippy lint check-licenses check-targets check-docs buf-lint ci
+.PHONY: icons app install dev dev-seeded ship ios-sim ios android build test fmt fmt-check clippy lint check-licenses check-targets check-docs buf-lint ci
 
 CARGO ?= cargo
 BUF ?= buf
@@ -44,6 +44,11 @@ install:
 # Run the debug GUI against the dev daemon (never your real workspace). See scripts/dev.sh.
 dev:
 	./scripts/dev.sh run
+
+# The same, with your settings, Jira sign-ins and Jira boards copied into the dev home
+# first (read from the real home, never written). See `scripts/dev.sh seed`.
+dev-seeded:
+	./scripts/dev.sh run --seed
 
 # Test, then install into /Applications without touching your running daemon.
 ship:

@@ -73,6 +73,7 @@ fn query() -> IssueQuery {
         updated_within_minutes: Some(3),
         extra_jql: Vec::new(),
         limit: 3,
+        reconcile: Vec::new(),
     }
 }
 
@@ -517,4 +518,23 @@ fn deleting_an_issue_takes_its_subtasks_and_reports_refusals() {
         jira.delete_issue(&account(), "A-2"),
         Err(JiraError::Forbidden(m)) if m.contains("permission")
     ));
+}
+
+#[test]
+fn issues_just_written_are_searched_by_post_to_be_reconciled() {
+    let http = Script::answering([(200, json!({ "issues": [{ "id": "11" }], "isLast": true }))]);
+    let jira = CloudJira::new(http.clone());
+    let q = IssueQuery {
+        reconcile: vec!["10001".into(), "not-an-id".into()],
+        limit: 10,
+        ..query()
+    };
+    assert_eq!(jira.issue_ids(&account(), &q).unwrap(), ["11"]);
+    let r = &http.seen()[0];
+    assert_eq!(r.method, Method::Post);
+    assert_eq!(r.url, "https://acme.atlassian.net/rest/api/3/search/jql");
+    let body: Value = serde_json::from_str(r.json.as_deref().unwrap()).unwrap();
+    assert_eq!(body["reconcileIssues"], json!([10001]));
+    assert_eq!(body["fields"], json!(["id"]));
+    assert_eq!(body["jql"], json!(jql(&q)));
 }

@@ -208,6 +208,23 @@ impl BoardPanel {
         self.open || self.reveal > 0.0
     }
 
+    /// Forgets what belonged to the board shown until now: its filter (with Jira's
+    /// last quick-filter answer), the column a phone showed and any drag (UR-71).
+    pub fn reset_for_board(&mut self) {
+        self.filter.clear();
+        self.quick_asking = false;
+        self.quick_stale = false;
+        self.column = None;
+        self.pressed = None;
+        self.dragging = None;
+        self.over = None;
+    }
+
+    /// The id of the board to show.
+    pub fn shown_id(&self, workspace: &WorkspaceMirror) -> Option<String> {
+        self.board(workspace).map(|b| b.id.clone())
+    }
+
     /// The board to show.
     pub fn board<'a>(&self, workspace: &'a WorkspaceMirror) -> Option<&'a v1::Board> {
         self.selected

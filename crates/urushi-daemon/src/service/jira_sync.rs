@@ -11,12 +11,16 @@
 //!   configuration (columns) and every issue, so deleted and moved-away issues go.
 //!
 //! Boards sync side by side, each under its own lock (one sync or write at a time, so a
-//! slow read can't merge an older picture over a change just written). Reads happen off
-//! the state lock; a merge that changes nothing wakes no client. Failures are recorded
+//! slow read can't merge an older picture over a change just written). Jira's search
+//! lags behind its writes, so a sync never moves an issue back in time (ADR 0057): only
+//! a newer update time counts as a change, a full read keeps the board's newer version
+//! of an issue it has older, and issues written in the last [`RECONCILE_FOR`] are asked
+//! for as they are now (`reconcileIssues`). Reads happen off the state lock; a merge
+//! that changes nothing wakes no client, and a look that finds nothing merges nothing. Failures are recorded
 //! on the board for clients to show, and back off: as long as a rate-limited Jira asks,
 //! longer after each failure in a row.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -24,7 +28,7 @@ use urushi_core::{Board, BoardId, ColumnId, TaskId, Timestamp};
 
 use super::jira::{account_for, board_query, not_signed_in};
 use super::{Service, ServiceError, ServiceResult, State, blocking, lock, new_uuid, now};
-use crate::jira::{BoardConfig, JiraError, Me};
+use crate::jira::{BoardConfig, JiraError, MAX_RECONCILE, Me};
 
 /// How often a board someone looks at is read.
 pub const WATCHED_INTERVAL: Duration = Duration::from_secs(3);
@@ -32,6 +36,9 @@ pub const WATCHED_INTERVAL: Duration = Duration::from_secs(3);
 pub const ACTIVE_INTERVAL: Duration = Duration::from_secs(15);
 /// How often boards are read while no client watches.
 pub const IDLE_INTERVAL: Duration = Duration::from_secs(120);
+/// How long after a write Jira's search is asked to reconcile the issue written: its
+/// index usually catches up within seconds.
+pub(super) const RECONCILE_FOR: Duration = Duration::from_secs(60);
 /// How often a board is read completely.
 pub const FULL_INTERVAL: Duration = Duration::from_secs(300);
 /// How often the sync loop looks for boards that are due.
@@ -56,8 +63,50 @@ pub(crate) struct BoardSync {
     /// A sync of it is under way.
     running: bool,
     /// When each issue read for it (epics too) last changed, by issue id: what a look
-    /// at what changed compares with.
+    /// at what changed compares with. It only ever moves forward.
     seen: HashMap<String, Timestamp>,
+    /// When issues (by id) were last written here, for [`RECONCILE_FOR`].
+    written: HashMap<String, Instant>,
+}
+
+impl BoardSync {
+    /// Notes an issue's update time, unless an older one than known.
+    fn see(&mut self, id: &str, updated: Timestamp) {
+        let at = self.seen.entry(id.to_owned()).or_insert(updated);
+        *at = (*at).max(updated);
+    }
+
+    /// Notes a successful read that started at `started` and was merged.
+    fn read_done(&mut self, read: &Read, full: bool, started: Instant) {
+        if full {
+            // Issues no longer on the board are forgotten; the rest only move forward.
+            let read_ids: HashSet<&str> = read.issues.iter().map(|i| i.issue.id.as_str()).collect();
+            self.seen
+                .retain(|id, _| read.keep.contains(id) || read_ids.contains(id.as_str()));
+            self.last_full = Some(started);
+        }
+        for i in &read.issues {
+            self.see(&i.issue.id, i.issue.updated);
+        }
+        self.config = Some(read.config.clone());
+        self.last_read = Some(started);
+        self.failures = 0;
+        self.wait_until = None;
+    }
+
+    /// The issues written lately, newest first, for Jira to reconcile; forgets older
+    /// ones.
+    fn reconcile(&mut self, now: Instant) -> Vec<String> {
+        self.written
+            .retain(|_, at| now.saturating_duration_since(*at) < RECONCILE_FOR);
+        let mut lately: Vec<(&String, &Instant)> = self.written.iter().collect();
+        lately.sort_by(|a, b| b.1.cmp(a.1));
+        lately
+            .into_iter()
+            .take(MAX_RECONCILE)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
 }
 
 impl BoardSync {
@@ -119,6 +168,8 @@ fn interval(watched: bool, subscribed: bool) -> Duration {
 struct Read {
     config: BoardConfig,
     issues: Vec<urushi_core::board::SyncedIssue>,
+    /// Issues the search had older than the board (by id): kept as they are.
+    keep: HashSet<String>,
     more: bool,
     me: Option<Me>,
 }
@@ -141,11 +192,16 @@ impl Service {
     }
 
     /// Notes when issues just read back after a write last changed, so the next look
-    /// doesn't read them again.
+    /// doesn't read them again (nor an older version of them), and that they were
+    /// written, so searches reconcile them for a while.
     pub(super) fn saw(&self, board: BoardId, issues: &[urushi_core::board::SyncedIssue]) {
         let mut boards = lock(&self.jira.boards);
-        let seen = &mut boards.entry(board).or_default().seen;
-        seen.extend(issues.iter().map(|i| (i.issue.id.clone(), i.issue.updated)));
+        let sync = boards.entry(board).or_default();
+        let now = Instant::now();
+        for i in issues {
+            sync.see(&i.issue.id, i.issue.updated);
+            sync.written.insert(i.issue.id.clone(), now);
+        }
     }
 
     /// Forgets when deleted issues last changed: they won't be read again.
@@ -166,14 +222,15 @@ impl Service {
             return Err(ServiceError::Precondition(not_signed_in(&jira)));
         };
         let account_key = account.key();
-        let (cached, last_read, last_full, known) = {
-            let boards = lock(&self.jira.boards);
-            let sync = boards.get(&board);
+        let (cached, last_read, last_full, known, reconcile) = {
+            let mut boards = lock(&self.jira.boards);
+            let sync = boards.entry(board).or_default();
             (
-                sync.and_then(|s| s.config.clone()),
-                sync.and_then(|s| s.last_read),
-                sync.and_then(|s| s.last_full),
-                sync.map(|s| s.seen.clone()).unwrap_or_default(),
+                sync.config.clone(),
+                sync.last_read,
+                sync.last_full,
+                sync.seen.clone(),
+                sync.reconcile(Instant::now()),
             )
         };
         let full = full
@@ -190,16 +247,18 @@ impl Service {
                 _ => api.board(&account, jira.board_id)?,
             };
             let mut query = board_query(&config);
+            query.reconcile = reconcile;
             let (issues, more) = if full {
                 let fetched = api.issues(&account, &query)?;
                 (fetched.issues, fetched.more)
             } else {
-                // Which changed lately, then only those whose time is new here.
+                // Which changed lately, then only those newer than known here: a lagging
+                // search may still have an older time for an issue just written.
                 query.updated_within_minutes = Some(since);
                 let changed: Vec<String> = api
                     .changed(&account, &query)?
                     .into_iter()
-                    .filter(|(id, updated)| known.get(id) != Some(updated))
+                    .filter(|(id, updated)| known.get(id).is_none_or(|k| updated > k))
                     .map(|(id, _)| id)
                     .collect();
                 if changed.is_empty() {
@@ -217,9 +276,14 @@ impl Service {
             } else {
                 None
             };
+            // What the search has older than known here stays as the board has it.
+            let (issues, stale): (Vec<_>, Vec<_>) = issues
+                .into_iter()
+                .partition(|i| known.get(&i.issue.id).is_none_or(|k| i.issue.updated >= *k));
             Ok::<_, JiraError>(Read {
                 config,
                 issues,
+                keep: stale.into_iter().map(|i| i.issue.id).collect(),
                 more,
                 me,
             })
@@ -233,22 +297,10 @@ impl Service {
         };
         self.merge_read(board, full, &read)?;
         let mut boards = lock(&self.jira.boards);
-        let sync = boards.entry(board).or_default();
-        if full {
-            sync.seen.clear();
-        }
-        sync.seen.extend(
-            read.issues
-                .iter()
-                .map(|i| (i.issue.id.clone(), i.issue.updated)),
-        );
-        sync.config = Some(read.config);
-        sync.last_read = Some(started);
-        if full {
-            sync.last_full = Some(started);
-        }
-        sync.failures = 0;
-        sync.wait_until = None;
+        boards
+            .entry(board)
+            .or_default()
+            .read_done(&read, full, started);
         drop(boards);
         if let Some(me) = read.me {
             self.learn_me(&account_key, &me);
@@ -259,6 +311,23 @@ impl Service {
     /// Merges what a read brought back into its board.
     fn merge_read(&self, board: BoardId, full: bool, read: &Read) -> ServiceResult<()> {
         let config = &read.config;
+        // A look that found nothing new, on a board that syncs fine, changes nothing:
+        // no copy, merge or comparison of the board under the state lock.
+        if !full && read.issues.is_empty() {
+            let quiet = self.read(|state| {
+                Ok(state
+                    .boards
+                    .iter()
+                    .find(|b| b.id == board)
+                    .and_then(|b| b.jira())
+                    .is_none_or(|j| {
+                        j.sync.error.is_none() && j.quick_filters == config.quick_filters
+                    }))
+            })?;
+            if quiet {
+                return Ok(());
+            }
+        }
         self.mutate_if_changed(|state| {
             let Some(b) = state.boards.iter_mut().find(|b| b.id == board) else {
                 return Ok(false); // deleted meanwhile
@@ -267,8 +336,9 @@ impl Service {
             if full {
                 b.set_jira_columns(&config.columns, || ColumnId::from_uuid(new_uuid()))?;
             }
-            let report =
-                b.merge_issues(read.issues.clone(), full, || TaskId::from_uuid(new_uuid()));
+            let report = b.merge_issues_keeping(read.issues.clone(), full, &read.keep, || {
+                TaskId::from_uuid(new_uuid())
+            });
             if let Some(j) = b.jira_mut() {
                 j.rank_field.clone_from(&config.rank_field);
                 j.points_field.clone_from(&config.points_field);

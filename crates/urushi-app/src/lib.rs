@@ -26,6 +26,7 @@ mod files;
 pub mod filter;
 pub mod issue;
 pub mod keys;
+pub mod moving;
 pub mod msg;
 pub mod organize;
 mod platform;

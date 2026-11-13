@@ -413,6 +413,8 @@ mod attention;
 mod board;
 mod board_order;
 mod board_phone;
+mod board_switch;
+mod card_moves;
 mod creating;
 mod daemon;
 mod deletion;

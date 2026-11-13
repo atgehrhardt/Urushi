@@ -46,7 +46,7 @@ fn main_page(state: &AppState, theme: &Theme, board: &urushi_client::v1::Board) 
     let f = &state.board.filter;
     let mut items = Vec::new();
     if let Some(jira) = board.jira.as_deref() {
-        if state.filter_context().me.is_some() {
+        if f.mine || state.filter_context().me.is_some() {
             items.push(item(
                 theme,
                 "Only my issues",
@@ -93,7 +93,7 @@ fn main_page(state: &AppState, theme: &Theme, board: &urushi_client::v1::Board) 
     if !board.quick_filters.is_empty() {
         items.push(separator(theme));
     }
-    for dim in state.board.filtered.dims(board) {
+    for dim in state.board.filtered.dims(board, f) {
         let chosen = f
             .chosen
             .get(&dim)
