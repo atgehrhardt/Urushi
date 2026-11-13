@@ -118,6 +118,14 @@ fn thread_round_trip_all_states() {
         thread_from_proto(&thread_to_proto(&thread)).unwrap(),
         thread
     );
+    // The notes' color (1.32); an unknown one reads as the default.
+    thread.notes_color = Some(urushi_core::LabelColor::Purple);
+    let mut wire = thread_to_proto(&thread);
+    assert_eq!(wire.notes_color, v1::LabelColor::Purple as i32);
+    assert_eq!(thread_from_proto(&wire).unwrap(), thread);
+    wire.notes_color = 99;
+    assert_eq!(thread_from_proto(&wire).unwrap().notes_color, None);
+    thread.notes_color = None;
     // A project's parent-branch thread, attached or in its own worktree.
     for attached in [true, false] {
         thread.kind = ThreadKind::ProjectBase { attached };

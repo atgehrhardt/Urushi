@@ -1,5 +1,5 @@
-//! End-to-end: a thread's unread mark and notes (`UpdateThread`, protocol 1.27) and a
-//! project's color (`SetFolderColor`): set and cleared over the wire, validated all or
+//! End-to-end: a thread's unread mark and notes (`UpdateThread`, protocol 1.27), the
+//! notes' color (1.32) and a project's color (`SetFolderColor`): set and cleared over the wire, validated all or
 //! nothing, kept across a daemon restart, and never touching the worktree.
 #![cfg(unix)]
 #![allow(
@@ -140,5 +140,73 @@ async fn unread_notes_and_project_colors_are_kept() {
     // Clearing the notes.
     client.update_thread(update(None, Some(""))).await.unwrap();
     assert!(thread(&client, &id).await.notes.is_empty());
+    daemon.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_notes_color_is_kept_and_goes_with_the_notes() {
+    let home = temp_home();
+    let fixture = repo(home.path());
+    let daemon = Daemon::start(&home.path().join("home")).await;
+    let (client, _events) = daemon.connect().await;
+    let repo = client
+        .add_repo(fixture.repo.to_str().unwrap(), "")
+        .await
+        .unwrap();
+    let id = client
+        .create_thread_with(v1::CreateThreadRequest {
+            project_id: repo.id.clone(),
+            title: "Invoices".into(),
+            skip_initial_tab: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .id;
+    let update = |notes: Option<&str>, color: Option<v1::LabelColor>| v1::UpdateThreadRequest {
+        thread_id: id.clone(),
+        notes: notes.map(str::to_owned),
+        notes_color: color.map(Into::into),
+        ..Default::default()
+    };
+
+    // Set with the notes, changed alone, and back to the default with none.
+    client
+        .update_thread(update(Some("**Ask** first"), Some(v1::LabelColor::Green)))
+        .await
+        .unwrap();
+    let t = thread(&client, &id).await;
+    assert_eq!(
+        (t.notes.as_str(), t.notes_color),
+        ("**Ask** first", v1::LabelColor::Green as i32)
+    );
+    client
+        .update_thread(update(None, Some(v1::LabelColor::Unspecified)))
+        .await
+        .unwrap();
+    assert_eq!(thread(&client, &id).await.notes_color, 0);
+    client
+        .update_thread(update(None, Some(v1::LabelColor::Teal)))
+        .await
+        .unwrap();
+
+    // Kept across a restart.
+    drop(client);
+    let home_dir = daemon.home.clone();
+    daemon.stop().await;
+    let daemon = Daemon::start(&home_dir).await;
+    let (client, _events) = daemon.connect().await;
+    let t = thread(&client, &id).await;
+    assert_eq!(t.notes_color, v1::LabelColor::Teal as i32, "{t:?}");
+
+    // Clearing the notes clears their color, and a color without notes isn't kept.
+    client.update_thread(update(Some(""), None)).await.unwrap();
+    let t = thread(&client, &id).await;
+    assert!(t.notes.is_empty() && t.notes_color == 0, "{t:?}");
+    client
+        .update_thread(update(None, Some(v1::LabelColor::Red)))
+        .await
+        .unwrap();
+    assert_eq!(thread(&client, &id).await.notes_color, 0);
     daemon.stop().await;
 }

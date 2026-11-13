@@ -25,8 +25,8 @@ mod notes;
 pub use notes::{MAX_THREAD_NOTES, NotesTooLong, thread_notes};
 
 use crate::{
-    BranchName, BranchPrefix, NamingError, ProjectId, RepoId, Slug, Status, TabId, ThreadId,
-    Timestamp,
+    BranchName, BranchPrefix, LabelColor, NamingError, ProjectId, RepoId, Slug, Status, TabId,
+    ThreadId, Timestamp,
 };
 
 /// Where a thread is in its lifecycle.
@@ -148,9 +148,13 @@ pub struct Thread {
     /// again (ADR 0048).
     #[serde(default, skip_serializing_if = "is_false")]
     pub unread: bool,
-    /// The user's own notes on the thread, plain text (see [`thread_notes`]). Empty: none.
+    /// The user's own notes on the thread, in Markdown (see [`thread_notes`] and
+    /// [`crate::markdown`]). Empty: none.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
+    /// The color the notes are shown in (ADR 0058). `None`: the clients' default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes_color: Option<LabelColor>,
 }
 
 #[allow(
@@ -199,6 +203,7 @@ impl Thread {
             kind,
             unread: false,
             notes: String::new(),
+            notes_color: None,
         }
     }
 
@@ -328,8 +333,10 @@ mod tests {
         let mut marked = thread();
         marked.unread = true;
         marked.notes = "Ask about the retry policy".into();
+        marked.notes_color = Some(LabelColor::Teal);
         let json = serde_json::to_string(&marked).unwrap();
         assert!(json.contains("\"unread\":true"), "{json}");
+        assert!(json.contains("\"notes_color\":\"teal\""), "{json}");
         assert_eq!(serde_json::from_str::<Thread>(&json).unwrap(), marked);
     }
 

@@ -51,7 +51,15 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
                 organization.push_str("  [unread]");
             }
             if !thread.notes.is_empty() {
-                organization.push_str("  [notes]");
+                match urushi_proto::convert::color_from_proto(thread.notes_color) {
+                    Some(c) => {
+                        let _ = std::fmt::Write::write_fmt(
+                            &mut organization,
+                            format_args!("  [notes: {}]", c.name()),
+                        );
+                    }
+                    None => organization.push_str("  [notes]"),
+                }
             }
             if !thread.status.is_empty() {
                 let _ = std::fmt::Write::write_fmt(
