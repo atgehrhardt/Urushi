@@ -461,6 +461,7 @@ fn clean(s: &str, multiline: bool) -> String {
         .collect()
 }
 
+mod replace;
 mod secret;
 
 #[cfg(test)]

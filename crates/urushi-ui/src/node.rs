@@ -10,6 +10,7 @@ use std::rc::Rc;
 use crate::color::Color;
 use crate::geometry::{Insets, Point, Rect};
 use crate::scene::{Font, Scene};
+use crate::styled::Run;
 use crate::text::TextSystem;
 
 /// A stable identity for interactive nodes: hover, focus, accessibility, scrolling.
@@ -227,6 +228,8 @@ pub enum Content {
         caret_color: Color,
         /// Selection highlight colour.
         selection_color: Color,
+        /// Styled runs of the text (none: plain text).
+        runs: Vec<Run>,
         /// Size.
         size: f32,
         /// Wraps and keeps line breaks, rather than scrolling one line sideways.

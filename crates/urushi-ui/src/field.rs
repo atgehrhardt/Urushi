@@ -6,6 +6,10 @@
 //! wraps its text to the box and scrolls up the same way when the caret goes below it.
 //! Each painted field leaves a [`FieldRegion`] in the frame recording where its lines
 //! were drawn, so the runner can turn a click into a caret position with [`caret_at`].
+//!
+//! A field may give its text [`Run`]s of other fonts and colors (formatted notes). The
+//! text is then wrapped, drawn and hit-tested by run ([`Styled`]), so the caret always
+//! sits where the glyphs are.
 
 use std::ops::Range;
 
@@ -13,6 +17,7 @@ use crate::color::Color;
 use crate::geometry::{Point, Rect};
 use crate::node::Key;
 use crate::scene::{Font, Scene};
+use crate::styled::{Run, Styled};
 use crate::text::TextSystem;
 
 /// Room kept right of the caret when the text scrolls, in logical pixels.
@@ -35,6 +40,8 @@ pub struct FieldRegion {
     pub lines: Vec<Range<usize>>,
     /// Font size.
     pub size: f32,
+    /// The text's styled runs (none: plain).
+    pub runs: Vec<Run>,
 }
 
 impl FieldRegion {
@@ -58,39 +65,45 @@ pub fn caret_at(text: &mut TextSystem, region: &FieldRegion, p: Point) -> usize 
     let Some(range) = region.lines.get(region.line_at(p.y)).cloned() else {
         return 0;
     };
-    let mut line = &region.text[range.clone()];
+    let mut line = range.clone();
     // A click past the end of a soft-wrapped line stays on it, before the space it
     // ends with, rather than landing at the start of the next line.
     let wrapped = region.lines.iter().any(|l| l.start == range.end);
-    if wrapped && let Some((last, _)) = line.char_indices().next_back() {
-        line = &line[..last];
+    if wrapped && let Some((last, _)) = region.text[line.clone()].char_indices().next_back() {
+        line.end = line.start + last;
     }
-    range.start + offset_at(text, line, region.size, p.x - region.origin_x)
+    let styled = Styled::new(&region.text, &region.runs);
+    offset_at(text, styled, line, region.size, p.x - region.origin_x)
 }
 
-/// The character boundary in one line of text nearest to `x` (from its start).
-fn offset_at(text: &mut TextSystem, s: &str, size: f32, x: f32) -> usize {
+/// The character boundary in `line` (a byte range of the text) nearest to `x` from the
+/// line's start.
+fn offset_at(text: &mut TextSystem, s: Styled<'_>, line: Range<usize>, size: f32, x: f32) -> usize {
     if x <= 0.0 {
-        return 0;
+        return line.start;
     }
-    let mut bounds: Vec<usize> = s.char_indices().map(|(i, _)| i).collect();
-    bounds.push(s.len());
+    let mut bounds: Vec<usize> = s.text[line.clone()]
+        .char_indices()
+        .map(|(i, _)| line.start + i)
+        .collect();
+    bounds.push(line.end);
+    let at = |text: &mut TextSystem, i: usize| s.width(text, line.start..bounds[i], size);
     // Prefix widths only grow, so a binary search finds the first boundary right of x.
     let (mut lo, mut hi) = (0, bounds.len() - 1);
     while lo < hi {
         let mid = usize::midpoint(lo, hi);
-        if text.measure(&s[..bounds[mid]], Font::Ui, size) < x {
+        if at(text, mid) < x {
             lo = mid + 1;
         } else {
             hi = mid;
         }
     }
     if lo == 0 {
-        return 0;
+        return line.start;
     }
     // Snap to whichever side of that character is closer.
-    let right = text.measure(&s[..bounds[lo]], Font::Ui, size);
-    let left = text.measure(&s[..bounds[lo - 1]], Font::Ui, size);
+    let right = at(text, lo);
+    let left = at(text, lo - 1);
     if x - left < right - x {
         bounds[lo - 1]
     } else {
@@ -107,6 +120,7 @@ pub(crate) struct Look<'a> {
     pub(crate) colors: [Color; 4],
     pub(crate) size: f32,
     pub(crate) multiline: bool,
+    pub(crate) runs: &'a [Run],
 }
 
 /// Paints a field into `inner` and says where its text went.
@@ -120,8 +134,9 @@ pub(crate) fn paint(
     let [color, placeholder_color, caret_color, selection_color] = look.colors;
     let size = look.size;
     let line = TextSystem::line_height(size);
+    let styled = Styled::new(look.text, look.runs);
     let lines = if look.multiline {
-        text.wrap(look.text, Font::Ui, size, inner.width - CARET_MARGIN)
+        styled.wrap(text, size, inner.width - CARET_MARGIN)
     } else {
         std::iter::once(0..look.text.len()).collect()
     };
@@ -129,7 +144,7 @@ pub(crate) fn paint(
     // start of the next line).
     let caret = look.caret.map(|c| {
         let row = lines.iter().rposition(|l| l.start <= c).unwrap_or(0);
-        (row, width(text, look.text, lines[row].start..c, size))
+        (row, styled.width(text, lines[row].start..c, size))
     });
     let (origin_x, origin_y) = if look.multiline {
         let bottom = caret.map_or(0.0, |(row, _)| row_top(row, line) + line);
@@ -147,8 +162,8 @@ pub(crate) fn paint(
             if end <= l.start || start > l.end {
                 continue;
             }
-            let a = width(text, look.text, l.start..start.max(l.start), size);
-            let b = width(text, look.text, l.start..end.min(l.end), size);
+            let a = styled.width(text, l.start..start.max(l.start), size);
+            let b = styled.width(text, l.start..end.min(l.end), size);
             // A selected line break shows as a little room after the line.
             let gap = if end > l.end && look.multiline {
                 size * 0.3
@@ -176,13 +191,8 @@ pub(crate) fn paint(
         if y + line < inner.y || y > inner.y + inner.height {
             continue;
         }
-        scene.text(
-            Point::new(origin_x.round(), y.round()),
-            look.text[l.clone()].to_owned(),
-            Font::Ui,
-            size,
-            color,
-        );
+        let at = Point::new(origin_x.round(), y.round());
+        styled.paint(scene, text, at, (l.clone(), size, color));
     }
     if let Some((row, x)) = caret {
         let y = origin_y + row_top(row, line);
@@ -200,6 +210,7 @@ pub(crate) fn paint(
         text: look.text.to_owned(),
         lines,
         size,
+        runs: look.runs.to_vec(),
     }
 }
 
@@ -208,9 +219,4 @@ fn row_top(row: usize, line: f32) -> f32 {
     #[allow(clippy::cast_precision_loss, reason = "a field has few lines")]
     let row = row as f32;
     row * line
-}
-
-/// Width of `range` of `s`.
-fn width(text: &mut TextSystem, s: &str, range: Range<usize>, size: f32) -> f32 {
-    text.measure(s.get(range).unwrap_or_default(), Font::Ui, size)
 }

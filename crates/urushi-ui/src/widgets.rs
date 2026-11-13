@@ -4,6 +4,7 @@ use crate::color::Color;
 use crate::geometry::{Insets, Point};
 use crate::node::{Align, Content, CursorIcon, Key, Length, Node, Role, Shadow};
 use crate::scene::Font;
+use crate::styled::Run;
 use crate::text::TextSystem;
 use crate::textfield::TextField;
 use crate::theme::Theme;
@@ -132,9 +133,15 @@ pub fn text_field<M>(
     placeholder: &str,
     on_focus: M,
 ) -> Node<M> {
-    field_box(theme, field, focused, (key, placeholder, on_focus), false)
-        .height(Length::Fixed(30.0))
-        .padding(Insets::symmetric(0.0, 10.0))
+    field_box(
+        theme,
+        field,
+        focused,
+        (key, placeholder, on_focus),
+        (false, Vec::new()),
+    )
+    .height(Length::Fixed(30.0))
+    .padding(Insets::symmetric(0.0, 10.0))
 }
 
 /// A text input for several lines (e.g. notes), `lines` tall. The text wraps to the
@@ -147,11 +154,36 @@ pub fn text_area<M>(
     (key, placeholder, on_focus): (Key, &str, M),
     lines: u8,
 ) -> Node<M> {
+    styled_text_area(
+        theme,
+        field,
+        focused,
+        (key, placeholder, on_focus),
+        (lines, Vec::new()),
+    )
+}
+
+/// A [`text_area`] whose text is drawn in `runs` of other fonts and colors, such as
+/// Markdown source with its marks dimmed. The runs must match the field's text; editing
+/// stays plain text.
+pub fn styled_text_area<M>(
+    theme: &Theme,
+    field: &TextField,
+    focused: bool,
+    (key, placeholder, on_focus): (Key, &str, M),
+    (lines, runs): (u8, Vec<Run>),
+) -> Node<M> {
     let pad = 6.0;
     let height = f32::from(lines) * TextSystem::line_height(theme.font_size) + 2.0 * pad;
-    field_box(theme, field, focused, (key, placeholder, on_focus), true)
-        .height(Length::Fixed(height))
-        .padding(Insets::symmetric(pad, 10.0))
+    field_box(
+        theme,
+        field,
+        focused,
+        (key, placeholder, on_focus),
+        (true, runs),
+    )
+    .height(Length::Fixed(height))
+    .padding(Insets::symmetric(pad, 10.0))
 }
 
 /// The box and content shared by [`text_field`] and [`text_area`].
@@ -160,7 +192,7 @@ fn field_box<M>(
     field: &TextField,
     focused: bool,
     (key, placeholder, on_focus): (Key, &str, M),
-    multiline: bool,
+    (multiline, runs): (bool, Vec<Run>),
 ) -> Node<M> {
     let mut node = Node::row()
         .width(Length::Fill(1.0))
@@ -173,6 +205,8 @@ fn field_box<M>(
         .role(Role::TextInput, placeholder);
     // A secret field's text never reaches the scene (or screen readers): only bullets.
     let (text, caret, selection) = field.shown();
+    // A secret field shows bullets, which the runs don't describe.
+    let runs = if field.is_secret() { Vec::new() } else { runs };
     node.children.push(
         Node {
             content: Content::Field {
@@ -186,6 +220,7 @@ fn field_box<M>(
                 selection_color: theme.accent.with_alpha(0.35),
                 size: theme.font_size,
                 multiline,
+                runs,
             },
             ..Node::new()
         }

@@ -20,6 +20,10 @@ pub enum Font {
     UiMedium,
     /// Inter, semibold weight.
     UiSemibold,
+    /// Inter Italic.
+    UiItalic,
+    /// Inter, semibold weight, italic.
+    UiSemiboldItalic,
     /// `JetBrains Mono`.
     Mono {
         /// Bold weight.
@@ -41,6 +45,8 @@ impl Font {
             Self::Ui => "ui",
             Self::UiMedium => "ui-medium",
             Self::UiSemibold => "ui-semibold",
+            Self::UiItalic => "ui-italic",
+            Self::UiSemiboldItalic => "ui-semibold-italic",
             Self::Mono {
                 bold: false,
                 italic: false,
