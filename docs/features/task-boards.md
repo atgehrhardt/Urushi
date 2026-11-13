@@ -137,7 +137,9 @@ it back.
 - **Drag** a card onto another card to put it above that card, or onto a column to put it
   at the bottom. While dragging, the card's place stays as a faint outline, an accent line
   shows where it would land (only where it would move), the column under the pointer is
-  outlined, and a raised copy of the card follows the pointer.
+  outlined, and a raised copy of the card follows the pointer. A dropped card shows where
+  it was dropped at once and stays there until the daemon answers, through any syncs
+  meanwhile; a refusal puts it back and says why (`moving.rs`, ADR 0056).
 - **Width** (ADR 0047): columns share the panel's width but never get narrower than
   `BOARD_COLUMN_MIN_WIDTH` (280 pt). With more columns than fit (an unfolded foldable, a
   narrow window, a wide sidebar), the board scrolls sideways: trackpad, Shift+wheel or a
@@ -245,6 +247,9 @@ restarts.
     `DragOver` with the drop target under the pointer as it moves, then `DropTask{column,
     before}`. `board::drop_position` turns a target into a `MoveTask`, or into nothing
     when the card would land where it already is; `DragOver` uses it to place the line.
+    The drop is shown ahead of the daemon (`moving.rs::CardMoves`, applied to the shown
+    workspace in `update.rs::show_visible_workspace`) until `Followup::CardMoved` answers
+    (`update/tests/card_moves.rs`).
   - **No flicker:** each card sits in a slot that includes the gap under it, and the drop
     line in a slot with the same target (`view/board/column.rs::slot`), so the pointer is always
     over a target and the line doesn't jump as it moves the cards.

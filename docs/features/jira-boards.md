@@ -2,13 +2,14 @@
 
 - **Status:** Shipped (Jira Cloud, API-token sign-ins to several sites or accounts, polling sync, write-through edits, issues in full, epics as cards, deleting issues, quick filters made here)
 - **Owners (crates):** `urushi-core` (`board/{jira,sync,kind,quick,jql}.rs`), `urushi-daemon` (`http.rs`, `exec.rs`, `time.rs`, `jira/{api,cloud,cloud/details,cloud/quick_filters,parse,parse/details,details,adf,credentials}.rs`, `service/{jira,jira_write,jira_query,jira_details,jira_edit,quick_filters}.rs`, `server/{jira,jira_issue,quick_filters}.rs`, the Jira branch in `service/boards.rs`), `urushi-proto` (`jira.proto`, `jira_issue.proto`, `convert/boards/jira/`), `urushi-client` (`jira.rs`, `jira_issue.rs`, `quick_filters.rs`, `TaskRef::{kind, issue}`), `urushi-ui` (`TextField::secret`), `urushi-app` (`filter.rs`, `filter/{quick,jql,editor}.rs`, `issue.rs`, `update/{jira,filter,issue,quick_filter}.rs`, `msg/{jira,filter,issue}.rs`, `view/jira.rs`, `view/board/{jira,filter,quick_filter}.rs`, `view/tasks/{jira,header}.rs`, `view/tasks/issue/`, `view/menu/{jira,filter,quick_filter}.rs`, `snapshot/{jira,jira_issue,quick_filters}.rs`, `update/issue_deletion.rs`, `view/board/dialogs.rs::delete_issue`), `urushi-cli` (`urushi jira`, `urushi board sync`, `urushi board quick`, the Jira question in `board rm-task` / `sub rm`)
-- **Related ADRs:** [0037](../adr/0037-quick-filters-written-to-jira-or-kept-here.md), [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0027](../adr/0027-epics-are-cards-on-jira-boards.md), [0034](../adr/0034-delete-jira-issues-after-confirming.md), [0036](../adr/0036-pull-requests-from-jira-dev-info-and-local-links.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
+- **Related ADRs:** [0057](../adr/0057-jira-syncs-never-move-an-issue-back-in-time.md), [0037](../adr/0037-quick-filters-written-to-jira-or-kept-here.md), [0020](../adr/0020-jira-boards-as-daemon-mirrors.md), [0021](../adr/0021-https-through-curl-and-a-private-credentials-file.md), [0022](../adr/0022-jira-issues-in-full-on-demand.md), [0023](../adr/0023-near-real-time-jira-sync.md), [0026](../adr/0026-issue-keys-in-branch-names.md), [0027](../adr/0027-epics-are-cards-on-jira-boards.md), [0034](../adr/0034-delete-jira-issues-after-confirming.md), [0036](../adr/0036-pull-requests-from-jira-dev-info-and-local-links.md), [0025](../adr/0025-new-subtasks-in-their-own-editor.md), [0002](../adr/0002-daemon-source-of-truth.md), [0015](../adr/0015-subtasks-are-nested-tasks.md)
 
 ## What it does
 Any Jira Cloud board can be imported into the Tasks panel. It keeps Jira's columns and stays
 in sync both ways: changes made in Jira show within about 3 s on the board on screen (15 s
 on others while the app is open), and changes made here go to Jira first; a dragged card
-moves at once and goes back if Jira refuses.
+moves at once and goes back if Jira refuses. A sync never moves a card back while Jira's
+search catches up with a change made here (ADR 0057).
 
 - **Sign in:** the board panel's **+** offers **New board…** and **Import from Jira…**.
   The first time, **Connect Jira** asks for the site (`acme`, `acme.atlassian.net`), the
@@ -44,12 +45,17 @@ moves at once and goes back if Jira refuses.
   (assignee, type, priority, status, label, epic, sprint, component, fix version,
   reporter) listing the values the board's issues have; several can be chosen. Values
   in one field widen it, fields narrow each other, and a card shows when it or one of
-  its subtasks passes. Quick filters are JQL, so Jira evaluates them (asked again
+  its subtasks passes (a sub-task counts as in its card's epic: Jira gives sub-tasks
+  none). Quick filters are JQL, so Jira evaluates them (asked again
   whenever the board changes while one is on, and only then); everything else is filtered here.
   While Jira is asked, the board stays as Jira last filtered it and changes once, when
   the answer comes; an answer to an older question is dropped. The avatars are the
   first eight people by name, plus anyone else chosen in the menu.
-  Columns count "shown/all". The chips scroll sideways when they don't fit. On a phone,
+  Columns count "shown/all". The filter belongs to the board on screen (UR-71): another
+  board (picked, new, imported, or shown because the last was deleted or moved) or
+  another host starts with none. A switch or field that is on always shows ("Only my
+  issues" even before the sign-in is known, a field no issue has in the menu), so it
+  can be turned off. The chips scroll sideways when they don't fit. On a phone,
   or a panel under 880 pt, the bar is the search and **Filters ▾**, and the sync state, Sync now and Remove are in the board's **⋯** (see [Task boards](task-boards.md)).
   Boards of Urushi's own get the search, type and label.
 - **Making quick filters** (ADR 0037, 1.23 daemons): **Save filter…** in the bar (or
@@ -143,7 +149,8 @@ moves at once and goes back if Jira refuses.
   `IssueFields`) from `/rest/api/3/search/jql` with
   `filter = <board filter> AND (<sub-query>) [AND sprint in openSprints()] AND
   (statusCategory != Done OR updated >= -14d) [AND updated >= -Nm] ORDER BY Rank`
-  (paged by `nextPageToken`, with guards against tokens that repeat). `issue_ids` runs
+  (paged by `nextPageToken`, with guards against tokens that repeat; a `POST` with
+  `reconcileIssues` when `IssueQuery.reconcile` names issues just written, ADR 0057). `issue_ids` runs
   the same query with `IssueQuery.extra_jql` (the chosen quick filters) for ids only
   (`service/jira_query.rs`, `QueryJiraFilter`). `jira/parse.rs` reads
   answers leniently; `jira/adf.rs` turns ADF into plain notes and back.
@@ -154,7 +161,12 @@ moves at once and goes back if Jira refuses.
   `ACTIVE_INTERVAL` (15 s) while a client subscribes, `IDLE_INTERVAL` (2 min) otherwise,
   and at once after a write (`poke`). A sync first asks `JiraApi::changed` (ids and
   update times, `fields=updated`), compares with `BoardSync.seen`, and reads in full only
-  the issues whose time is new (`id in (…)`); a full read every `FULL_INTERVAL` (5 min),
+  the issues whose time is newer (`id in (…)`); a look that finds none merges nothing.
+  Jira's search lags behind its writes, so a sync never moves an issue back in time
+  (ADR 0057): `seen` only moves forward (`BoardSync::see`), issues a read has older than
+  seen go into `Read.keep` and `Board::merge_issues_keeping` keeps them as they are,
+  and issues written in the last `RECONCILE_FOR` (60 s, `BoardSync.written`, noted by
+  `saw`) are searched with `reconcileIssues`; a full read every `FULL_INTERVAL` (5 min),
   on import and on `SyncBoard` reads the configuration and everything. Reads happen off
   the state lock; the merge runs in `mutate_if_changed`, which persists and wakes
   clients only if the board changed. Failures are written to `JiraBoard.sync.error` and
@@ -237,7 +249,11 @@ moves at once and goes back if Jira refuses.
   `ImportJiraBoard` → `Board`, `SyncBoard`; `ERROR_CODE_UNAVAILABLE` when Jira can't be
   reached. The token travels only in `ConnectJira`.
 - **App:** `filter.rs` (`BoardFilter`, `Dim`, `board_values`, `board_dims`; the filter is
-  the window's own), `update/filter.rs` (`FilterMsg`, the search as `Field::BoardSearch`
+  the window's own, for the board on screen: `update/shown_board.rs` resets the panel's
+  per-board state (`BoardPanel::reset_for_board`) after any message that changes which
+  board shows, and `update/lan.rs::reconnect_to` forgets the old host's boards and
+  sign-ins; a reconnect sends `WatchBoard` and `QueryJiraFilter` again and keeps the
+  sign-ins until `ListJiraAccounts` answers), `update/filter.rs` (`FilterMsg`, the search as `Field::BoardSearch`
   outside any dialog, quick-filter queries with `BoardPanel.{quick_asking,
   quick_stale, quick_query}`; `Followup::QuickFilter(board, query)`), `view/board/filter.rs` (the bar), `view/menu/filter.rs` (the menu, a
   `MenuPage::Filter(Dim)` page per field, scrolling past ten values). Quick filters:
@@ -293,6 +309,12 @@ moves at once and goes back if Jira refuses.
   bounds, and merging the same snapshot again changes nothing (`urushi-core/tests/jira_sync_props.rs`, `board/sync/tests.rs`).
 - An epic never gets sub-tasks: refused before Jira is asked
   (`tests/jira_boards.rs::epics_are_cards_and_can_be_created`).
+- A sync never moves an issue back to an older version, whether it looks at what
+  changed or reads everything; issues just written are searched with `reconcileIssues`
+  (`tests/jira_lag.rs` against a lagging fake search, `board/sync/tests.rs::kept_issues_stay_as_they_are_through_a_full_merge_without_them`,
+  `tests/jira_sync_props.rs`, `jira/cloud/tests.rs::issues_just_written_are_searched_by_post_to_be_reconciled`).
+- A board's filter never carries over to another board or host
+  (`update/tests/board_switch.rs`).
 - A change Jira refuses changes nothing here
   (`tests/jira_boards.rs::moves_and_new_cards_take_jiras_transitions`, `what_jira_owns_is_refused`,
   `tests/jira_deletion.rs::issues_and_subtasks_are_deleted_in_jira`).
@@ -347,7 +369,10 @@ moves at once and goes back if Jira refuses.
   `an_older_daemon_has_one_sign_in_that_a_new_one_replaces`) and the `jira-accounts` and
   `jira-import-accounts` snapshots.
 - UI: `textfield/secret.rs`. App: `filter/tests.rs` (each dimension, how they combine,
-  subtasks keeping their card), `issue.rs` (durations, drafts), `update/tests/jira.rs` (a new issue created only on
+  subtasks keeping their card and counting in its epic, search ignoring case),
+  `filter/cache/tests.rs` (the caret doesn't drop the memo; a chosen field stays offered),
+  `update/tests/board_switch.rs` (another host, a new or imported board, the shown one
+  deleted or reordered; reconnects and restarts ask again), `update/tests/card_moves.rs`, `issue.rs` (durations, drafts), `update/tests/jira.rs` (a new issue created only on
   Save, field drafts sent with Save, changes made at once, required create fields,
   filters, quick-filter queries (asked again only when the board changes, no flash of the whole board, older answers dropped), the search's keyboard, a new epic, an epic under its own
   filter), `update/tests/jira_deletion.rs` (asking first, Keep and Escape, the card
@@ -363,6 +388,11 @@ moves at once and goes back if Jira refuses.
   v2) and no OAuth sign-in.
 - Polling, not webhooks: changes take up to 3 s on the board on screen, 15 s on others,
   and 2 min with no app open, to arrive.
+- Each Jira request is its own `curl` process with its own TLS handshake (ADR 0021), so
+  a move (transitions, transition, rank, read back) takes a second or two to reach Jira,
+  and waits for a sync in progress (the board's lock). The card shows at once
+  meanwhile, but a second write to the same board queues behind the first.
+- A filter isn't remembered per board: going back to a board starts it unfiltered.
 - Field edits other than moves wait for Jira (about a second) before the card changes.
 - Sprint and backlog views aren't here; an issue's sprint is a field.
 - Markdown can't say everything ADF can: panels, colors and mentions as links read as
