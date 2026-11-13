@@ -60,7 +60,8 @@ pub(super) fn bar(
         .align(Align::Center);
     if let Some(jira) = board.jira.as_deref().filter(|_| !narrow) {
         chips = chips.children(avatars(state, theme, board));
-        if state.filter_context().me.is_some() {
+        // While on, it shows even with "me" unknown, so it can be turned off (UR-71).
+        if f.mine || state.filter_context().me.is_some() {
             chips = chips.child(chip(
                 theme,
                 "Only my issues",

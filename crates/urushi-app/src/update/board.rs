@@ -39,17 +39,9 @@ impl AppState {
             }
             Msg::SelectBoard(id) => {
                 // Phones choose boards from a menu.
+                // What belonged to the board shown before goes with it
+                // (`update/shown_board.rs`).
                 self.menu = None;
-                let shown = self.board.board(&self.workspace).map(|b| b.id.as_str());
-                if shown != Some(id.as_str()) {
-                    self.board.filter.clear();
-                    if self.focus == Some(crate::state::Field::BoardSearch) {
-                        self.focus = None;
-                    }
-                }
-                if shown != Some(id.as_str()) {
-                    self.board.column = None;
-                }
                 self.board.selected = Some(id);
             }
             Msg::ShowColumn(column) => self.board.column = Some(column),

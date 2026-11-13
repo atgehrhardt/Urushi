@@ -51,7 +51,7 @@ fn it_answers_as_the_filter_does() {
     for dim in [Dim::Label, Dim::Type] {
         assert_eq!(&*cache.values(&b, dim), board_values(&b, dim).as_slice());
     }
-    assert_eq!(cache.dims(&b), board_dims(&b));
+    assert_eq!(cache.dims(&b, &f), board_dims(&b));
     assert_eq!(cache.count(&b, &b.columns[0], &f, Context::default()), 1);
 }
 
@@ -74,4 +74,28 @@ fn a_changed_board_or_filter_is_worked_out_again() {
     assert!(shown_ids(&cache, &b, &f).is_empty());
     // A copy of the state doesn't carry the memo, nor change equality.
     assert_eq!(cache.clone(), cache);
+}
+
+#[test]
+fn moving_the_search_caret_keeps_the_memo() {
+    let b = board(vec![task("1", "Checkout", &[]), task("2", "Login", &[])]);
+    let cache = FilterCache::default();
+    let mut f = BoardFilter {
+        search: urushi_ui::TextField::new("check"),
+        ..BoardFilter::default()
+    };
+    let first = cache.shown(&b, &f, Context::default());
+    f.search.select_all();
+    let again = cache.shown(&b, &f, Context::default());
+    assert!(std::rc::Rc::ptr_eq(&first, &again), "worked out once");
+}
+
+#[test]
+fn a_field_with_a_value_chosen_is_offered_though_no_task_has_it() {
+    let b = board(vec![task("1", "Checkout", &["payments"])]);
+    let cache = FilterCache::default();
+    let mut f = BoardFilter::default();
+    // Chosen on another board, or before the board changed: it can still be unchosen.
+    f.toggle(Dim::Assignee, "acc-ada");
+    assert_eq!(cache.dims(&b, &f), [Dim::Assignee, Dim::Label]);
 }

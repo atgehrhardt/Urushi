@@ -170,6 +170,15 @@ fn the_label_filter_resets_with_another_board() {
     assert!(s.board.filter.shows(a, cx) && !s.board.filter.shows(b, cx));
     s.update(Msg::SelectBoard("b".into()));
     assert!(s.board.filter.active(), "the same board keeps it");
+    let mut workspace = super::workspace();
+    let mut other = board();
+    other.id = "other".into();
+    workspace.boards = vec![s.workspace.raw().boards[0].clone(), other];
+    s.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(workspace)));
+    assert!(
+        s.board.filter.active(),
+        "another board appearing changes nothing"
+    );
     s.update(Msg::SelectBoard("other".into()));
     assert!(!s.board.filter.active());
 }

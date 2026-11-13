@@ -110,6 +110,11 @@ impl AppState {
         self.deletions = crate::deletions::Deletions::default();
         self.selected_thread = None;
         self.lan = None;
+        // Its boards, sign-ins and thumbnails are another host's (UR-71).
+        self.board.selected = None;
+        self.board.watching = None;
+        self.board.thumbnails = crate::board::Thumbnails::default();
+        self.jira_accounts.clear();
         self.reset_panes();
         fx.push(Effect::Reconnect(target));
     }

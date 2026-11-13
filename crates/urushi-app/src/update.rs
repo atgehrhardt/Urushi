@@ -32,6 +32,7 @@ impl AppState {
             return Vec::new();
         }
         let before = crate::errors::BeforeUpdate::of(self);
+        let shown_board = self.board.shown_id(&self.workspace);
         let mut fx = Vec::new();
         match msg {
             // A dialog field's Cut/Copy/Paste menu: `update/fields.rs`.
@@ -245,6 +246,7 @@ impl AppState {
             Msg::Paste(text) => self.insert_text(text, v1::input::Kind::Paste, &mut fx),
             Msg::Copy => self.copy(&mut fx),
         }
+        self.follow_shown_board(shown_board.as_deref());
         self.want_thumbnails(&mut fx);
         self.watch_shown_board(&mut fx);
         self.attend(&mut fx);
@@ -283,8 +285,14 @@ impl AppState {
         ));
         self.lan = None;
         self.request_lan_status(fx);
-        self.jira_accounts.clear();
+        // The sign-ins stay until the daemon says otherwise, so "me" stays known; another
+        // host's were dropped when it was chosen (`reconnect_to`).
         self.request_jira_account(fx);
+        // A new connection watches nothing, and an answer on its way was lost with the
+        // old one: tell the daemon again and ask Jira again.
+        self.board.watching = None;
+        self.board.quick_asking = false;
+        self.refresh_quick_filter(fx);
     }
 
     fn select_thread(&mut self, id: String, fx: &mut Vec<Effect>) {
@@ -800,6 +808,7 @@ mod quick;
 mod quick_filter;
 mod saving;
 mod setup;
+mod shown_board;
 mod sidebar;
 mod sidebar_drag;
 mod subtask_drafts;
