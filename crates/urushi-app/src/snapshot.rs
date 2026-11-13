@@ -105,6 +105,7 @@ pub const SCENARIOS: &[&str] = &[
     "project-settings",
     "thread-extras",
     "thread-notes",
+    "thread-notes-format",
     "project-color-menu",
 ];
 

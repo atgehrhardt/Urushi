@@ -149,10 +149,15 @@ fn opening_an_unread_thread_marks_it_read_once() {
 fn the_notes_editor_saves_or_cancels() {
     let mut s = with_extras();
     s.update(Msg::Thread(ThreadMsg::OpenNotes("u".into())));
-    let Some(Dialog::ThreadNotes { thread, notes }) = &s.dialog else {
+    let Some(Dialog::ThreadNotes {
+        thread,
+        notes,
+        color,
+    }) = &s.dialog
+    else {
         panic!("{:?}", s.dialog);
     };
-    assert_eq!(thread, "u");
+    assert_eq!((thread.as_str(), *color), ("u", 0));
     assert_eq!(notes.text(), "\n  Ask about retries  \nthen ship");
     assert_eq!(s.focus, Some(Field::ThreadNotes));
     assert!(has(&buttons(&s), "Save"));
@@ -172,7 +177,7 @@ fn the_notes_editor_saves_or_cancels() {
             &fx[..],
             [Effect::Request { body: Body::UpdateThread(r), followup: Followup::CloseDialog }]
                 if r.thread_id == "n" && r.notes.as_deref() == Some("Line one\nline two")
-                    && r.unread.is_none()
+                    && r.unread.is_none() && r.notes_color.is_none()
         ),
         "{fx:?}"
     );

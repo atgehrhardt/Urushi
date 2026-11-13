@@ -1,5 +1,6 @@
-//! A thread's unread mark and notes, and a project's color (UR-62, ADR 0048). The daemon
-//! keeps all three; this sends the requests. Opening an unread thread marks it read.
+//! A thread's unread mark and notes, and a project's color (UR-62, ADR 0048), and the
+//! notes' color (ADR 0058). The daemon keeps them all; this sends the requests. Opening
+//! an unread thread marks it read.
 
 use urushi_client::v1::{self, request::Body};
 use urushi_ui::TextField;
@@ -20,14 +21,25 @@ impl AppState {
                 self.update_thread(thread, |r| r.unread = Some(unread), fx);
             }
             ThreadMsg::OpenNotes(thread) => {
-                let Some(current) = self.workspace.thread(&thread).map(|t| t.notes.clone()) else {
+                let Some((current, color)) = self
+                    .workspace
+                    .thread(&thread)
+                    .map(|t| (t.notes.clone(), t.notes_color))
+                else {
                     return;
                 };
                 self.dialog = Some(Dialog::ThreadNotes {
                     thread,
                     notes: TextField::multiline(current),
+                    color,
                 });
                 self.focus = Some(Field::ThreadNotes);
+            }
+            ThreadMsg::FormatNotes(format) => self.format_notes(format),
+            ThreadMsg::NotesColor(wire) => {
+                if let Some(Dialog::ThreadNotes { color, .. }) = &mut self.dialog {
+                    *color = wire;
+                }
             }
             ThreadMsg::SetProjectColor { project, color } => fx.push(request(
                 Body::SetFolderColor(v1::SetFolderColorRequest {
@@ -54,16 +66,23 @@ impl AppState {
         }
     }
 
-    /// Save in the notes editor: replace the thread's notes (blank clears them). The
-    /// dialog closes once the daemon has them.
+    /// Save in the notes editor: replace the thread's notes (blank clears them) and,
+    /// where the daemon keeps one, their color, in one update. The dialog closes once
+    /// the daemon has them.
     pub(super) fn submit_thread_notes(&mut self, fx: &mut Vec<Effect>) {
-        let Some(Dialog::ThreadNotes { thread, notes }) = &self.dialog else {
+        let Some(Dialog::ThreadNotes {
+            thread,
+            notes,
+            color,
+        }) = &self.dialog
+        else {
             return;
         };
         fx.push(request(
             Body::UpdateThread(v1::UpdateThreadRequest {
                 thread_id: thread.clone(),
                 notes: Some(notes.text().trim_end().to_owned()),
+                notes_color: self.daemon_supports_notes_color().then_some(*color),
                 ..Default::default()
             }),
             Followup::CloseDialog,

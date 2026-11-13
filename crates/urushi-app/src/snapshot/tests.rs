@@ -703,15 +703,24 @@ fn the_quick_terminal_drops_down_over_the_thread_with_its_toggles() {
 
 #[test]
 fn the_threads_bar_shows_unread_threads_notes_and_project_colors() {
+    // The notes' first line, formatted and orange, without its Markdown.
     let sidebar = dump("thread-extras", 1280.0);
+    let orange = urushi_ui::Theme::dark().labels[urushi_core::LabelColor::Orange.index()].to_hex();
     assert!(
-        sidebar.contains("\"Waiting on the copy review"),
+        sidebar.contains("\"Waiting\" ui-semibold") && sidebar.contains(&orange),
         "{sidebar}"
     );
-    assert!(!sidebar.contains("Then ship behind the flag."), "{sidebar}");
+    assert!(!sidebar.contains("**Waiting**"), "{sidebar}");
+    assert!(!sidebar.contains("Ship behind"), "{sidebar}");
     let notes = dump("thread-notes", 1280.0);
     assert!(notes.contains("\"Notes — Pricing page\""), "{notes}");
-    assert!(notes.contains("Then ship behind the flag."), "{notes}");
+    assert!(notes.contains("\"Ship behind the \""), "{notes}");
+    assert!(notes.contains("\"pricing_v2\" mono"), "{notes}");
+    let format = dump("thread-notes-format", 1280.0);
+    assert!(
+        format.contains("\"B\" ui-semibold"),
+        "the toolbar: {format}"
+    );
     let menu = dump("project-color-menu", 1280.0);
     for color in ["\"None\"", "\"Teal\"", "\"Purple\""] {
         assert!(menu.contains(color), "{color} missing: {menu}");

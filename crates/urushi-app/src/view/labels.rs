@@ -74,40 +74,50 @@ pub(super) fn tag_chip(theme: &Theme, tag: &str, size: f32, on_remove: Option<Ms
 /// A row of swatches, "none" first; the chosen one is ringed. `pick` makes the message
 /// for a wire color.
 pub(super) fn swatches(theme: &Theme, chosen: i32, pick: impl Fn(i32) -> Msg) -> Node<Msg> {
-    let swatch = |wire: i32, fill: Option<Color>, name: String| {
-        let on = wire == chosen;
-        let mut inner = Node::row()
-            .width(Length::Fixed(SWATCH))
-            .height(Length::Fixed(SWATCH))
-            .radius(SWATCH / 2.0)
-            .justify(Align::Center)
-            .align(Align::Center);
-        inner = match fill {
-            Some(c) => inner.background(c),
-            None => inner.border(1.0, theme.text_muted).child(Node::text(
-                "∅",
-                Font::Ui,
-                theme.font_size_small,
-                theme.text_muted,
-            )),
-        };
-        Node::row()
-            .padding(Insets::all(2.0))
-            .radius(SWATCH / 2.0 + 2.0)
-            .border(1.5, if on { theme.text } else { Color::TRANSPARENT })
-            .key(key(&["swatch", &name]))
-            .on_click(pick(wire))
-            .role(Role::Item, format!("Color {name}"))
-            .child(inner)
-    };
     Node::row()
         .gap(4.0)
         .align(Align::Center)
-        .child(swatch(0, None, "None".into()))
-        .children(
-            palette()
-                .map(|(c, wire)| swatch(wire, Some(theme.labels[c.index()]), color_name(wire))),
-        )
+        .child(swatch(theme, (None, "None"), chosen == 0, pick(0)))
+        .child(palette_swatches(theme, chosen, pick))
+}
+
+/// A row of the palette's swatches only, for a choice that always has a color.
+pub(super) fn palette_swatches(theme: &Theme, chosen: i32, pick: impl Fn(i32) -> Msg) -> Node<Msg> {
+    Node::row()
+        .gap(4.0)
+        .align(Align::Center)
+        .children(palette().map(|(c, wire)| {
+            let name = color_name(wire);
+            let fill = Some(theme.labels[c.index()]);
+            swatch(theme, (fill, &name), wire == chosen, pick(wire))
+        }))
+}
+
+/// One swatch: a dot of `fill` (∅ for none), ringed when `on`.
+fn swatch(theme: &Theme, (fill, name): (Option<Color>, &str), on: bool, msg: Msg) -> Node<Msg> {
+    let mut inner = Node::row()
+        .width(Length::Fixed(SWATCH))
+        .height(Length::Fixed(SWATCH))
+        .radius(SWATCH / 2.0)
+        .justify(Align::Center)
+        .align(Align::Center);
+    inner = match fill {
+        Some(c) => inner.background(c),
+        None => inner.border(1.0, theme.text_muted).child(Node::text(
+            "∅",
+            Font::Ui,
+            theme.font_size_small,
+            theme.text_muted,
+        )),
+    };
+    Node::row()
+        .padding(Insets::all(2.0))
+        .radius(SWATCH / 2.0 + 2.0)
+        .border(1.5, if on { theme.text } else { Color::TRANSPARENT })
+        .key(key(&["swatch", name]))
+        .on_click(msg)
+        .role(Role::Item, format!("Color {name}"))
+        .child(inner)
 }
 
 /// About how wide `text` is drawn at `size`, for wrapping chips into rows (the layout

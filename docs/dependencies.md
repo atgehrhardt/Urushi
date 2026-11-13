@@ -69,7 +69,7 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | Asset | License | Purpose |
 |---|---|---|
 | JetBrains Mono (Regular, Bold, Italic, Bold Italic) | OFL-1.1 (`assets/fonts/JetBrainsMono-OFL.txt`) | Terminal font |
-| Inter (Regular, Medium, SemiBold) | OFL-1.1 (`assets/fonts/Inter-OFL.txt`) | UI font |
+| Inter 4.1 (Regular, Medium, SemiBold, Italic, SemiBold Italic) | OFL-1.1 (`assets/fonts/Inter-OFL.txt`) | UI font. The italic faces draw italic text in formatted thread notes (ADR 0058); they come from the same release as the others. |
 | App icon and logo (`assets/icon/`) | Ours | Designed for Urushi; see `docs/platforms.md`. |
 | Jira and GitHub marks (`assets/brands/*.svg`, from [Simple Icons](https://simpleicons.org) 16.35.0) | CC0-1.0 (the icon set); the marks are their owners' trademarks | A thread card's links to its Jira issue and pull request (ADR 0036). Used only to point at the brand's own pages, as [Atlassian's](https://atlassian.design/foundations/logos/) and [GitHub's](https://github.com/logos) guidelines allow; Simple Icons' disclaimer asks users to follow them. Rendered to white masks (`*-48.rgba`) by `scripts/render-icons.swift` and tinted by the app. Drawing our own look-alikes would be no less a use of the marks. |
 
@@ -86,3 +86,4 @@ External programs we *run but do not link or ship* (`git`, `tailscale`) are not 
 | HTTPS client | `urushi-daemon::http` | We run the system's `curl` with the request as a config on stdin; a TLS stack would be a large tree, and `webpki-roots` isn't on our license allowlist (ADR 0021). |
 | Base64, percent-encoding | `urushi-daemon::http` | A few lines each, for Basic auth and query strings. |
 | Atlassian Document Format ⇄ text | `urushi-daemon::jira::adf` | Only plain-text reading and paragraph writing are needed. |
+| Markdown for thread notes | `urushi-core::markdown` | ~300 lines. We need per-line byte ranges of the source with the markup as spans, plus edits for the formatting controls, which document parsers such as pulldown-cmark don't give (ADR 0058). |

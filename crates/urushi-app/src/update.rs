@@ -825,6 +825,7 @@ mod jira;
 mod keys;
 pub(crate) mod lan;
 mod launcher;
+mod notes_format;
 mod organize;
 mod panes;
 mod pointer;

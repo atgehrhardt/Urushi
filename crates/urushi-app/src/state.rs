@@ -274,12 +274,14 @@ pub enum Dialog {
         /// For a task: a new thread, or a new tab in one that exists.
         target: ThreadTarget,
     },
-    /// A thread's notes, edited over several lines (ADR 0048).
+    /// A thread's notes, edited over several lines (ADR 0048) as Markdown (ADR 0058).
     ThreadNotes {
         /// Thread id.
         thread: String,
         /// The notes.
         notes: TextField,
+        /// Their color, a wire `LabelColor` (0: the default note color).
+        color: i32,
     },
     /// A one-line text prompt.
     Prompt {
@@ -769,6 +771,11 @@ impl AppState {
     /// 1.27).
     pub fn daemon_supports_thread_extras(&self) -> bool {
         self.daemon_minor >= crate::organize::THREAD_EXTRAS_SINCE_MINOR
+    }
+
+    /// Whether the daemon keeps a color for a thread's notes (protocol 1.32).
+    pub fn daemon_supports_notes_color(&self) -> bool {
+        self.daemon_minor >= crate::organize::NOTES_COLOR_SINCE_MINOR
     }
 
     /// Whether the daemon can reorder threads (protocol 1.24).
