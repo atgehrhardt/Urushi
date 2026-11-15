@@ -37,6 +37,9 @@ pub(super) fn update_thread(
             project,
             unread: r.unread,
             notes: r.notes,
+            notes_color: r
+                .notes_color
+                .map(|c| convert::color_from_proto(c).map_or(Assign::Clear, Assign::Set)),
         },
     )?;
     Ok(ok())

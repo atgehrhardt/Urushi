@@ -10,10 +10,11 @@
 
 use std::sync::Arc;
 
-use urushi_ui::widgets::{text_area, text_field, wrapped_text};
+use urushi_ui::rich_line;
+use urushi_ui::widgets::{styled_text_area, text_area, text_field, wrapped_text};
 use urushi_ui::{
-    Font, ImageData, Length, Node, Point, Primitive, Rect, TextField, TextSystem, Theme, build,
-    caret_at, key,
+    Font, ImageData, Length, Node, Point, Primitive, Rect, Run, TextField, TextStyle, TextSystem,
+    Theme, build, caret_at, key,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -239,4 +240,97 @@ fn wrapped_text_ends_with_an_ellipsis_when_it_overflows() {
         ));
     let frame = build(&short, Rect::new(0.0, 0.0, 400.0, 400.0), &mut text, None);
     assert_eq!(texts(&frame), ["short", "note"], "blank lines draw nothing");
+}
+
+#[test]
+fn styled_text_is_drawn_by_run_and_clicks_land_between_its_glyphs() {
+    let mut text = TextSystem::bundled_only();
+    let theme = Theme::dark();
+    // "**wide** text": the marks in mono, "wide" semibold.
+    let field = TextField::multiline("**wide** text");
+    let mono = TextStyle {
+        font: Font::MONO,
+        ..TextStyle::default()
+    };
+    let bold = TextStyle {
+        font: Font::UiSemibold,
+        color: Some(theme.accent),
+        ..TextStyle::default()
+    };
+    let runs = vec![
+        Run::new(0..2, mono),
+        Run::new(2..6, bold),
+        Run::new(6..8, mono),
+    ];
+    let root = Node::column().child(
+        styled_text_area(
+            &theme,
+            &field,
+            true,
+            (key(&["f"]), "", Msg::Focus),
+            (3, runs.clone()),
+        )
+        .width(Length::Fixed(300.0)),
+    );
+    let frame = build(&root, Rect::new(0.0, 0.0, 800.0, 200.0), &mut text, None);
+    let dump = frame.scene.dump();
+    assert!(dump.contains("\"**\" mono"), "{dump}");
+    assert!(
+        dump.contains(&format!(
+            "\"wide\" ui-semibold 13 {}",
+            theme.accent.to_hex()
+        )),
+        "{dump}"
+    );
+    assert!(dump.contains("\" text\" ui 13"), "{dump}");
+    let region = frame.field(key(&["f"])).cloned().unwrap();
+    assert_eq!(region.runs, runs);
+    // Just after "**wi": measured in the runs' own fonts.
+    let x = region.origin_x
+        + text.measure("**", Font::MONO, region.size)
+        + text.measure("wi", Font::UiSemibold, region.size);
+    let y = region.origin_y + 5.0;
+    assert_eq!(caret_at(&mut text, &region, Point::new(x + 0.5, y)), 4);
+    assert_eq!(caret_at(&mut text, &region, Point::new(x - 0.5, y)), 4);
+}
+
+#[test]
+fn a_rich_line_is_cut_short_where_it_runs_out() {
+    let mut text = TextSystem::bundled_only();
+    let white = urushi_ui::Color::hex(0xffffff);
+    let struck = TextStyle {
+        font: Font::UiItalic,
+        strike: true,
+        ..TextStyle::default()
+    };
+    let line = "gone and then a long tail that cannot fit";
+    let row = |width: f32| {
+        Node::<Msg>::row().child(
+            rich_line(line, vec![Run::new(0..4, struck)], 12.0, white).width(Length::Fixed(width)),
+        )
+    };
+    let wide = build(
+        &row(600.0),
+        Rect::new(0.0, 0.0, 800.0, 40.0),
+        &mut text,
+        None,
+    );
+    let dump = wide.scene.dump();
+    assert!(dump.contains("\"gone\" ui-italic 12 #ffffff"), "{dump}");
+    assert!(
+        dump.contains("\" and then a long tail that cannot fit\" ui 12"),
+        "{dump}"
+    );
+    assert_eq!(dump.matches("quad").count(), 1, "the strikethrough: {dump}");
+
+    let narrow = build(
+        &row(80.0),
+        Rect::new(0.0, 0.0, 800.0, 40.0),
+        &mut text,
+        None,
+    );
+    let dump = narrow.scene.dump();
+    assert!(dump.contains("\"gone\" ui-italic"), "{dump}");
+    assert!(dump.contains('…'), "{dump}");
+    assert!(!dump.contains("cannot fit"), "{dump}");
 }

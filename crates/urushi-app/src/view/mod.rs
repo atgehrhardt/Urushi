@@ -14,6 +14,7 @@ mod main_area;
 mod menu;
 mod modal;
 mod new_thread;
+mod note_style;
 mod project_settings;
 mod projects;
 mod quick_terminal;

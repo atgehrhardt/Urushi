@@ -1,8 +1,10 @@
 //! A thread card's text: its title (bold with a dot while unread), the marks for its
-//! notes and links, the line naming its repo and branch, and its notes' first line.
+//! notes and links, the line naming its repo and branch, and its notes' first line,
+//! formatted and in the notes' color (ADR 0058).
 
 use urushi_client::{ThreadLinks, v1};
-use urushi_ui::{Align, Font, Insets, Length, Node, Role, Theme, key};
+use urushi_core::markdown::BlockKind;
+use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key, rich_line};
 
 use crate::brand_icons::{Brand, mark};
 use crate::msg::Msg;
@@ -37,7 +39,12 @@ pub(super) fn thread_title(
         .align(Align::Center)
         .children(thread.unread.then(|| unread_dot(theme)))
         .child(Node::text(&thread.title, font, theme.font_size, color).width(Length::Fill(1.0)))
-        .children((!thread.notes.is_empty()).then(|| note_mark(theme)))
+        .children((!thread.notes.is_empty()).then(|| {
+            note_mark(super::super::note_style::note_color(
+                theme,
+                thread.notes_color,
+            ))
+        }))
         .children(
             links
                 .into_iter()
@@ -123,18 +130,44 @@ pub(super) fn card_label(thread: &v1::Thread, attention: Option<Indicator>) -> S
     label
 }
 
-/// The first non-blank line of the thread's notes, cut to the card's width.
+/// The first line of the thread's notes with text, its Markdown drawn rather than shown,
+/// in the notes' color and cut to the card's width. A task item has its box before it.
 pub(super) fn notes_preview(theme: &Theme, thread: &v1::Thread) -> Option<Node<Msg>> {
-    let line = thread
-        .notes
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty())?;
+    let color = super::super::note_style::note_color(theme, thread.notes_color);
+    let preview = super::super::note_style::preview(&thread.notes, color)?;
+    let size = theme.font_size_small;
+    let task = match preview.kind {
+        BlockKind::Task { done } => Some(task_box(color, done)),
+        _ => None,
+    };
     Some(
-        Node::text(line, Font::Ui, theme.font_size_small, theme.text_muted)
+        Node::row()
             .width(Length::Fill(1.0))
-            .key(key(&["thread-notes", &thread.id])),
+            .gap(5.0)
+            .align(Align::Center)
+            .key(key(&["thread-notes", &thread.id]))
+            .children(task)
+            .child(rich_line(&preview.text, preview.runs, size, color)),
     )
+}
+
+/// A task's check box on a card: empty, or filled with a tick when done. Drawn, since
+/// the bundled fonts have no ballot box.
+fn task_box(color: Color, done: bool) -> Node<Msg> {
+    let size = 9.0;
+    let node = Node::row()
+        .width(Length::Fixed(size))
+        .height(Length::Fixed(size))
+        .radius(2.0)
+        .justify(Align::Center)
+        .align(Align::Center)
+        .key(key(&["task-box", if done { "done" } else { "open" }]));
+    if done {
+        node.background(color)
+            .child(Node::text("✓", Font::UiSemibold, 8.0, Color::hex(0x000000)))
+    } else {
+        node.border(1.0, color)
+    }
 }
 
 /// The dot before an unread thread's title.
@@ -147,14 +180,14 @@ fn unread_dot(theme: &Theme) -> Node<Msg> {
         .key(key(&["unread-dot"]))
 }
 
-/// A small page with lines on it: the thread has notes. Drawn rather than a glyph, which
-/// the bundled fonts don't have.
-fn note_mark(theme: &Theme) -> Node<Msg> {
+/// A small page with lines on it, in the notes' color: the thread has notes. Drawn
+/// rather than a glyph, which the bundled fonts don't have.
+fn note_mark(color: Color) -> Node<Msg> {
     let line = || {
         Node::new()
             .width(Length::Fill(1.0))
             .height(Length::Fixed(1.0))
-            .background(theme.text_muted)
+            .background(color)
     };
     Node::column()
         .width(Length::Fixed(9.0))
@@ -162,7 +195,7 @@ fn note_mark(theme: &Theme) -> Node<Msg> {
         .padding(Insets::symmetric(2.0, 2.0))
         .gap(2.0)
         .radius(1.5)
-        .border(1.0, theme.text_muted)
+        .border(1.0, color)
         .key(key(&["note-mark"]))
         .children([line(), line(), line()])
 }

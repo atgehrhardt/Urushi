@@ -29,7 +29,7 @@ Crates marked ⏳ are planned but don't exist yet. Create them where listed; don
 
 | Crate | Role |
 |---|---|
-| `crates/urushi-core` | Pure domain model: ids, repos, projects, threads, tabs, layout tree, task boards, settings, branch-ownership rules. **No IO, no async, compiles on every target.** |
+| `crates/urushi-core` | Pure domain model: ids, repos, projects, threads, tabs, layout tree, task boards, settings, branch-ownership rules, the Markdown of thread notes. **No IO, no async, compiles on every target.** |
 | `crates/urushi-proto` | Protobuf types (prost + protox), the length-prefixed frame codec, and the Noise channel for LAN connections. |
 | `crates/urushi-mux` | `Pty` / `Emulator` traits + adapters, the per-pane Session actor, screen diffs, key encoding. |
 | `crates/urushi-daemon` | `urushid`: server, request router, JSON document store, git worktree lifecycle, Tailscale, LAN access, agent usage, Jira board sync. |

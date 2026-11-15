@@ -197,16 +197,20 @@ enum ThreadCmd {
         /// Thread id.
         thread: String,
     },
-    /// Print a thread's notes, or change them with --set or --clear.
+    /// Print a thread's notes, or change them with --set, --clear or --color.
     Notes {
         /// Thread id.
         thread: String,
-        /// New notes; "-" reads them from standard input.
+        /// New notes, in Markdown; "-" reads them from standard input.
         #[arg(long)]
         set: Option<String>,
-        /// Remove the notes.
+        /// Remove the notes (and their color).
         #[arg(long, conflicts_with = "set")]
         clear: bool,
+        /// The color the notes are shown in: red, orange, yellow, green, teal, blue,
+        /// purple, pink, gray, or none for the default (protocol 1.32).
+        #[arg(long, conflicts_with = "clear")]
+        color: Option<String>,
     },
     /// Set a thread's status, or clear it when STATUS is omitted.
     Status {

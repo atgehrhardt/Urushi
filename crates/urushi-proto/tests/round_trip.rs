@@ -184,6 +184,7 @@ fn all_request_kinds() {
             folder_id: Some("f".into()),
             unread: Some(true),
             notes: Some("Check the logs\nfirst".into()),
+            notes_color: Some(v1::LabelColor::Orange.into()),
         }),
         B::SetFolderColor(v1::SetFolderColorRequest {
             folder_id: "f".into(),

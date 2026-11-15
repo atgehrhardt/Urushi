@@ -6,16 +6,22 @@
 //! scripts and emoji the bundled fonts don't cover.
 
 use std::collections::HashMap;
-use std::ops::Range;
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, Weight, fontdb};
 
 use crate::scene::Font;
 use crate::text_cache::TextCache;
 
+mod wrap;
+
+pub use wrap::Measure;
+
 const INTER_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/Inter-Regular.ttf");
 const INTER_MEDIUM: &[u8] = include_bytes!("../../../assets/fonts/Inter-Medium.ttf");
 const INTER_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/Inter-SemiBold.ttf");
+const INTER_ITALIC: &[u8] = include_bytes!("../../../assets/fonts/Inter-Italic.ttf");
+const INTER_SEMIBOLD_ITALIC: &[u8] =
+    include_bytes!("../../../assets/fonts/Inter-SemiBoldItalic.ttf");
 const MONO_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf");
 const MONO_BOLD: &[u8] = include_bytes!("../../../assets/fonts/JetBrainsMono-Bold.ttf");
 const MONO_ITALIC: &[u8] = include_bytes!("../../../assets/fonts/JetBrainsMono-Italic.ttf");
@@ -79,6 +85,14 @@ impl TextSystem {
             Font::UiSemibold => attrs
                 .family(Family::Name(UI_FAMILY))
                 .weight(Weight::SEMIBOLD),
+            Font::UiItalic => attrs
+                .family(Family::Name(UI_FAMILY))
+                .weight(Weight::NORMAL)
+                .style(Style::Italic),
+            Font::UiSemiboldItalic => attrs
+                .family(Family::Name(UI_FAMILY))
+                .weight(Weight::SEMIBOLD)
+                .style(Style::Italic),
             Font::Mono { bold, italic } => attrs
                 .family(Family::Name(MONO_FAMILY))
                 .weight(if bold { Weight::BOLD } else { Weight::NORMAL })
@@ -153,109 +167,6 @@ impl TextSystem {
         most.saturating_add(1)
     }
 
-    /// The lines `text` takes up at `width`: it breaks at each `\n`, and between words
-    /// where a line would get wider than `width`. A word too long for a line by itself
-    /// is broken between characters. Each line is a byte range of `text`, without the
-    /// `\n`. Spaces at a soft break stay at the end of the line before, so the ranges of
-    /// one paragraph touch.
-    pub fn wrap(&mut self, text: &str, font: Font, size: f32, width: f32) -> Vec<Range<usize>> {
-        self.wrap_first(text, font, size, width, usize::MAX)
-    }
-
-    /// The first `max_lines` lines of [`Self::wrap`], without measuring the rest of the
-    /// text. Boxes that show a few lines of a long text (a card's notes) wrap only what
-    /// they show, so a long description at a narrow width stays cheap.
-    pub fn wrap_first(
-        &mut self,
-        text: &str,
-        font: Font,
-        size: f32,
-        width: f32,
-        max_lines: usize,
-    ) -> Vec<Range<usize>> {
-        let width = width.max(1.0);
-        let mut lines = Vec::new();
-        let mut base = 0;
-        for paragraph in text.split('\n') {
-            if lines.len() >= max_lines {
-                break;
-            }
-            self.wrap_paragraph(paragraph, base, (font, size, width), max_lines, &mut lines);
-            base += paragraph.len() + 1;
-        }
-        lines.truncate(max_lines);
-        lines
-    }
-
-    fn wrap_paragraph(
-        &mut self,
-        p: &str,
-        base: usize,
-        (font, size, width): (Font, f32, f32),
-        max_lines: usize,
-        lines: &mut Vec<Range<usize>>,
-    ) {
-        // Each token is a word and the spaces after it.
-        let mut tokens = Vec::new();
-        let (mut token_start, mut after_space) = (0, false);
-        for (i, c) in p.char_indices() {
-            let space = c.is_whitespace();
-            if after_space && !space {
-                tokens.push(token_start..i);
-                token_start = i;
-            }
-            after_space = space;
-        }
-        if !p.is_empty() {
-            tokens.push(token_start..p.len());
-        }
-        let mut start = 0;
-        let mut i = 0;
-        while i < tokens.len() {
-            if lines.len() >= max_lines {
-                return;
-            }
-            let token = tokens[i].clone();
-            if self.measure(p[start..token.end].trim_end(), font, size) <= width {
-                i += 1;
-            } else if token.start > start {
-                // The word goes on the next line.
-                lines.push(base + start..base + token.start);
-                start = token.start;
-            } else {
-                // A word wider than the line: as many characters as fit (at least one).
-                let cut = self.longest_fit(&p[start..token.end], font, size, width);
-                if start + cut == token.end {
-                    // One character wider than the line by itself: it ends this line.
-                    i += 1;
-                } else {
-                    lines.push(base + start..base + start + cut);
-                    start += cut;
-                    tokens[i].start = start;
-                }
-            }
-        }
-        lines.push(base + start..base + p.len());
-    }
-
-    /// The byte length of the longest prefix of `s` (at least one character) that fits
-    /// in `width`.
-    fn longest_fit(&mut self, s: &str, font: Font, size: f32, width: f32) -> usize {
-        let bounds: Vec<usize> = s.char_indices().map(|(i, _)| i).skip(1).collect();
-        let first = bounds.first().copied().unwrap_or(s.len());
-        // Prefix widths only grow, so binary search the last boundary that fits.
-        let (mut lo, mut hi) = (0, bounds.len());
-        while lo < hi {
-            let mid = usize::midpoint(lo, hi);
-            if self.measure(&s[..bounds[mid]], font, size) <= width {
-                lo = mid + 1;
-            } else {
-                hi = mid;
-            }
-        }
-        if lo == 0 { first } else { bounds[lo - 1] }
-    }
-
     /// Terminal cell size at `size`.
     pub fn cell_metrics(&mut self, size: f32) -> CellMetrics {
         if let Some(m) = self.cells.get(&size.to_bits()) {
@@ -303,6 +214,8 @@ fn bundled_db() -> fontdb::Database {
         INTER_REGULAR,
         INTER_MEDIUM,
         INTER_SEMIBOLD,
+        INTER_ITALIC,
+        INTER_SEMIBOLD_ITALIC,
         MONO_REGULAR,
         MONO_BOLD,
         MONO_ITALIC,
@@ -345,6 +258,24 @@ mod tests {
         let again = t.shaped_count();
         assert_eq!(t.truncate(&long, Font::Ui, 13.0, 120.0), short);
         assert_eq!(t.shaped_count(), again, "a second time is all cache hits");
+    }
+
+    #[test]
+    fn ui_italics_use_their_own_bundled_faces() {
+        let mut t = TextSystem::bundled_only();
+        let face = |t: &mut TextSystem, font| {
+            let buffer = t.shape("Notes", font, 13.0);
+            let run = buffer.layout_runs().next().map(|r| r.glyphs[0].font_id);
+            run.and_then(|id| t.fonts().db().face(id).map(|f| (f.style, f.weight)))
+        };
+        let italic = face(&mut t, Font::UiItalic).unwrap();
+        assert_eq!(italic, (fontdb::Style::Italic, fontdb::Weight::NORMAL));
+        let bold_italic = face(&mut t, Font::UiSemiboldItalic).unwrap();
+        assert_eq!(
+            bold_italic,
+            (fontdb::Style::Italic, fontdb::Weight::SEMIBOLD)
+        );
+        assert_eq!(face(&mut t, Font::Ui).unwrap().0, fontdb::Style::Normal);
     }
 
     #[test]

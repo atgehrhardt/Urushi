@@ -30,8 +30,10 @@ pub struct ThreadUpdate {
     pub project: Option<Assign<ProjectId>>,
     /// Mark unread or read.
     pub unread: Option<bool>,
-    /// Replace the notes (empty clears them).
+    /// Replace the notes (empty clears them, and their color).
     pub notes: Option<String>,
+    /// Set or clear the notes' color (ADR 0058).
+    pub notes_color: Option<Assign<LabelColor>>,
 }
 
 /// Longest project name, in characters.
@@ -172,6 +174,15 @@ impl Service {
             }
             if let Some(notes) = notes {
                 thread.notes = notes;
+            }
+            match update.notes_color {
+                Some(Assign::Set(color)) => thread.notes_color = Some(color),
+                Some(Assign::Clear) => thread.notes_color = None,
+                None => {}
+            }
+            // A color belongs to notes: without notes there is nothing to color.
+            if thread.notes.is_empty() {
+                thread.notes_color = None;
             }
             Ok(())
         })

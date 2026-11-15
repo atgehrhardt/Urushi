@@ -266,6 +266,7 @@ pub fn thread_to_proto(t: &Thread) -> v1::Thread {
         attached_checkout: t.is_attached(),
         unread: t.unread,
         notes: t.notes.clone(),
+        notes_color: color_to_proto(t.notes_color),
     }
 }
 
@@ -316,6 +317,7 @@ pub fn thread_from_proto(t: &v1::Thread) -> Result<Thread, ConvertError> {
         },
         unread: t.unread,
         notes: t.notes.clone(),
+        notes_color: color_from_proto(t.notes_color),
     })
 }
 

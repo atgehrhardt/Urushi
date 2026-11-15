@@ -253,8 +253,14 @@ async fn thread(client: &Client, cmd: ThreadCmd) -> Result<()> {
         ThreadCmd::Read { thread } => {
             update_thread(client, &thread, |r| r.unread = Some(false)).await
         }
-        ThreadCmd::Notes { thread, set, clear } => {
-            crate::organize::notes(client, &thread, set, clear).await
+        ThreadCmd::Notes {
+            thread,
+            set,
+            clear,
+            color,
+        } => {
+            let change = crate::organize::NotesChange { set, clear, color };
+            crate::organize::notes(client, &thread, change).await
         }
         ThreadCmd::Status { thread, status } => {
             update_thread(client, &thread, |r| r.status = Some(status)).await

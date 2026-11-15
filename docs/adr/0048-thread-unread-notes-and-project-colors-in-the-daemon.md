@@ -1,6 +1,6 @@
 # 0048. Keep a thread's unread mark and notes, and a project's color, in the daemon
 
-- **Status:** Accepted
+- **Status:** Accepted; "notes are plain text" is superseded by [0058](0058-thread-notes-in-markdown-with-a-toolbar-and-a-color.md) (notes are Markdown, with a color of their own). The rest stands.
 - **Date:** 2026-11-12
 
 ## Context

@@ -448,6 +448,7 @@ impl<M: Clone> Ctx<'_, M> {
                 selection_color,
                 size,
                 multiline,
+                runs,
             } => {
                 let look = field::Look {
                     text,
@@ -457,6 +458,7 @@ impl<M: Clone> Ctx<'_, M> {
                     colors: [*color, *placeholder_color, *caret_color, *selection_color],
                     size: *size,
                     multiline: *multiline,
+                    runs,
                 };
                 let region =
                     field::paint(&mut self.frame.scene, self.text, inner, &look, self.owner);

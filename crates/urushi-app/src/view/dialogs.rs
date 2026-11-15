@@ -20,9 +20,11 @@ pub(super) fn view(
         Dialog::AddProject { path } => add_project(state, theme, path),
         Dialog::NewThread { .. } => super::new_thread::view(state, theme, scroll)?,
         Dialog::Prompt { prompt, field } => prompt_dialog(state, theme, prompt, field),
-        Dialog::ThreadNotes { thread, notes } => {
-            super::thread_notes::dialog(state, theme, thread, notes)
-        }
+        Dialog::ThreadNotes {
+            thread,
+            notes,
+            color,
+        } => super::thread_notes::dialog(state, theme, thread, (notes, *color)),
         Dialog::NewTab { highlighted } => super::launcher::dialog(state, theme, *highlighted),
         Dialog::DeleteThread {
             title,

@@ -4,7 +4,9 @@
 //! everything, right-click for a Cut/Copy/Paste menu).
 //!
 //! In a multiline field (task or thread notes) Enter starts a new line, and Cmd+Enter (Apple) /
-//! Ctrl+Enter (elsewhere) submits the dialog, as it does from any field.
+//! Ctrl+Enter (elsewhere) submits the dialog, as it does from any field. In thread notes,
+//! Enter also continues a Markdown list, and Cmd/Ctrl+B, I, E, K and Shift+X format
+//! (`notes_format.rs`).
 //!
 //! The shortcut modifier is Cmd on Apple platforms and Ctrl elsewhere; a dialog has no
 //! terminal behind it, so plain Ctrl is free there. Word moves use Option on Apple
@@ -153,6 +155,9 @@ impl AppState {
             Some(Named::Escape) if self.dialog.is_some() => self.close_dialog(),
             Some(Named::Escape) => {}
             Some(Named::Enter) => {
+                if self.notes_enter() {
+                    return;
+                }
                 if self.field_mut().is_some_and(TextField::newline) {
                     self.after_field_edit();
                 } else if !self.task_editor_enter(fx) {
@@ -230,6 +235,9 @@ impl AppState {
                 }
                 self.after_field_edit();
             }
+            return;
+        }
+        if self.notes_shortcut(key) {
             return;
         }
         let command = match key.character.as_deref().map(str::to_lowercase).as_deref() {

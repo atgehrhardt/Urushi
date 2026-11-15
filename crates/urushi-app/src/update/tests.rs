@@ -427,6 +427,7 @@ mod jira;
 mod jira_deletion;
 mod labels;
 mod lan;
+mod notes_format;
 mod organize;
 mod panes;
 mod pointer;

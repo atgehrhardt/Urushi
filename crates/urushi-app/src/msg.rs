@@ -26,7 +26,7 @@ pub use jira::JiraMsg;
 pub use pane::PaneMsg;
 pub use quick::QuickMsg;
 pub use sidebar::SidebarMsg;
-pub use threads::ThreadMsg;
+pub use threads::{NoteFormat, ThreadMsg};
 pub use updates::UpdateMsg;
 
 /// Something that happened.

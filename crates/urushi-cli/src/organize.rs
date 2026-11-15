@@ -109,24 +109,31 @@ pub(crate) async fn project(client: &Client, cmd: ProjectCmd) -> Result<()> {
     }
 }
 
+/// What `urushi thread notes` was asked to change.
+pub(crate) struct NotesChange {
+    /// New notes ("-" for standard input).
+    pub(crate) set: Option<String>,
+    /// Remove them.
+    pub(crate) clear: bool,
+    /// Their color, or "none".
+    pub(crate) color: Option<String>,
+}
+
 /// `urushi thread notes`: prints a thread's notes, or replaces (`set`, "-" for standard
-/// input) or clears them.
-pub(crate) async fn notes(
-    client: &Client,
-    thread: &str,
-    set: Option<String>,
-    clear: bool,
-) -> Result<()> {
-    let notes = match (set, clear) {
-        (_, true) => String::new(),
+/// input) or clears them, and/or sets their color.
+pub(crate) async fn notes(client: &Client, thread: &str, change: NotesChange) -> Result<()> {
+    let color = change.color.as_deref().map(color_arg).transpose()?;
+    let notes = match (change.set, change.clear) {
+        (_, true) => Some(String::new()),
         (Some(text), false) if text == "-" => {
             let mut text = String::new();
             std::io::stdin()
                 .read_to_string(&mut text)
                 .context("reading the notes from standard input")?;
-            text
+            Some(text)
         }
-        (Some(text), false) => text,
+        (Some(text), false) => Some(text),
+        (None, false) if color.is_some() => None,
         (None, false) => {
             let mirror = WorkspaceMirror::new(client.list_workspace(false).await?);
             let id = resolve(client, thread).await?;
@@ -138,5 +145,9 @@ pub(crate) async fn notes(
             };
         }
     };
-    update_thread(client, thread, |r| r.notes = Some(notes)).await
+    update_thread(client, thread, |r| {
+        r.notes = notes;
+        r.notes_color = color.map(Into::into);
+    })
+    .await
 }
