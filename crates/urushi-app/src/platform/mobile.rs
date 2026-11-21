@@ -40,6 +40,14 @@ pub(crate) const HAS_FILE_PICKER: bool = false;
 /// need visible buttons.
 pub(crate) const HAS_SECONDARY_CLICK: bool = false;
 
+/// Nothing to do: mobile apps never open attachments as files.
+pub(crate) fn make_private(_dir: &std::path::Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// Nothing to do: mobile apps never open attachments as files.
+pub(crate) fn mark_downloaded(_path: &std::path::Path) {}
+
 /// Opening attachments isn't supported on mobile yet.
 pub(crate) fn open_path(_path: &std::path::Path) -> std::io::Result<()> {
     Err(std::io::Error::new(

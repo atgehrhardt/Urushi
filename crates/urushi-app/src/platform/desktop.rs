@@ -67,6 +67,48 @@ pub(crate) fn notify(title: &str, body: &str) {
 /// Desktop has a secondary (right or two-finger) click, which opens context menus.
 pub(crate) const HAS_SECONDARY_CLICK: bool = true;
 
+/// Makes the folder `dir` readable only by this user (0700 on Unix). Windows folders
+/// under the user's profile already are.
+pub(crate) fn make_private(dir: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+        Ok(())
+    }
+}
+
+/// Marks `path` as downloaded from the internet. On macOS that is the quarantine
+/// attribute browsers set, so Gatekeeper asks before an app, script or installer that
+/// came as an attachment runs. Elsewhere there is no such mark. A failure is logged:
+/// the file still opens, as it would from a browser without quarantine.
+pub(crate) fn mark_downloaded(path: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    {
+        let since_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        // flags;timestamp;agent;uuid, as LSQuarantine writes it. 0081: downloaded, not
+        // yet opened.
+        let value = format!("0081;{since_epoch:x};Urushi;");
+        let marked = std::process::Command::new("/usr/bin/xattr")
+            .args(["-w", "com.apple.quarantine", &value])
+            .arg(path)
+            .status();
+        match marked {
+            Ok(status) if status.success() => {}
+            Ok(status) => tracing::warn!(%status, "couldn't quarantine an opened attachment"),
+            Err(error) => tracing::warn!(%error, "couldn't quarantine an opened attachment"),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = path;
+}
+
 /// Opens a file with the system's default app for it.
 pub(crate) fn open_path(path: &std::path::Path) -> std::io::Result<()> {
     #[cfg(target_os = "macos")]
@@ -174,5 +216,24 @@ mod tests {
     #[test]
     fn the_window_icon_is_a_valid_64px_image() {
         assert!(super::window_icon().is_some());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn opened_attachments_are_quarantined() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("run-me.command");
+        std::fs::write(&file, "#!/bin/sh\n").unwrap();
+        super::mark_downloaded(&file);
+        let out = std::process::Command::new("/usr/bin/xattr")
+            .args(["-p", "com.apple.quarantine"])
+            .arg(&file)
+            .output()
+            .unwrap();
+        let value = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            value.starts_with("0081;") && value.contains(";Urushi;"),
+            "{value}"
+        );
     }
 }
