@@ -411,10 +411,7 @@ impl AppState {
         let had_quick = self.workspace.quick_terminal_raw().is_some();
         self.show_visible_workspace();
         self.follow_quick_terminal(had_quick);
-        let thread_exists = |id: &String| self.workspace.thread(id).is_some();
-        if !self.selected_thread.as_ref().is_some_and(thread_exists) {
-            self.selected_thread = self.workspace.raw().threads.first().map(|t| t.id.clone());
-        }
+        self.select_a_thread_if_none();
         // A local focus lasts until the daemon confirms it, and never outlives its pane
         // (closed, or its process exited): the daemon has already moved focus on.
         let overrides = std::mem::take(&mut self.focused_override);
@@ -426,6 +423,18 @@ impl AppState {
             })
             .collect();
         self.sync_panes(fx);
+    }
+
+    /// When the selected thread is gone (or none is), shows the first thread instead.
+    /// A thread being created that the window shows counts as selected (UR-73): its
+    /// placeholder stays until the daemon's reply opens the thread.
+    pub(super) fn select_a_thread_if_none(&mut self) {
+        let thread_exists = |id: &String| self.workspace.thread(id).is_some();
+        if self.shown_pending().is_none()
+            && !self.selected_thread.as_ref().is_some_and(thread_exists)
+        {
+            self.selected_thread = self.workspace.raw().threads.first().map(|t| t.id.clone());
+        }
     }
 
     /// What shows: the daemon's last workspace without the threads being deleted, and
