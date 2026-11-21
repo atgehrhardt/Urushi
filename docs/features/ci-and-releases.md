@@ -149,6 +149,6 @@ Android's standard debug key, `~/.android/debug.keystore`.
   `preflight` checks.
 - The signing secrets are repository secrets with no protected environment, so anyone
   with write access could run a workflow that reads them. Moving them to a `release`
-  environment with required reviewers is a UR-57 follow-up ([security](../security.md)).
+  environment with required reviewers is UR-77 ([security](../security.md)).
 - There's no hand-started dry run. A release is the first time the release key signs a
   build. Merge builds are debug-signed.

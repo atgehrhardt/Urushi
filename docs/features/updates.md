@@ -58,7 +58,7 @@ the wire.
   their own packages; Linux and Windows have no releases.
 - The checksum is downloaded from the same release, so it guards against a damaged
   download, not a compromised GitHub account. Developer ID signing and notarization
-  would let the updater check the publisher (a UR-57 follow-up, see
+  would let the updater check the publisher (UR-76, see
   [security](../security.md)).
 - A daemon older than protocol 1.28 can't update: restart it once after installing the
   first version with updates.

@@ -53,8 +53,8 @@ Severity is for this threat model. *Fixed* means fixed in the UR-57 branch, with
 | 4 | A long title plus `CSI 22 t` pushes made the daemon allocate gigabytes, and unterminated OSC payloads grew without limit | Medium | Fixed (`OscLimit`) |
 | 5 | Requests in flight per connection were unbounded, so a client that never reads could exhaust memory | Medium | Fixed (cap 512) |
 | 6 | The Android app's LAN private key was included in Google backup and device transfer | Medium | Fixed (backups off) |
-| 7 | Release secrets are readable by any workflow run by someone with write access (no protected environment) | Medium | Deferred: GitHub settings (sub-task) |
-| 8 | Updates prove the zip is intact, not who published it (ad-hoc signature, checksum from the same release) | Medium | Hardened (URL pinning, HTTPS-only). Signing deferred (sub-task). |
+| 7 | Release secrets are readable by any workflow run by someone with write access (no protected environment) | Medium | Deferred: GitHub settings (UR-77) |
+| 8 | Updates prove the zip is intact, not who published it (ad-hoc signature, checksum from the same release) | Medium | Hardened (URL pinning, HTTPS-only). Signing deferred (UR-76). |
 | 9 | Tailnet `whois` identifications were unbounded (one process and one thread per connection attempt) | Low | Fixed |
 | 10 | A remote host not in the keyring got the plain protocol whatever it resolved to | Low | Fixed (`plain_tcp_allowed`) |
 | 11 | curl followed redirects with no protocol limit | Low | Fixed (`proto-redir = =https`) |
@@ -65,8 +65,8 @@ Severity is for this threat model. *Fixed* means fixed in the UR-57 branch, with
 | 16 | `shell::quote` left `\` and a leading `=` unquoted | Low | Fixed |
 | 17 | One frame header made the reader allocate 8 MiB up front | Low | Fixed |
 | 18 | Actions pinned by tag, default token permissions, no scheduled advisory check, keystore left on the runner, signing files not in `.gitignore` | Low | Fixed |
-| 19 | Windows: the named pipe and private files rely on default and inherited ACLs. A local user could squat the pipe name. | Medium on shared Windows machines; no Windows releases yet | Deferred (sub-task) |
-| 20 | Mobile clients keep the LAN private key as plaintext JSON, not in the Keychain or Keystore | Low | Deferred (sub-task) |
+| 19 | Windows: the named pipe and private files rely on default and inherited ACLs. A local user could squat the pipe name. | Medium on shared Windows machines; no Windows releases yet | Deferred (UR-78) |
+| 20 | Mobile clients keep the LAN private key as plaintext JSON, not in the Keychain or Keystore | Low | Deferred (UR-79) |
 
 ## Accepted risks
 - **Processes in a pane have full control.** They run as the user and can reach the
@@ -87,10 +87,10 @@ Severity is for this threat model. *Fixed* means fixed in the UR-57 branch, with
   terminal.
 
 ## Follow-ups
-- Sign macOS releases with a Developer ID and notarize them, then pin the team in the
-  updater's `codesign -R` check.
-- Move the Android release secrets to a protected `release` environment with required
-  reviewers, and add `environment: release` to the jobs that use them.
-- Windows: an owner-only security descriptor on the named pipe, a client token check,
-  and owner-only ACLs in `write_private`/`secure_dir`.
-- Mobile: keep the LAN key in the iOS Keychain or Android Keystore.
+- UR-76: sign macOS releases with a Developer ID and notarize them, then pin the team
+  in the updater's `codesign -R` check.
+- UR-77: move the Android release secrets to a protected `release` environment with
+  required reviewers, and add `environment: release` to the jobs that use them.
+- UR-78 (Windows): an owner-only security descriptor on the named pipe, a client token
+  check, and owner-only ACLs in `write_private`/`secure_dir`.
+- UR-79 (mobile): keep the LAN key in the iOS Keychain or Android Keystore.
