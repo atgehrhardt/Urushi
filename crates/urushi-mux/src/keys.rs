@@ -146,15 +146,23 @@ pub fn encode_key(event: &KeyEvent, modes: Modes) -> Vec<u8> {
 }
 
 /// Encodes a paste. Newlines become carriage returns, as typed Enter keys would. With
-/// bracketed paste the text is wrapped in markers, and any embedded end marker is
-/// removed so pasted text can't break out of the bracket.
+/// bracketed paste the text is wrapped in markers.
+///
+/// Every control character except tab and the carriage returns is dropped, in both
+/// modes. Without ESC no end marker can survive, however it is nested, so pasted text
+/// (a clipboard from a web page, a task message drafted from Jira) can't leave the
+/// bracket and run as typed commands, and can't send keys such as Ctrl-C or Ctrl-D.
 pub fn encode_paste(text: &str, modes: Modes) -> Vec<u8> {
-    let normalized = text.replace("\r\n", "\r").replace('\n', "\r");
+    let safe: String = text
+        .replace("\r\n", "\r")
+        .replace('\n', "\r")
+        .chars()
+        .filter(|&c| c == '\t' || c == '\r' || !c.is_control())
+        .collect();
     if modes.bracketed_paste {
-        let safe = normalized.replace("\x1b[201~", "");
         format!("\x1b[200~{safe}\x1b[201~").into_bytes()
     } else {
-        normalized.into_bytes()
+        safe.into_bytes()
     }
 }
 
@@ -306,8 +314,34 @@ mod tests {
         };
         assert_eq!(
             encode_paste("x\x1b[201~y", bracketed),
-            b"\x1b[200~xy\x1b[201~"
+            b"\x1b[200~x[201~y\x1b[201~"
         );
+    }
+
+    #[test]
+    fn pasted_text_never_ends_the_bracket_early() {
+        let bracketed = Modes {
+            bracketed_paste: true,
+            ..Modes::default()
+        };
+        // Removing the inner marker once would join the outer pieces into a new one.
+        let pasted = encode_paste("a\x1b[20\x1b[201~1~\nrm -rf ~\n", bracketed);
+        let inner = &pasted[6..pasted.len() - 6];
+        assert!(!inner.contains(&0x1b), "{pasted:?}");
+        assert_eq!(inner, b"a[20[201~1~\rrm -rf ~\r");
+    }
+
+    #[test]
+    fn pastes_drop_control_characters_but_keep_tabs_and_newlines() {
+        let bracketed = Modes {
+            bracketed_paste: true,
+            ..Modes::default()
+        };
+        assert_eq!(
+            encode_paste("a\tb\x1b\x03\x7f\u{9b}201~c\n", bracketed),
+            "\x1b[200~a\tb201~c\r\x1b[201~".as_bytes()
+        );
+        assert_eq!(encode_paste("x\x1b[31my\x04", Modes::default()), b"x[31my");
     }
 
     #[test]
