@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use urushi_core::Version;
 
 use super::bundle::{self, BUNDLE_ID, test_plist};
-use super::github::{self, Release};
+use super::github::{self, DEFAULT_DOWNLOADS, DEFAULT_FEED, Release};
 use super::{UNSUPPORTED, UpdateConfig, Updater};
 use crate::http::{HttpClient, HttpError, Request, Response};
 
@@ -94,6 +94,7 @@ fn updater(web: &Arc<Web>, bundle: Option<PathBuf>) -> Updater {
     Updater::new(UpdateConfig {
         http: web.clone(),
         feed_url: FEED.into(),
+        downloads_url: "https://dl/".into(),
         bundle,
     })
 }
@@ -106,7 +107,12 @@ fn v(s: &str) -> Version {
 
 #[test]
 fn a_release_gives_its_version_page_and_this_macs_files() {
-    let release = github::parse(release_json("v0.1.7", "arm64").as_bytes(), "arm64").unwrap();
+    let release = github::parse(
+        release_json("v0.1.7", "arm64").as_bytes(),
+        "arm64",
+        "https://dl/",
+    )
+    .unwrap();
     assert_eq!(
         release,
         Release {
@@ -121,26 +127,53 @@ fn a_release_gives_its_version_page_and_this_macs_files() {
 #[test]
 fn releases_without_a_build_for_this_mac_or_a_version_tag_are_refused() {
     let arm = release_json("v0.1.7", "arm64");
-    let error = github::parse(arm.as_bytes(), "x86_64").unwrap_err();
+    let error = github::parse(arm.as_bytes(), "x86_64", "https://dl/").unwrap_err();
     assert!(error.contains("no macOS build for this Mac"), "{error}");
-    let error = github::parse(release_json("nightly", "arm64").as_bytes(), "arm64").unwrap_err();
+    let error = github::parse(
+        release_json("nightly", "arm64").as_bytes(),
+        "arm64",
+        "https://dl/",
+    )
+    .unwrap_err();
     assert!(error.contains("isn't a version"), "{error}");
     let mut draft: serde_json::Value = serde_json::from_str(&arm).unwrap();
     draft["prerelease"] = true.into();
-    assert!(github::parse(draft.to_string().as_bytes(), "arm64").is_err());
-    assert!(github::parse(b"<html>", "arm64").is_err());
+    assert!(github::parse(draft.to_string().as_bytes(), "arm64", "https://dl/").is_err());
+    assert!(github::parse(b"<html>", "arm64", "https://dl/").is_err());
+}
+
+#[test]
+fn releases_whose_files_are_served_elsewhere_are_refused() {
+    let json =
+        release_json("v0.1.7", "arm64").replace("https://dl/zip", "https://evil.example/zip");
+    let error = github::parse(json.as_bytes(), "arm64", "https://dl/").unwrap_err();
+    assert!(error.contains("aren't served from https://dl/"), "{error}");
+    let json = release_json("v0.1.7", "arm64").replace("https://dl/sha", "http://dl/sha");
+    assert!(github::parse(json.as_bytes(), "arm64", "https://dl/").is_err());
+    let plain = release_json("v0.1.7", "arm64").replace("https://dl/", "http://dl/");
+    assert!(
+        github::parse(plain.as_bytes(), "arm64", "http://dl/").is_err(),
+        "only HTTPS downloads"
+    );
+}
+
+#[test]
+fn the_real_feed_and_downloads_are_github_over_https() {
+    assert!(DEFAULT_FEED.starts_with("https://api.github.com/repos/atgehrhardt/Urushi/"));
+    assert!(DEFAULT_DOWNLOADS.starts_with("https://github.com/atgehrhardt/Urushi/releases/"));
 }
 
 #[test]
 fn github_failures_are_explained() {
     let web = Arc::new(Web::default());
     web.serve(FEED, 404, "{}");
-    let error = github::latest(web.as_ref(), FEED, "arm64").unwrap_err();
+    let error = github::latest(web.as_ref(), FEED, "https://dl/", "arm64").unwrap_err();
     assert_eq!(error, "there are no releases yet");
     web.serve(FEED, 403, "{}");
-    let error = github::latest(web.as_ref(), FEED, "arm64").unwrap_err();
+    let error = github::latest(web.as_ref(), FEED, "https://dl/", "arm64").unwrap_err();
     assert!(error.contains("limiting requests"), "{error}");
-    let error = github::latest(web.as_ref(), "https://elsewhere", "arm64").unwrap_err();
+    let error =
+        github::latest(web.as_ref(), "https://elsewhere", "https://dl/", "arm64").unwrap_err();
     assert_eq!(error, "offline");
 }
 

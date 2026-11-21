@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use urushi_core::Version;
 use urushi_proto::v1;
 
-pub use github::{DEFAULT_FEED, Release};
+pub use github::{DEFAULT_DOWNLOADS, DEFAULT_FEED, Release};
 
 use crate::http::{CurlHttp, HttpClient};
 use crate::service::lock;
@@ -34,6 +34,8 @@ pub struct UpdateConfig {
     pub http: Arc<dyn HttpClient>,
     /// The latest-release endpoint ([`DEFAULT_FEED`]).
     pub feed_url: String,
+    /// Where release files must be served from ([`DEFAULT_DOWNLOADS`]).
+    pub downloads_url: String,
     /// The installed app bundle to update. `None`: this daemon can't update (not a
     /// macOS app from a release, e.g. a development build).
     pub bundle: Option<PathBuf>,
@@ -49,6 +51,7 @@ impl UpdateConfig {
         Self {
             http: Arc::new(CurlHttp::default()),
             feed_url: DEFAULT_FEED.to_owned(),
+            downloads_url: DEFAULT_DOWNLOADS.to_owned(),
             bundle,
         }
     }
@@ -118,7 +121,12 @@ impl Updater {
             return Err(UNSUPPORTED.into());
         }
         let arch = github::mac_arch().ok_or("there are no releases for this Mac")?;
-        let latest = github::latest(self.config.http.as_ref(), &self.config.feed_url, arch)?;
+        let latest = github::latest(
+            self.config.http.as_ref(),
+            &self.config.feed_url,
+            &self.config.downloads_url,
+            arch,
+        )?;
         let check = Check {
             current: self.installed_version(),
             latest,

@@ -27,6 +27,11 @@ fn the_config_carries_the_whole_request_on_lines_of_their_own() {
     assert!(lines.contains(&"header = \"Authorization: Basic s3cr\\\"et\\\\\""));
     assert!(lines.contains(&"header = \"Content-Type: application/json\""));
     assert!(lines.contains(&"globoff"), "JQL braces aren't globs");
+    assert!(lines.contains(&"proto = \"=https\""));
+    assert!(
+        lines.contains(&"proto-redir = \"=https\""),
+        "no redirect to http"
+    );
     let data = lines.iter().find(|l| l.starts_with("data-binary")).unwrap();
     // A JSON body can't break out of its line or its quotes.
     assert_eq!(
@@ -169,6 +174,11 @@ fn downloads_go_to_a_file_follow_redirects_and_fail_on_http_errors() {
     assert!(lines.contains(&"url = \"https://github.com/o/r/releases/download/v1.2.3/U.zip\""));
     assert!(lines.contains(&"output = \"/tmp/a \\\"b\\\"/U.zip\""));
     assert!(lines.contains(&"location"), "release files are redirected");
+    assert!(lines.contains(&"proto = \"=https\""));
+    assert!(
+        lines.contains(&"proto-redir = \"=https\""),
+        "but only to HTTPS"
+    );
     assert!(
         lines.contains(&"fail"),
         "an error page isn't saved as the file"
@@ -200,4 +210,54 @@ fn the_default_download_writes_the_body_of_a_success() {
         .unwrap_err();
     assert!(error.0.contains("404"), "{error}");
     assert!(!dir.path().join("g").exists());
+}
+
+#[test]
+fn curl_failures_are_told_apart_by_their_exact_code() {
+    assert_eq!(
+        friendly("curl failed (exit status: 60)"),
+        "the secure connection to the site failed"
+    );
+    assert_eq!(
+        friendly("curl failed (exit status: 6)"),
+        "the site's address couldn't be found"
+    );
+    assert_eq!(
+        friendly("curl failed (exit status: 1)"),
+        "the site can only be reached over HTTPS"
+    );
+}
+
+/// With the real curl: a plain-HTTP address is refused before anything is sent.
+#[test]
+fn the_real_curl_refuses_plain_http() {
+    if std::process::Command::new("curl")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let request = Request::new(Method::Get, "http://127.0.0.1:9/x".into(), Vec::new());
+    let error = CurlHttp::default().send(&request).unwrap_err();
+    assert_eq!(error.0, "the site can only be reached over HTTPS");
+}
+
+#[cfg(unix)]
+#[test]
+fn uploads_are_staged_in_a_new_private_folder() {
+    use std::os::unix::fs::PermissionsExt;
+    let upload = Upload {
+        field: "file".into(),
+        name: "a.png".into(),
+        data: b"x".to_vec(),
+    };
+    let file = UploadFile::write(&upload).unwrap();
+    let mode = std::fs::metadata(&file.dir).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o700);
+    let mode = std::fs::metadata(&file.path).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600);
+    // A folder already there (planted in a shared /tmp) is never reused.
+    let taken = tempfile::tempdir().unwrap();
+    assert!(crate::platform::create_private_dir(taken.path()).is_err());
 }
