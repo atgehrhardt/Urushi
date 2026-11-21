@@ -73,12 +73,14 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0056 – Show the user's own actions before the daemon confirms them, without deciding anything in the GUI](adr/0056-show-the-users-own-actions-before-the-daemon-confirms.md)
 - [0057 – Never let a Jira sync move an issue back to an older version](adr/0057-jira-syncs-never-move-an-issue-back-in-time.md)
 - [0058 – Write thread notes in Markdown, styled as they are typed, with a toolbar and a color of their own](adr/0058-thread-notes-in-markdown-with-a-toolbar-and-a-color.md)
+- [0059 – Shelve a thread by stopping its panes and keeping their restore points](adr/0059-shelve-threads-by-stopping-their-panes-and-keeping-restore-points.md)
 
 ## Features
 - [_template](features/_template.md)
 - [Split-pane layouts](features/split-pane-layouts.md)
 - [Thread worktrees and safe deletion](features/thread-worktrees.md)
 - [Recoverable terminal sessions](features/recoverable-sessions.md)
+- [Shelved threads](features/shelved-threads.md)
 - [Remote access over Tailscale](features/remote-access.md)
 - [LAN access (paired devices, no Tailscale)](features/lan-access.md)
 - [The workspace GUI](features/gui-workspace.md)

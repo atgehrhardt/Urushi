@@ -393,6 +393,9 @@ pub enum Followup {
     /// Nothing at all, not even errors: a hint the daemon may not know (e.g.
     /// `PrepareThreadBase`).
     Ignore,
+    /// The daemon answered a shelve or unshelve of this thread (`update/shelve.rs`): on
+    /// failure, the card stops saying so and the error shows.
+    Shelving(String),
     /// Show the deletion warning; when closing a parent-branch thread to change its
     /// project's settings, save them once it is closed.
     DeletionPlan(Option<Box<crate::project_settings::PendingSettings>>),

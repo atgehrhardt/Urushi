@@ -169,6 +169,10 @@ fn pane_home(state: &State, tab: TabId) -> ServiceResult<(Option<Thread>, Option
         return Ok((None, state.settings.default_shell.clone()));
     }
     let thread = state.thread(state.tab(tab)?.thread())?.thread.clone();
+    // A shelved thread runs no panes until it is unshelved (ADR 0059).
+    if !thread.is_ready() {
+        return Err(ServiceError::Precondition("thread is not ready".into()));
+    }
     let shell = state.effective_settings(thread.repo).default_shell;
     Ok((Some(thread), shell))
 }

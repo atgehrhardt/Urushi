@@ -439,6 +439,7 @@ mod quick_filters;
 mod running;
 mod saving;
 mod setup;
+mod shelve;
 mod sidebar;
 mod sizing;
 mod soft_keyboard;

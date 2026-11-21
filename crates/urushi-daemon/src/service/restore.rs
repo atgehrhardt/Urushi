@@ -8,7 +8,8 @@
 //! it: a fresh shell in the same directory, below the old output, and then the agent
 //! resuming its conversation or the job running again, typed into the shell like
 //! starting an agent (ADR 0009). Panes without a restore point start as plain shells in
-//! their worktree.
+//! their worktree. Unshelving a thread starts its panes the same way (`shelve.rs`, ADR
+//! 0059).
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -38,14 +39,18 @@ enum Restart {
     Job(String),
 }
 
-/// Shown between a restored pane's old output and its new shell.
-const SEPARATOR: &str = "\x1b[0;2m── restored after the daemon restarted ──\x1b[0m\r\n";
+/// Shown between a restored pane's old output and its new shell, after a restart.
+const RESTARTED: &str = "\x1b[0;2m── restored after the daemon restarted ──\x1b[0m\r\n";
+
+/// A pane to start again from its restore point: its thread (none for the quick
+/// terminal) and the shell to start.
+pub(super) type RestoreWork = (PaneId, Option<Thread>, Option<String>);
 
 impl Service {
     /// Starts every pane of every ready thread, and of the quick terminal, again from its
     /// restore point.
     pub(super) fn restore_sessions(&self) {
-        let work: Vec<(PaneId, Option<Thread>, Option<String>)> = {
+        let work: Vec<RestoreWork> = {
             let state = lock(&self.state);
             let quick = state.quick_terminal.iter().flat_map(|q| {
                 let shell = state.settings.default_shell.clone();
@@ -74,6 +79,13 @@ impl Service {
                 .chain(quick)
                 .collect()
         };
+        self.restore_panes(work, RESTARTED);
+    }
+
+    /// Starts each pane of `work` from its restore point: a new shell in the saved
+    /// directory, below the saved output and `separator`, then the agent resuming its
+    /// conversation or the job running again once the shell is ready.
+    pub(super) fn restore_panes(&self, work: Vec<RestoreWork>, separator: &'static str) {
         let mut restarts = Vec::new();
         for (pane, thread, shell) in work {
             let record = self.restore.load(pane).unwrap_or_default();
@@ -86,7 +98,7 @@ impl Service {
             // An agent redraws its own conversation when it resumes.
             if record.agent.is_none() && !record.screen.is_empty() {
                 emulator.advance(record.screen.as_bytes());
-                emulator.advance(SEPARATOR.as_bytes());
+                emulator.advance(separator.as_bytes());
             }
             let cwd = record.cwd.clone();
             let home = thread.as_ref().map_or(PaneHome::Quick, PaneHome::Thread);
@@ -185,8 +197,15 @@ impl Service {
     /// longer exist. Output is read again only from panes whose screen changed; a
     /// full-screen application's screen (`vim`, `less`) keeps the output from before it.
     pub async fn save_restore_points(&self) {
+        self.save_restore_points_of(None).await;
+    }
+
+    /// Brings the restore points of `only` (every running pane when `None`) up to date.
+    /// Only a save of every pane deletes the restore points of panes that are gone.
+    pub(super) async fn save_restore_points_of(&self, only: Option<&HashSet<PaneId>>) {
         let sessions: Vec<_> = lock(&self.sessions)
             .iter()
+            .filter(|(pane, _)| only.is_none_or(|o| o.contains(pane)))
             .map(|(pane, handle)| (*pane, handle.clone()))
             .collect();
         let processes = self.usage.processes_now().await;
@@ -253,6 +272,11 @@ impl Service {
             }
             record.agent = agent;
             record.job = job_argv;
+            // Stopped meanwhile (its thread was shelved): what was read may be from a dead
+            // process, and the restore point saved before it stopped is the one to keep.
+            if !self.runs(pane, &handle) {
+                continue;
+            }
             if previous.as_ref().map(|(_, r)| r) != Some(&record) {
                 let (store, saved) = (self.restore.clone(), record.clone());
                 let result = blocking(move || {
@@ -267,6 +291,9 @@ impl Service {
             }
             lock(&self.restore_points).insert(pane, (seen, record));
         }
+        if only.is_some() {
+            return;
+        }
         let keep: HashSet<PaneId> = lock(&self.state).all_panes().into_iter().collect();
         lock(&self.restore_points).retain(|pane, _| keep.contains(pane));
         let store = self.restore.clone();
@@ -275,5 +302,12 @@ impl Service {
             Ok(())
         })
         .await;
+    }
+
+    /// Whether `handle` is still `pane`'s running session.
+    fn runs(&self, pane: PaneId, handle: &urushi_mux::SessionHandle) -> bool {
+        lock(&self.sessions)
+            .get(&pane)
+            .is_some_and(|h| h.same_session(handle))
     }
 }

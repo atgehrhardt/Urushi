@@ -238,7 +238,8 @@ pub fn status_from_proto(status: &str) -> Result<Option<Status>, ConvertError> {
 pub fn thread_to_proto(t: &Thread) -> v1::Thread {
     let (state, failure_reason) = match &t.state {
         ThreadState::Creating => (v1::ThreadState::Creating, String::new()),
-        ThreadState::Ready => (v1::ThreadState::Ready, String::new()),
+        // Shelved goes as READY plus `shelved`, which older clients read as ready.
+        ThreadState::Ready | ThreadState::Shelved => (v1::ThreadState::Ready, String::new()),
         ThreadState::Deleting => (v1::ThreadState::Deleting, String::new()),
         ThreadState::DeletionFailed { reason } => (v1::ThreadState::DeletionFailed, reason.clone()),
     };
@@ -267,6 +268,7 @@ pub fn thread_to_proto(t: &Thread) -> v1::Thread {
         unread: t.unread,
         notes: t.notes.clone(),
         notes_color: color_to_proto(t.notes_color),
+        shelved: t.is_shelved(),
     }
 }
 
@@ -274,6 +276,7 @@ pub fn thread_to_proto(t: &Thread) -> v1::Thread {
 pub fn thread_from_proto(t: &v1::Thread) -> Result<Thread, ConvertError> {
     let state = match v1::ThreadState::try_from(t.state) {
         Ok(v1::ThreadState::Creating) => ThreadState::Creating,
+        Ok(v1::ThreadState::Ready) if t.shelved => ThreadState::Shelved,
         Ok(v1::ThreadState::Ready) => ThreadState::Ready,
         Ok(v1::ThreadState::Deleting) => ThreadState::Deleting,
         Ok(v1::ThreadState::DeletionFailed) => ThreadState::DeletionFailed {

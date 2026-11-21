@@ -187,6 +187,17 @@ enum ThreadCmd {
         /// Thread id.
         thread: String,
     },
+    /// Shelve a thread: stop its terminals to free what they use, keeping its worktree,
+    /// tabs and layout (protocol 1.33).
+    Shelve {
+        /// Thread id.
+        thread: String,
+    },
+    /// Unshelve a thread: start its terminals again, agents resuming their conversations.
+    Unshelve {
+        /// Thread id.
+        thread: String,
+    },
     /// Mark a thread unread: it stands out in the sidebar until it is opened.
     Unread {
         /// Thread id.

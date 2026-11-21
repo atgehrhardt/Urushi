@@ -19,6 +19,7 @@ mod project_settings;
 mod projects;
 mod quick_terminal;
 mod setup;
+mod shelved;
 mod sidebar;
 mod status_bar;
 mod task_in_thread;

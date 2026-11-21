@@ -8,6 +8,9 @@
     reason = "test helpers"
 )]
 
+#[cfg(unix)]
+pub mod agents;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;

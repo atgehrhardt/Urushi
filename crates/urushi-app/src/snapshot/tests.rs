@@ -726,3 +726,17 @@ fn the_threads_bar_shows_unread_threads_notes_and_project_colors() {
         assert!(menu.contains(color), "{color} missing: {menu}");
     }
 }
+
+#[test]
+fn a_shelved_thread_is_dimmed_and_offers_unshelve() {
+    for width in [1280.0, 402.0] {
+        let shown = dump("shelved-thread", width);
+        assert!(shown.contains("\"Unshelve\""), "{width}: {shown}");
+    }
+    let desktop = dump("shelved-thread", 1280.0);
+    assert!(desktop.contains("is shelved"), "{desktop}");
+    assert!(
+        desktop.contains("\"shelved\""),
+        "the card's badge: {desktop}"
+    );
+}

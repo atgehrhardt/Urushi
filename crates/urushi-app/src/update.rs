@@ -403,6 +403,7 @@ impl AppState {
     fn on_workspace(&mut self, workspace: v1::Workspace, fx: &mut Vec<Effect>) {
         self.deletions.report(workspace);
         self.apply_workspace(fx);
+        self.shelving_shown();
     }
 
     /// Shows the daemon's last reported workspace, without the threads being deleted,
@@ -530,6 +531,10 @@ impl AppState {
                 self.error = Some(message.to_owned());
             }
             Followup::ThreadCreated(key) => self.thread_not_created(*key, message.to_owned()),
+            Followup::Shelving(thread) => {
+                self.shelving.remove(thread);
+                self.error = Some(message.to_owned());
+            }
             Followup::DeletionPlan(_) => self.deletion_unplanned(message),
             Followup::TabCreated(key) => {
                 self.starting.tab_done(*key);
@@ -834,6 +839,7 @@ mod quick;
 mod quick_filter;
 mod saving;
 mod setup;
+mod shelve;
 mod shown_board;
 mod sidebar;
 mod sidebar_drag;

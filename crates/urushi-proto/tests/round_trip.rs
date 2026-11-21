@@ -186,6 +186,10 @@ fn all_request_kinds() {
             notes: Some("Check the logs\nfirst".into()),
             notes_color: Some(v1::LabelColor::Orange.into()),
         }),
+        B::SetThreadShelved(v1::SetThreadShelvedRequest {
+            thread_id: "t".into(),
+            shelved: true,
+        }),
         B::SetFolderColor(v1::SetFolderColorRequest {
             folder_id: "f".into(),
             color: v1::LabelColor::Teal.into(),

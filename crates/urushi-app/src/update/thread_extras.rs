@@ -17,6 +17,8 @@ impl AppState {
             return;
         }
         match msg {
+            ThreadMsg::Shelve { thread, confirmed } => self.shelve(thread, confirmed, fx),
+            ThreadMsg::Unshelve(thread) => self.unshelve(thread, fx),
             ThreadMsg::SetUnread { thread, unread } => {
                 self.update_thread(thread, |r| r.unread = Some(unread), fx);
             }

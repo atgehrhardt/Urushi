@@ -90,6 +90,21 @@ impl Client {
         self.ok(body, "MoveThread").await
     }
 
+    /// Shelves a ready thread (`shelved`), stopping its terminals but keeping its
+    /// worktree, tabs and layout, or unshelves a shelved one, starting them again from
+    /// their restore points (ADR 0059). Needs protocol 1.33.
+    pub async fn set_thread_shelved(
+        &self,
+        thread_id: &str,
+        shelved: bool,
+    ) -> Result<(), ClientError> {
+        let body = Body::SetThreadShelved(v1::SetThreadShelvedRequest {
+            thread_id: thread_id.into(),
+            shelved,
+        });
+        self.ok(body, "SetThreadShelved").await
+    }
+
     /// Stops the daemon (it answers first). Every running terminal closes. Daemons
     /// before protocol 1.4 don't know this request; see [`crate::stop_local_daemon`].
     pub async fn shutdown_daemon(&self) -> Result<(), ClientError> {

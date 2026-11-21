@@ -113,6 +113,10 @@ message Thread {
   // The color the notes are shown in; unspecified means the client's default note
   // color, and unknown values read the same. Since 1.32.
   LabelColor notes_color = 20;
+  // Shelved by the user (ADR 0059): its worktree, tabs and layout are kept, but none of
+  // its panes runs, so they can't be attached. `state` stays READY, which older clients
+  // know. Since 1.33.
+  bool shelved = 21;
 }
 
 message Tab {
@@ -291,6 +295,16 @@ message UpdateThreadRequest {
   // Set the notes' color; unspecified goes back to the default. Saving empty notes
   // clears it too. Since 1.32.
   optional LabelColor notes_color = 8;
+}
+
+// Shelves a ready thread or unshelves a shelved one (ADR 0059). Shelving saves each of
+// its panes' restore points and stops their processes; unshelving starts them again from
+// those points, agents resuming their conversations. A thread in any other state is
+// FAILED_PRECONDITION; an unknown one NOT_FOUND. Answered with `Empty` once the change is
+// saved. Since 1.33.
+message SetThreadShelvedRequest {
+  string thread_id = 1;
+  bool shelved = 2;
 }
 
 // Folders are shown to users as projects. Since protocol 1.2.

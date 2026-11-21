@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.32 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.33 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -52,6 +52,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 33 | Shelved threads (UR-75, ADR 0059). `SetThreadShelved{thread_id, shelved}` → `Empty` once saved. Shelving a ready thread saves its panes' restore points and stops their processes, keeping its worktree, tabs and layout; unshelving a shelved one starts them again from those points, agents resuming their conversations. Any other state is `FAILED_PRECONDITION`, an unknown thread `NOT_FOUND`. `Thread.shelved`: a shelved thread keeps `state = READY` on the wire, so older clients still read the workspace. Its panes can't be read, typed into or attached (`FAILED_PRECONDITION`), and new tabs and splits in it are refused. Clients check `Welcome.protocol_minor ≥ 33` before offering it. |
 | 32 | Notes in Markdown with a color (UR-72, ADR 0058): `Thread.notes` holds Markdown (the daemon stores it as typed and never parses it). `Thread.notes_color` (a `LabelColor`; unspecified = the client's default note color, unknown values read the same), set with `UpdateThread.optional notes_color` in the same all-or-nothing update (unspecified clears it). A thread without notes has no color: saving empty notes clears it, and a color set on a thread without notes isn't kept. Clients check `Welcome.protocol_minor ≥ 32` before offering or sending the color. |
 | 31 | `PrepareThreadBase{project_id, base_ref, folder_id}` → `Ok`, at once (ADR 0055): with `update_base_from_remote` on, the daemon starts fetching the base a `CreateThread` with the same fields would start from, and a `CreateThread` within 60 s reuses that fetch (or joins it while it runs) instead of fetching again. An unknown repo or folder is `NOT_FOUND`. Clients check `Welcome.protocol_minor ≥ 31` before sending it, since older daemons answer it with an error. No other wire change; `CreateThread` now answers before a project's first thread opens its parent-branch thread, which arrives as `WorkspaceChanged`, and every reply still comes after its change is saved (ADR 0054). |
 | 30 | `Ping` → `Ok`, for liveness (ADR 0052, see Liveness). Older daemons answer it with an error, which clients also count as alive. No other wire change; the daemon also no longer waits forever for a lost `AckScreen` (2 s). |
