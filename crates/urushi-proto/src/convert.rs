@@ -163,6 +163,7 @@ pub fn tab_to_proto(tab: &Tab) -> v1::Tab {
         // Volatile: the daemon adds them from its own state (see `urushi_core::attention`).
         attention: Vec::new(),
         running: Vec::new(),
+        background: Vec::new(),
     }
 }
 

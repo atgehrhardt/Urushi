@@ -16,6 +16,7 @@
 mod agents;
 mod attachments;
 mod attention;
+mod background;
 mod base_fetch;
 mod boards;
 mod columns;
@@ -187,6 +188,9 @@ pub struct Service {
     attention: Mutex<HashMap<PaneId, attention::Attention>>,
     /// Panes whose agent is working, since when. Not stored (`running.rs`).
     running: Mutex<HashMap<PaneId, Timestamp>>,
+    /// The shells and monitors each pane's agent keeps open in the background. Not stored
+    /// (`background.rs`).
+    background: Mutex<HashMap<PaneId, urushi_core::BackgroundTasks>>,
     /// Panes waiting for a task's message to be drafted into their agent, with how many
     /// times the user acted on each since (`task_draft.rs`).
     drafts: Mutex<HashMap<PaneId, u64>>,
@@ -288,6 +292,7 @@ impl Service {
             restore_points: Mutex::new(HashMap::new()),
             attention: Mutex::new(HashMap::new()),
             running: Mutex::new(HashMap::new()),
+            background: Mutex::new(HashMap::new()),
             drafts: Mutex::default(),
             home: config.home,
             cli: config.cli,
@@ -329,13 +334,14 @@ impl Service {
         self.changes.subscribe()
     }
 
-    /// The whole workspace as a wire message, with each tab's attention and running
-    /// panes, and the newer release of the app if one was found.
+    /// The whole workspace as a wire message, with each tab's attention, running panes
+    /// and background tasks, and the newer release of the app if one was found.
     pub fn workspace(&self) -> v1::Workspace {
         let state = lock(&self.state);
         let mut workspace = state.to_proto();
         self.add_attention(&mut workspace, &state);
         self.add_running(&mut workspace, &state);
+        self.add_background(&mut workspace, &state);
         workspace.update = self.updates.to_proto();
         workspace
     }
