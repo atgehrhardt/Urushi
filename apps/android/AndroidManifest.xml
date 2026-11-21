@@ -4,7 +4,11 @@
     <!-- versionName and versionCode come from Cargo.toml (scripts/build-android.sh). -->
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <application android:label="Urushi" android:icon="@mipmap/ic_launcher" android:hasCode="false" android:theme="@android:style/Theme.Black.NoTitleBar">
+    <!-- No backups: the app's data holds its LAN private key (res/xml/data_extraction_rules.xml). -->
+    <application android:label="Urushi" android:icon="@mipmap/ic_launcher" android:hasCode="false" android:theme="@android:style/Theme.Black.NoTitleBar"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity android:name="android.app.NativeActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|density|uiMode"
