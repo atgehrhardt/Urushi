@@ -63,3 +63,63 @@ async fn a_lost_ack_only_delays_the_next_update() {
     }
     daemon.stop().await;
 }
+
+/// A client that sends requests without reading the replies can't make the daemon hold
+/// an unbounded number of them: past the cap, requests are refused at once.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_client_that_never_reads_replies_is_refused_past_the_cap() {
+    use urushi_proto::codec::{read_envelope, write_envelope};
+    use urushi_proto::endpoint::LocalEndpoint;
+    use urushi_proto::{envelope, v1::envelope::Kind, v1::request::Body, v1::response::Outcome};
+
+    const REQUESTS: u64 = 20_000;
+    let home = temp_home();
+    let daemon = Daemon::start(&home.path().join("home")).await;
+    let urushi_client::Endpoint::Local(LocalEndpoint::UnixSocket(path)) = daemon.endpoint() else {
+        panic!("expected a Unix socket");
+    };
+    let stream = tokio::net::UnixStream::connect(path).await.unwrap();
+    let (mut reader, mut writer) = stream.into_split();
+    write_envelope(&mut writer, &envelope::hello(0, "flood", "0"))
+        .await
+        .unwrap();
+    read_envelope(&mut reader).await.unwrap().unwrap();
+
+    let flood = tokio::spawn(async move {
+        for id in 1..=REQUESTS {
+            let body = Body::GetSettings(v1::GetSettingsRequest {});
+            write_envelope(&mut writer, &envelope::request(id, body))
+                .await
+                .unwrap();
+        }
+        writer
+    });
+    // Let the replies back up while nothing reads them.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let (mut answered, mut refused) = (0, 0);
+    while answered + refused < REQUESTS {
+        let frame = tokio::time::timeout(Duration::from_secs(30), read_envelope(&mut reader))
+            .await
+            .expect("a reply in time")
+            .unwrap()
+            .unwrap();
+        match frame.kind {
+            Some(Kind::Response(v1::Response {
+                outcome: Some(Outcome::Settings(_)),
+                ..
+            })) => answered += 1,
+            Some(Kind::Response(v1::Response {
+                outcome: Some(Outcome::Error(error)),
+                ..
+            })) => {
+                assert_eq!(error.code, v1::ErrorCode::Unavailable as i32, "{error:?}");
+                refused += 1;
+            }
+            _ => {}
+        }
+    }
+    let _writer = flood.await.unwrap();
+    assert!(refused > 0, "every one of {answered} requests was held");
+    assert!(answered > 0);
+    daemon.stop().await;
+}
