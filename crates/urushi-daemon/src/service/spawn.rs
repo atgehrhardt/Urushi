@@ -132,15 +132,15 @@ impl Service {
     }
 
     /// Raises attention when the pane's program asks for the user, follows whether its
-    /// agent runs, and closes the pane (and its tab, if it was the last one) when its
+    /// agent runs and what it keeps open in the background, and closes the pane (and its tab, if it was the last one) when its
     /// process exits.
     pub(super) fn watch_session(&self, pane: PaneId, handle: SessionHandle) {
         let me = self.me.clone();
         tokio::spawn(async move {
             let mut status = handle.status();
-            let (mut alerts, mut activity) = {
+            let (mut alerts, mut activity, mut background) = {
                 let first = status.borrow();
-                (first.alerts, first.activity)
+                (first.alerts, first.activity, first.background_reports)
             };
             loop {
                 let now = *status.borrow_and_update();
@@ -155,6 +155,12 @@ impl Service {
                     activity = now.activity;
                     if let Some(service) = me.upgrade() {
                         service.set_running(pane, now.running);
+                    }
+                }
+                if now.background_reports > background {
+                    background = now.background_reports;
+                    if let Some(service) = me.upgrade() {
+                        service.set_background(pane, now.background);
                     }
                 }
                 if now.exit_code.is_some() {
@@ -178,6 +184,7 @@ impl Service {
         }
         self.forget_attention(&[pane]);
         self.forget_running(&[pane]);
+        self.forget_background(&[pane]);
         let removed = lock(&self.sessions).remove(&pane);
         if let Some(session) = removed {
             tokio::spawn(async move {
@@ -198,6 +205,7 @@ impl Service {
         let panes: Vec<PaneId> = panes.into_iter().collect();
         self.forget_attention(&panes);
         self.forget_running(&panes);
+        self.forget_background(&panes);
         let handles: Vec<SessionHandle> = {
             let mut sessions = lock(&self.sessions);
             panes.iter().filter_map(|p| sessions.remove(p)).collect()

@@ -1,13 +1,14 @@
 //! Terminal notifications, which alacritty's parser drops: iTerm2's `OSC 9 ; text`,
 //! rxvt's `OSC 777 ; notify ; title ; body`, and Urushi's own `OSC 777 ; urushi ; done`
-//! (see `urushi_core::attention`), including its `ready`, `running` and `idle` signals,
-//! which are not attention.
+//! (see `urushi_core::attention`), including its `ready`, `running`, `idle` and
+//! `background` signals, which are not attention.
 //! A second, output-only parser watches the same bytes for them, so nothing about the
 //! screen changes.
 
 use alacritty_terminal::vte::{Parser, Perform};
 use urushi_core::attention::{
-    AttentionKind, IDLE_SIGNAL, READY_SIGNAL, RUNNING_SIGNAL, SIGNAL_NAMESPACE, SIGNAL_OSC,
+    AttentionKind, BACKGROUND_SIGNAL, BackgroundTasks, IDLE_SIGNAL, READY_SIGNAL, RUNNING_SIGNAL,
+    SIGNAL_NAMESPACE, SIGNAL_OSC,
 };
 
 /// A notification seen in the output.
@@ -20,6 +21,9 @@ pub(super) enum Notice {
     /// An agent's hook says it works (`true`, `RUNNING_SIGNAL`) or its session ended
     /// (`false`, `IDLE_SIGNAL`).
     Running(bool),
+    /// An agent's hook says which shells and monitors it keeps open in the background
+    /// (`BACKGROUND_SIGNAL`).
+    Background(BackgroundTasks),
 }
 
 /// Watches output for notifications. Keeps parser state between chunks, so a sequence
@@ -57,10 +61,13 @@ fn classify(params: &[&[u8]]) -> Option<Notice> {
             let numeric = text.iter().all(u8::is_ascii_digit);
             (!text.is_empty() && !numeric).then_some(Notice::Attention(AttentionKind::Waiting))
         }
-        [osc, name, word, ..]
+        [osc, name, word, rest @ ..]
             if *osc == SIGNAL_OSC.as_bytes() && *name == SIGNAL_NAMESPACE.as_bytes() =>
         {
             match *word {
+                w if w == BACKGROUND_SIGNAL.as_bytes() => {
+                    return Some(Notice::Background(BackgroundTasks::from_params(rest)));
+                }
                 w if w == READY_SIGNAL.as_bytes() => return Some(Notice::Ready),
                 w if w == RUNNING_SIGNAL.as_bytes() => return Some(Notice::Running(true)),
                 w if w == IDLE_SIGNAL.as_bytes() => return Some(Notice::Running(false)),
@@ -84,7 +91,7 @@ mod tests {
             .into_iter()
             .filter_map(|n| match n {
                 Notice::Attention(kind) => Some(kind),
-                Notice::Ready | Notice::Running(_) => None,
+                Notice::Ready | Notice::Running(_) | Notice::Background(_) => None,
             })
             .collect()
     }
@@ -158,5 +165,29 @@ mod tests {
         let (a, b) = running.as_bytes().split_at(9);
         assert!(notices.advance(a).is_empty());
         assert_eq!(notices.advance(b), vec![Notice::Running(true)]);
+    }
+
+    #[test]
+    fn background_signals_carry_their_counts_and_are_not_attention() {
+        let tasks = BackgroundTasks {
+            shells: 2,
+            monitors: 1,
+        };
+        let signal = tasks.signal_sequence();
+        assert_eq!(
+            Notices::default().advance(signal.as_bytes()),
+            vec![Notice::Background(tasks)]
+        );
+        assert!(seen(signal.as_bytes()).is_empty());
+        // Split across reads.
+        let mut notices = Notices::default();
+        let (a, b) = signal.as_bytes().split_at(20);
+        assert!(notices.advance(a).is_empty());
+        assert_eq!(notices.advance(b), vec![Notice::Background(tasks)]);
+        // Garbled counts report nothing open, rather than inventing tasks.
+        assert_eq!(
+            Notices::default().advance(b"\x1b]777;urushi;background;x\x07"),
+            vec![Notice::Background(BackgroundTasks::default())]
+        );
     }
 }

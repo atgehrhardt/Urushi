@@ -16,7 +16,10 @@
 //!   0030). It also says when Claude is **running** (ADR 0039): `UserPromptSubmit`,
 //!   `PreToolUse`, `PostToolUse` and `SubagentStart` write `running`, and `SessionEnd`
 //!   writes `idle`. The tool hooks fire for subagents' tools too and after a permission
-//!   is granted, so they keep a pane running for as long as anything works in it.
+//!   is granted, so they keep a pane running for as long as anything works in it. Its
+//!   `Stop` hook also reports the shells and monitors Claude left running in the
+//!   background (ADR 0059): only `Stop` lists them, and one that ends wakes Claude for a
+//!   turn, whose `Stop` reports again.
 //! - Codex: its `notify` program on turn completion (done), and its own terminal
 //!   notifications (OSC 9) for approval requests (waiting).
 //! - Cursor has no command-line hooks; bells and notifications still count.
@@ -25,7 +28,8 @@ use std::fmt::Write as _;
 
 use super::Agent;
 use crate::attention::{
-    AttentionKind, IDLE_SIGNAL, READY_SIGNAL, RUNNING_SIGNAL, SIGNAL_NAMESPACE, SIGNAL_OSC,
+    AttentionKind, BACKGROUND_SIGNAL, IDLE_SIGNAL, READY_SIGNAL, RUNNING_SIGNAL, SIGNAL_NAMESPACE,
+    SIGNAL_OSC,
 };
 
 /// Environment variable holding the path of the pane's terminal device.
@@ -62,6 +66,32 @@ pub fn claude_done_command() -> String {
     format!(
         "grep -Eq '{pattern}' || {{ {}; }}; true",
         signal_command(AttentionKind::Done)
+    )
+}
+
+/// The `type` of a Claude background task that is a shell (a command run in the
+/// background), counted by [`claude_background_command`].
+pub const CLAUDE_SHELL_TASK_TYPE: &str = "shell";
+/// The `type` of a Claude background task that is a monitor, counted by
+/// [`claude_background_command`].
+pub const CLAUDE_MONITOR_TASK_TYPE: &str = "monitor";
+
+/// A second command for Claude's `Stop` hook: reports how many background shells and
+/// monitors the hook input on stdin lists ([`BACKGROUND_SIGNAL`], ADR 0059). Input
+/// without `background_tasks` (older Claude) reports none. Like [`signal_command`],
+/// harmless outside an Urushi pane and always succeeds.
+pub fn claude_background_command() -> String {
+    // As in `claude_done_command`, a quote inside a description is escaped in the JSON,
+    // so it can't pass for a task's own `"type"`.
+    let count = |kind: &str| {
+        format!(
+            r#"$(printf '%s' "$i" | grep -Eo '"type"[[:space:]]*:[[:space:]]*"{kind}"' | wc -l)"#
+        )
+    };
+    format!(
+        "i=$(cat); [ -w \"${TTY_ENV}\" ] && printf '\\033]{SIGNAL_OSC};{SIGNAL_NAMESPACE};{BACKGROUND_SIGNAL};%d;%d\\007' {} {} > \"${TTY_ENV}\"; true",
+        count(CLAUDE_SHELL_TASK_TYPE),
+        count(CLAUDE_MONITOR_TASK_TYPE),
     )
 }
 
@@ -136,8 +166,9 @@ fn claude_settings() -> String {
     };
     let running = format!(r#"[{{"hooks":{}}}]"#, hook(running_command()));
     format!(
-        r#"{{"hooks":{{"Stop":[{{"hooks":{}}}],"Notification":[{{"matcher":"permission_prompt|elicitation_dialog","hooks":{}}}],"SessionStart":[{{"matcher":"startup","hooks":{}}}],"UserPromptSubmit":{running},"PreToolUse":{running},"PostToolUse":{running},"SubagentStart":{running},"SessionEnd":[{{"hooks":{}}}]}}}}"#,
+        r#"{{"hooks":{{"Stop":[{{"hooks":{}}},{{"hooks":{}}}],"Notification":[{{"matcher":"permission_prompt|elicitation_dialog","hooks":{}}}],"SessionStart":[{{"matcher":"startup","hooks":{}}}],"UserPromptSubmit":{running},"PreToolUse":{running},"PostToolUse":{running},"SubagentStart":{running},"SessionEnd":[{{"hooks":{}}}]}}}}"#,
         hook(claude_done_command()),
+        hook(claude_background_command()),
         hook(signal_command(AttentionKind::Waiting)),
         hook(ready_command()),
         hook(idle_command()),
@@ -196,6 +227,14 @@ mod tests {
     }
 
     #[test]
+    fn claudes_background_command_counts_shells_and_monitors() {
+        assert_eq!(
+            claude_background_command(),
+            r#"i=$(cat); [ -w "$URUSHI_TTY" ] && printf '\033]777;urushi;background;%d;%d\007' $(printf '%s' "$i" | grep -Eo '"type"[[:space:]]*:[[:space:]]*"shell"' | wc -l) $(printf '%s' "$i" | grep -Eo '"type"[[:space:]]*:[[:space:]]*"monitor"' | wc -l) > "$URUSHI_TTY"; true"#
+        );
+    }
+
+    #[test]
     fn the_ready_command_writes_the_ready_signal() {
         assert_eq!(
             ready_command(),
@@ -213,6 +252,11 @@ mod tests {
                 .to_owned()
         };
         assert_eq!(command("Stop"), claude_done_command());
+        // Its own matcher group, so it gets the hook input on stdin too.
+        assert_eq!(
+            settings["hooks"]["Stop"][1]["hooks"][0]["command"],
+            claude_background_command()
+        );
         assert_eq!(
             command("Notification"),
             signal_command(AttentionKind::Waiting)

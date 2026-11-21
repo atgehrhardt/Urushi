@@ -1,6 +1,6 @@
 # Wire protocol
 
-> Status: **v1.32 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
+> Status: **v1.33 implemented**. The schema lives in [`proto/urushi/v1/`](../proto/urushi/v1/), the codec and conversions in `crates/urushi-proto`.
 > Any change must follow the `change-protocol` skill.
 
 ## Transport
@@ -52,6 +52,7 @@ Within one major version, minor versions are additive. A different major version
 | Minor | Adds |
 |---|---|
 | 0 | Everything below unless marked. |
+| 33 | Background shells and monitors (UR-74, ADR 0059): `Tab.background` and `QuickTerminal.background` (`PaneBackground{pane_id, shells, monitors}`) list panes whose agent keeps shells or monitors open in the background, as its last report says; only panes with at least one are listed. Like running, they aren't stored: changes arrive as `WorkspaceChanged` with the same `revision`. Older daemons send none. |
 | 32 | Notes in Markdown with a color (UR-72, ADR 0058): `Thread.notes` holds Markdown (the daemon stores it as typed and never parses it). `Thread.notes_color` (a `LabelColor`; unspecified = the client's default note color, unknown values read the same), set with `UpdateThread.optional notes_color` in the same all-or-nothing update (unspecified clears it). A thread without notes has no color: saving empty notes clears it, and a color set on a thread without notes isn't kept. Clients check `Welcome.protocol_minor ≥ 32` before offering or sending the color. |
 | 31 | `PrepareThreadBase{project_id, base_ref, folder_id}` → `Ok`, at once (ADR 0055): with `update_base_from_remote` on, the daemon starts fetching the base a `CreateThread` with the same fields would start from, and a `CreateThread` within 60 s reuses that fetch (or joins it while it runs) instead of fetching again. An unknown repo or folder is `NOT_FOUND`. Clients check `Welcome.protocol_minor ≥ 31` before sending it, since older daemons answer it with an error. No other wire change; `CreateThread` now answers before a project's first thread opens its parent-branch thread, which arrives as `WorkspaceChanged`, and every reply still comes after its change is saved (ADR 0054). |
 | 30 | `Ping` → `Ok`, for liveness (ADR 0052, see Liveness). Older daemons answer it with an error, which clients also count as alive. No other wire change; the daemon also no longer waits forever for a lost `AckScreen` (2 s). |

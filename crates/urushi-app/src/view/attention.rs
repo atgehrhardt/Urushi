@@ -1,9 +1,10 @@
 //! How a thread's agents look (ADR 0017, ADR 0039): a green dot when an agent finished,
 //! a pulsing blue one while it works, an amber one when something waits for the user.
 //! Shown on thread rows, tabs, task cards (a badge, and a colored border for attention)
-//! and the thread chips and subtask rows that lead to them.
+//! and the thread chips and subtask rows that lead to them. Thread rows also count the
+//! shells and monitors their agents keep open in the background (ADR 0059).
 
-use urushi_core::LabelColor;
+use urushi_core::{BackgroundTasks, LabelColor};
 use urushi_ui::{Align, Color, Font, Insets, Node, Theme};
 
 use super::labels::dot;
@@ -33,6 +34,24 @@ pub(super) fn label(indicator: Indicator) -> &'static str {
         Indicator::Running => "running",
         Indicator::Waiting => "needs input",
     }
+}
+
+/// The background tasks as words joined by `separator` ("2 shells · 1 monitor"), or
+/// `None` when nothing is open.
+pub(super) fn background_label(tasks: BackgroundTasks, separator: &str) -> Option<String> {
+    let count = |n: u32, one: &str, many: &str| match n {
+        0 => None,
+        1 => Some(format!("1 {one}")),
+        n => Some(format!("{n} {many}")),
+    };
+    let parts: Vec<String> = [
+        count(tasks.shells, "shell", "shells"),
+        count(tasks.monitors, "monitor", "monitors"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    (!parts.is_empty()).then(|| parts.join(separator))
 }
 
 /// The color of `indicator`'s dot right now: a running one pulses.
@@ -75,4 +94,19 @@ pub(super) fn indicator(
     size: f32,
 ) -> Node<Msg> {
     dot(theme, Some(dot_color(state, theme, indicator)), size)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn background_labels_count_shells_then_monitors() {
+        let label =
+            |shells, monitors| background_label(BackgroundTasks { shells, monitors }, " · ");
+        assert_eq!(label(0, 0), None);
+        assert_eq!(label(1, 0).as_deref(), Some("1 shell"));
+        assert_eq!(label(0, 1).as_deref(), Some("1 monitor"));
+        assert_eq!(label(2, 3).as_deref(), Some("2 shells · 3 monitors"));
+    }
 }

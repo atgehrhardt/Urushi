@@ -1,7 +1,8 @@
 //! A thread's card in the sidebar: its title (with a dot when its agent finished, works
 //! or waits, and the Jira and GitHub marks of its task's issue and pull request, which
 //! open them in a browser, ADR 0036), the repo and branch it's on, the first line of its
-//! notes, and its lifecycle badge. An unread thread's title is bold with a dot before
+//! notes, and its status: its lifecycle badge or agent's state, then the shells and
+//! monitors its agents keep open in the background (ADR 0059). An unread thread's title is bold with a dot before
 //! it, and a thread in a colored project has a stripe of that color (ADR 0048). Click to open it, right-click for its menu, drag it onto a project to file it
 //! there, or onto another thread to take that thread's place and join its group. A
 //! project's
@@ -49,6 +50,7 @@ pub(super) fn thread_card(
         _ => Some(("creating", theme.warning)),
     };
     let attention = state.thread_indicator(&thread.id);
+    let open_tasks = state.thread_background(&thread.id);
     let mut details = Node::column()
         .width(Length::Fill(1.0))
         .gap(1.0)
@@ -75,13 +77,25 @@ pub(super) fn thread_card(
             )
         })
     });
-    if let Some((label, color)) = badge {
-        details = details.child(Node::text(
-            label,
-            Font::UiMedium,
-            theme.font_size_small,
-            color,
-        ));
+    let background_label = super::attention::background_label(open_tasks, " · ");
+    if badge.is_some() || background_label.is_some() {
+        let separator = if badge.is_some() { "· " } else { "" };
+        details = details.child(
+            Node::row()
+                .gap(4.0)
+                .align(Align::Center)
+                .children(badge.map(|(label, color)| {
+                    Node::text(label, Font::UiMedium, theme.font_size_small, color)
+                }))
+                .children(background_label.map(|tasks| {
+                    Node::text(
+                        format!("{separator}{tasks}"),
+                        Font::Ui,
+                        theme.font_size_small,
+                        theme.text_muted,
+                    )
+                })),
+        );
     }
     let background = if selected || dragged {
         theme.selected
@@ -108,7 +122,7 @@ pub(super) fn thread_card(
         .key(key(&["thread", &thread.id]))
         .on_click(Msg::SelectThread(thread.id.clone()))
         .on_secondary_click(Msg::OpenMenu(MenuTarget::Thread(thread.id.clone())))
-        .role(Role::Item, title::card_label(thread, attention))
+        .role(Role::Item, title::card_label(thread, attention, open_tasks))
         .child(details);
     if thread.project_base {
         return with_stripe(theme, stripe, card);

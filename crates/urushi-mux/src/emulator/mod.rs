@@ -29,6 +29,9 @@ pub enum EmulatorEvent {
     /// An agent's hook said it is working (`true`, Urushi's `running` signal) or that its
     /// session ended (`false`, `idle`). Not attention.
     Running(bool),
+    /// An agent's hook said which shells and monitors it keeps open in the background
+    /// (Urushi's `background` signal). Not attention.
+    Background(urushi_core::BackgroundTasks),
 }
 
 /// Which viewport lines changed since the last [`Emulator::take_damage`].

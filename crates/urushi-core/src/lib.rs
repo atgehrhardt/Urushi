@@ -38,7 +38,7 @@ pub use agent::{
     TASK_PROMPT_ENV, TaskMessage,
 };
 pub use appearance::{Appearance, LogoStyle, Rgb, Scheme, SchemeColors};
-pub use attention::AttentionKind;
+pub use attention::{AttentionKind, BackgroundTasks};
 pub use board::{
     Board, BoardError, BoardSource, Column, LabelColor, QuickFilter, QuickRule, Task, TaskKind,
     TaskPatch, custom_task_prompt, task_prompt, task_reference_prompt,
