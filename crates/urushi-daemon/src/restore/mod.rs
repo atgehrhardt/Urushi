@@ -172,6 +172,15 @@ mod tests {
         store.save(pane(1), &record).unwrap();
         store.save(pane(2), &PaneRecord::default()).unwrap();
         assert_eq!(store.load(pane(1)), Some(record));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(store.path(pane(1)))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600, "terminal output is the user's alone");
+        }
         std::fs::write(dir.path().join("restore/x.json.tmp"), "half").unwrap();
         store.retain(&HashSet::from([pane(2)]));
         assert_eq!(store.load(pane(1)), None, "closed pane forgotten");

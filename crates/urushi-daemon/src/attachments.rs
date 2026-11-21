@@ -10,7 +10,7 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::io::{Cursor, Write};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use image::{ImageReader, Limits};
@@ -163,15 +163,9 @@ impl AttachmentStore {
     }
 }
 
-/// Replaces the file at `path`: write a temp file next to it, fsync, rename.
+/// Replaces the file at `path`, readable only by the user (`store::write_atomically`).
 fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
-    {
-        let mut file = fs::File::create(&tmp)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-    }
-    fs::rename(&tmp, path)
+    crate::store::write_atomically(path, bytes)
 }
 
 fn encode_thumbnail(t: &Thumbnail) -> Vec<u8> {
@@ -231,6 +225,12 @@ mod tests {
         store.write(a, &image, Some(&decoded.thumbnail)).unwrap();
         store.write(b, b"hello", None).unwrap();
         assert_eq!(store.read(a).unwrap(), image);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(store.path(a)).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600, "attachments are the user's alone");
+        }
         assert_eq!(store.thumbnail(a).unwrap(), decoded.thumbnail);
         // A damaged cached thumbnail is made again.
         fs::write(store.thumbnail_path(a), b"junk").unwrap();
