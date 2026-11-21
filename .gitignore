@@ -9,3 +9,11 @@ xcuserdata/
 /apps/android/.gradle/
 /apps/android/**/build/
 .claude/settings.local.json
+# Signing material and secrets never belong in the repository.
+*.jks
+*.keystore
+*.p12
+*.pem
+*.mobileprovision
+.env
+.env.*

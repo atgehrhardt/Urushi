@@ -20,6 +20,10 @@ on:
       - scripts/bundle-ios.sh
       - apps/android/AndroidManifest.xml
 
+# The builds only read the repository.
+permissions:
+  contents: read
+
 # A newer push to a pull request replaces its running build; every merge to main keeps its own.
 concurrency:
   group: build-${{ github.ref }}
