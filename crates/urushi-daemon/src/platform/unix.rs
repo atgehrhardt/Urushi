@@ -21,6 +21,13 @@ pub(crate) fn secure_dir(dir: &Path) -> std::io::Result<()> {
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
 }
 
+/// Creates the new folder `dir`, readable only by this user (0700). Fails if anything is
+/// already at `dir`, so a folder or symlink planted in a shared temp folder is never used.
+pub(crate) fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new().mode(0o700).create(dir)
+}
+
 /// Replaces the file at `path` with `bytes`, readable and writable only by this user
 /// (0600): a temp file made with that mode, fsynced, then renamed over it.
 pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {

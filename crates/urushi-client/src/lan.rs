@@ -11,7 +11,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use urushi_core::{LanSettings, TailnetSettings};
-use urushi_proto::endpoint::{parse_tcp, split_host_port};
+use urushi_proto::endpoint::{Endpoint, parse_tcp, plain_tcp_allowed, split_host_port};
 use urushi_proto::lan::{self, Keypair, PairingCode, PublicKey};
 
 use crate::{Client, ClientError, Events, platform};
@@ -231,7 +231,9 @@ impl Client {
     }
 
     /// Connects to a remote daemon: over the LAN if `spec` names a host in `keyring`,
-    /// otherwise over plain TCP to a tailnet address (default port 7420).
+    /// otherwise over plain TCP to a tailnet address (default port 7420). A host that
+    /// resolves to anything but a tailnet address or this machine is refused before
+    /// connecting, since the plain protocol is unencrypted ([`plain_tcp_allowed`]).
     pub async fn connect_remote(
         spec: &str,
         keyring: Option<&LanKeyring>,
@@ -242,8 +244,13 @@ impl Client {
         {
             return Self::connect_lan(host, keyring, client_name).await;
         }
-        let endpoint = parse_tcp(spec, TailnetSettings::DEFAULT_PORT)
-            .ok_or_else(|| ClientError::Protocol(format!("{spec:?} isn't a host or host:port")))?;
+        let Some(Endpoint::Tcp { host, port }) = parse_tcp(spec, TailnetSettings::DEFAULT_PORT)
+        else {
+            return Err(ClientError::Protocol(format!(
+                "{spec:?} isn't a host or host:port"
+            )));
+        };
+        let endpoint = tailnet_endpoint(&host, port).await?;
         Self::connect(&endpoint, client_name)
             .await
             .map_err(|e| not_paired_hint(e, spec))
@@ -260,6 +267,36 @@ fn not_paired_hint(error: ClientError, spec: &str) -> ClientError {
         )),
         error => error,
     }
+}
+
+/// Resolves `host` and picks an address the plain protocol may go to. Connecting to
+/// that address, not the name, means a second lookup can't send it elsewhere.
+async fn tailnet_endpoint(host: &str, port: u16) -> Result<Endpoint, ClientError> {
+    let connect_error = |source| ClientError::Connect {
+        endpoint: format!("{host}:{port}"),
+        source,
+    };
+    let addresses: Vec<std::net::SocketAddr> = tokio::time::timeout(
+        crate::CONNECT_TIMEOUT,
+        tokio::net::lookup_host((host, port)),
+    )
+    .await
+    .map_err(|_| ClientError::TimedOut("looking up the host"))?
+    .map_err(connect_error)?
+    .collect();
+    let Some(address) = addresses.iter().find(|a| plain_tcp_allowed(a.ip())) else {
+        let found: Vec<String> = addresses.iter().map(|a| a.ip().to_string()).collect();
+        return Err(ClientError::Protocol(format!(
+            "{host} ({}) isn't a tailnet address, and Urushi only connects without \
+             encryption over Tailscale. If it is a LAN host, pair this device with it \
+             first (enter the pairing code it shows).",
+            found.join(", ")
+        )));
+    };
+    Ok(Endpoint::Tcp {
+        host: address.ip().to_string(),
+        port,
+    })
 }
 
 async fn tcp(host: &str, port: u16) -> Result<TcpStream, ClientError> {
@@ -283,6 +320,27 @@ fn timed_out(host: &str, port: u16) -> ClientError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn plain_connections_go_only_to_tailnet_addresses() {
+        for spec in ["192.168.1.10:7420", "8.8.8.8", "[fd12::1]:7421"] {
+            let Err(err) = Client::connect_remote(spec, None, "test").await else {
+                panic!("{spec} connected");
+            };
+            assert!(err.to_string().contains("isn't a tailnet address"), "{err}");
+        }
+        assert_eq!(
+            tailnet_endpoint("127.0.0.1", 9).await.unwrap(),
+            Endpoint::Tcp {
+                host: "127.0.0.1".into(),
+                port: 9
+            }
+        );
+        assert!(matches!(
+            tailnet_endpoint("100.100.1.2", 7420).await,
+            Ok(Endpoint::Tcp { port: 7420, .. })
+        ));
+    }
 
     fn host(name: &str, port: u16) -> LanHost {
         LanHost {

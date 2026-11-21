@@ -23,18 +23,28 @@ pub(crate) fn read_attachment(path: &str) -> Result<(String, Vec<u8>), String> {
     Ok((name, bytes))
 }
 
-/// Writes an attachment to `<temp>/urushi-attachments/<id>/<name>` and returns the
-/// path. Files of the same name stay apart by their attachment's id.
+/// Writes an attachment to `<home>/opened-attachments/<id>/<name>` and returns the
+/// path. Files of the same name stay apart by their attachment's id. The folders are
+/// the user's alone, inside Urushi's own home rather than a temp folder other users
+/// share, so nobody can plant a file or link where the attachment is written. The
+/// file is marked as downloaded (`platform::mark_downloaded`), so the system asks
+/// before running anything that came in an attachment.
 pub(crate) fn save_for_opening(id: &str, name: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
-    save_in(&std::env::temp_dir(), id, name, bytes)
+    let base = urushi_client::home_dir().unwrap_or_else(std::env::temp_dir);
+    let path = save_in(&base, id, name, bytes)?;
+    crate::platform::mark_downloaded(&path);
+    Ok(path)
 }
 
-fn save_in(temp: &Path, id: &str, name: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
+fn save_in(base: &Path, id: &str, name: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
     // Both come from the daemon; keep them to one path component each anyway.
     let id = file_name(id).map_err(std::io::Error::other)?;
     let name = file_name(name).map_err(std::io::Error::other)?;
-    let dir = temp.join("urushi-attachments").join(id);
+    let opened = base.join("opened-attachments");
+    let dir = opened.join(id);
     std::fs::create_dir_all(&dir)?;
+    crate::platform::make_private(&opened)?;
+    crate::platform::make_private(&dir)?;
     let path = dir.join(name);
     std::fs::write(&path, bytes)?;
     Ok(path)
@@ -73,7 +83,22 @@ mod tests {
     fn attachments_open_from_their_own_folder_with_a_safe_name() {
         let dir = tempfile::tempdir().unwrap();
         let path = save_in(dir.path(), "abc", "../../evil.txt", b"x").unwrap();
-        assert_eq!(path, dir.path().join("urushi-attachments/abc/evil.txt"));
+        assert_eq!(path, dir.path().join("opened-attachments/abc/evil.txt"));
         assert_eq!(std::fs::read(path).unwrap(), b"x");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_folders_of_opened_attachments_are_the_users_alone() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        save_in(dir.path(), "abc", "a.txt", b"x").unwrap();
+        for folder in ["opened-attachments", "opened-attachments/abc"] {
+            let mode = std::fs::metadata(dir.path().join(folder))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o700, "{folder}");
+        }
     }
 }

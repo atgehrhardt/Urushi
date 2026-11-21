@@ -2,15 +2,15 @@
 //! command a pane was running from its processes' arguments, so a restored pane can run
 //! it again (ADR 0013).
 
-/// Quotes `word` for POSIX shells, unless it needs no quoting.
+/// Quotes `word` for POSIX shells, unless it needs no quoting. A backslash always
+/// needs it (it would escape what follows), and so does a leading `=` (zsh expands
+/// `=cmd` to a path).
 pub fn quote(word: &str) -> String {
     let plain = !word.is_empty()
+        && !word.starts_with('=')
         && word.chars().all(|c| {
             c.is_ascii_alphanumeric()
-                || matches!(
-                    c,
-                    '/' | '.' | '_' | '-' | ':' | '\\' | '=' | '@' | '%' | '+' | ','
-                )
+                || matches!(c, '/' | '.' | '_' | '-' | ':' | '=' | '@' | '%' | '+' | ',')
         });
     if plain {
         word.to_owned()
@@ -61,6 +61,12 @@ mod tests {
         assert_eq!(quote("it's"), r"'it'\''s'");
         assert_eq!(quote(""), "''");
         assert_eq!(quote("$(id)"), "'$(id)'");
+        assert_eq!(
+            quote(r"a\"),
+            r"'a\'",
+            "a trailing backslash would escape the space"
+        );
+        assert_eq!(quote("=ls"), "'=ls'", "zsh expands =ls");
     }
 
     #[test]

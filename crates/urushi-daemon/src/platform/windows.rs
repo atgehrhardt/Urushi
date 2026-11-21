@@ -14,6 +14,12 @@ pub(crate) fn secure_dir(dir: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)
 }
 
+/// Creates the new folder `dir`, failing if anything is already there. It inherits the
+/// user-only ACL of the user's temp folder.
+pub(crate) fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir(dir)
+}
+
 /// Replaces the file at `path` with `bytes`: a temp file, flushed, then renamed over it.
 /// Like the home it lives in, it inherits the user-only ACL of `%LOCALAPPDATA%`.
 pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {

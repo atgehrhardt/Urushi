@@ -360,6 +360,25 @@ mod tests {
     }
 
     #[test]
+    fn only_the_host_offers_the_tailnet_switch() {
+        for (target, shown) in [
+            (ConnectTarget::Local(None), true),
+            (ConnectTarget::Remote("box.tail.ts.net".into()), false),
+        ] {
+            let mut state = AppState::new(target, CELL);
+            state.update(Msg::Connected {
+                welcome: v1::Welcome::default(),
+                workspace: v1::Workspace::default(),
+            });
+            state.update(Msg::OpenSettings);
+            let dump = render(&state).scene.dump();
+            assert_eq!(dump.contains("Serve on my tailnet"), shown, "{dump}");
+            let fx = state.update(Msg::Toggle(crate::state::SettingToggle::ServeTailnet));
+            assert_eq!(!fx.is_empty(), shown);
+        }
+    }
+
+    #[test]
     fn hosts_connected_to_before_connect_with_one_tap() {
         let mut state = AppState::new(ConnectTarget::Ask, CELL);
         state.update(Msg::RecentHosts(vec!["box.tail.ts.net".into()]));

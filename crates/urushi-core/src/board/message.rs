@@ -50,7 +50,19 @@ pub fn custom_task_prompt(
         }
     }
     out.push_str(rest);
-    Ok(capped(out.trim().to_owned()))
+    Ok(capped(not_an_option(out.trim())))
+}
+
+/// `prompt`, made safe to pass as an agent's last argument: one that starts with `-`
+/// (a template beginning `{title}`, and a Jira summary such as
+/// `--dangerously-skip-permissions`) would be read as an option, so it gets a leading
+/// space, which no CLI reads as one.
+fn not_an_option(prompt: &str) -> String {
+    if prompt.starts_with('-') {
+        format!(" {prompt}")
+    } else {
+        prompt.to_owned()
+    }
 }
 
 #[cfg(test)]
@@ -167,6 +179,30 @@ mod tests {
         assert_eq!(
             custom_task_prompt(&b, TaskId::from_u128(99), "x", "urushi"),
             Err(BoardError::NoSuchTask(TaskId::from_u128(99)))
+        );
+    }
+
+    #[test]
+    fn a_prompt_never_reads_as_an_agent_option() {
+        let (mut b, id) = jira_board();
+        b.task_mut(id).unwrap().title = "--dangerously-skip-permissions".into();
+        assert_eq!(
+            custom_task_prompt(&b, id, "{title}", "urushi").unwrap(),
+            " --dangerously-skip-permissions"
+        );
+        assert_eq!(
+            custom_task_prompt(&b, id, "Do {title}", "urushi").unwrap(),
+            "Do --dangerously-skip-permissions"
+        );
+    }
+
+    #[test]
+    fn an_odd_issue_key_is_quoted_in_the_show_command() {
+        let (mut b, id) = jira_board();
+        b.task_mut(id).unwrap().issue.as_mut().unwrap().key = "UR-1; rm -rf ~".into();
+        assert_eq!(
+            custom_task_prompt(&b, id, "{show}", "urushi").unwrap(),
+            "urushi board show 'UR-1; rm -rf ~'"
         );
     }
 }

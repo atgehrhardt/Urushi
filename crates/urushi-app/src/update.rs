@@ -791,13 +791,14 @@ impl AppState {
                 self.toggle_task_message(toggle, fx);
             }
             SettingToggle::LanAccess => self.toggle_lan(fx),
-            SettingToggle::ServeTailnet => {
+            SettingToggle::ServeTailnet if self.shows_tailnet_switch() => {
                 let serving = self.tailnet.as_ref().is_some_and(|t| t.serving);
                 fx.push(request(
                     Body::SetTailnetServe(v1::SetTailnetServeRequest { serve: !serving }),
                     Followup::TailnetStatus,
                 ));
             }
+            SettingToggle::ServeTailnet => {}
         }
     }
 }

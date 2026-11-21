@@ -25,8 +25,12 @@ release notes explain how to sideload the `.ipa`.
 | `ios` | macOS | Pull requests only. `scripts/bundle-ios.sh` (simulator) and `scripts/bundle-ios.sh --device`. Uploads the unsigned `Urushi.ipa` (`urushi-ios-unsigned`) and the zipped simulator app (`urushi-ios-simulator`), kept 14 days. |
 | `android` | Ubuntu | Pull requests only. `scripts/build-android.sh` with the runner's SDK, NDK and JDK. Uploads the debug-signed APK as the `urushi-android-debug` artifact (kept 14 days). |
 | `docs` | Ubuntu | `scripts/check-docs.sh` |
-| `licenses` | Ubuntu | `cargo deny check` |
+| `licenses` | Ubuntu | `cargo deny check`: licenses, RustSec advisories, bans and sources |
 | `proto` | Ubuntu | `buf lint`; on pull requests, also `buf breaking` against `main` |
+
+**Advisories** (`.github/workflows/advisories.yml`): every Monday, and by hand, `cargo deny check advisories` against the lockfile, so a vulnerability found in a crate already in use shows up without a push.
+
+**Workflow security** ([security](../security.md)): `ci.yml`, `build.yml`, `build-apps.yml` and `advisories.yml` give the token `contents: read`; only the release's `publish` job may write. Third-party actions (`Swatinem/rust-cache`, `EmbarkStudios/cargo-deny-action`, `bufbuild/buf-action`) are pinned to a commit SHA with the version in a comment; update the SHA and the comment together. Untrusted values reach `run:` steps only through `env:`.
 
 The test jobs time out after 45 minutes, so a hung test fails the run. The toolchain comes from `rust-toolchain.toml`. The daemon's end-to-end tests
 (`crates/urushi-daemon/tests/*.rs`) are Unix-only, because they drive `/bin/sh` and git
@@ -84,7 +88,9 @@ gh secret set ANDROID_KEY_ALIAS --body urushi
 # ANDROID_KEY_PASSWORD is only needed if the key's password differs from the keystore's.
 ```
 Releases fail without these secrets. Only the Release workflow gets them, so every
-other APK (CI, Build, pull requests) is debug-signed. Locally, `scripts/build-android.sh` signs with
+other APK (CI, Build, pull requests) is debug-signed. The decoded keystore lives in
+`$RUNNER_TEMP` only until the APK is signed: the next step deletes it, even if the build
+failed, before any post-step (the cache's) runs. Locally, `scripts/build-android.sh` signs with
 `ANDROID_KEYSTORE` (and the same password and alias variables) when set. Otherwise it uses
 Android's standard debug key, `~/.android/debug.keystore`.
 
@@ -141,5 +147,8 @@ Android's standard debug key, `~/.android/debug.keystore`.
   APK).
 - The release doesn't re-run the tests. It relies on CI's result for the commit, which
   `preflight` checks.
+- The signing secrets are repository secrets with no protected environment, so anyone
+  with write access could run a workflow that reads them. Moving them to a `release`
+  environment with required reviewers is UR-77 ([security](../security.md)).
 - There's no hand-started dry run. A release is the first time the release key signs a
   build. Merge builds are debug-signed.

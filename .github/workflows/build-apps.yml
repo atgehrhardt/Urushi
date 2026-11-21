@@ -40,6 +40,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Builds only read the repository; a caller can't widen this.
+permissions:
+  contents: read
+
 jobs:
   version:
     runs-on: ubuntu-latest
@@ -76,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: rustup show active-toolchain || rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Build Urushi.app
         run: ./scripts/bundle-macos.sh
@@ -117,7 +121,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: rustup show active-toolchain || rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Release key
         # Only releases get the release key; every other build is signed with a throwaway
@@ -139,6 +143,11 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./scripts/build-android.sh
+
+      - name: Forget the release key
+        # Before any post-step (the cache's) runs, and even if the build failed.
+        if: always() && inputs.release
+        run: rm -f "$RUNNER_TEMP/release.jks"
 
       - name: Check the APK
         run: |
@@ -176,7 +185,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: rustup show active-toolchain || rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Build Urushi.ipa
         run: ./scripts/bundle-ios.sh --device

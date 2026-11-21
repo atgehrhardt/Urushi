@@ -27,6 +27,14 @@ use crate::service::{Service, lock};
 /// to absorb bursts of responses.
 const OUTBOUND_QUEUE: usize = 256;
 
+/// Requests one connection may have in flight. Each holds its task and, once done, its
+/// reply until the writer takes it, so a client that sends without reading could
+/// otherwise grow the daemon's memory without bound. Past this, requests are refused
+/// at once with `UNAVAILABLE`, and the read loop never waits for a slot, so keystrokes
+/// and heartbeats keep flowing. The app's own bursts (a board's thumbnails, every pane
+/// attaching) stay well under it.
+pub(crate) const MAX_REQUESTS_IN_FLIGHT: usize = 512;
+
 /// How long a new connection has to say `Hello`. A peer that connects and stays silent
 /// would otherwise hold its socket (a file descriptor) for as long as the daemon runs.
 pub(crate) const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -62,6 +70,8 @@ pub(crate) struct Connection {
     pub(crate) watching: Mutex<Option<crate::service::BoardWatch>>,
     /// See [`Peer::local`].
     pub(crate) local: bool,
+    /// Slots for requests in flight, [`MAX_REQUESTS_IN_FLIGHT`] in all.
+    requests: Arc<tokio::sync::Semaphore>,
 }
 
 impl Connection {
@@ -137,6 +147,7 @@ where
         subscription: Mutex::new(None),
         watching: Mutex::new(None),
         local: peer.local,
+        requests: Arc::new(tokio::sync::Semaphore::new(MAX_REQUESTS_IN_FLIGHT)),
     });
     let mut close = peer.close.clone();
     let closed = async move {
@@ -266,6 +277,14 @@ where
 async fn dispatch(connection: &Arc<Connection>, frame: Envelope) {
     match frame.kind {
         Some(Kind::Request(v1::Request { id, body })) => {
+            let Ok(slot) = connection.requests.clone().try_acquire_owned() else {
+                let busy = v1::response::Outcome::Error(v1::Error {
+                    code: v1::ErrorCode::Unavailable.into(),
+                    message: "too many requests in flight on this connection".into(),
+                });
+                let _ = connection.out.send(envelope::response(id, busy)).await;
+                return;
+            };
             let connection = connection.clone();
             tokio::spawn(async move {
                 let outcome = match body {
@@ -273,6 +292,7 @@ async fn dispatch(connection: &Arc<Connection>, frame: Envelope) {
                     None => handlers::invalid("empty request"),
                 };
                 let _ = connection.out.send(envelope::response(id, outcome)).await;
+                drop(slot);
             });
         }
         Some(Kind::Notification(v1::Notification { body: Some(body) })) => {

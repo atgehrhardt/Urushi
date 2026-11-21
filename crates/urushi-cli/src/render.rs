@@ -11,7 +11,7 @@ pub(crate) fn short(id: &str) -> &str {
 }
 
 pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
-    let mut o = std::io::stdout().lock();
+    let mut o = crate::printable::stdout();
     if mirror.repos().is_empty() {
         writeln!(o, "no repos yet; add one with `urushi repo add <path>`")?;
     }
@@ -105,7 +105,7 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
 
 /// Prints the quick terminal and its panes.
 pub(crate) fn print_quick(quick: &v1::QuickTerminal) -> Result<()> {
-    write_quick(&mut std::io::stdout().lock(), quick)
+    write_quick(&mut crate::printable::stdout(), quick)
 }
 
 fn write_quick(o: &mut impl Write, quick: &v1::QuickTerminal) -> Result<()> {
@@ -196,7 +196,7 @@ fn background_words(shells: u32, monitors: u32) -> String {
 }
 
 pub(crate) fn print_plan(plan: &v1::DeletionPlan) -> Result<()> {
-    let mut o = std::io::stdout().lock();
+    let mut o = crate::printable::stdout();
     writeln!(o, "Deleting this thread will permanently remove:")?;
     if plan.keeps_worktree {
         writeln!(
@@ -243,7 +243,7 @@ pub(crate) fn print_plan(plan: &v1::DeletionPlan) -> Result<()> {
 }
 
 pub(crate) fn print_settings(s: &v1::Settings) -> Result<()> {
-    let mut o = std::io::stdout().lock();
+    let mut o = crate::printable::stdout();
     let t = s.tailnet.clone().unwrap_or_default();
     writeln!(o, "delete-remote-branches  {}", s.delete_remote_branches)?;
     writeln!(o, "branch-prefix           {}", s.branch_prefix)?;
@@ -331,7 +331,7 @@ pub(crate) fn print_settings(s: &v1::Settings) -> Result<()> {
 }
 
 pub(crate) fn print_tailnet(s: &v1::TailnetStatus) -> Result<()> {
-    let mut o = std::io::stdout().lock();
+    let mut o = crate::printable::stdout();
     if !s.installed {
         writeln!(o, "tailscale: not installed")?;
     } else if !s.running {

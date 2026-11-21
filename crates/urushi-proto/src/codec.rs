@@ -94,6 +94,10 @@ impl FrameDecoder {
     }
 }
 
+/// The most a frame's buffer reserves before its bytes arrive.
+#[cfg(feature = "io")]
+const INITIAL_PAYLOAD_CAPACITY: usize = 64 * 1024;
+
 /// Reads one envelope. Returns `Ok(None)` on a clean end of stream between frames.
 #[cfg(feature = "io")]
 pub async fn read_envelope<R>(reader: &mut R) -> Result<Option<Envelope>, FrameError>
@@ -112,14 +116,16 @@ where
     if len > MAX_FRAME_LEN {
         return Err(FrameError::TooLarge(len));
     }
-    let mut payload = vec![0u8; len];
-    reader.read_exact(&mut payload).await.map_err(|e| {
-        if e.kind() == std::io::ErrorKind::UnexpectedEof {
-            FrameError::Truncated
-        } else {
-            FrameError::Io(e)
-        }
-    })?;
+    // The buffer grows with the bytes that actually arrive, so a header alone, which
+    // can claim up to `MAX_FRAME_LEN`, costs nothing.
+    let mut payload = Vec::with_capacity(len.min(INITIAL_PAYLOAD_CAPACITY));
+    (&mut *reader)
+        .take(len as u64)
+        .read_to_end(&mut payload)
+        .await?;
+    if payload.len() < len {
+        return Err(FrameError::Truncated);
+    }
     Ok(Some(Envelope::decode(payload.as_slice())?))
 }
 
@@ -210,5 +216,39 @@ mod tests {
             read_envelope(&mut b).await,
             Err(FrameError::Truncated)
         ));
+    }
+
+    #[cfg(feature = "io")]
+    #[tokio::test]
+    async fn a_header_claiming_the_most_with_nothing_after_is_truncated() {
+        let (mut a, mut b) = tokio::io::duplex(1024);
+        let header = u32::try_from(MAX_FRAME_LEN).unwrap().to_be_bytes();
+        tokio::io::AsyncWriteExt::write_all(&mut a, &header)
+            .await
+            .unwrap();
+        tokio::io::AsyncWriteExt::write_all(&mut a, b"abc")
+            .await
+            .unwrap();
+        drop(a);
+        assert!(matches!(
+            read_envelope(&mut b).await,
+            Err(FrameError::Truncated)
+        ));
+    }
+
+    #[cfg(feature = "io")]
+    #[tokio::test]
+    async fn frames_bigger_than_the_first_buffer_still_arrive_whole() {
+        let big = crate::envelope::response(
+            3,
+            crate::v1::response::Outcome::ScreenText(crate::v1::ScreenText {
+                lines: vec!["x".repeat(1024 * 1024)],
+            }),
+        );
+        let (mut a, mut b) = tokio::io::duplex(64 * 1024);
+        let sent = big.clone();
+        let writer = tokio::spawn(async move { write_envelope(&mut a, &sent).await });
+        assert_eq!(read_envelope(&mut b).await.unwrap(), Some(big));
+        writer.await.unwrap().unwrap();
     }
 }

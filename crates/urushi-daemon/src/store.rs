@@ -8,8 +8,7 @@
 //! changes (see ADR 0008).
 
 use std::collections::BTreeSet;
-use std::fs::{self, File};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -161,14 +160,10 @@ impl Store for JsonFileStore {
 }
 
 /// Replaces the file at `path` with `bytes`: write a temp file next to it, fsync, rename.
+/// The file is the user's alone (0600 on Unix), like the home it lives in: the
+/// workspace names every repo and thread, and restore points hold terminal output.
 pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_extension("json.tmp");
-    {
-        let mut file = File::create(&tmp)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-    }
-    fs::rename(&tmp, path)
+    crate::platform::write_private(path, bytes)
 }
 
 #[cfg(test)]
@@ -184,7 +179,16 @@ mod tests {
         doc.settings.delete_remote_branches = false;
         store.save(&doc).unwrap();
         assert_eq!(store.load().unwrap(), doc);
-        assert!(!dir.path().join("workspace.json.tmp").exists());
+        assert!(!dir.path().join("workspace.tmp").exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(dir.path().join("workspace.json"))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
     }
 
     #[test]

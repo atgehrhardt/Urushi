@@ -215,7 +215,7 @@ impl UploadFile {
         );
         let dir = std::env::temp_dir().join(unique);
         let failed = |e: std::io::Error| HttpError(format!("couldn't stage the file: {e}"));
-        std::fs::create_dir_all(&dir).map_err(failed)?;
+        crate::platform::create_private_dir(&dir).map_err(failed)?;
         let path = dir.join("upload");
         crate::platform::write_private(&path, &upload.data).map_err(failed)?;
         Ok(Self { dir, path })
@@ -231,19 +231,22 @@ impl Drop for UploadFile {
 /// curl exits with an error for transport failures (it isn't given `--fail`, so HTTP
 /// errors still exit 0).
 fn friendly(error: &str) -> String {
+    let exited = |code: u8| error.contains(&format!("(exit status: {code})"));
     if error.starts_with("cannot run") {
         "curl isn't installed; Urushi needs it to reach the internet".into()
-    } else if error.contains("exit status: 6") {
+    } else if exited(1) {
+        "the site can only be reached over HTTPS".into()
+    } else if exited(6) {
         "the site's address couldn't be found".into()
-    } else if error.contains("exit status: 7") {
+    } else if exited(7) {
         "the site refused the connection".into()
-    } else if error.contains("exit status: 35") || error.contains("exit status: 60") {
+    } else if exited(35) || exited(60) {
         "the secure connection to the site failed".into()
-    } else if error.contains("exit status: 28") || error.contains("timed out") {
+    } else if exited(28) || error.contains("timed out") {
         "the request timed out".into()
-    } else if error.contains("exit status: 22") {
+    } else if exited(22) {
         "the server refused the download".into()
-    } else if error.contains("exit status: 23") {
+    } else if exited(23) {
         "the download couldn't be saved".into()
     } else {
         format!("couldn't connect ({error})")
@@ -257,6 +260,9 @@ pub(crate) fn curl_config(request: &Request, upload: Option<&std::path::Path>) -
         "silent".to_owned(),
         "show-error".to_owned(),
         "globoff".to_owned(),
+        // HTTPS only, redirects included: credentials and downloads never go in the clear.
+        "proto = \"=https\"".to_owned(),
+        "proto-redir = \"=https\"".to_owned(),
         format!("max-time = {}", TIMEOUT.as_secs()),
         format!("request = {}", quote(request.method.as_str())),
         format!("url = {}", quote(&request.url)),
@@ -306,6 +312,8 @@ pub(crate) fn download_config(url: &str, dest: &std::path::Path) -> String {
         "globoff".to_owned(),
         "fail".to_owned(),
         "location".to_owned(),
+        "proto = \"=https\"".to_owned(),
+        "proto-redir = \"=https\"".to_owned(),
         format!("max-time = {}", DOWNLOAD_TIMEOUT.as_secs()),
         format!("url = {}", quote(url)),
         format!("output = {}", quote(&dest.to_string_lossy())),

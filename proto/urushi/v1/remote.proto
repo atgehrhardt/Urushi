@@ -31,6 +31,8 @@ message TailnetPeer {
   string os = 5;
 }
 
+// Accepted only from clients on the host itself; remote clients get
+// PERMISSION_DENIED.
 message SetTailnetServeRequest {
   bool serve = 1;
 }

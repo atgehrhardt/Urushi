@@ -40,7 +40,8 @@ When the daemon itself stops (**Restart daemon…**, a reboot, a crash), the pro
 ## Invariants
 - Only the actor touches the emulator: no locks, and no shared mutable state.
 - A frame requested from before the last reset is always `full`.
-- Pastes can't break out of bracketed-paste mode (embedded end markers are stripped).
+- Pastes can't break out of bracketed-paste mode: every control character except tab and carriage return is dropped from pasted text, so no ESC survives and no end marker can form, however it's nested (`keys::encode_paste`).
+- Output can't make the daemon hold huge strings: OSC payloads are cut at 4 KiB before alacritty and the notice parser see them (`emulator/osc_limit.rs`), which also bounds alacritty's 4096-deep title stack.
 - A session id only reaches a shell if it is letters, digits, `-` and `_` (`AgentSessionId::new`); a job's arguments are quoted, and a job with a control character in an argument isn't typed (`shell::job_command_line`); replayed output carries no control characters (`replay::to_ansi`).
 - A missing, corrupt or unreadable restore point never stops a pane from starting: it starts as a plain shell in its worktree (`RestoreStore::load`).
 - A stopping daemon never records its own kills as panes exiting. `Service::shutdown` freezes the workspace before it kills the sessions: `on_pane_exited` does nothing, and `Service::mutate` refuses every change (`Unavailable`, "the daemon is stopping"), so the stored layout keeps every pane for the next daemon. Every local and tailnet connection hangs up (`connection::serve` waits on `Service::stopped`), so no socket or pipe of the old daemon lingers. On Windows a lingering pipe instance would keep the next daemon from creating its pipe. This matters most when the daemon runs inside a longer-lived process (the tests), where tasks outlive `run`.

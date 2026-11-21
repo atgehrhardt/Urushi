@@ -9,16 +9,16 @@ pub(crate) const UPDATES_SUPPORTED: bool = cfg!(target_os = "macos");
 mod unix;
 #[cfg(unix)]
 pub(crate) use unix::{
-    canonicalize, claude_credentials, executable_names, is_executable, login_shell_path,
-    process_table, secure_dir, serve_local, shutdown_signal, write_private,
+    canonicalize, claude_credentials, create_private_dir, executable_names, is_executable,
+    login_shell_path, process_table, secure_dir, serve_local, shutdown_signal, write_private,
 };
 
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
 pub(crate) use windows::{
-    canonicalize, claude_credentials, executable_names, is_executable, login_shell_path,
-    process_table, secure_dir, serve_local, shutdown_signal, write_private,
+    canonicalize, claude_credentials, create_private_dir, executable_names, is_executable,
+    login_shell_path, process_table, secure_dir, serve_local, shutdown_signal, write_private,
 };
 
 /// Raises the process's open-file limit as far as the user may, and logs the result.

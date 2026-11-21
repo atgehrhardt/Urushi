@@ -17,7 +17,7 @@ checks and checks by hand.
 | Step | Where |
 |---|---|
 | The daemon learns its bundle: `…/X.app/Contents/MacOS/urushid` whose `Info.plist` says `app.urushi.Urushi`. No bundle (a `cargo` build, Linux, Windows) means no updates. | `update::bundle::bundle_of`, `UpdateConfig::system`, `platform::UPDATES_SUPPORTED` |
-| 30 s after start, then every 6 h while `Settings.updates.check_automatically` is on, it asks `releases/latest` and picks `Urushi-<v>-macos-<arch>.zip` and its `.sha256`. | `Service::keep_updates_checked`, `update::github` |
+| 30 s after start, then every 6 h while `Settings.updates.check_automatically` is on, it asks `releases/latest` and picks `Urushi-<v>-macos-<arch>.zip` and its `.sha256`. Both must be under `https://github.com/atgehrhardt/Urushi/releases/download/` (`DEFAULT_DOWNLOADS`), or the release is refused. | `Service::keep_updates_checked`, `update::github` |
 | A newer version than the **installed bundle's** `CFBundleShortVersionString` is kept in memory and sent as `Workspace.update` (`AvailableUpdate`). | `Updater::check`, `Service::workspace` |
 | The app shows the notice when connected to its local daemon (protocol ≥ 1.28), on macOS, and the version isn't `Settings.updates.skipped_version`. | `AppState::update_notice`, `view/updates.rs::notice` |
 | Confirm → `InstallUpdate{version}`: download into `<home>/updates`, check the SHA-256, unpack beside the bundle, check identifier, version, executables and signature, swap with two renames. | `Service::install_update`, `update::install` |
@@ -33,6 +33,9 @@ the wire.
 - A failed download, a checksum mismatch, the wrong identifier or version, a missing
   executable or a broken signature leave the installed app untouched
   (`a_damaged_or_wrong_release_leaves_the_app_alone`).
+- Release files come only from Urushi's own GitHub downloads, and every request and
+  redirect is HTTPS (`proto`/`proto-redir` in `http.rs`;
+  `releases_whose_files_are_served_elsewhere_are_refused`).
 - Only the release last found can be installed, one install at a time, and only from
   the daemon's own machine (`Updater::begin_install`, `host_only` in `server/handlers.rs`).
 - Nothing restarts without the user confirming: only the red button installs (Enter
@@ -55,7 +58,8 @@ the wire.
   their own packages; Linux and Windows have no releases.
 - The checksum is downloaded from the same release, so it guards against a damaged
   download, not a compromised GitHub account. Developer ID signing and notarization
-  would let the updater check the publisher.
+  would let the updater check the publisher (UR-76, see
+  [security](../security.md)).
 - A daemon older than protocol 1.28 can't update: restart it once after installing the
   first version with updates.
 - `/Applications` must be writable by the user. If it isn't, the error says so and links

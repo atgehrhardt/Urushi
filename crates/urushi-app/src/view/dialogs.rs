@@ -472,12 +472,14 @@ fn settings_dialog(
             "Delete remote branches when deleting a thread",
             Msg::Toggle(SettingToggle::DeleteRemoteBranches),
         ))
-        .child(toggle(
-            theme,
-            tailnet.serving,
-            "Serve on my tailnet",
-            Msg::Toggle(SettingToggle::ServeTailnet),
-        ))
+        .children(state.shows_tailnet_switch().then(|| {
+            toggle(
+                theme,
+                tailnet.serving,
+                "Serve on my tailnet",
+                Msg::Toggle(SettingToggle::ServeTailnet),
+            )
+        }))
         .child(
             Node::text(status, Font::Ui, theme.font_size_small, theme.text_muted).padding(Insets {
                 top: 0.0,

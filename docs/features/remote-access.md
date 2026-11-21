@@ -2,7 +2,7 @@
 
 - **Status:** Shipped in the daemon, the CLI and the mobile apps (connect dialog, remembered hosts). The desktop GUI's status pill is pending.
 - **Owners (crates):** `urushi-daemon` (`tailscale.rs`, `server/remote.rs`), `urushi-client` (`hosts.rs`), `urushi-app` (`update/lan.rs`, `view/lan.rs`), `urushi-cli`
-- **Related ADRs:** [0005](../adr/0005-tailscale-remote.md), [0043](../adr/0043-mobile-clients-remember-recent-hosts.md)
+- **Related ADRs:** [0005](../adr/0005-tailscale-remote.md), [0043](../adr/0043-mobile-clients-remember-recent-hosts.md), [0061](../adr/0061-only-the-host-decides-who-reaches-the-daemon.md)
 - **See also:** [LAN access](lan-access.md), for reaching the daemon without Tailscale.
 
 ## What it does
@@ -16,6 +16,10 @@ With `tailnet.serve` on (`urushi tailnet on`, or the app's toggle), the daemon i
   - Tagged devices are refused unless `allow-tagged-nodes`.
   - With an allowlist, the login must be on it.
   - Otherwise the login must match the machine's owner.
+- At most 8 connections wait for `whois` at once (`MAX_PENDING_IDENTIFICATIONS`); more are dropped.
+- **Only the host changes tailnet access (ADR 0061).** `SetTailnetServe` and settings patches touching serving, the port, the allowlist or tagged nodes get `PERMISSION_DENIED` from remote clients. The app shows the "Serve on my tailnet" switch only when connected to its own host.
+- **Withdrawn access ends live sessions.** `RemoteState` keeps each admitted connection's identity and the sender of its close channel. Each reconcile re-runs `authorize` and ends the ones no longer allowed. Turning serving off ends them all.
+- **The client sends the plain protocol only to tailnet addresses.** `Client::connect_remote` resolves a host not in the LAN keyring and connects only to a Tailscale address (100.64.0.0/10, `fd7a:115c:a1e0::/48`) or loopback, by address (`urushi_proto::endpoint::plain_tcp_allowed`). Anything else is refused with a hint to pair over the LAN.
 - Traffic is already encrypted by WireGuard, so the protocol is the same as local.
 - **Remembered hosts (the apps, ADR 0043):**
   - After a remote connection succeeds, the app's backend records the address in `recent-hosts.json` (`urushi_client::RecentHosts`) in its data dir. The file is 0600 and holds up to 8 addresses, most recent first. It contains no secrets.
@@ -26,9 +30,10 @@ With `tailnet.serve` on (`urushi tailnet on`, or the app's toggle), the daemon i
 ## Invariants
 - Never listens on non-tailnet interfaces.
 - An unknown owner login denies everyone.
+- A remote client never changes who may connect, and a connection lasts only while its identity is still allowed (`tests/e2e.rs`: `a_remote_client_cannot_change_who_reaches_the_daemon`, `withdrawn_tailnet_access_ends_live_connections`).
 
 ## Tests
-- `server/remote.rs` unit tests: the authorization rules.
+- `server/remote.rs` unit tests: the authorization rules, and rechecks ending only the connections no longer admitted.
 - `tailscale.rs`: JSON parsing.
 - `tests/tailscale_cli.rs`: `CliTailscale` against fake binaries, including one that acts like the macOS app binary without a terminal.
 - `tests/e2e.rs`: serving admits the owner over TCP and refuses another user (using a `StaticTailscale` fake).

@@ -103,6 +103,7 @@ async fn start(home: &Path, web: Arc<Web>, bundle: Option<PathBuf>) -> Daemon {
     options.updates = UpdateConfig {
         http: web,
         feed_url: FEED.into(),
+        downloads_url: "https://dl/".into(),
         bundle,
     };
     Daemon::start_options(options).await

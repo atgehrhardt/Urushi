@@ -68,7 +68,7 @@ fn size(cols: u32, rows: u32) -> TermSize {
 }
 
 /// Refuses `what` unless the client is on this machine, so a remote device can never
-/// widen remote access (ADR 0041).
+/// widen remote access (ADRs 0041, 0061).
 fn host_only(connection: &Connection, what: &str) -> ServiceResult<()> {
     if connection.local {
         Ok(())
@@ -77,6 +77,15 @@ fn host_only(connection: &Connection, what: &str) -> ServiceResult<()> {
             "{what} from the host itself"
         )))
     }
+}
+
+/// Whether `patch` touches who may reach the daemon over the tailnet, which only the
+/// host may change.
+const fn changes_tailnet_access(patch: &v1::SettingsPatch) -> bool {
+    patch.tailnet_serve.is_some()
+        || patch.tailnet_port.is_some()
+        || patch.set_allowed_logins
+        || patch.allow_tagged_nodes.is_some()
 }
 
 pub(super) const fn ok() -> Outcome {
@@ -280,6 +289,9 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
             if patch.lan_enabled.is_some() || patch.lan_port.is_some() {
                 host_only(connection, "LAN access can only be changed")?;
             }
+            if changes_tailnet_access(&patch) {
+                host_only(connection, "tailnet access can only be changed")?;
+            }
             let before = service.settings();
             let settings = service.update_settings(&patch)?;
             if settings.tailnet != before.tailnet {
@@ -427,6 +439,7 @@ async fn route(connection: &Arc<Connection>, body: Body) -> ServiceResult<Outcom
         }
         Body::TailnetStatus(_) => Outcome::TailnetStatus(remote::status(service).await),
         Body::SetTailnetServe(r) => {
+            host_only(connection, "tailnet access can only be changed")?;
             service.update_settings(&v1::SettingsPatch {
                 tailnet_serve: Some(r.serve),
                 ..Default::default()
