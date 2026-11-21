@@ -239,15 +239,12 @@ mod tests {
     #[cfg(feature = "io")]
     #[tokio::test]
     async fn frames_bigger_than_the_first_buffer_still_arrive_whole() {
-        let mut big = Envelope::default();
-        big.kind = Some(crate::v1::envelope::Kind::Response(crate::v1::Response {
-            id: 3,
-            outcome: Some(crate::v1::response::Outcome::ScreenText(
-                crate::v1::ScreenText {
-                    lines: vec!["x".repeat(1024 * 1024)],
-                },
-            )),
-        }));
+        let big = crate::envelope::response(
+            3,
+            crate::v1::response::Outcome::ScreenText(crate::v1::ScreenText {
+                lines: vec!["x".repeat(1024 * 1024)],
+            }),
+        );
         let (mut a, mut b) = tokio::io::duplex(64 * 1024);
         let sent = big.clone();
         let writer = tokio::spawn(async move { write_envelope(&mut a, &sent).await });
