@@ -6,6 +6,7 @@
 
 mod alacritty;
 mod notices;
+mod osc_limit;
 
 pub use alacritty::AlacrittyEmulator;
 

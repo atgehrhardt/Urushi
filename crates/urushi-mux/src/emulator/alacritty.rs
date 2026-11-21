@@ -50,6 +50,8 @@ pub struct AlacrittyEmulator {
     parser: Processor,
     /// Notifications alacritty doesn't report (OSC 9 and 777).
     notices: super::notices::Notices,
+    /// Caps OSC strings before either parser buffers them.
+    osc_limit: super::osc_limit::OscLimit,
     events: mpsc::Receiver<Event>,
     size: TermSize,
 }
@@ -66,6 +68,7 @@ impl AlacrittyEmulator {
             term: Term::new(config, &Size(size), Listener(tx)),
             parser: Processor::new(),
             notices: super::notices::Notices::default(),
+            osc_limit: super::osc_limit::OscLimit::default(),
             events: rx,
             size,
         }
@@ -96,6 +99,8 @@ impl AlacrittyEmulator {
 
 impl Emulator for AlacrittyEmulator {
     fn advance(&mut self, bytes: &[u8]) -> Vec<EmulatorEvent> {
+        let bytes = self.osc_limit.filter(bytes);
+        let bytes = bytes.as_ref();
         self.parser.advance(&mut self.term, bytes);
         let pending: Vec<Event> = self.events.try_iter().collect();
         let mut events: Vec<EmulatorEvent> = pending
@@ -430,6 +435,23 @@ mod tests {
         let events = e.advance(b"\x1b]2;my title\x07\x07");
         assert!(events.contains(&EmulatorEvent::Title(Some("my title".into()))));
         assert!(events.contains(&EmulatorEvent::Bell));
+    }
+
+    #[test]
+    fn titles_are_capped_so_the_title_stack_stays_small() {
+        let mut e = emu(10, 3);
+        let mut bytes = b"\x1b]2;".to_vec();
+        bytes.extend(std::iter::repeat_n(b'x', 100_000));
+        bytes.extend(b"\x07");
+        bytes.extend(b"\x1b[22t".repeat(4096));
+        let events = e.advance(&bytes);
+        let title = events.iter().find_map(|ev| match ev {
+            EmulatorEvent::Title(Some(t)) => Some(t.len()),
+            _ => None,
+        });
+        assert_eq!(title, Some(super::super::osc_limit::MAX_OSC_PAYLOAD - 2));
+        e.advance(b"ok");
+        assert_eq!(e.line(0).text(), "ok");
     }
 
     #[test]
