@@ -7,6 +7,7 @@
 //! directory, which keeps tests and side-by-side installs isolated.
 
 use std::fmt;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 
 /// Environment variable that overrides the home directory.
@@ -98,6 +99,26 @@ pub fn parse_tcp(spec: &str, default_port: u16) -> Option<Endpoint> {
     })
 }
 
+/// Whether the protocol may go to `ip` as plain, unencrypted TCP: a Tailscale address
+/// (`100.64.0.0/10` or `fd7a:115c:a1e0::/48`), where `WireGuard` already encrypts it, or this
+/// machine. Anything else (a LAN or public address) must use the paired LAN channel,
+/// so a client never sends keystrokes or a Jira token in the clear to whoever answers.
+pub fn plain_tcp_allowed(ip: IpAddr) -> bool {
+    let ip = match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+        IpAddr::V4(_) => ip,
+    };
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback() || (v4.octets()[0] == 100 && v4.octets()[1] & 0xc0 == 64)
+        }
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            v6.is_loopback() || (s[0] == 0xfd7a && s[1] == 0x115c && s[2] == 0xa1e0)
+        }
+    }
+}
+
 /// Splits `host`, `host:port`, `[v6]:port` or a bare IPv6 address into the host and the
 /// port, if one was given. A trailing dot on the host is dropped. `None` if `spec` is
 /// empty or its port isn't a number.
@@ -147,6 +168,35 @@ mod tests {
         assert_eq!(parse_tcp("fd7a::1", 7420), tcp("fd7a::1", 7420));
         assert_eq!(parse_tcp("", 7420), None);
         assert_eq!(parse_tcp("host:notaport", 7420), None);
+    }
+
+    #[test]
+    fn plain_tcp_goes_only_to_tailnet_addresses_and_this_machine() {
+        let allowed = |ip: &str| plain_tcp_allowed(ip.parse().unwrap());
+        for ip in [
+            "100.64.0.1",
+            "100.101.102.103",
+            "100.127.255.254",
+            "127.0.0.1",
+            "::1",
+            "fd7a:115c:a1e0::1",
+            "::ffff:100.100.1.1",
+        ] {
+            assert!(allowed(ip), "{ip}");
+        }
+        for ip in [
+            "100.63.255.255",
+            "100.128.0.1",
+            "192.168.1.10",
+            "10.0.0.2",
+            "8.8.8.8",
+            "fd12::1",
+            "fd7a:115c:a1e1::1",
+            "2001:db8::1",
+            "::ffff:192.168.1.1",
+        ] {
+            assert!(!allowed(ip), "{ip}");
+        }
     }
 
     #[test]
