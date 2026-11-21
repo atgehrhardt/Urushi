@@ -69,6 +69,13 @@ pub(crate) const HAS_SECONDARY_CLICK: bool = true;
 
 /// Makes the folder `dir` readable only by this user (0700 on Unix). Windows folders
 /// under the user's profile already are.
+#[cfg_attr(
+    not(unix),
+    allow(
+        clippy::unnecessary_wraps,
+        reason = "the same signature as on Unix, where it can fail"
+    )
+)]
 pub(crate) fn make_private(dir: &std::path::Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {

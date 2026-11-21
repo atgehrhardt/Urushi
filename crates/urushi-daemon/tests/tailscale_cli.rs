@@ -24,9 +24,20 @@ const STATUS: &str = r#"{"BackendState": "Running", "Self": {"HostName": "mac", 
 
 const WHOIS: &str = r#"{"Node": {"Name": "phone.tail1.ts.net.", "Tags": null}, "UserProfile": {"LoginName": "me@example.com"}}"#;
 
+/// Writes an executable script. The executable itself is written by `cp`, never opened
+/// for writing in this process: a test thread forking at that moment would inherit the
+/// open file until it execs, and running the script would fail with "Text file busy"
+/// (ETXTBSY) on Linux.
 fn script(dir: &Path, body: &str) -> PathBuf {
+    let source = dir.join("Tailscale.txt");
+    fs::write(&source, format!("#!/bin/sh\n{body}\n")).unwrap();
     let path = dir.join("Tailscale");
-    fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    let copied = std::process::Command::new("cp")
+        .arg(&source)
+        .arg(&path)
+        .status()
+        .unwrap();
+    assert!(copied.success());
     fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
     path
 }

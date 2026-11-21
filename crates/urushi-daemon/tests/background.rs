@@ -12,6 +12,8 @@
 
 mod common;
 
+use std::time::Duration;
+
 use common::*;
 use urushi_client::v1;
 use urushi_core::agent::hooks::{claude_background_command, idle_command, signal_command};
@@ -43,6 +45,29 @@ async fn background_change(
         (now != previous).then_some(now)
     })
     .await
+}
+
+/// Waits until the shell in `pane` is idle at its prompt: a marker command is typed
+/// until its output shows with a new prompt after it. Ctrl+C reaching the shell while
+/// it still runs a line, or a line typed while it handles an interrupt, leaves it in a
+/// state where the next command can be lost, so the test waits on both sides of one.
+async fn settle(client: &urushi_client::Client, pane: &str) {
+    static MARKERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    for _ in 0..50 {
+        let n = MARKERS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let marker = format!("settled-{n}");
+        type_line(client, pane, &format!("echo {marker}")).await;
+        for _ in 0..20 {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            let lines = client.read_screen_text(pane).await.unwrap();
+            let shown = lines.iter().position(|l| l.trim_end() == marker);
+            // The prompt after it means the shell reads input again.
+            if shown.is_some_and(|i| lines[i + 1..].iter().any(|l| !l.trim().is_empty())) {
+                return;
+            }
+        }
+    }
+    panic!("the shell in {pane} never came back to its prompt");
 }
 
 /// `pane`'s background tasks, as the daemon lists them now.
@@ -158,10 +183,12 @@ async fn background_tasks_outlive_the_turn_until_reported_closed_or_the_session_
     // interrupt, which stops running): still open. (Not Esc: the shell would read it
     // with the next key typed as Meta.)
     type_line(&client, &pane, &signal_command(AttentionKind::Done)).await;
+    settle(&client, &pane).await;
     client
         .send_input(&pane, v1::input::Kind::Text("\u{3}".into()))
         .await
         .unwrap();
+    settle(&client, &pane).await;
     assert_eq!(background_now(&client, &pane).await, two_and_one);
 
     // A shell ended: Claude's next turn reports the rest.
