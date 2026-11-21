@@ -151,3 +151,12 @@ pub(crate) async fn notes(client: &Client, thread: &str, change: NotesChange) ->
     })
     .await
 }
+
+/// `thread shelve|unshelve`: stops a thread's terminals, keeping its worktree and tabs,
+/// or starts them again (protocol 1.34, ADR 0060).
+pub(crate) async fn shelve(client: &Client, thread: &str, shelved: bool) -> Result<()> {
+    client
+        .set_thread_shelved(&resolve(client, thread).await?, shelved)
+        .await?;
+    out(if shelved { "shelved" } else { "unshelved" })
+}

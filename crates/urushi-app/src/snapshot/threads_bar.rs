@@ -2,7 +2,8 @@
 //! "Onboarding" purple, with "Invoice API" unread and orange Markdown notes on "Pricing
 //! page" (`thread-extras`), the notes editor for "Pricing page" (`thread-notes`), the
 //! same with words selected to format (`thread-notes-format`, ADR 0058), and the project
-//! menu's Color page (`project-color-menu`).
+//! menu's Color page (`project-color-menu`), and "Pricing page" shelved and open
+//! (`shelved-thread`, ADR 0060).
 
 use urushi_client::v1;
 use urushi_ui::Point;
@@ -17,6 +18,7 @@ pub(super) const SCENARIOS: &[&str] = &[
     "thread-notes",
     "thread-notes-format",
     "project-color-menu",
+    "shelved-thread",
 ];
 
 /// "Pricing page"'s notes.
@@ -48,6 +50,14 @@ pub(super) fn show(state: &mut AppState, name: &str) {
                 let start = NOTES.find("from marketing").unwrap_or(0);
                 notes.select(start, start + "from marketing".len());
             }
+        }
+        "shelved-thread" => {
+            let mut workspace = state.workspace.raw().clone();
+            if let Some(t) = workspace.threads.iter_mut().find(|t| t.id == "t3") {
+                t.shelved = true;
+            }
+            state.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(workspace)));
+            state.update(Msg::SelectThread("t3".into()));
         }
         "project-color-menu" => {
             state.update(Msg::Pointer(Point::new(150.0, 110.0)));

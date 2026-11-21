@@ -2,7 +2,8 @@
 //! or waits, and the Jira and GitHub marks of its task's issue and pull request, which
 //! open them in a browser, ADR 0036), the repo and branch it's on, the first line of its
 //! notes, and its status: its lifecycle badge or agent's state, then the shells and
-//! monitors its agents keep open in the background (ADR 0059). An unread thread's title is bold with a dot before
+//! monitors its agents keep open in the background (ADR 0059). A shelved thread (ADR
+//! 0060) is dimmed, with a "shelved" badge, in its usual place. An unread thread's title is bold with a dot before
 //! it, and a thread in a colored project has a stripe of that color (ADR 0048). Click to open it, right-click for its menu, drag it onto a project to file it
 //! there, or onto another thread to take that thread's place and join its group. A
 //! project's
@@ -44,7 +45,12 @@ pub(super) fn thread_card(
         .as_ref()
         .is_some_and(|(d, _)| matches!(d, Dragged::Thread(t) if *t == thread.id));
     let badge = match v1::ThreadState::try_from(thread.state) {
-        Ok(v1::ThreadState::Ready) => None,
+        // Shelving or unshelving (ADR 0060): what was asked, until the daemon has done it.
+        Ok(v1::ThreadState::Ready) => match state.shelving.get(&thread.id) {
+            Some(true) => Some(("shelving…", theme.text_muted)),
+            Some(false) => Some(("unshelving…", theme.text_muted)),
+            None => thread.shelved.then_some(("shelved", theme.text_muted)),
+        },
         Ok(v1::ThreadState::DeletionFailed) => Some(("deletion failed", theme.danger)),
         Ok(v1::ThreadState::Deleting) => Some(("deleting", theme.warning)),
         _ => Some(("creating", theme.warning)),
@@ -78,25 +84,7 @@ pub(super) fn thread_card(
         })
     });
     let background_label = super::attention::background_label(open_tasks, " · ");
-    if badge.is_some() || background_label.is_some() {
-        let separator = if badge.is_some() { "· " } else { "" };
-        details = details.child(
-            Node::row()
-                .gap(4.0)
-                .align(Align::Center)
-                .children(badge.map(|(label, color)| {
-                    Node::text(label, Font::UiMedium, theme.font_size_small, color)
-                }))
-                .children(background_label.map(|tasks| {
-                    Node::text(
-                        format!("{separator}{tasks}"),
-                        Font::Ui,
-                        theme.font_size_small,
-                        theme.text_muted,
-                    )
-                })),
-        );
-    }
+    details = details.children(status_row(theme, badge, background_label));
     let background = if selected || dragged {
         theme.selected
     } else {
@@ -124,6 +112,14 @@ pub(super) fn thread_card(
         .on_secondary_click(Msg::OpenMenu(MenuTarget::Thread(thread.id.clone())))
         .role(Role::Item, title::card_label(thread, attention, open_tasks))
         .child(details);
+    // A shelved thread stays in its place, dimmed: its stripe faded too.
+    let stripe = stripe.map(|c| {
+        if thread.shelved {
+            c.with_alpha(c.a * 0.4)
+        } else {
+            c
+        }
+    });
     if thread.project_base {
         return with_stripe(theme, stripe, card);
     }
@@ -136,6 +132,35 @@ pub(super) fn thread_card(
             Msg::RequestDeleteThread(thread.id.clone()),
         ));
     drop_target(state, theme, &thread.id, with_stripe(theme, stripe, card))
+}
+
+/// The card's status line: its badge (lifecycle, shelving or agent state), then the
+/// shells and monitors its agents keep in the background. None when there is neither.
+fn status_row(
+    theme: &Theme,
+    badge: Option<(&'static str, Color)>,
+    background_label: Option<String>,
+) -> Option<Node<Msg>> {
+    if badge.is_none() && background_label.is_none() {
+        return None;
+    }
+    let separator = if badge.is_some() { "· " } else { "" };
+    Some(
+        Node::row()
+            .gap(4.0)
+            .align(Align::Center)
+            .children(badge.map(|(label, color)| {
+                Node::text(label, Font::UiMedium, theme.font_size_small, color)
+            }))
+            .children(background_label.map(|tasks| {
+                Node::text(
+                    format!("{separator}{tasks}"),
+                    Font::Ui,
+                    theme.font_size_small,
+                    theme.text_muted,
+                )
+            })),
+    )
 }
 
 /// A thread the daemon is still creating (ADR 0056): its title and a "creating" badge.

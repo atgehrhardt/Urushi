@@ -322,6 +322,11 @@ pub enum Dialog {
     },
     /// Confirm updating the app, which restarts the daemon (ADR 0049).
     InstallUpdate(Box<crate::updates::UpdateDialog>),
+    /// Confirm shelving a thread whose agent is working (ADR 0060).
+    ShelveThread {
+        /// Thread id.
+        thread: String,
+    },
     /// Confirm restarting the local daemon, which closes every terminal.
     RestartDaemon {
         /// Open terminals that will close.
@@ -584,6 +589,9 @@ pub struct AppState {
     pub sidebar_tab: SidebarTab,
     /// Collapsed sidebar sections (see [`crate::organize::section_key`]).
     pub collapsed: HashSet<String>,
+    /// Threads asked to be shelved (`true`) or unshelved, until the workspace shows it
+    /// or the daemon refuses (ADR 0056, ADR 0060).
+    pub shelving: HashMap<String, bool>,
     /// The open context menu.
     pub menu: Option<ContextMenu>,
     /// The thread or project being dragged in the sidebar, and where the pointer is.
@@ -663,6 +671,7 @@ impl AppState {
             daemon_version: String::new(),
             sidebar_tab: SidebarTab::default(),
             collapsed: HashSet::new(),
+            shelving: HashMap::new(),
             menu: None,
             dragging: None,
             project_over: None,
@@ -778,6 +787,11 @@ impl AppState {
         self.daemon_minor >= crate::organize::NOTES_COLOR_SINCE_MINOR
     }
 
+    /// Whether the daemon shelves and unshelves threads (protocol 1.34, ADR 0060).
+    pub fn daemon_supports_shelving(&self) -> bool {
+        self.daemon_minor >= crate::organize::SHELVING_SINCE_MINOR
+    }
+
     /// Whether the daemon can reorder threads (protocol 1.24).
     pub fn daemon_supports_thread_order(&self) -> bool {
         self.daemon_minor >= crate::organize::THREAD_ORDER_SINCE_MINOR
@@ -820,8 +834,19 @@ impl AppState {
             .then_some(thread)
     }
 
-    /// The tab shown in the main area.
+    /// The selected thread, if it is shelved: the main area shows it shelved instead of
+    /// its tabs, and none of its panes is attached (ADR 0060).
+    pub fn shelved_thread(&self) -> Option<&v1::Thread> {
+        self.workspace
+            .thread(self.selected_thread.as_ref()?)
+            .filter(|t| t.shelved)
+    }
+
+    /// The tab shown in the main area; none while the selected thread is shelved.
     pub fn current_tab(&self) -> Option<&v1::Tab> {
+        if self.shelved_thread().is_some() {
+            return None;
+        }
         let thread = self.selected_thread.as_ref()?;
         let tabs = self.workspace.tabs_of(thread);
         let selected = self.selected_tab.get(thread);

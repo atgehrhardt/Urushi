@@ -30,6 +30,7 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
         writeln!(o, "{} {}  {}", short(&repo.id), repo.name, repo.repo_root)?;
         for thread in mirror.threads_of_repo(&repo.id) {
             let state = match v1::ThreadState::try_from(thread.state) {
+                Ok(v1::ThreadState::Ready) if thread.shelved => "  [shelved]".into(),
                 Ok(v1::ThreadState::Ready) => String::new(),
                 Ok(v1::ThreadState::DeletionFailed) => {
                     format!("  [deletion failed: {}]", thread.failure_reason)

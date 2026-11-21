@@ -11,55 +11,12 @@
 
 mod common;
 
-use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::sync::Arc;
 
+use common::agents::{fake_claude, options};
 use common::*;
 use urushi_client::v1;
-use urushi_core::{Agent, AgentSessionId};
-use urushi_daemon::DaemonOptions;
-use urushi_daemon::restore::Conversation;
-use urushi_daemon::tailscale::StaticTailscale;
-use urushi_daemon::usage::process::Details;
-use urushi_daemon::usage::{Failure, Process, SystemUsage, Usage, UsageSource};
-
-/// The real machine, except that every Claude has session `restored-session-1` open.
-struct Machine;
-
-impl UsageSource for Machine {
-    fn processes(&self) -> Vec<Process> {
-        SystemUsage.processes()
-    }
-    fn details(&self, pids: &[u32]) -> HashMap<u32, Details> {
-        SystemUsage.details(pids)
-    }
-    fn agent_conversation(&self, agent: Agent, _pid: u32) -> Conversation {
-        match agent {
-            Agent::Claude => {
-                Conversation::Saved(AgentSessionId::new("restored-session-1").unwrap())
-            }
-            _ => Conversation::Unknown,
-        }
-    }
-    fn usage(&self, _agent: Agent) -> Result<Usage, Failure> {
-        Err("not here".into())
-    }
-}
-
-/// A stand-in `claude` that prints its arguments (after Urushi's hook options) and keeps
-/// running, like the real one.
-fn fake_claude(dir: &Path) {
-    std::fs::create_dir_all(dir).unwrap();
-    let path = dir.join("claude");
-    std::fs::write(
-        &path,
-        "#!/bin/sh\nwhile [ \"$1\" = --settings ]; do shift 2; done\necho \"FAKE claude ARGS:$*:END\"\nsleep 60\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-}
 
 /// A stand-in long-running program: counts its runs in `<dir>/runs`, prints its
 /// arguments, and keeps running.
@@ -74,16 +31,6 @@ fn fake_app(dir: &Path) -> std::path::PathBuf {
     .unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     path
-}
-
-fn options(home: &Path, bin: &Path) -> DaemonOptions {
-    let mut options = DaemonOptions::new(home);
-    options.tailscale = Arc::new(StaticTailscale::not_installed());
-    options.agents = Arc::new(urushi_daemon::agents::AgentLocator::in_dirs(vec![
-        bin.to_path_buf(),
-    ]));
-    options.usage = Arc::new(Machine);
-    options
 }
 
 #[tokio::test(flavor = "multi_thread")]

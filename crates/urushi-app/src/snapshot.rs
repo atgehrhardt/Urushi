@@ -107,6 +107,7 @@ pub const SCENARIOS: &[&str] = &[
     "thread-notes",
     "thread-notes-format",
     "project-color-menu",
+    "shelved-thread",
 ];
 
 fn sample_attachment(id: &str, name: &str, (width, height): (u32, u32)) -> v1::Attachment {

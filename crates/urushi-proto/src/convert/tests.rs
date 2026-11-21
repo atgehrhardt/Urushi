@@ -96,6 +96,7 @@ fn thread_round_trip_all_states() {
     for state in [
         ThreadState::Creating,
         ThreadState::Ready,
+        ThreadState::Shelved,
         ThreadState::Deleting,
         ThreadState::DeletionFailed {
             reason: "offline".into(),
@@ -107,6 +108,13 @@ fn thread_round_trip_all_states() {
             thread
         );
     }
+    // Shelved (1.34) goes as READY plus `shelved`, which older clients read as ready.
+    thread.state = ThreadState::Shelved;
+    let wire = thread_to_proto(&thread);
+    assert_eq!(wire.state, v1::ThreadState::Ready as i32);
+    assert!(wire.shelved);
+    thread.state = ThreadState::Ready;
+    assert!(!thread_to_proto(&thread).shelved);
     // Organization: project, pin and status.
     thread.project = Some(ProjectId::from_u128(4));
     thread.pinned = true;

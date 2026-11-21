@@ -42,6 +42,7 @@ pub(super) fn view(
             look,
         } => settings_dialog(state, (theme, scroll), (prefix, shell, message), look),
         dialog @ Dialog::Connect { .. } => super::lan::connect(state, theme, dialog)?,
+        Dialog::ShelveThread { thread } => super::shelved::confirm(state, theme, thread),
         Dialog::RestartDaemon {
             terminals,
             threads,

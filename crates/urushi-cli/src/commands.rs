@@ -247,6 +247,8 @@ async fn thread(client: &Client, cmd: ThreadCmd) -> Result<()> {
         ThreadCmd::Unpin { thread } => {
             update_thread(client, &thread, |r| r.pinned = Some(false)).await
         }
+        ThreadCmd::Shelve { thread } => crate::organize::shelve(client, &thread, true).await,
+        ThreadCmd::Unshelve { thread } => crate::organize::shelve(client, &thread, false).await,
         ThreadCmd::Unread { thread } => {
             update_thread(client, &thread, |r| r.unread = Some(true)).await
         }

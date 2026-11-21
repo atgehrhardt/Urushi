@@ -157,6 +157,12 @@ impl SessionHandle {
         self.pid
     }
 
+    /// Whether `other` is a handle to this same session, not merely to one started later
+    /// for the same pane.
+    pub fn same_session(&self, other: &SessionHandle) -> bool {
+        self.commands.same_channel(&other.commands)
+    }
+
     /// A receiver that is notified whenever the status changes.
     pub fn status(&self) -> watch::Receiver<SessionStatus> {
         self.status.clone()

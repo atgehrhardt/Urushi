@@ -29,6 +29,9 @@ pub(super) fn thread_title(
     // An unread thread stands out: bold, full contrast, with a dot before it.
     let (font, color) = if thread.unread {
         (Font::UiSemibold, theme.text)
+    } else if thread.shelved {
+        // Shelved: dimmed, so the threads at work stand out (ADR 0060).
+        (Font::UiMedium, theme.text_muted)
     } else if selected {
         (Font::UiMedium, theme.text)
     } else {

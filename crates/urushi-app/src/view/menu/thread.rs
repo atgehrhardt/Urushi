@@ -1,5 +1,5 @@
-//! A thread's context menu: rename, pin, unread, notes, status ›, move to project ›,
-//! move up and down, delete. A project's parent-branch thread gets a shorter one.
+//! A thread's context menu: rename, pin, status ›, move to project ›, shelve, unread,
+//! notes, move up and down, delete. A project's parent-branch thread gets a shorter one.
 
 use urushi_client::v1;
 use urushi_ui::{Node, Theme};
@@ -9,38 +9,66 @@ use crate::msg::{Msg, ThreadMsg};
 use crate::organize::{ContextMenu, MenuPage, Prompt};
 use crate::state::AppState;
 
-/// Mark as unread / read and Notes… (protocol 1.27, ADR 0048); none for older daemons.
+/// Shelve or Unshelve (protocol 1.34, ADR 0060), then Mark as unread / read and Notes…
+/// (protocol 1.27, ADR 0048); none for older daemons. Nothing to shelve while the
+/// daemon is still shelving or unshelving it.
 fn extras(state: &AppState, theme: &Theme, thread: &v1::Thread, id: &str) -> Vec<Node<Msg>> {
     if !state.daemon_supports_thread_extras() {
         return Vec::new();
     }
-    vec![
-        item(
-            theme,
-            if thread.unread {
-                "Mark as read"
+    let shelving =
+        (state.daemon_supports_shelving() && !state.shelving.contains_key(id)).then(|| {
+            if thread.shelved {
+                item(
+                    theme,
+                    "Unshelve",
+                    "",
+                    theme.text,
+                    Msg::Thread(ThreadMsg::Unshelve(id.to_owned())),
+                )
             } else {
-                "Mark as unread"
-            },
-            "",
-            theme.text,
-            Msg::Thread(ThreadMsg::SetUnread {
-                thread: id.to_owned(),
-                unread: !thread.unread,
-            }),
-        ),
-        item(
-            theme,
-            if thread.notes.is_empty() {
-                "Add notes…"
-            } else {
-                "Edit notes…"
-            },
-            "",
-            theme.text,
-            Msg::Thread(ThreadMsg::OpenNotes(id.to_owned())),
-        ),
-    ]
+                item(
+                    theme,
+                    "Shelve",
+                    "",
+                    theme.text,
+                    Msg::Thread(ThreadMsg::Shelve {
+                        thread: id.to_owned(),
+                        confirmed: false,
+                    }),
+                )
+            }
+        });
+    shelving
+        .into_iter()
+        .chain([
+            item(
+                theme,
+                if thread.unread {
+                    "Mark as read"
+                } else {
+                    "Mark as unread"
+                },
+                "",
+                theme.text,
+                Msg::Thread(ThreadMsg::SetUnread {
+                    thread: id.to_owned(),
+                    unread: !thread.unread,
+                }),
+            ),
+            item(
+                theme,
+                if thread.notes.is_empty() {
+                    "Add notes…"
+                } else {
+                    "Edit notes…"
+                },
+                "",
+                theme.text,
+                Msg::Thread(ThreadMsg::OpenNotes(id.to_owned())),
+            ),
+        ])
+        .collect()
 }
 
 pub(super) fn thread_items(

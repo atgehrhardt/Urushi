@@ -170,22 +170,39 @@ impl Service {
                     break;
                 }
             }
-            drop(handle);
             if let Some(service) = me.upgrade() {
-                service.on_pane_exited(pane);
+                service.on_pane_exited(pane, &handle);
             }
         });
     }
 
-    pub(super) fn on_pane_exited(&self, pane: PaneId) {
+    /// Closes `pane` (and its tab, if it was the last one) now that `exited`, its
+    /// session, has ended, unless the pane is meant to stay.
+    pub(super) fn on_pane_exited(&self, pane: PaneId, exited: &SessionHandle) {
         // The daemon killed it on its way out: the pane stays, to be restored.
         if self.is_stopping() {
             return;
         }
+        // Its thread was shelved: the pane stays, to be unshelved (ADR 0060).
+        {
+            let mut stopped = lock(&self.shelved_sessions);
+            if let Some(i) = stopped.iter().position(|h| h.same_session(exited)) {
+                stopped.swap_remove(i);
+                return;
+            }
+        }
+        let removed = {
+            let mut sessions = lock(&self.sessions);
+            match sessions.get(&pane) {
+                // A newer session runs in the pane now (it was unshelved): leave it be.
+                Some(current) if !current.same_session(exited) => return,
+                Some(_) => sessions.remove(&pane),
+                None => None,
+            }
+        };
         self.forget_attention(&[pane]);
         self.forget_running(&[pane]);
         self.forget_background(&[pane]);
-        let removed = lock(&self.sessions).remove(&pane);
         if let Some(session) = removed {
             tokio::spawn(async move {
                 let _ = session.kill().await;
@@ -202,18 +219,34 @@ impl Service {
 
     /// Kills the sessions of `panes` and forgets them.
     pub(super) fn kill_sessions(&self, panes: impl IntoIterator<Item = PaneId>) {
+        kill_handles(self.take_sessions(panes));
+    }
+
+    /// Kills the sessions of `panes` but keeps the panes in their layouts, for their
+    /// thread is being shelved (ADR 0060).
+    pub(super) fn stop_sessions_keeping_panes(&self, panes: impl IntoIterator<Item = PaneId>) {
+        let handles = self.take_sessions(panes);
+        lock(&self.shelved_sessions).extend(handles.iter().cloned());
+        kill_handles(handles);
+    }
+
+    /// Forgets the sessions of `panes`, with their attention and running marks, and
+    /// gives back their handles.
+    fn take_sessions(&self, panes: impl IntoIterator<Item = PaneId>) -> Vec<SessionHandle> {
         let panes: Vec<PaneId> = panes.into_iter().collect();
         self.forget_attention(&panes);
         self.forget_running(&panes);
         self.forget_background(&panes);
-        let handles: Vec<SessionHandle> = {
-            let mut sessions = lock(&self.sessions);
-            panes.iter().filter_map(|p| sessions.remove(p)).collect()
-        };
-        for handle in handles {
-            tokio::spawn(async move {
-                let _ = handle.kill().await;
-            });
-        }
+        let mut sessions = lock(&self.sessions);
+        panes.iter().filter_map(|p| sessions.remove(p)).collect()
+    }
+}
+
+/// Kills each session, each on a task of its own.
+fn kill_handles(handles: Vec<SessionHandle>) {
+    for handle in handles {
+        tokio::spawn(async move {
+            let _ = handle.kill().await;
+        });
     }
 }

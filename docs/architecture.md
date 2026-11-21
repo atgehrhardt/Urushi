@@ -119,6 +119,7 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
   3. `DeleteThread(token)` re-computes the plan and refuses if anything changed. Then it kills the sessions, removes the worktree, deletes local branches, deletes remote branches and prunes.
 
   If a step fails partway, the thread is marked `DeletionFailed`, which can be retried.
+- **Shelve** (ADR 0060, `service/shelve.rs`): `SetThreadShelved` brings the thread's restore points up to date, marks it `Shelved`, and stops its panes' processes. The worktree, branches, tabs and layout stay. Unshelving starts every pane again from its restore point, as after a restart. A shelved thread can be deleted, and is not restored at startup.
 
 ## Remote access (Tailscale, LAN)
 

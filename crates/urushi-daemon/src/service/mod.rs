@@ -39,6 +39,7 @@ mod restore;
 mod running;
 mod saver;
 mod settings;
+mod shelve;
 mod spawn;
 mod state;
 mod tabs;
@@ -162,6 +163,9 @@ pub struct Service {
     /// Shared with the saver, which snapshots it when a save starts.
     state: Arc<Mutex<State>>,
     sessions: Mutex<HashMap<PaneId, SessionHandle>>,
+    /// Sessions killed to shelve their thread, until their watchers see them end, so
+    /// their panes stay in the layout (`spawn.rs`, ADR 0060).
+    shelved_sessions: Mutex<Vec<SessionHandle>>,
     /// Writes the workspace document, coalescing bursts of changes (`saver.rs`).
     saver: saver::Saver,
     git: Arc<dyn Git>,
@@ -276,6 +280,7 @@ impl Service {
         let service = Arc::new_cyclic(|me| Self {
             state,
             sessions: Mutex::new(HashMap::new()),
+            shelved_sessions: Mutex::default(),
             saver,
             git: config.git,
             base_fetches: Arc::new(base_fetch::BaseFetches::new(base_fetch::FRESH_FOR)),
@@ -354,10 +359,16 @@ impl Service {
 
     /// The live session of `pane`.
     pub fn session(&self, pane: PaneId) -> ServiceResult<SessionHandle> {
-        lock(&self.sessions)
-            .get(&pane)
-            .cloned()
-            .ok_or_else(|| ServiceError::NotFound(format!("pane {pane}")))
+        if let Some(handle) = lock(&self.sessions).get(&pane) {
+            return Ok(handle.clone());
+        }
+        // A shelved thread's panes are kept but run nothing (ADR 0060).
+        if lock(&self.state).pane_is_shelved(pane) {
+            return Err(ServiceError::Precondition(format!(
+                "pane {pane} is in a shelved thread; unshelve it first"
+            )));
+        }
+        Err(ServiceError::NotFound(format!("pane {pane}")))
     }
 
     /// Applies `f` to the state, then persists and notifies subscribers. `f` must not

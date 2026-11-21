@@ -214,6 +214,15 @@ impl State {
         self.settings.for_repo(&overrides)
     }
 
+    /// Whether `pane` is in a tab of a shelved thread.
+    pub(crate) fn pane_is_shelved(&self, pane: PaneId) -> bool {
+        self.tabs
+            .iter()
+            .find(|t| t.layout().contains(pane))
+            .and_then(|t| self.thread(t.thread()).ok())
+            .is_some_and(|r| r.thread.is_shelved())
+    }
+
     /// Every pane in the thread's tabs.
     pub(crate) fn thread_panes(&self, thread: ThreadId) -> Vec<PaneId> {
         self.tabs

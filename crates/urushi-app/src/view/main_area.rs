@@ -26,6 +26,8 @@ pub(super) fn view(state: &AppState, theme: &Theme) -> Node<Msg> {
         if cfg!(any(target_os = "ios", target_os = "android")) {
             column = column.child(super::terminal_area::key_bar(theme));
         }
+    } else if let Some(thread) = state.shelved_thread() {
+        column = column.child(super::shelved::view(state, theme, thread));
     } else if let Some(pending) = state.shown_pending() {
         column = column.child(creating(theme, &pending.title));
     } else if let Some(thread) = state.empty_thread() {
