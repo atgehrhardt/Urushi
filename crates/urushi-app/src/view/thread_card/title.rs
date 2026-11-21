@@ -3,6 +3,7 @@
 //! formatted and in the notes' color (ADR 0058).
 
 use urushi_client::{ThreadLinks, v1};
+use urushi_core::BackgroundTasks;
 use urushi_core::markdown::BlockKind;
 use urushi_ui::{Align, Color, Font, Insets, Length, Node, Role, Theme, key, rich_line};
 
@@ -29,7 +30,7 @@ pub(super) fn thread_title(
     let (font, color) = if thread.unread {
         (Font::UiSemibold, theme.text)
     } else if thread.shelved {
-        // Shelved: dimmed, so the threads at work stand out (ADR 0059).
+        // Shelved: dimmed, so the threads at work stand out (ADR 0060).
         (Font::UiMedium, theme.text_muted)
     } else if selected {
         (Font::UiMedium, theme.text)
@@ -113,7 +114,11 @@ pub(super) fn thread_meta(state: &AppState, thread: &v1::Thread) -> String {
 
 /// The card's accessible label: the thread, what kind it is, its agent's state, and
 /// whether it is unread or has notes.
-pub(super) fn card_label(thread: &v1::Thread, attention: Option<Indicator>) -> String {
+pub(super) fn card_label(
+    thread: &v1::Thread,
+    attention: Option<Indicator>,
+    background: BackgroundTasks,
+) -> String {
     let mut label = format!("Thread {}", thread.title);
     if thread.project_base {
         label.push_str(", parent branch");
@@ -123,6 +128,10 @@ pub(super) fn card_label(thread: &v1::Thread, attention: Option<Indicator>) -> S
     if let Some(k) = attention {
         label.push_str(", ");
         label.push_str(super::super::attention::label(k));
+    }
+    if let Some(tasks) = super::super::attention::background_label(background, ", ") {
+        label.push_str(", ");
+        label.push_str(&tasks);
     }
     if thread.unread {
         label.push_str(", unread");

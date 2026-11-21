@@ -15,7 +15,7 @@
 //! ```
 //! A thread that fails while `Creating` is rolled back and never becomes visible, which
 //! is why there is no `CreationFailed` state. A `Shelved` thread keeps its worktree,
-//! tabs and layout, but none of its panes runs (ADR 0059).
+//! tabs and layout, but none of its panes runs (ADR 0060).
 
 use std::path::PathBuf;
 
@@ -40,7 +40,7 @@ pub enum ThreadState {
     /// Usable.
     Ready,
     /// Put aside by the user to free resources: its worktree, tabs and layout are kept,
-    /// but none of its panes runs until it is unshelved (ADR 0059).
+    /// but none of its panes runs until it is unshelved (ADR 0060).
     Shelved,
     /// Deletion is running.
     Deleting,

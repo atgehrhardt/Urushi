@@ -202,15 +202,17 @@ mod unix {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn hooks_signal_through_the_terminal_device() {
-    use urushi_core::AttentionKind;
     use urushi_core::agent::hooks::{
-        TTY_ENV, idle_command, ready_command, running_command, signal_command,
+        TTY_ENV, claude_background_command, idle_command, ready_command, running_command,
+        signal_command,
     };
+    use urushi_core::{AttentionKind, BackgroundTasks};
 
     let size = TermSize::new(80, 4);
     let script = format!(
-        "{} ; {} ; {} ; {} ; {} ; {} ; printf '\\a'; sleep 5",
+        "{} ; echo '{{\"background_tasks\":[{{\"type\":\"shell\"}},{{\"type\":\"monitor\"}},{{\"type\":\"shell\"}}]}}' | {{ {} ; }} ; {} ; {} ; {} ; {} ; {} ; printf '\\a'; sleep 5",
         ready_command(),
+        claude_background_command(),
         running_command(),
         idle_command(),
         running_command(),
@@ -243,6 +245,15 @@ async fn hooks_signal_through_the_terminal_device() {
     assert_eq!(seen.alert, Some(AttentionKind::Waiting));
     assert_eq!(seen.ready, 1, "ready is counted, and is not an alert");
     assert_eq!(seen.activity, 3, "running, idle, running: not alerts");
+    assert_eq!(
+        seen.background_reports, 2,
+        "the Stop hook's report, then idle"
+    );
+    assert_eq!(
+        seen.background,
+        BackgroundTasks::default(),
+        "idle (the session ended) closed what the report said was open"
+    );
     assert!(
         !seen.running,
         "the alerts after the last running stopped it"
@@ -288,6 +299,43 @@ async fn running_follows_the_order_of_signals_that_arrive_together() {
     assert!(!running_after(&format!("{running}{done}")).await);
     // A turn's end, then the next prompt: running.
     assert!(running_after(&format!("{done}{running}")).await);
+}
+
+/// Background shells and monitors outlive the agent's turn: its end (an alert) leaves
+/// the latest report standing.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn background_tasks_stay_open_after_the_agent_finishes() {
+    let size = TermSize::new(80, 4);
+    let script = "printf '\\033]777;urushi;background;2;1\\007\\033]777;urushi;done\\007'; sleep 5";
+    let spec = SpawnSpec {
+        program: Some("/bin/sh".into()),
+        args: vec!["-c".into(), script.into()],
+        size: Some(size),
+        ..SpawnSpec::default()
+    };
+    let s = SessionHandle::spawn(&NativePty, &spec, Box::new(AlacrittyEmulator::new(size)))
+        .expect("spawn");
+    let mut status = s.status();
+    let seen = tokio::time::timeout(TIMEOUT, async {
+        loop {
+            let now = *status.borrow_and_update();
+            if now.background_reports >= 1 && now.alerts >= 1 {
+                return now;
+            }
+            status.changed().await.expect("session alive");
+        }
+    })
+    .await
+    .expect("signals arrive");
+    s.kill().await.unwrap();
+    assert_eq!(
+        seen.background,
+        urushi_core::BackgroundTasks {
+            shells: 2,
+            monitors: 1
+        }
+    );
 }
 
 #[cfg(windows)]

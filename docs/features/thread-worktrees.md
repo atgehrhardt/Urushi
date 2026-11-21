@@ -72,5 +72,5 @@ The one exception is a project's [parent-branch thread](project-parent-branch.md
 - `update_base_from_remote` is global, with no per-repo override yet.
 - A thread created within 60 s of another fetch of its base doesn't see pushes made in between (ADR 0055). Its `base_commit` says where it started.
 - `main`, `master`, `develop` and `trunk` are always protected, as are the base branch and remote default branches.
-- A shelved thread ([shelved threads](shelved-threads.md), ADR 0059) keeps its worktree and branches. It is deleted through the same warned flow (`begin_deletion` accepts `Shelved`).
+- A shelved thread ([shelved threads](shelved-threads.md), ADR 0060) keeps its worktree and branches. It is deleted through the same warned flow (`begin_deletion` accepts `Shelved`).
 - If the daemon crashes mid-create or mid-delete, the thread is marked `DeletionFailed` on restart, so the user finishes the job through the normal warned flow.

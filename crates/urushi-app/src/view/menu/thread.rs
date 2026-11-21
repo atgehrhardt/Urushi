@@ -9,7 +9,7 @@ use crate::msg::{Msg, ThreadMsg};
 use crate::organize::{ContextMenu, MenuPage, Prompt};
 use crate::state::AppState;
 
-/// Shelve or Unshelve (protocol 1.33, ADR 0059), then Mark as unread / read and Notes…
+/// Shelve or Unshelve (protocol 1.34, ADR 0060), then Mark as unread / read and Notes…
 /// (protocol 1.27, ADR 0048); none for older daemons. Nothing to shelve while the
 /// daemon is still shelving or unshelving it.
 fn extras(state: &AppState, theme: &Theme, thread: &v1::Thread, id: &str) -> Vec<Node<Msg>> {

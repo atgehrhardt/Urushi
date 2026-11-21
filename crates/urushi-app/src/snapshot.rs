@@ -284,8 +284,9 @@ const PANE4: &str = "00000000-0000-0000-0000-0000000000b4";
 const TAB5: &str = "00000000-0000-0000-0000-0000000000a5";
 const PANE5: &str = "00000000-0000-0000-0000-0000000000b5";
 
-/// The tabs: Claude in "Invoice API", plus an agent that finished ("Pricing page"), one
-/// waiting for permission ("Checkout copy") and one at work ("Welcome emails").
+/// The tabs: Claude in "Invoice API" with a dev server in a background shell, plus an
+/// agent that finished ("Pricing page"), one waiting for permission ("Checkout copy") and
+/// one at work ("Welcome emails") with two background shells and a monitor.
 fn sample_tabs() -> Vec<v1::Tab> {
     vec![
         v1::Tab {
@@ -298,6 +299,11 @@ fn sample_tabs() -> Vec<v1::Tab> {
             focused_pane_id: PANE.into(),
             attention: Vec::new(),
             running: Vec::new(),
+            background: vec![v1::PaneBackground {
+                pane_id: PANE.into(),
+                shells: 1,
+                monitors: 0,
+            }],
         },
         agent_tab(TAB3, PANE3, "t3", v1::AttentionKind::Done),
         agent_tab(TAB4, PANE4, "t4", v1::AttentionKind::Waiting),
@@ -306,6 +312,11 @@ fn sample_tabs() -> Vec<v1::Tab> {
             running: vec![v1::PaneRunning {
                 pane_id: PANE5.into(),
                 since_ms: 1,
+            }],
+            background: vec![v1::PaneBackground {
+                pane_id: PANE5.into(),
+                shells: 2,
+                monitors: 1,
             }],
             ..agent_tab(TAB5, PANE5, "t5", v1::AttentionKind::Done)
         },
@@ -328,6 +339,7 @@ fn agent_tab(tab: &str, pane: &str, thread: &str, kind: v1::AttentionKind) -> v1
             since_ms: 1,
         }],
         running: Vec::new(),
+        background: Vec::new(),
     }
 }
 

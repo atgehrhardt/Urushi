@@ -1,4 +1,4 @@
-//! Shelving a thread to free what its terminals use, and unshelving it (ADR 0059).
+//! Shelving a thread to free what its terminals use, and unshelving it (ADR 0060).
 //!
 //! Shelving brings each of the thread's panes' restore points up to date
 //! ([`crate::restore`]) while their processes still run, so an agent's conversation is

@@ -1,8 +1,8 @@
-# Feature: Agent attention and activity (finished / running / needs input)
+# Feature: Agent attention and activity (finished / running / needs input / background shells)
 
 - **Status:** Shipped
-- **Owners (crates):** `urushi-core` (`attention`, `agent::hooks`), `urushi-mux` (`emulator/notices.rs`, `SessionStatus.{alerts, activity, running}`, `SpawnSpec.tty_env`), `urushi-daemon` (`service/attention.rs`, `service/running.rs`), `urushi-app` (`attention.rs`, `running.rs`, `pulse.rs`, `update/attention.rs`, `view/attention.rs`, `platform::notify`), `urushi-cli`
-- **Related ADRs:** [0017](../adr/0017-agent-attention-through-the-pane-terminal.md), [0035](../adr/0035-claude-is-done-when-no-background-agent-runs.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0039](../adr/0039-running-agents-from-their-hooks.md)
+- **Owners (crates):** `urushi-core` (`attention`, `agent::hooks`), `urushi-mux` (`emulator/notices.rs`, `SessionStatus.{alerts, activity, running, background_reports, background}`, `SpawnSpec.tty_env`), `urushi-daemon` (`service/attention.rs`, `service/running.rs`, `service/background.rs`), `urushi-app` (`attention.rs`, `running.rs`, `pulse.rs`, `update/attention.rs`, `view/attention.rs`, `view/thread_card`, `platform::notify`), `urushi-cli`
+- **Related ADRs:** [0017](../adr/0017-agent-attention-through-the-pane-terminal.md), [0035](../adr/0035-claude-is-done-when-no-background-agent-runs.md), [0009](../adr/0009-agents-typed-into-a-shell.md), [0014](../adr/0014-task-prompt-via-pane-environment.md), [0039](../adr/0039-running-agents-from-their-hooks.md), [0059](../adr/0059-background-shells-and-monitors-from-claudes-stop-hook.md)
 
 ## What it does
 When an agent in a pane **finishes its response**, its thread gets a green dot and
@@ -23,6 +23,14 @@ running > finished. Running isn't attention: it doesn't color a card's border, i
 announced, and isn't cleared by looking. It ends when the agent finishes or asks for
 input, when its session ends, or when you press Esc or Ctrl+C in the pane.
 
+A thread card also counts the **shells and monitors** its Claude agents keep open in the
+background (a dev server, a watch), after the agent's state in muted text:
+`running · 2 shells · 1 monitor`, `finished · 1 shell`, or just `1 monitor` when the
+agent has no state to show. They outlive the agent's turn, so finishing, Esc and Ctrl+C
+leave them. The count changes when Claude next ends a turn: one that ends wakes Claude,
+so that happens on its own. It goes when Claude exits (which stops them). Open tasks
+don't pulse and aren't attention.
+
 ## How it works
 1. **Hooks.** Every pane's environment has `URUSHI_TTY` (its terminal device, set by the
    mux) and the hook configuration (`agent::hooks::hook_env`). Agent command lines start
@@ -36,7 +44,9 @@ input, when its session ends, or when you press Esc or Ctrl+C in the pane.
      Claude reads input, so a drafted task message can be pasted in
      ([task agent](task-agent.md), ADR 0030). `UserPromptSubmit`, `PreToolUse`,
      `PostToolUse` and `SubagentStart` → `running` (`running_command`), and `SessionEnd`
-     → `idle` (`idle_command`), neither of them attention (ADR 0039).
+     → `idle` (`idle_command`), neither of them attention (ADR 0039). A second `Stop`
+     hook (`claude_background_command`) counts the input's `background_tasks` of type
+     `shell` and `monitor` and writes `background;<shells>;<monitors>` (ADR 0059).
    - Codex: `notify` → done, and approval requests as OSC 9 → waiting.
 
    A hook runs `signal_command`, which writes `ESC ] 777 ; urushi ; done BEL` to
@@ -48,7 +58,9 @@ input, when its session ends, or when you press Esc or Ctrl+C in the pane.
    `SessionStatus.activity` (`EmulatorEvent::Running`). `SessionStatus.running` follows
    the order of the signals: `running` sets it, and `idle` or any alert clears it. So a
    turn's last tool and its `Stop`, read together, leave the pane stopped
-   (`running_follows_the_order_of_signals_that_arrive_together`).
+   (`running_follows_the_order_of_signals_that_arrive_together`). `background` signals
+   (`EmulatorEvent::Background`) set `SessionStatus.background` and count up
+   `background_reports`; `idle` empties it and counts too; alerts leave it.
 3. **Daemon.** `watch_session` calls `raise_attention(pane, kind)`. Attention is kept in
    memory per pane with its time. A repeat of the same kind is ignored. Each change wakes
    `WorkspaceChanged` subscribers without a new revision, and `workspace()` lists
@@ -69,6 +81,12 @@ input, when its session ends, or when you press Esc or Ctrl+C in the pane.
        `user_interrupted`; Claude runs no hook when interrupted), or
      - the pane closes.
    - Other typing leaves it running, because Claude queues messages typed while it works.
+
+   **Background tasks** (`service/background.rs`): the watcher sees `background_reports`
+   go up and calls `set_background(pane, tasks)`. Panes with any open are listed as
+   `Tab.background[PaneBackground{pane_id, shells, monitors}]` (and
+   `QuickTerminal.background`). An empty report, `idle` or the pane closing removes it;
+   attention and interrupt keys don't.
 4. **App.**
    - `attend` runs after every message.
    - Panes on screen while the window has focus (`visible_panes`) are cleared with
@@ -85,18 +103,26 @@ input, when its session ends, or when you press Esc or Ctrl+C in the pane.
      `thread_indicator`, `tab_indicator`, `quick_indicator`, `task_indicator` and
      `subtask_indicator` pick the highest, and the views draw it (`view/attention.rs`).
      Card borders still follow `task_attention` only.
+   - **Background** (`running.rs`, `view/thread_card`): `thread_background` adds up the
+     thread's panes, and the card's status line appends `background_label` ("2 shells · 1
+     monitor") in `text_muted`, also in its screen-reader label. Older daemons (< 1.33)
+     send none.
    - **Pulse** (`pulse.rs`): while `any_running()` is true and the window isn't occluded,
      the runner's `about_to_wait` wakes about 12 times a second. `redraw` then sends
      `Msg::Pulse(brightness)`, which sets `AppState.pulse` and nothing else.
      `view/attention.rs` fades the running dot by it. Older daemons (< 1.25) send no
      running panes.
-5. **CLI.** `urushi ls` marks panes `[running]`, `[finished]` or `[needs input]`.
+5. **CLI.** `urushi ls` marks panes `[running]`, `[finished]` or `[needs input]`, and
+   `[2 shells, 1 monitor]`.
 
 ## Invariants
-- Attention and running are never stored and never change the workspace revision
-  (`tests/attention.rs`, `tests/running.rs`).
+- Attention, running and background tasks are never stored and never change the
+  workspace revision (`tests/attention.rs`, `tests/running.rs`, `tests/background.rs`).
+- Background tasks outlive the turn: attention and interrupt keys never clear them
+  (`tests/background.rs`, `background_tasks_stay_open_after_the_agent_finishes`).
 - A pane that finished or waits isn't running (`raise_attention` clears it first).
-- With nothing running, the app draws no extra frames (`Runner::pulsing`).
+- With nothing running, the app draws no extra frames (`Runner::pulsing`); open
+  background tasks don't count as running.
 - Each raise is announced at most once and cleared at most once per client
   (`AttentionTracker`, `update/tests/attention.rs`).
 - Only a client that knows the user can see a pane clears it. Hover, motion and the wheel
@@ -121,6 +147,12 @@ input, when its session ends, or when you press Esc or Ctrl+C in the pane.
   - `claude_is_not_done_while_its_background_agents_run`: Claude's `Stop` command, fed
     Claude 2.1's hook input, stays quiet for a running subagent or workflow, and signals
     for shells, monitors, no tasks, and input without `background_tasks`.
+- `urushi-daemon/tests/background.rs`:
+  - `claudes_stop_hook_counts_its_background_shells_and_monitors`: the real command fed
+    Claude 2.1's `Stop` input counts shells and monitors, ignores agents and escaped
+    descriptions, and reports none without `background_tasks`.
+  - End to end: a report shows on the tab without a revision bump; finishing and Ctrl+C
+    leave it; a new report, `idle` and the pane closing change or clear it.
 - `urushi-daemon/tests/running.rs`, end to end:
   - The real running hook command marks the pane, without a revision bump.
   - Typing leaves it running.
@@ -133,16 +165,26 @@ input, when its session ends, or when you press Esc or Ctrl+C in the pane.
   - `update/tests/running.rs`: priority (waiting > running > finished), cards counting
     nested subtasks' running threads, older daemons, and `Msg::Pulse`.
   - `pulse.rs`: brightness over a period, frame spacing.
-  - `snapshot/tests.rs`: the sidebar's "finished", "running" and "needs input", and the
-    board's card badges.
+  - `snapshot/tests.rs`: the sidebar's "finished", "running" and "needs input", its
+    background counts, and the board's card badges.
+  - `view/thread_card/tests.rs`: a thread's tabs' counts add up, show alone without an
+    agent state, are in the card's label, and don't pulse.
+  - `view/attention.rs`: `background_label` wording.
 - Manually: real Claude Code 2.1 started through `urushi tab new --agent claude` in a
   throwaway home. Its `Stop` hook marked the pane `[finished]`, and typing cleared it.
   With two background subagents (Claude 2.1.322), the pane stayed unmarked through the
   main agent's two interim turns, and became `[finished]` after its final answer.
+  Background tasks with Claude 2.1.330 in a throwaway home: two background `sleep`s showed
+  `[2 shells]`; when the shorter one ended Claude woke and it became `[1 shell]`; a
+  `Monitor` made it `[1 shell, 1 monitor]`; `/exit` (which stops them) cleared it.
   notify-rust's call returned `Ok` from an unbundled process on macOS 26 (not seen on
   screen).
 
 ## Limitations and follow-ups
+- Background counts change only when Claude ends a turn (only `Stop` lists them): a shell
+  started mid-turn shows at that turn's end, and one stopped from Claude's task panel
+  without waking Claude may show until its next turn or exit. Only thread cards show
+  them, not tabs or task cards.
 - Running is shown for Claude only. Codex reports only a turn's end, and its other hooks
   need the user's trust. Cursor has no hooks. Both show only finished or needs input.
 - An agent that crashes without running `SessionEnd` stays running until the pane's

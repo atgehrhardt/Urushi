@@ -108,7 +108,7 @@ fn thread_round_trip_all_states() {
             thread
         );
     }
-    // Shelved (1.33) goes as READY plus `shelved`, which older clients read as ready.
+    // Shelved (1.34) goes as READY plus `shelved`, which older clients read as ready.
     thread.state = ThreadState::Shelved;
     let wire = thread_to_proto(&thread);
     assert_eq!(wire.state, v1::ThreadState::Ready as i32);

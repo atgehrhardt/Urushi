@@ -77,6 +77,12 @@ pub struct SessionStatus {
     /// it, and `idle` or any alert (the agent finished or waits) clears it. So it follows
     /// the order of signals that arrive together.
     pub running: bool,
+    /// Times an agent's hook reported its background tasks so far (Urushi's `background`
+    /// signal), or its session ended (`idle`), which ends them. Not an alert.
+    pub background_reports: u64,
+    /// The shells and monitors the agent keeps open in the background, as its latest
+    /// report says; `idle` (its session ended) empties it. Alerts leave it alone.
+    pub background: urushi_core::BackgroundTasks,
     /// Exit code once the process has exited. `-1` if it couldn't be determined.
     pub exit_code: Option<i32>,
 }
@@ -395,6 +401,8 @@ impl Actor {
         let mut ready = 0;
         let mut activity = 0;
         let mut running = None;
+        let mut background_reports = 0;
+        let mut background = None;
         let events = chunks
             .iter()
             .flat_map(|chunk| self.emulator.advance(chunk))
@@ -418,11 +426,20 @@ impl Actor {
                 EmulatorEvent::Running(now) => {
                     activity += 1;
                     running = Some(now);
+                    if !now {
+                        // The agent is gone, and its background tasks with it.
+                        background_reports += 1;
+                        background = Some(urushi_core::BackgroundTasks::default());
+                    }
+                }
+                EmulatorEvent::Background(tasks) => {
+                    background_reports += 1;
+                    background = Some(tasks);
                 }
             }
         }
         self.record_damage();
-        if alerts > 0 || ready > 0 || activity > 0 {
+        if alerts > 0 || ready > 0 || activity > 0 || background_reports > 0 {
             self.status.send_modify(|s| {
                 s.bells += bells;
                 s.alerts += alerts;
@@ -435,6 +452,10 @@ impl Actor {
                     s.running = now;
                 } else if alerts > 0 {
                     s.running = false;
+                }
+                s.background_reports += background_reports;
+                if let Some(tasks) = background {
+                    s.background = tasks;
                 }
             });
         }

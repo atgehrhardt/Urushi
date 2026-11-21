@@ -92,7 +92,7 @@ impl Client {
 
     /// Shelves a ready thread (`shelved`), stopping its terminals but keeping its
     /// worktree, tabs and layout, or unshelves a shelved one, starting them again from
-    /// their restore points (ADR 0059). Needs protocol 1.33.
+    /// their restore points (ADR 0060). Needs protocol 1.34.
     pub async fn set_thread_shelved(
         &self,
         thread_id: &str,

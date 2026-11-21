@@ -132,15 +132,15 @@ impl Service {
     }
 
     /// Raises attention when the pane's program asks for the user, follows whether its
-    /// agent runs, and closes the pane (and its tab, if it was the last one) when its
+    /// agent runs and what it keeps open in the background, and closes the pane (and its tab, if it was the last one) when its
     /// process exits.
     pub(super) fn watch_session(&self, pane: PaneId, handle: SessionHandle) {
         let me = self.me.clone();
         tokio::spawn(async move {
             let mut status = handle.status();
-            let (mut alerts, mut activity) = {
+            let (mut alerts, mut activity, mut background) = {
                 let first = status.borrow();
-                (first.alerts, first.activity)
+                (first.alerts, first.activity, first.background_reports)
             };
             loop {
                 let now = *status.borrow_and_update();
@@ -155,6 +155,12 @@ impl Service {
                     activity = now.activity;
                     if let Some(service) = me.upgrade() {
                         service.set_running(pane, now.running);
+                    }
+                }
+                if now.background_reports > background {
+                    background = now.background_reports;
+                    if let Some(service) = me.upgrade() {
+                        service.set_background(pane, now.background);
                     }
                 }
                 if now.exit_code.is_some() {
@@ -177,7 +183,7 @@ impl Service {
         if self.is_stopping() {
             return;
         }
-        // Its thread was shelved: the pane stays, to be unshelved (ADR 0059).
+        // Its thread was shelved: the pane stays, to be unshelved (ADR 0060).
         {
             let mut stopped = lock(&self.shelved_sessions);
             if let Some(i) = stopped.iter().position(|h| h.same_session(exited)) {
@@ -196,6 +202,7 @@ impl Service {
         };
         self.forget_attention(&[pane]);
         self.forget_running(&[pane]);
+        self.forget_background(&[pane]);
         if let Some(session) = removed {
             tokio::spawn(async move {
                 let _ = session.kill().await;
@@ -216,7 +223,7 @@ impl Service {
     }
 
     /// Kills the sessions of `panes` but keeps the panes in their layouts, for their
-    /// thread is being shelved (ADR 0059).
+    /// thread is being shelved (ADR 0060).
     pub(super) fn stop_sessions_keeping_panes(&self, panes: impl IntoIterator<Item = PaneId>) {
         let handles = self.take_sessions(panes);
         lock(&self.shelved_sessions).extend(handles.iter().cloned());
@@ -229,6 +236,7 @@ impl Service {
         let panes: Vec<PaneId> = panes.into_iter().collect();
         self.forget_attention(&panes);
         self.forget_running(&panes);
+        self.forget_background(&panes);
         let mut sessions = lock(&self.sessions);
         panes.iter().filter_map(|p| sessions.remove(p)).collect()
     }

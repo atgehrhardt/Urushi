@@ -16,6 +16,7 @@
 mod agents;
 mod attachments;
 mod attention;
+mod background;
 mod base_fetch;
 mod boards;
 mod columns;
@@ -163,7 +164,7 @@ pub struct Service {
     state: Arc<Mutex<State>>,
     sessions: Mutex<HashMap<PaneId, SessionHandle>>,
     /// Sessions killed to shelve their thread, until their watchers see them end, so
-    /// their panes stay in the layout (`spawn.rs`, ADR 0059).
+    /// their panes stay in the layout (`spawn.rs`, ADR 0060).
     shelved_sessions: Mutex<Vec<SessionHandle>>,
     /// Writes the workspace document, coalescing bursts of changes (`saver.rs`).
     saver: saver::Saver,
@@ -191,6 +192,9 @@ pub struct Service {
     attention: Mutex<HashMap<PaneId, attention::Attention>>,
     /// Panes whose agent is working, since when. Not stored (`running.rs`).
     running: Mutex<HashMap<PaneId, Timestamp>>,
+    /// The shells and monitors each pane's agent keeps open in the background. Not stored
+    /// (`background.rs`).
+    background: Mutex<HashMap<PaneId, urushi_core::BackgroundTasks>>,
     /// Panes waiting for a task's message to be drafted into their agent, with how many
     /// times the user acted on each since (`task_draft.rs`).
     drafts: Mutex<HashMap<PaneId, u64>>,
@@ -293,6 +297,7 @@ impl Service {
             restore_points: Mutex::new(HashMap::new()),
             attention: Mutex::new(HashMap::new()),
             running: Mutex::new(HashMap::new()),
+            background: Mutex::new(HashMap::new()),
             drafts: Mutex::default(),
             home: config.home,
             cli: config.cli,
@@ -334,13 +339,14 @@ impl Service {
         self.changes.subscribe()
     }
 
-    /// The whole workspace as a wire message, with each tab's attention and running
-    /// panes, and the newer release of the app if one was found.
+    /// The whole workspace as a wire message, with each tab's attention, running panes
+    /// and background tasks, and the newer release of the app if one was found.
     pub fn workspace(&self) -> v1::Workspace {
         let state = lock(&self.state);
         let mut workspace = state.to_proto();
         self.add_attention(&mut workspace, &state);
         self.add_running(&mut workspace, &state);
+        self.add_background(&mut workspace, &state);
         workspace.update = self.updates.to_proto();
         workspace
     }
@@ -356,7 +362,7 @@ impl Service {
         if let Some(handle) = lock(&self.sessions).get(&pane) {
             return Ok(handle.clone());
         }
-        // A shelved thread's panes are kept but run nothing (ADR 0059).
+        // A shelved thread's panes are kept but run nothing (ADR 0060).
         if lock(&self.state).pane_is_shelved(pane) {
             return Err(ServiceError::Precondition(format!(
                 "pane {pane} is in a shelved thread; unshelve it first"

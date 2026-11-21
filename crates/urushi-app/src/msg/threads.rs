@@ -1,6 +1,6 @@
 //! Messages about a thread's unread mark and notes, and a project's color (UR-62,
 //! ADR 0048), the notes editor's formatting controls and color (UR-72, ADR 0058), and
-//! shelving a thread (UR-75, ADR 0059).
+//! shelving a thread (UR-75, ADR 0060).
 //! Each becomes a request to the daemon or an edit in the open editor
 //! (`update/thread_extras.rs`, `update/notes_format.rs`).
 
@@ -14,7 +14,7 @@ pub enum ThreadMsg {
         /// Unread or read.
         unread: bool,
     },
-    /// Shelve a thread: stop its terminals, keeping its worktree and tabs (ADR 0059).
+    /// Shelve a thread: stop its terminals, keeping its worktree and tabs (ADR 0060).
     /// While an agent works in it, asks first unless `confirmed`.
     Shelve {
         /// Thread id.

@@ -188,7 +188,7 @@ enum ThreadCmd {
         thread: String,
     },
     /// Shelve a thread: stop its terminals to free what they use, keeping its worktree,
-    /// tabs and layout (protocol 1.33).
+    /// tabs and layout (protocol 1.34).
     Shelve {
         /// Thread id.
         thread: String,

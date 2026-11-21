@@ -1,4 +1,4 @@
-//! A shelved thread (UR-75, ADR 0059): what the main area shows while it is selected,
+//! A shelved thread (UR-75, ADR 0060): what the main area shows while it is selected,
 //! with the button that unshelves it, and the question asked before shelving a thread
 //! whose agent is working.
 

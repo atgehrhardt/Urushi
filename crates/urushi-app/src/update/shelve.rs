@@ -1,4 +1,4 @@
-//! Shelving and unshelving a thread (UR-75, ADR 0059). The daemon stops or starts its
+//! Shelving and unshelving a thread (UR-75, ADR 0060). The daemon stops or starts its
 //! terminals; this sends the request, asks first while an agent works in the thread,
 //! and shows "shelving…" or "unshelving…" on its card until the workspace says it is
 //! done (ADR 0056).

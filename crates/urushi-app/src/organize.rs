@@ -16,8 +16,8 @@ pub const THREAD_EXTRAS_SINCE_MINOR: u32 = 27;
 /// First protocol minor version that keeps a color for a thread's notes
 /// (`UpdateThread.notes_color`, ADR 0058).
 pub const NOTES_COLOR_SINCE_MINOR: u32 = 32;
-/// The protocol minor from which the daemon shelves threads (ADR 0059).
-pub const SHELVING_SINCE_MINOR: u32 = 33;
+/// The protocol minor from which the daemon shelves threads (ADR 0060).
+pub const SHELVING_SINCE_MINOR: u32 = 34;
 /// First protocol minor version with project settings: a parent branch and its
 /// parent-branch thread (`UpdateFolderSettings`, ADR 0029).
 pub const PROJECT_SETTINGS_SINCE_MINOR: u32 = 18;

@@ -39,7 +39,7 @@ impl AppState {
 
     /// Opens the picker for a new tab in the current thread.
     pub(super) fn open_launcher(&mut self, fx: &mut Vec<Effect>) {
-        // A shelved thread opens no tabs until it is unshelved (ADR 0059).
+        // A shelved thread opens no tabs until it is unshelved (ADR 0060).
         if self.selected_thread.is_some() && self.shelved_thread().is_none() {
             self.dialog = Some(Dialog::NewTab { highlighted: 0 });
             self.focus = None;

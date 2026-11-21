@@ -113,9 +113,9 @@ message Thread {
   // The color the notes are shown in; unspecified means the client's default note
   // color, and unknown values read the same. Since 1.32.
   LabelColor notes_color = 20;
-  // Shelved by the user (ADR 0059): its worktree, tabs and layout are kept, but none of
+  // Shelved by the user (ADR 0060): its worktree, tabs and layout are kept, but none of
   // its panes runs, so they can't be attached. `state` stays READY, which older clients
-  // know. Since 1.33.
+  // know. Since 1.34.
   bool shelved = 21;
 }
 
@@ -132,6 +132,10 @@ message Tab {
   // subagent, as its hooks say (ADR 0039). Not stored; lost when the daemon restarts.
   // Since 1.25.
   repeated PaneRunning running = 7;
+  // Panes whose agent keeps shells or monitors open in the background, as its hooks
+  // last reported (ADR 0059). Only panes with at least one are listed. Not stored; lost
+  // when the daemon restarts. Since 1.33.
+  repeated PaneBackground background = 8;
 }
 
 // Split panes that belong to no thread, shown as a drop-down panel (ADR 0031). A daemon
@@ -146,6 +150,8 @@ message QuickTerminal {
   repeated PaneAttention attention = 4;
   // As Tab.running. Since 1.25.
   repeated PaneRunning running = 5;
+  // As Tab.background. Since 1.33.
+  repeated PaneBackground background = 6;
 }
 
 // Returns the quick terminal, first opening one with a single shell in the home
@@ -174,6 +180,16 @@ message PaneRunning {
   string pane_id = 1;
   // When it started working.
   int64 since_ms = 2;
+}
+
+// The shells and monitors a pane's agent keeps open in the background (Claude's
+// `shell` and `monitor` background tasks). Since 1.33.
+message PaneBackground {
+  string pane_id = 1;
+  // Background shells (commands run in the background, e.g. a dev server).
+  uint32 shells = 2;
+  // Monitors (background watches that report events to the agent).
+  uint32 monitors = 3;
 }
 
 // Clears the attention of these panes (the user is looking at them). Panes without
@@ -297,11 +313,11 @@ message UpdateThreadRequest {
   optional LabelColor notes_color = 8;
 }
 
-// Shelves a ready thread or unshelves a shelved one (ADR 0059). Shelving saves each of
+// Shelves a ready thread or unshelves a shelved one (ADR 0060). Shelving saves each of
 // its panes' restore points and stops their processes; unshelving starts them again from
 // those points, agents resuming their conversations. A thread in any other state is
 // FAILED_PRECONDITION; an unknown one NOT_FOUND. Answered with `Empty` once the change is
-// saved. Since 1.33.
+// saved. Since 1.34.
 message SetThreadShelvedRequest {
   string thread_id = 1;
   bool shelved = 2;

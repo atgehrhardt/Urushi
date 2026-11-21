@@ -9,7 +9,7 @@
 //! resuming its conversation or the job running again, typed into the shell like
 //! starting an agent (ADR 0009). Panes without a restore point start as plain shells in
 //! their worktree. Unshelving a thread starts its panes the same way (`shelve.rs`, ADR
-//! 0059).
+//! 0060).
 
 use std::collections::HashSet;
 use std::time::Duration;

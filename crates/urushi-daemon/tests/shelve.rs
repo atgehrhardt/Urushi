@@ -1,7 +1,7 @@
 //! End-to-end: shelving a thread stops its terminals but keeps its worktree, tabs and
 //! layout; unshelving brings each pane back from its restore point, as after a restart:
 //! a shell in the same directory under its old output, and an agent resuming its
-//! conversation (ADR 0059).
+//! conversation (ADR 0060).
 #![cfg(unix)]
 #![allow(
     clippy::unwrap_used,

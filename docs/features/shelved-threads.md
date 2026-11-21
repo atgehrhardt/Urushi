@@ -2,7 +2,7 @@
 
 - **Status:** Shipped (daemon, CLI and GUI)
 - **Owners (crates):** `urushi-core` (`thread.rs`: `ThreadState::Shelved`), `urushi-proto` (`Thread.shelved`, `SetThreadShelvedRequest`, `convert.rs`), `urushi-mux` (`SessionHandle::same_session`), `urushi-daemon` (`service/shelve.rs`, `service/restore.rs`, `service/spawn.rs`), `urushi-client` (`set_thread_shelved`), `urushi-app` (`update/shelve.rs`, `view/shelved.rs`, `view/thread_card/`, `view/menu/thread.rs`), `urushi-cli` (`thread shelve|unshelve`)
-- **Related ADRs:** [0059](../adr/0059-shelve-threads-by-stopping-their-panes-and-keeping-restore-points.md), [0013](../adr/0013-restore-points-for-panes.md), [0056](../adr/0056-show-the-users-own-actions-before-the-daemon-confirms.md)
+- **Related ADRs:** [0060](../adr/0060-shelve-threads-by-stopping-their-panes-and-keeping-restore-points.md), [0013](../adr/0013-restore-points-for-panes.md), [0056](../adr/0056-show-the-users-own-actions-before-the-daemon-confirms.md)
 
 ## What it does
 **Shelve** a thread (UR-75) to free what its terminals use without losing them:
@@ -27,10 +27,10 @@ Where to find it:
   `urushi ls` marks shelved threads `[shelved]`.
 
 ## How it works
-- **Wire (protocol 1.33):**
+- **Wire (protocol 1.34):**
   - `SetThreadShelved{thread_id, shelved}` → `Empty`, once the change is saved.
   - `Thread.shelved`: a shelved thread goes out as `state = READY` plus `shelved`, so
-    older clients still read the workspace (ADR 0059). `convert.rs` maps it to and from
+    older clients still read the workspace (ADR 0060). `convert.rs` maps it to and from
     `ThreadState::Shelved`.
 - **Core:** `Thread::shelve` (`Ready → Shelved`), `unshelve` (`Shelved → Ready`), and
   `begin_deletion` also from `Shelved`. `is_ready()` is false while shelved, so
@@ -71,7 +71,7 @@ Where to find it:
     `view/shelved.rs` instead of tabs, `sync_panes` detaches its panes, and New tab
     does nothing.
   - The card's title, meta and project stripe are dimmed.
-  - The menu items are gated by `AppState::daemon_supports_shelving` (minor ≥ 33).
+  - The menu items are gated by `AppState::daemon_supports_shelving` (minor ≥ 34).
 
 ## Invariants
 - Shelving never touches the worktree, branches, tabs or layout. Only processes stop
@@ -111,9 +111,9 @@ Where to find it:
 - Panes opened between the restore-point save and the shelve itself have no restore
   point, and come back as shells in the worktree.
 - Only whole threads can be shelved, not single tabs.
-- Older clients (before 1.33) see a shelved thread as ready, and get errors when they
+- Older clients (before 1.34) see a shelved thread as ready, and get errors when they
   try to attach its panes.
-- A daemon older than 1.33 can't load a workspace with a shelved thread. Unshelve it
+- A daemon older than 1.34 can't load a workspace with a shelved thread. Unshelve it
   before downgrading.
 - Windows has no `ps`, so agents and programs aren't restored there, only output and
   directories, as after a restart.

@@ -536,6 +536,22 @@ fn tabs_carry_running_panes() {
     round_trip(&envelope::response(1, response::Outcome::Tab(tab)));
 }
 
+#[test]
+fn tabs_carry_background_tasks() {
+    let tab = v1::Tab {
+        id: "t".into(),
+        thread_id: "th".into(),
+        title: "Claude".into(),
+        background: vec![v1::PaneBackground {
+            pane_id: "p".into(),
+            shells: 2,
+            monitors: 1,
+        }],
+        ..Default::default()
+    };
+    round_trip(&envelope::response(1, response::Outcome::Tab(tab)));
+}
+
 fn quick_terminal() -> v1::QuickTerminal {
     v1::QuickTerminal {
         id: "q".into(),
@@ -551,6 +567,11 @@ fn quick_terminal() -> v1::QuickTerminal {
         running: vec![v1::PaneRunning {
             pane_id: "p".into(),
             since_ms: 2,
+        }],
+        background: vec![v1::PaneBackground {
+            pane_id: "p".into(),
+            shells: 1,
+            monitors: 0,
         }],
     }
 }

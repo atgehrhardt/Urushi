@@ -1,4 +1,4 @@
-//! Shelving a thread (protocol 1.33, ADR 0059): the menu offers Shelve and Unshelve (not
+//! Shelving a thread (protocol 1.34, ADR 0060): the menu offers Shelve and Unshelve (not
 //! to older daemons), shelving asks first while an agent works, the card says what is
 //! happening until the workspace shows it, and a shelved thread shows Unshelve instead
 //! of its terminals, which are detached.

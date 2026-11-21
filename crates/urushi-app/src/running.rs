@@ -1,9 +1,11 @@
 //! Running agents as the app sees it (ADR 0039): which threads, tabs and task cards have
 //! a pane whose agent is working, and the one [`Indicator`] each shows, combining that
-//! with attention (ADR 0017). The daemon owns both; they arrive on each tab of the
-//! workspace.
+//! with attention (ADR 0017). Also the shells and monitors a thread's agents keep open in
+//! the background (ADR 0059), shown beside that indicator. The daemon owns all of it; it
+//! arrives on each tab of the workspace.
 
 use urushi_client::v1;
+use urushi_core::BackgroundTasks;
 
 use crate::attention::linked_threads;
 use crate::state::AppState;
@@ -48,6 +50,22 @@ impl AppState {
             .filter(|t| t.thread_id == thread)
             .filter_map(|t| indicator_of(&t.attention, &t.running))
             .max()
+    }
+
+    /// The shells and monitors kept open in the background by the agents of a thread's
+    /// panes, together. Open tasks don't pulse: they say nothing works right now.
+    pub fn thread_background(&self, thread: &str) -> BackgroundTasks {
+        self.workspace
+            .raw()
+            .tabs
+            .iter()
+            .filter(|t| t.thread_id == thread)
+            .flat_map(|t| &t.background)
+            .map(|b| BackgroundTasks {
+                shells: b.shells,
+                monitors: b.monitors,
+            })
+            .fold(BackgroundTasks::default(), BackgroundTasks::plus)
     }
 
     /// What a tab shows.

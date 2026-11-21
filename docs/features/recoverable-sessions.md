@@ -12,7 +12,7 @@ When the daemon itself stops (**Restart daemon…**, a reboot, a crash), the pro
 - **Agents** start again on the same conversation: Claude resumes the exact session the pane had open (a Claude that had nothing said yet starts fresh), and Codex and Cursor resume their latest conversation in that directory.
 - **Programs** that were running in the foreground (`vim notes.md`, `less`, `npm run dev`, `tail -f log | grep x`) run again with the same arguments, in the directory they ran in.
 - **Reopening the app** shows the thread and tabs it showed when it was closed (local daemon).
-- **Unshelving a thread** brings its panes back the same way, from the restore points saved when it was shelved ([shelved threads](shelved-threads.md), ADR 0059).
+- **Unshelving a thread** brings its panes back the same way, from the restore points saved when it was shelved ([shelved threads](shelved-threads.md), ADR 0060).
 
 ## How it works
 - **`SessionHandle::spawn`** starts the process (`Pty` trait, `NativePty` via portable-pty) and an actor task that alone owns the `Emulator` (`AlacrittyEmulator`).

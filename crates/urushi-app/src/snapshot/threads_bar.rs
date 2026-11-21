@@ -3,7 +3,7 @@
 //! page" (`thread-extras`), the notes editor for "Pricing page" (`thread-notes`), the
 //! same with words selected to format (`thread-notes-format`, ADR 0058), and the project
 //! menu's Color page (`project-color-menu`), and "Pricing page" shelved and open
-//! (`shelved-thread`, ADR 0059).
+//! (`shelved-thread`, ADR 0060).
 
 use urushi_client::v1;
 use urushi_ui::Point;

@@ -1,4 +1,4 @@
-# 0059. Shelve a thread by stopping its panes and keeping their restore points
+# 0060. Shelve a thread by stopping its panes and keeping their restore points
 
 - **Status:** Accepted
 - **Date:** 2026-11-20
@@ -34,7 +34,7 @@ job. Shelving is the same restore, done for one thread whenever the user asks.
   - Everything that requires a ready thread refuses a shelved one with
     `FAILED_PRECONDITION`: new tabs, splits, tasks started in it, and reading or typing
     into its panes.
-- **The wire keeps `state = READY` and adds `Thread.shelved`** (protocol 1.33), with
+- **The wire keeps `state = READY` and adds `Thread.shelved`** (protocol 1.34), with
   `SetThreadShelved{thread_id, shelved}`. Older clients reject an unknown `ThreadState`
   value, which would break their whole workspace. A bool lets them see a ready thread
   whose panes can't be attached.

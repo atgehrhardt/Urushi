@@ -44,6 +44,7 @@ pub(super) fn workspace() -> v1::Workspace {
             focused_pane_id: pane.to_string(),
             attention: Vec::new(),
             running: Vec::new(),
+            background: Vec::new(),
         }],
         folders: Vec::new(),
         boards: Vec::new(),
