@@ -176,6 +176,63 @@ async fn unshelving_at_once_keeps_the_new_terminals() {
     daemon.stop().await;
 }
 
+/// The GUI attaches a thread's panes as soon as the workspace shows it unshelved, so
+/// their terminals must already run by then (it showed "pane … not found").
+#[tokio::test(flavor = "multi_thread")]
+async fn panes_can_be_attached_as_soon_as_the_thread_shows_unshelved() {
+    let home = temp_home();
+    let fixture = repo(home.path());
+    let daemon = Daemon::start(&home.path().join("home")).await;
+    let (client, mut events) = daemon.connect().await;
+    let repo = client
+        .add_repo(fixture.repo.to_str().unwrap(), "")
+        .await
+        .unwrap();
+    let t = client.create_thread(&repo.id, "t", "").await.unwrap();
+    let w = client.list_workspace(true).await.unwrap();
+    let tab = w.tabs.iter().find(|tab| tab.thread_id == t.id).unwrap();
+    let mut panes = panes_of(tab);
+    for _ in 0..7 {
+        let tab = client
+            .create_tab(&t.id, "", v1::Agent::Unspecified)
+            .await
+            .unwrap();
+        panes.extend(panes_of(&tab));
+    }
+    client.set_thread_shelved(&t.id, true).await.unwrap();
+    // Past the events from before the shelve.
+    next_event(&mut events, |e| match e {
+        v1::event::Body::WorkspaceChanged(ws)
+            if ws.threads.iter().any(|th| th.id == t.id && th.shelved) =>
+        {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
+    // Workspace events are spaced out; the user unshelves well after the last one.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let attach_on_unshelved = async {
+        next_event(&mut events, |e| match e {
+            v1::event::Body::WorkspaceChanged(ws)
+                if ws.threads.iter().any(|th| th.id == t.id && !th.shelved) =>
+            {
+                Some(())
+            }
+            _ => None,
+        })
+        .await;
+        // The last one first: it is the last to start.
+        for pane in panes.iter().rev() {
+            client.attach_pane(pane, 80, 24).await.unwrap();
+        }
+    };
+    let (unshelved, ()) =
+        tokio::join!(client.set_thread_shelved(&t.id, false), attach_on_unshelved);
+    unshelved.unwrap();
+    daemon.stop().await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_shelved_thread_can_be_deleted() {
     let home = temp_home();
