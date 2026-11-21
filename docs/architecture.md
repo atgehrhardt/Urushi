@@ -125,7 +125,8 @@ The pure model lives in `urushi-core`. The daemon persists it and applies change
 
 - The daemon uses the **installed** Tailscale client (through its CLI, behind the `TailscaleProvider` trait).
 - With "Serve on tailnet" enabled, it binds only on its tailnet IPs and re-binds when they change.
-- Every connection is authorized with `whois` against an allowlist. The default allows only the host owner's login, and tagged nodes are denied.
+- Every connection is authorized with `whois` against an allowlist. The default allows only the host owner's login, and tagged nodes are denied. Live connections are re-authorized whenever the tailnet settings change, and only the host may change them (ADR 0061).
+- What each way in trusts, and the audit of it, is in [security](security.md).
 - WireGuard already encrypts the traffic.
 - **LAN access** (ADR 0041, off by default) is the other way in. The daemon binds only this machine's private addresses (`lan::addresses`, re-checked every 30 s by `server::lan`) and never touches a router or firewall. Connections run the protocol inside a Noise channel (`urushi_proto::lan`). A device must first pair with a one-time code the host shows; after that, only paired keys are answered. Changing LAN access, pairing and revoking are allowed only over the local socket (`handlers::host_only`). Revoking a device closes its connections, through `Peer.close`.
 - Local IPC is authorized by OS user:

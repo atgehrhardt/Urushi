@@ -10,6 +10,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 | Protocol | [`protocol.md`](protocol.md) | Client/daemon wire format, message groups, versioning. |
 | Platforms | [`platforms.md`](platforms.md) | What runs where, how to build each platform, what has been verified. |
 | UI toolkit | [`ui-toolkit.md`](ui-toolkit.md) | How the GUI is built: Elm loop, nodes, layout, scene, renderer, accessibility. |
+| Security | [`security.md`](security.md) | Who is trusted, what protects each way in, audit findings and accepted risks. |
 | Dependencies | [`dependencies.md`](dependencies.md) | License policy, the approved crates and tools, and things we wrote ourselves instead. |
 | Code-level | rustdoc (`cargo doc --open`) | Module and API contracts. Every crate's `lib.rs` states its responsibility. |
 
@@ -75,6 +76,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0058 – Write thread notes in Markdown, styled as they are typed, with a toolbar and a color of their own](adr/0058-thread-notes-in-markdown-with-a-toolbar-and-a-color.md)
 - [0059 – Count an agent's background shells and monitors from Claude's Stop hook, and show them beside its status](adr/0059-background-shells-and-monitors-from-claudes-stop-hook.md)
 - [0060 – Shelve a thread by stopping its panes and keeping their restore points](adr/0060-shelve-threads-by-stopping-their-panes-and-keeping-restore-points.md)
+- [0061 – Only the host decides who can reach the daemon, and withdrawn access closes live connections](adr/0061-only-the-host-decides-who-reaches-the-daemon.md)
 
 ## Features
 - [_template](features/_template.md)

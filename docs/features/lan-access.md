@@ -18,7 +18,7 @@ With **Settings → Allow LAN access** (or `urushi lan on`) switched on, other d
    - The host asks for a code with `StartLanPairing` (desktop: **Pair a device…**; CLI: `urushi lan pair-code`). The code (`lan::pairing::Pairing`) works once, for 10 minutes, and is withdrawn after 5 wrong attempts.
    - The device runs `urushi_proto::lan::pair`. In the app, that is the connect dialog's **Pairing code** field, sent as `Effect::PairLan` to `Backend::pair_lan`; in the CLI, `urushi lan pair <host> <code>`.
    - The host's `accept_pair` checks the code and records the device with `LanState::register`. The device stores the host's key in its `LanKeyring` (`lan-keyring.json`, 0600, in its data dir).
-4. **Connecting.** `Client::connect_remote` uses `connect_lan` (Noise IK) for any host in the keyring, and plain tailnet TCP for anything else. A paired host connected to also goes into the app's recent hosts (addresses only; ADR 0043, see [remote access](remote-access.md)), so a phone goes back to it at launch.
+4. **Connecting.** `Client::connect_remote` uses `connect_lan` (Noise IK) for any host in the keyring, and plain TCP only to a tailnet or loopback address otherwise (a LAN host that isn't paired is refused before connecting, [remote access](remote-access.md)). A paired host connected to also goes into the app's recent hosts (addresses only; ADR 0043, see [remote access](remote-access.md)), so a phone goes back to it at launch.
    - The daemon's `accept_connect` answers only paired keys.
    - `LanState::connected` registers the connection with a `watch` channel, which becomes `Peer.close`.
    - The protocol then runs unchanged inside `SecureStream`, as a non-local peer.
@@ -41,9 +41,9 @@ With **Settings → Allow LAN access** (or `urushi lan on`) switched on, other d
 
 ## Limitations and follow-ups
 - A device remembers a host by the address it paired with. A host whose LAN address changes must be paired again, unless the device uses a stable name (`mac.local`) or a DHCP reservation.
-- Keys on mobile live in the app's private storage, not the iOS Keychain or Android Keystore.
+- Keys on mobile live in the app's private storage, not the iOS Keychain or Android Keystore. Android keeps that storage out of cloud backups and device transfer (`allowBackup="false"`, `res/xml/data_extraction_rules.xml`); iOS backups include it ([security](../security.md)).
 - No QR code yet: the 20-character code is typed by hand.
 - The app shows no LAN pill in the sidebar; LAN status is in Settings.
 - On iOS, the first LAN connection asks for Local Network permission (`NSLocalNetworkUsageDescription` in `scripts/bundle-ios.sh`). Without it, pairing and connecting fail.
 - The OS firewall may ask once whether `urushid` may accept incoming connections. That prompt is the OS's; Urushi never changes firewall rules.
-- A paired device can still change other settings, including tailnet serving, as tailnet peers can (ADR 0005). Only LAN access itself is host-only.
+- A paired device can still change settings other than LAN and tailnet access, as tailnet peers can. Who may connect is host-only ([ADR 0061](../adr/0061-only-the-host-decides-who-reaches-the-daemon.md)).

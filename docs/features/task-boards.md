@@ -290,8 +290,10 @@ restarts.
     file (`files::read_attachment`, refusing folders and files over the limit) and
     sends it back as `BoardMsg::Attach`, which becomes `AddAttachment`. Opening sends
     `GetAttachment`, and the answer becomes `Effect::OpenFile`: the runner saves it to
-    `<temp>/urushi-attachments/<id>/<name>` and calls `platform::open_path` (`open`,
-    `xdg-open`, Explorer). Thumbnails: after every message, `want_thumbnails` asks for
+    `<home>/opened-attachments/<id>/<name>` (folders 0700, so nobody else can plant a
+    file there), marks it downloaded (`platform::mark_downloaded`: macOS's quarantine
+    attribute, so Gatekeeper asks before anything in it runs) and calls
+    `platform::open_path` (`open`, `xdg-open`, Explorer). Thumbnails: after every message, `want_thumbnails` asks for
     the ones on screen (`board::wanted_thumbnails`: each card's first image, and every
     image of the open task) that weren't asked for, and keeps at most `MAX_THUMBNAILS`;
     they arrive as `ImageData` with an id hashed from the attachment's.

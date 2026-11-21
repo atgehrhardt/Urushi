@@ -43,6 +43,11 @@ A connection works in both directions or it ends.
 - **The daemon** closes a connection whose writes fail, so the client sees it end. A new connection has 10 s to send `Hello`.
 - **A screen update** waits at most 2 s for its `AckScreen` (`ACK_TIMEOUT`); after that, it counts as acknowledged.
 
+## Limits and host-only requests
+- A frame is at most 8 MiB (`codec::MAX_FRAME_LEN`); a larger one ends the connection.
+- A connection may have 512 requests in flight (`MAX_REQUESTS_IN_FLIGHT`); more are answered at once with `UNAVAILABLE`.
+- Some requests are `PERMISSION_DENIED` unless they come from the host's local socket or pipe, so a remote device can never change who may connect (ADRs 0041, 0061): `ShutdownDaemon`, `InstallUpdate`, `StartLanPairing`, `CancelLanPairing`, `RevokeLanDevice`, `SetTailnetServe`, and a `SettingsPatch` that sets any `lan_*` or tailnet field (`tailnet_serve`, `tailnet_port`, `set_allowed_logins`, `allow_tagged_nodes`). Tailnet fields became host-only after 0.1.8 (UR-57), with no minor bump: a remote client simply gets the error.
+
 ## Handshake
 
 The client sends `Hello { protocol_major, protocol_minor, client_name, client_version }`.
