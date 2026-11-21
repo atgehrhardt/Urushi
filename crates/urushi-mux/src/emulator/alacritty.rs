@@ -106,6 +106,7 @@ impl Emulator for AlacrittyEmulator {
             super::notices::Notice::Attention(kind) => EmulatorEvent::Attention(kind),
             super::notices::Notice::Ready => EmulatorEvent::Ready,
             super::notices::Notice::Running(running) => EmulatorEvent::Running(running),
+            super::notices::Notice::Background(tasks) => EmulatorEvent::Background(tasks),
         }));
         events
     }
