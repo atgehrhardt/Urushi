@@ -107,6 +107,7 @@ window. On phones the panels fill the screen edge to edge.
 - **Shown before the daemon answers** (ADR 0056). The app shows what the user asked for at once, as a preview it drops when the daemon answers. It never applies a rule of its own.
   - **New Thread** (`creations.rs`, `update/creating.rs`):
     - Submitting closes the dialog. A "creating" row shows in the sidebar, and a "Creating …" screen in the main area.
+    - The placeholder stays on screen until the reply, even as workspace changes arrive (UR-73). Only the user picking something else moves the window away from it.
     - The reply opens the thread if its placeholder is still shown. It never closes another dialog.
     - A failure reopens the dialog as submitted, with the reason.
     - While the dialog is open, the app sends `PrepareThreadBase` to 1.31 daemons, so the base is fetched while the user types.

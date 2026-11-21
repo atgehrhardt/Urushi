@@ -125,6 +125,8 @@ impl AppState {
         if self.selected_pending == Some(key) {
             self.selected_pending = None;
         }
+        // Nothing to show where the placeholder was: back to a thread.
+        self.select_a_thread_if_none();
         self.error = Some(message);
         if self.dialog.is_none() {
             self.dialog = Some(pending.dialog);

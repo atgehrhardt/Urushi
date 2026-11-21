@@ -79,6 +79,27 @@ fn submitting_closes_the_dialog_and_shows_a_placeholder_at_once() {
 }
 
 #[test]
+fn a_workspace_change_while_creating_keeps_the_placeholder_and_then_the_thread() {
+    // UR-73: the daemon reports workspace changes while it creates the thread (the new
+    // thread itself usually arrives before the reply). None of them moves the window
+    // off the placeholder, so the reply still opens the new thread.
+    let mut s = attached();
+    let key = submit(&mut s, "Stay");
+    s.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(
+        super::workspace(),
+    )));
+    assert!(s.shows_pending(key), "{:?}", s.selected_thread);
+    let mut with_new = super::workspace();
+    let mut thread = with_new.threads[0].clone();
+    thread.id = "new".into();
+    with_new.threads.push(thread);
+    s.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(with_new)));
+    assert!(s.shows_pending(key), "{:?}", s.selected_thread);
+    created(&mut s, key, "new");
+    assert_eq!(s.selected_thread.as_deref(), Some("new"));
+}
+
+#[test]
 fn a_thread_created_after_the_user_moved_on_is_not_forced_on_screen() {
     let mut s = attached();
     let key = submit(&mut s, "Later");
@@ -109,6 +130,11 @@ fn a_failure_brings_the_dialog_back_as_submitted() {
     });
     assert!(s.creations.is_empty());
     assert_eq!(s.selected_pending, None);
+    // Behind the reopened dialog, a thread shows again rather than nothing.
+    assert_eq!(
+        s.selected_thread,
+        Some(super::workspace().threads[0].id.clone())
+    );
     assert_eq!(
         s.error.as_deref(),
         Some("branch urushi/doomed already exists")
