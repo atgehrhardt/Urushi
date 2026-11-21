@@ -13,7 +13,7 @@ use std::collections::HashSet;
 use urushi_core::{PaneId, ThreadId};
 
 use super::restore::RestoreWork;
-use super::{Service, ServiceError, ServiceResult};
+use super::{Service, ServiceError, ServiceResult, lock};
 
 /// Shown between an unshelved pane's old output and its new shell.
 const UNSHELVED: &str = "\x1b[0;2m── unshelved ──\x1b[0m\r\n";
@@ -48,14 +48,18 @@ impl Service {
 
     /// Unshelves `thread`: starts each of its panes again from its restore point. Only a
     /// shelved thread can be unshelved.
+    ///
+    /// The terminals start before the thread is marked ready: clients attach its panes as
+    /// soon as the workspace shows it ready, and would find no terminal yet.
     pub fn unshelve_thread(&self, thread: ThreadId) -> ServiceResult<()> {
-        let work: Vec<RestoreWork> = self.mutate(|state| {
-            state
-                .thread_mut(thread)?
-                .thread
+        let _one_at_a_time = lock(&self.unshelving);
+        let work: Vec<RestoreWork> = self.read(|state| {
+            let record = state.thread(thread)?.thread.clone();
+            // Refused as marking it would be, before anything starts.
+            record
+                .clone()
                 .unshelve()
                 .map_err(|e| ServiceError::Precondition(e.to_string()))?;
-            let record = state.thread(thread)?.thread.clone();
             let shell = state.effective_settings(record.repo).default_shell;
             Ok(state
                 .thread_panes(thread)
@@ -63,8 +67,20 @@ impl Service {
                 .map(|p| (p, Some(record.clone()), shell.clone()))
                 .collect())
         })?;
+        let panes: Vec<PaneId> = work.iter().map(|(pane, ..)| *pane).collect();
         self.restore_panes(work, UNSHELVED);
-        Ok(())
+        let marked = self.mutate(|state| {
+            state
+                .thread_mut(thread)?
+                .thread
+                .unshelve()
+                .map_err(|e| ServiceError::Precondition(e.to_string()))
+        });
+        if marked.is_err() {
+            // Changed meanwhile (being deleted): stop the terminals again, keeping the panes.
+            self.stop_sessions_keeping_panes(panes);
+        }
+        marked
     }
 }
 

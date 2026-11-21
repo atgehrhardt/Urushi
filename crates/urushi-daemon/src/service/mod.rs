@@ -166,6 +166,9 @@ pub struct Service {
     /// Sessions killed to shelve their thread, until their watchers see them end, so
     /// their panes stay in the layout (`spawn.rs`, ADR 0060).
     shelved_sessions: Mutex<Vec<SessionHandle>>,
+    /// Held while a thread is unshelved, so two unshelves can't both start its panes
+    /// (`shelve.rs`).
+    unshelving: Mutex<()>,
     /// Writes the workspace document, coalescing bursts of changes (`saver.rs`).
     saver: saver::Saver,
     git: Arc<dyn Git>,
@@ -281,6 +284,7 @@ impl Service {
             state,
             sessions: Mutex::new(HashMap::new()),
             shelved_sessions: Mutex::default(),
+            unshelving: Mutex::default(),
             saver,
             git: config.git,
             base_fetches: Arc::new(base_fetch::BaseFetches::new(base_fetch::FRESH_FOR)),

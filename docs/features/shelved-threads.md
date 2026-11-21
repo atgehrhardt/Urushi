@@ -50,9 +50,13 @@ Where to find it:
   - A periodic restore-point save that overlaps a shelve skips panes whose session
     stopped meanwhile (`restore.rs::runs`), so it can't overwrite the saved
     conversation.
-- **Unshelving** (`unshelve_thread`): mark the thread ready, then call
-  `restore_panes(its panes, "── unshelved ──")`. This is the same per-pane restore
-  that `restore_sessions` runs at startup.
+- **Unshelving** (`unshelve_thread`), one at a time (`Service::unshelving`):
+  1. Check the thread is shelved.
+  2. `restore_panes(its panes, "── unshelved ──")`. This is the same per-pane restore
+     that `restore_sessions` runs at startup.
+  3. Only then mark the thread ready. Clients attach its panes as soon as the
+     workspace shows it ready, so the terminals must already run. If marking fails
+     (it is being deleted), the new terminals are stopped and the panes kept.
 - **Startup:** `restore_sessions` only starts ready threads. Shelved panes stay in
   `State::all_panes`, so their restore points are never pruned.
 - **Refusals:**
@@ -80,6 +84,8 @@ Where to find it:
   unshelved: new tabs, splits, tasks, input and attaching are all refused.
 - A shelved thread stays shelved across daemon restarts, and its restore points are
   kept.
+- Once the workspace shows a thread unshelved, every one of its panes has a running
+  terminal.
 - A pane's exit only closes the pane when that session was the pane's current one, and
   wasn't stopped for shelving.
 - Opening a shelved thread in the GUI never unshelves it.
@@ -95,6 +101,8 @@ Where to find it:
     subdirectory, and a (fake) Claude resumed with its session id.
   - An unshelve straight after a shelve keeps the new terminals. This test fails
     without the session-identity checks.
+  - Every pane can be attached as soon as the workspace shows the thread unshelved.
+    Marking it ready before starting the terminals failed with "pane … not found".
   - A shelved thread can be deleted.
 - `urushi-app/src/update/tests/shelve.rs`:
   - The menu items, and none for older daemons.
