@@ -4,13 +4,20 @@
 //! addresses, never on all interfaces. Every incoming connection is identified with
 //! `tailscale whois` and checked by [`authorize`] before the protocol handshake. A
 //! watchdog re-checks the addresses periodically and re-binds when they change.
+//!
+//! Every admitted connection holds the receiving end of a `watch` channel whose sender
+//! lives in [`RemoteState`], next to the identity it was admitted as. Each reconcile
+//! checks those identities again and drops the senders of the ones no longer allowed,
+//! so turning serving off or narrowing the allowlist ends live sessions too (ADR 0061).
 
+use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::ControlFlow;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use tokio::net::TcpListener;
+use tokio::sync::{Semaphore, watch};
 use tokio::task::JoinHandle;
 use urushi_core::TailnetSettings;
 use urushi_proto::v1;
@@ -22,19 +29,77 @@ use crate::tailscale::{Identity, TailscaleError};
 
 const WATCHDOG_INTERVAL: Duration = Duration::from_secs(30);
 
-/// Listener state, owned by the service.
-#[derive(Default)]
+/// Connections that may be waiting for `tailscale whois` at once. More are dropped, so
+/// a flood from the tailnet can't pile up processes and blocking threads.
+pub(crate) const MAX_PENDING_IDENTIFICATIONS: usize = 8;
+
+/// Listener state and live connections, owned by the service.
 pub(crate) struct RemoteState {
     listeners: Vec<(SocketAddr, JoinHandle<()>)>,
     error: Option<String>,
     owner_login: Option<String>,
+    identifying: Arc<Semaphore>,
+    /// Admitted connections by id: who they are, and the sender that ends them when
+    /// dropped.
+    connections: HashMap<u64, (Identity, watch::Sender<bool>)>,
+    next_connection: u64,
+}
+
+impl Default for RemoteState {
+    fn default() -> Self {
+        Self {
+            listeners: Vec::new(),
+            error: None,
+            owner_login: None,
+            identifying: Arc::new(Semaphore::new(MAX_PENDING_IDENTIFICATIONS)),
+            connections: HashMap::new(),
+            next_connection: 0,
+        }
+    }
 }
 
 impl RemoteState {
+    /// Stops listening. Live connections stay; see [`Self::end_all`].
     fn stop(&mut self) {
         for (_, task) in self.listeners.drain(..) {
             task.abort();
         }
+    }
+
+    /// Ends every tailnet connection (serving turned off).
+    fn end_all(&mut self) {
+        self.connections.clear();
+    }
+
+    /// Ends the connections whose identity `settings` no longer admit.
+    fn recheck(&mut self, settings: &TailnetSettings) {
+        let owner = self.owner_login.clone();
+        self.connections.retain(|_, (identity, _)| {
+            let allowed = authorize(identity, settings, owner.as_deref());
+            if let Err(reason) = &allowed {
+                tracing::info!(%reason, "ending a tailnet connection whose access was withdrawn");
+            }
+            allowed.is_ok()
+        });
+    }
+
+    /// Admits `identity` if `settings` allow it, registering the connection. Checked
+    /// here, under the state's lock, so a settings change can't slip between the check
+    /// and the registration.
+    fn admit(
+        &mut self,
+        identity: &Identity,
+        settings: &TailnetSettings,
+    ) -> Result<(u64, watch::Receiver<bool>), String> {
+        if !settings.serve {
+            return Err("tailnet serving is off".into());
+        }
+        authorize(identity, settings, self.owner_login.as_deref())?;
+        self.next_connection += 1;
+        let id = self.next_connection;
+        let (sender, close) = watch::channel(false);
+        self.connections.insert(id, (identity.clone(), sender));
+        Ok((id, close))
     }
 }
 
@@ -75,6 +140,7 @@ pub(crate) async fn reconcile(service: &Arc<Service>) {
     if !settings.serve {
         let mut state = lock(&service.remote);
         state.stop();
+        state.end_all();
         state.error = None;
         return;
     }
@@ -104,6 +170,7 @@ pub(crate) async fn reconcile(service: &Arc<Service>) {
     {
         let mut state = lock(&service.remote);
         state.owner_login = Some(status.login.clone()).filter(|l| !l.is_empty());
+        state.recheck(&settings);
         let current: Vec<SocketAddr> = state.listeners.iter().map(|(a, _)| *a).collect();
         if current == desired && !current.is_empty() {
             return;
@@ -156,22 +223,30 @@ async fn accept_loop(service: Weak<Service>, listener: TcpListener) {
             let Some(service) = service.upgrade() else {
                 return ControlFlow::Break(());
             };
+            let identifying = lock(&service.remote).identifying.clone();
+            let Ok(permit) = identifying.try_acquire_owned() else {
+                tracing::warn!(%peer, "refused a tailnet connection: too many being identified");
+                return ControlFlow::Continue(());
+            };
             tokio::spawn(async move {
-                match identify(&service, peer.ip()).await {
-                    Ok(identity) => {
+                let admitted = identify(&service, peer.ip()).await;
+                drop(permit);
+                match admitted {
+                    Ok((identity, id, close)) => {
                         let description =
                             format!("{} ({}) at {peer}", identity.login, identity.node);
                         let _ = stream.set_nodelay(true);
                         connection::serve_boxed(
-                            service,
+                            service.clone(),
                             stream,
                             Peer {
                                 description,
                                 local: false,
-                                close: None,
+                                close: Some(close),
                             },
                         )
                         .await;
+                        lock(&service.remote).connections.remove(&id);
                     }
                     Err(reason) => tracing::warn!(%peer, %reason, "refused tailnet connection"),
                 }
@@ -182,16 +257,23 @@ async fn accept_loop(service: Weak<Service>, listener: TcpListener) {
     .await;
 }
 
-async fn identify(service: &Arc<Service>, ip: IpAddr) -> Result<Identity, String> {
+/// Identifies the peer at `ip` and admits it, returning its identity, its connection
+/// id and the receiver that ends it.
+async fn identify(
+    service: &Arc<Service>,
+    ip: IpAddr,
+) -> Result<(Identity, u64, watch::Receiver<bool>), String> {
     let tailscale = service.tailscale.clone();
     let identity = tokio::task::spawn_blocking(move || tailscale.whois(ip))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
+    let mut state = lock(&service.remote);
+    // Read under the lock: a reconcile after a settings change rechecks under it too,
+    // so this connection is either admitted by the new settings or ended by it.
     let settings = service.settings().tailnet;
-    let owner = lock(&service.remote).owner_login.clone();
-    authorize(&identity, &settings, owner.as_deref())?;
-    Ok(identity)
+    let (id, close) = state.admit(&identity, &settings)?;
+    Ok((identity, id, close))
 }
 
 /// Current tailnet status for the `TailnetStatus` request.
@@ -271,6 +353,39 @@ mod tests {
         };
         assert!(authorize(&id("friend@x.com", &[]), &s, Some("me@x.com")).is_ok());
         assert!(authorize(&id("me@x.com", &[]), &s, Some("me@x.com")).is_err());
+    }
+
+    #[test]
+    fn rechecks_end_only_connections_the_settings_no_longer_admit() {
+        let mut state = RemoteState {
+            owner_login: Some("me@x.com".into()),
+            ..RemoteState::default()
+        };
+        let mut s = TailnetSettings {
+            serve: true,
+            ..TailnetSettings::default()
+        };
+        let (_, mut me) = state.admit(&id("me@x.com", &[]), &s).unwrap();
+        s.allow_tagged_nodes = true;
+        let (_, ci) = state.admit(&id("tagged-devices", &["tag:ci"]), &s).unwrap();
+        assert!(state.admit(&id("other@x.com", &[]), &s).is_err());
+
+        s.allow_tagged_nodes = false;
+        state.recheck(&s);
+        assert!(
+            ci.has_changed().is_err(),
+            "the tagged device's sender is gone"
+        );
+        assert!(me.has_changed().is_ok(), "the owner stays");
+        assert!(me.borrow_and_update().eq(&false));
+
+        state.end_all();
+        assert!(me.has_changed().is_err());
+        s.serve = false;
+        assert!(
+            state.admit(&id("me@x.com", &[]), &s).is_err(),
+            "not while off"
+        );
     }
 
     #[test]

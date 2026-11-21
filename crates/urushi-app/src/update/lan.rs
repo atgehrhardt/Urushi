@@ -119,6 +119,12 @@ impl AppState {
         fx.push(Effect::Reconnect(target));
     }
 
+    /// Whether Settings offers the tailnet switch: only on the host, since the daemon
+    /// refuses tailnet access changes from remote clients (ADR 0061).
+    pub(crate) fn shows_tailnet_switch(&self) -> bool {
+        matches!(self.target, ConnectTarget::Local(_))
+    }
+
     /// Whether the Settings dialog offers LAN access: connected to this machine's own
     /// daemon, new enough to have it.
     pub(crate) fn shows_lan_settings(&self) -> bool {

@@ -116,6 +116,8 @@ message SettingsPatch {
   optional string branch_prefix = 2;
   optional string default_shell = 3;
   optional string worktree_root = 4;
+  // The tailnet fields (5 to 9) decide who reaches the daemon, so they are accepted
+  // only from clients on the host itself; remote clients get PERMISSION_DENIED.
   optional bool tailnet_serve = 5;
   optional uint32 tailnet_port = 6;
   // Replaces the allowlist when `set_allowed_logins` is true.

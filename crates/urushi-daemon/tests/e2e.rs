@@ -458,3 +458,123 @@ async fn tailnet_serving_refuses_other_users() {
     );
     daemon.stop().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_remote_client_cannot_change_who_reaches_the_daemon() {
+    let home = temp_home();
+    let loopback = std::net::IpAddr::from([127, 0, 0, 1]);
+    let daemon = Daemon::start_with(
+        &home.path().join("home"),
+        tailnet(loopback, "me@example.com"),
+    )
+    .await;
+    let (client, _events) = daemon.connect().await;
+    assert!(serve_on_tailnet(&client, 47_393).await.serving);
+    let remote = Endpoint::Tcp {
+        host: "127.0.0.1".into(),
+        port: 47_393,
+    };
+    let (remote_client, _events) = Client::connect(&remote, "phone").await.unwrap();
+
+    for patch in [
+        v1::SettingsPatch {
+            set_allowed_logins: true,
+            allowed_logins: vec!["stranger@example.com".into()],
+            ..Default::default()
+        },
+        v1::SettingsPatch {
+            allow_tagged_nodes: Some(true),
+            ..Default::default()
+        },
+        v1::SettingsPatch {
+            tailnet_port: Some(47_394),
+            ..Default::default()
+        },
+        v1::SettingsPatch {
+            tailnet_serve: Some(false),
+            ..Default::default()
+        },
+    ] {
+        let err = remote_client.update_settings(patch).await.unwrap_err();
+        assert_eq!(err.code(), Some(v1::ErrorCode::PermissionDenied));
+    }
+    let err = remote_client.set_tailnet_serve(false).await.unwrap_err();
+    assert_eq!(err.code(), Some(v1::ErrorCode::PermissionDenied));
+    let tailnet = client.settings().await.unwrap().tailnet.unwrap();
+    assert!(tailnet.serve && tailnet.allowed_logins.is_empty() && !tailnet.allow_tagged_nodes);
+
+    // Other settings still change from afar.
+    remote_client
+        .update_settings(v1::SettingsPatch {
+            delete_remote_branches: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    daemon.stop().await;
+}
+
+/// Waits until `client`'s connection has ended.
+async fn ends(client: &Client) {
+    for _ in 0..100 {
+        if client.list_workspace(false).await.is_err() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("the remote connection is still open");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn withdrawn_tailnet_access_ends_live_connections() {
+    let home = temp_home();
+    let loopback = std::net::IpAddr::from([127, 0, 0, 1]);
+    let daemon = Daemon::start_with(
+        &home.path().join("home"),
+        tailnet(loopback, "me@example.com"),
+    )
+    .await;
+    let (client, _events) = daemon.connect().await;
+    assert!(serve_on_tailnet(&client, 47_395).await.serving);
+    let remote = Endpoint::Tcp {
+        host: "127.0.0.1".into(),
+        port: 47_395,
+    };
+
+    // An allowlist without this login ends its connection.
+    let (phone, _events) = Client::connect(&remote, "phone").await.unwrap();
+    client
+        .update_settings(v1::SettingsPatch {
+            set_allowed_logins: true,
+            allowed_logins: vec!["me@example.com".into(), "friend@example.com".into()],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(phone.list_workspace(false).await.is_ok(), "still allowed");
+    client
+        .update_settings(v1::SettingsPatch {
+            set_allowed_logins: true,
+            allowed_logins: vec!["friend@example.com".into()],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    ends(&phone).await;
+
+    // Turning serving off ends every connection.
+    client
+        .update_settings(v1::SettingsPatch {
+            set_allowed_logins: true,
+            allowed_logins: vec![],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let (phone, _events) = Client::connect(&remote, "phone").await.unwrap();
+    assert!(phone.list_workspace(false).await.is_ok());
+    client.set_tailnet_serve(false).await.unwrap();
+    ends(&phone).await;
+    assert!(client.list_workspace(false).await.is_ok());
+    daemon.stop().await;
+}
