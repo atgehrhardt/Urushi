@@ -62,7 +62,12 @@ pub(super) fn show_command(task: &Task, cli: &str) -> String {
         .issue
         .as_ref()
         .map_or_else(|| task.id.to_string(), |i| i.key.clone());
-    format!("{} board show {id}", crate::shell::quote(cli))
+    // The key comes from Jira: quoted, so an odd one can't add to the command.
+    format!(
+        "{} board show {}",
+        crate::shell::quote(cli),
+        crate::shell::quote(&id)
+    )
 }
 
 /// How a task is named in a reference: `UR-1 "Title"`, or `"Title"`.

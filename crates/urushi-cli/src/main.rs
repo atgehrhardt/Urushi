@@ -11,6 +11,7 @@ mod jira;
 mod lan;
 mod look;
 mod organize;
+mod printable;
 mod project_settings;
 mod render;
 mod update;

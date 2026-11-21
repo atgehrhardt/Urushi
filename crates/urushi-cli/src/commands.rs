@@ -33,7 +33,7 @@ async fn task_link(client: &Client, task: Option<String>) -> Result<(String, Str
 }
 
 pub(crate) fn out(text: &str) -> Result<()> {
-    let mut stdout = std::io::stdout().lock();
+    let mut stdout = crate::printable::stdout();
     writeln!(stdout, "{text}")?;
     Ok(())
 }
@@ -386,7 +386,7 @@ fn patch(key: &str, value: &str) -> Result<v1::SettingsPatch> {
 }
 
 pub(crate) fn confirm(prompt: &str) -> Result<bool> {
-    let mut stdout = std::io::stdout().lock();
+    let mut stdout = crate::printable::stdout();
     write!(stdout, "{prompt}")?;
     stdout.flush()?;
     let mut answer = String::new();

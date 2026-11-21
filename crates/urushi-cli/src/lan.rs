@@ -67,7 +67,7 @@ pub(crate) fn keyring_dir(home: Option<&Path>) -> Result<PathBuf> {
 /// Runs a command that needs no daemon connection.
 pub(crate) async fn run_local(home: Option<&Path>, cmd: LanCmd) -> Result<()> {
     let mut keyring = LanKeyring::open(&keyring_dir(home)?)?;
-    let mut o = std::io::stdout().lock();
+    let mut o = crate::printable::stdout();
     match cmd {
         LanCmd::Pair { host, code, name } => {
             let name = name.unwrap_or_else(machine_name);
@@ -142,7 +142,7 @@ fn find_device(status: &v1::LanStatus, wanted: &str) -> Result<String> {
 }
 
 fn print_status(s: &v1::LanStatus) -> Result<()> {
-    let mut o = std::io::stdout().lock();
+    let mut o = crate::printable::stdout();
     if !s.enabled {
         writeln!(o, "LAN access: off")?;
     } else if s.serving {
