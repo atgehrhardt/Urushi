@@ -1,4 +1,4 @@
-//! The card's links, unread mark, notes and project stripe.
+//! The card's links, unread mark, notes, project stripe and background tasks.
 
 use std::collections::HashMap;
 
@@ -145,5 +145,50 @@ fn clicking_a_mark_opens_its_page_and_not_the_thread() {
             .hits
             .iter()
             .any(|h| matches!(&h.on_click, Some(Msg::OpenUrl(u)) if u == LOCAL_PR))
+    );
+}
+
+#[test]
+fn cards_count_the_shells_and_monitors_their_agents_keep_open() {
+    let mut state = state();
+    let mut workspace = state.workspace.raw().clone();
+    let tab = |id: &str, pane: &str, shells, monitors| v1::Tab {
+        id: id.into(),
+        thread_id: "plain".into(),
+        layout: Some(v1::LayoutNode {
+            kind: Some(v1::layout_node::Kind::PaneId(pane.into())),
+        }),
+        focused_pane_id: pane.into(),
+        background: vec![v1::PaneBackground {
+            pane_id: pane.into(),
+            shells,
+            monitors,
+        }],
+        ..Default::default()
+    };
+    // Two tabs of the same thread: their counts add up.
+    workspace.tabs = vec![tab("a", "p", 1, 1), tab("b", "q", 0, 1)];
+    state.update(Msg::Daemon(v1::event::Body::WorkspaceChanged(workspace)));
+    assert_eq!(
+        state.thread_background("plain"),
+        urushi_core::BackgroundTasks {
+            shells: 1,
+            monitors: 2
+        }
+    );
+    assert!(state.thread_background("jira").is_empty());
+    assert!(!state.any_running(), "open tasks don't pulse");
+
+    let frame = render(&state);
+    // No agent state, so the count stands alone.
+    let dump = frame.scene.dump();
+    assert!(dump.contains("\"1 shell · 2 monitors\""), "{dump}");
+    assert!(
+        frame
+            .access
+            .iter()
+            .any(|a| a.label == "Thread Thread plain, 1 shell, 2 monitors"),
+        "{:?}",
+        frame.access.iter().map(|a| &a.label).collect::<Vec<_>>()
     );
 }

@@ -73,6 +73,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [0056 – Show the user's own actions before the daemon confirms them, without deciding anything in the GUI](adr/0056-show-the-users-own-actions-before-the-daemon-confirms.md)
 - [0057 – Never let a Jira sync move an issue back to an older version](adr/0057-jira-syncs-never-move-an-issue-back-in-time.md)
 - [0058 – Write thread notes in Markdown, styled as they are typed, with a toolbar and a color of their own](adr/0058-thread-notes-in-markdown-with-a-toolbar-and-a-color.md)
+- [0059 – Count an agent's background shells and monitors from Claude's Stop hook, and show them beside its status](adr/0059-background-shells-and-monitors-from-claudes-stop-hook.md)
 
 ## Features
 - [_template](features/_template.md)
@@ -89,7 +90,7 @@ This is the map of all project documentation. **Keep it current.** Every doc fil
 - [Jira boards](features/jira-boards.md)
 - [Task agent and first-run setup](features/task-agent.md)
 - [Agent usage in the status bar](features/agent-usage.md)
-- [Agent attention and activity (finished / running / needs input)](features/agent-attention.md)
+- [Agent attention and activity (finished / running / needs input / background shells)](features/agent-attention.md)
 - [Quick terminal](features/quick-terminal.md)
 - [CI and releases](features/ci-and-releases.md)
 - [App updates from GitHub Releases](features/updates.md)

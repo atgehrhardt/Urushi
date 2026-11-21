@@ -32,6 +32,7 @@ pub(super) fn with_attention(raised: &[(u128, v1::AttentionKind, i64)]) -> v1::W
         focused_pane_id: id(101),
         attention: Vec::new(),
         running: Vec::new(),
+        background: Vec::new(),
     });
     for (pane, kind, since) in raised {
         let tab = w

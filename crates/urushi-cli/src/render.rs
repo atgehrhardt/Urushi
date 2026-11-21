@@ -87,7 +87,11 @@ pub(crate) fn print_tree(mirror: &WorkspaceMirror) -> Result<()> {
                     "     ",
                     tab.layout.as_ref(),
                     &tab.focused_pane_id,
-                    (&tab.attention, &tab.running),
+                    PaneMarks {
+                        attention: &tab.attention,
+                        running: &tab.running,
+                        background: &tab.background,
+                    },
                 )?;
             }
         }
@@ -110,19 +114,36 @@ fn write_quick(o: &mut impl Write, quick: &v1::QuickTerminal) -> Result<()> {
         "  ",
         quick.layout.as_ref(),
         &quick.focused_pane_id,
-        (&quick.attention, &quick.running),
+        PaneMarks {
+            attention: &quick.attention,
+            running: &quick.running,
+            background: &quick.background,
+        },
     )
 }
 
-/// One line per pane: `*` marks the focused one, then whether its agent runs and any
-/// attention.
+/// What a tab (or the quick terminal) says about its panes' agents.
+#[derive(Clone, Copy)]
+struct PaneMarks<'a> {
+    attention: &'a [v1::PaneAttention],
+    running: &'a [v1::PaneRunning],
+    background: &'a [v1::PaneBackground],
+}
+
+/// One line per pane: `*` marks the focused one, then whether its agent runs, any
+/// attention, and the shells and monitors it keeps open in the background.
 fn print_panes(
     o: &mut impl Write,
     indent: &str,
     layout: Option<&v1::LayoutNode>,
     focused: &str,
-    (attention, running): (&[v1::PaneAttention], &[v1::PaneRunning]),
+    marks: PaneMarks<'_>,
 ) -> Result<()> {
+    let PaneMarks {
+        attention,
+        running,
+        background,
+    } = marks;
     let Some(layout) = layout.and_then(|l| urushi_proto::convert::layout_from_proto(l).ok()) else {
         return Ok(());
     };
@@ -141,13 +162,36 @@ fn print_panes(
         } else {
             ""
         };
+        let background = background
+            .iter()
+            .find(|b| b.pane_id == pane)
+            .map_or_else(String::new, |b| {
+                format!("  [{}]", background_words(b.shells, b.monitors))
+            });
         writeln!(
             o,
-            "{indent}{marker}{} pane{running}{attention}",
+            "{indent}{marker}{} pane{running}{attention}{background}",
             short(&pane)
         )?;
     }
     Ok(())
+}
+
+/// "2 shells, 1 monitor": the counts that aren't zero.
+fn background_words(shells: u32, monitors: u32) -> String {
+    let count = |n: u32, one: &str, many: &str| match n {
+        0 => None,
+        1 => Some(format!("1 {one}")),
+        n => Some(format!("{n} {many}")),
+    };
+    [
+        count(shells, "shell", "shells"),
+        count(monitors, "monitor", "monitors"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(", ")
 }
 
 pub(crate) fn print_plan(plan: &v1::DeletionPlan) -> Result<()> {
@@ -309,4 +353,41 @@ pub(crate) fn print_tailnet(s: &v1::TailnetStatus) -> Result<()> {
         writeln!(o, "error:     {}", s.error)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, reason = "test code")]
+
+    use super::*;
+
+    #[test]
+    fn panes_list_the_shells_and_monitors_their_agents_keep_open() {
+        let pane = "00000000-0000-0000-0000-0000000000b1";
+        let layout = v1::LayoutNode {
+            kind: Some(v1::layout_node::Kind::PaneId(pane.into())),
+        };
+        let background = [v1::PaneBackground {
+            pane_id: pane.into(),
+            shells: 2,
+            monitors: 1,
+        }];
+        let mut out = Vec::new();
+        print_panes(
+            &mut out,
+            "",
+            Some(&layout),
+            pane,
+            PaneMarks {
+                attention: &[],
+                running: &[],
+                background: &background,
+            },
+        )
+        .unwrap();
+        let out = String::from_utf8(out).unwrap();
+        assert!(out.ends_with(" pane  [2 shells, 1 monitor]\n"), "{out:?}");
+        assert_eq!(background_words(1, 0), "1 shell");
+        assert_eq!(background_words(0, 3), "3 monitors");
+    }
 }
